@@ -8,7 +8,69 @@
     la ficha maestra y se le genera el checklist tributario.
 --}}
 
-<div style="max-width:1500px;margin:0 auto;" x-data="{ seguir: null }">
+<div style="max-width:1500px;margin:0 auto;"
+     x-data="{
+        verSeguir: false,
+        // Objeto y no null: los campos usan x-model y contra null revientan.
+        seguir: { nit: '', razon_social: '', dv: '', fecha_constitucion: '',
+                  regimen: '', periodicidad_iva: 'no_responsable', municipio_ica: '',
+                  responsabilidades: '' },
+        leyendo: false, aviso: null, avisoError: false,
+
+        abrir(datos) {
+            this.seguir = Object.assign(
+                { regimen: '', periodicidad_iva: 'no_responsable', municipio_ica: '', responsabilidades: '' },
+                datos
+            );
+            this.aviso = null; this.avisoError = false; this.verSeguir = true;
+        },
+
+        /** Sube la cámara o el RUT y deja que el formulario se llene solo. */
+        async leerDocumento(evento) {
+            const archivo = evento.target.files[0];
+            if (!archivo) return;
+
+            this.leyendo = true; this.aviso = null; this.avisoError = false;
+            const cuerpo = new FormData();
+            cuerpo.append('archivo', archivo);
+            cuerpo.append('nit', this.seguir.nit);
+            cuerpo.append('_token', document.querySelector('meta[name=csrf-token]').content);
+
+            try {
+                const r = await fetch('{{ route('brynex.razones.leer_documento') }}', { method: 'POST', body: cuerpo });
+                const d = await r.json();
+
+                if (!d.ok) {
+                    this.aviso = d.error || (d.message ?? 'No se pudo leer el documento.');
+                    this.avisoError = true;
+                    return;
+                }
+
+                // El NIT y la razón social NO se pisan: identifican cuál se
+                // está siguiendo, y cambiarlos por lo que diga un PDF sería
+                // seguir otra empresa sin darse cuenta.
+                const campos = ['dv', 'fecha_constitucion', 'municipio_ica', 'regimen', 'periodicidad_iva'];
+                const puestos = [];
+                campos.forEach(c => {
+                    if (d.datos[c] !== undefined && d.datos[c] !== null && d.datos[c] !== '') {
+                        this.seguir[c] = d.datos[c]; puestos.push(c);
+                    }
+                });
+                if (d.datos.responsabilidades_rut) {
+                    this.seguir.responsabilidades = d.datos.responsabilidades_rut.join(',');
+                    puestos.push('responsabilidades del RUT');
+                }
+
+                this.aviso = (d.tipo === 'CAMARA' ? 'Cámara de comercio leída' : 'RUT leído')
+                           + (puestos.length ? ': ' + puestos.join(', ') : ', pero no traía datos nuevos');
+            } catch (e) {
+                this.aviso = 'No se pudo leer el documento.'; this.avisoError = true;
+            } finally {
+                this.leyendo = false;
+                evento.target.value = '';
+            }
+        }
+     }">
 
     {{-- ── Cabecera ────────────────────────────────────────────────── --}}
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.25rem;flex-wrap:wrap;gap:1rem;">
@@ -126,12 +188,12 @@
                             @else
                                 @can('brynex_razones.gestionar')
                                     <button type="button"
-                                            @click="seguir = @js([
+                                            @click="abrir(@js([
                                                 'nit' => (string) $r->nit,
                                                 'razon_social' => $r->razon_social,
                                                 'dv' => $r->dv,
                                                 'fecha_constitucion' => $r->fecha_constitucion,
-                                            ])"
+                                            ]))"
                                             style="background:#047857;color:#fff;border:none;padding:0.3rem 0.7rem;border-radius:6px;font-size:0.75rem;font-weight:600;cursor:pointer;">
                                         + Seguir
                                     </button>
@@ -152,26 +214,60 @@
     </div>
 
     {{-- ── Modal: poner en seguimiento ─────────────────────────────── --}}
-    <div x-show="seguir" x-cloak
+    <div x-show="verSeguir" x-cloak
          style="position:fixed;inset:0;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;z-index:60;padding:1rem;"
-         @click.self="seguir = null">
+         @click.self="verSeguir = false">
         <div style="background:#fff;border-radius:16px;max-width:640px;width:100%;max-height:90vh;overflow-y:auto;padding:1.5rem;">
             <h2 style="font-size:1.15rem;font-weight:800;color:#0d2550;margin:0 0 0.2rem 0;">Poner en seguimiento</h2>
             <p style="color:#64748b;font-size:0.8rem;margin:0 0 1.1rem 0;">
-                <span x-text="seguir?.razon_social"></span>
-                · NIT <span x-text="seguir?.nit"></span><span x-show="seguir?.dv !== null && seguir?.dv !== ''">-<span x-text="seguir?.dv"></span></span>
+                <span x-text="seguir.razon_social"></span>
+                · NIT <span x-text="seguir.nit"></span><span x-show="seguir.dv">-<span x-text="seguir.dv"></span></span>
             </p>
 
             <form method="POST" action="{{ route('brynex.razones.seguir') }}">
                 @csrf
-                <input type="hidden" name="nit" :value="seguir?.nit">
-                <input type="hidden" name="razon_social" :value="seguir?.razon_social">
+                <input type="hidden" name="nit" :value="seguir.nit">
+                <input type="hidden" name="razon_social" :value="seguir.razon_social">
 
                 {{-- El dígito de verificación no se pregunta: ya lo tiene el
                      aliado en su fila de `razones_sociales` (231 de 249). Va
                      oculto, y las pocas que no lo tengan se completan después
                      en la pestaña Datos de la ficha. --}}
-                <input type="hidden" name="dv" :value="seguir?.dv">
+                <input type="hidden" name="dv" :value="seguir.dv">
+                <input type="hidden" name="responsabilidades_rut_texto" :value="seguir.responsabilidades">
+
+                {{-- Leer el documento en vez de digitarlo. La cámara trae el
+                     DV, la constitución y el municipio; el RUT, el régimen y
+                     el IVA — que es lo que más fácil se equivoca a mano. --}}
+                <div style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:10px;padding:0.8rem;margin-bottom:1rem;">
+                    <div style="display:flex;align-items:center;gap:0.7rem;flex-wrap:wrap;">
+                        <label style="background:#1e3a8a;color:#fff;padding:0.45rem 0.9rem;border-radius:8px;font-size:0.8rem;font-weight:700;cursor:pointer;">
+                            <span x-show="! leyendo">📄 Leer cámara o RUT</span>
+                            <span x-show="leyendo" x-cloak>Leyendo…</span>
+                            <input type="file" accept="application/pdf" @change="leerDocumento" :disabled="leyendo" style="display:none;">
+                        </label>
+                        <span style="font-size:0.75rem;color:#64748b;">
+                            Sube el PDF y los campos se llenan solos. Puedes subir los dos, uno después del otro.
+                        </span>
+                    </div>
+
+                    <template x-if="aviso">
+                        <div x-cloak
+                             :style="avisoError
+                                ? 'background:#fef2f2;border:1px solid #fecaca;color:#991b1b;'
+                                : 'background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;'"
+                             style="margin-top:0.6rem;padding:0.5rem 0.7rem;border-radius:8px;font-size:0.78rem;">
+                            <span x-text="avisoError ? '⚠️ ' : '✅ '"></span><span x-text="aviso"></span>
+                        </div>
+                    </template>
+
+                    <template x-if="seguir.responsabilidades">
+                        <div x-cloak style="margin-top:0.5rem;font-size:0.75rem;color:#475569;">
+                            Responsabilidades del RUT: <b x-text="seguir.responsabilidades"></b>
+                            <span style="color:#94a3b8;">— de aquí salen la retención en la fuente y la exógena.</span>
+                        </div>
+                    </template>
+                </div>
 
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.9rem;">
                     <label style="font-size:0.78rem;font-weight:700;color:#334155;">
@@ -184,7 +280,7 @@
 
                     <label style="font-size:0.78rem;font-weight:700;color:#334155;">
                         Régimen tributario *
-                        <select name="regimen" required style="width:100%;margin-top:0.25rem;padding:0.45rem;border:1px solid #cbd5e1;border-radius:8px;font-weight:400;">
+                        <select name="regimen" required x-model="seguir.regimen" style="width:100%;margin-top:0.25rem;padding:0.45rem;border:1px solid #cbd5e1;border-radius:8px;font-weight:400;">
                             <option value="">— Elegir —</option>
                             <option value="RST">Régimen Simple (RST)</option>
                             <option value="ORDINARIO">Régimen Ordinario</option>
@@ -193,7 +289,7 @@
 
                     <label style="font-size:0.78rem;font-weight:700;color:#334155;">
                         IVA *
-                        <select name="periodicidad_iva" required style="width:100%;margin-top:0.25rem;padding:0.45rem;border:1px solid #cbd5e1;border-radius:8px;font-weight:400;">
+                        <select name="periodicidad_iva" required x-model="seguir.periodicidad_iva" style="width:100%;margin-top:0.25rem;padding:0.45rem;border:1px solid #cbd5e1;border-radius:8px;font-weight:400;">
                             <option value="no_responsable">No responsable de IVA</option>
                             <option value="bimestral">Bimestral (≥ 92.000 UVT el año anterior)</option>
                             <option value="cuatrimestral">Cuatrimestral (&lt; 92.000 UVT)</option>
@@ -204,17 +300,17 @@
                     <label style="font-size:0.78rem;font-weight:700;color:#334155;grid-column:span 2;">
                         Fecha de constitución *
                         <input type="date" name="fecha_constitucion" required max="{{ now()->toDateString() }}"
-                               :value="seguir?.fecha_constitucion"
+                               x-model="seguir.fecha_constitucion"
                                style="width:100%;margin-top:0.25rem;padding:0.45rem;border:1px solid #cbd5e1;border-radius:8px;font-weight:400;">
                         <span style="display:block;font-weight:400;color:#94a3b8;font-size:0.72rem;margin-top:0.2rem;">
-                            <span x-show="seguir?.fecha_constitucion">Viene de la razón social del aliado; corrígela si está mal.</span>
-                            <span x-show="! seguir?.fecha_constitucion">Desde este año se genera el checklist hacia atrás, para poder ponerse al día con los soportes viejos.</span>
+                            <span x-show="seguir.fecha_constitucion">Corrígela si está mal.</span>
+                            <span x-show="! seguir.fecha_constitucion">Desde este año se genera el checklist hacia atrás, para poder ponerse al día con los soportes viejos.</span>
                         </span>
                     </label>
 
                     <label style="font-size:0.78rem;font-weight:700;color:#334155;">
                         Municipio (ICA)
-                        <input type="text" name="municipio_ica" placeholder="Cali" style="width:100%;margin-top:0.25rem;padding:0.45rem;border:1px solid #cbd5e1;border-radius:8px;font-weight:400;">
+                        <input type="text" name="municipio_ica" placeholder="Cali" x-model="seguir.municipio_ica" style="width:100%;margin-top:0.25rem;padding:0.45rem;border:1px solid #cbd5e1;border-radius:8px;font-weight:400;">
                     </label>
 
                     <label style="font-size:0.78rem;font-weight:700;color:#334155;">
@@ -243,7 +339,7 @@
                 </div>
 
                 <div style="display:flex;justify-content:flex-end;gap:0.6rem;margin-top:1.3rem;">
-                    <button type="button" @click="seguir = null" style="background:#f1f5f9;color:#334155;border:none;padding:0.5rem 1rem;border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer;">Cancelar</button>
+                    <button type="button" @click="verSeguir = false" style="background:#f1f5f9;color:#334155;border:none;padding:0.5rem 1rem;border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer;">Cancelar</button>
                     <button type="submit" style="background:#047857;color:#fff;border:none;padding:0.5rem 1.2rem;border-radius:8px;font-size:0.85rem;font-weight:700;cursor:pointer;">Crear ficha y generar checklist</button>
                 </div>
             </form>

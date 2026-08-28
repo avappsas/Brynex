@@ -779,6 +779,7 @@ Route::middleware('auth')->group(function () {
         });
 
         Route::middleware('permiso:brynex_razones.gestionar')->group(function () use ($brs, $bob) {
+            Route::post('/leer-documento', [$brs, 'leerDocumento'])->name('leer_documento');
             Route::post('/seguir', [$brs, 'seguir'])->name('seguir');
             Route::put('/{id}', [$brs, 'update'])->whereNumber('id')->name('update');
             Route::post('/{id}/dejar-de-seguir', [$brs, 'dejarDeSeguir'])->name('dejar');

@@ -8,6 +8,7 @@ use App\Models\BrynexRazonSocial;
 use App\Models\RazonSocialCredencial;
 use App\Models\User;
 use App\Services\BrynexRazonSocialService;
+use App\Services\LectorDocumentoRazonSocialService;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -144,6 +145,30 @@ class BrynexRazonSocialController extends Controller
         ];
     }
 
+    // ─── Leer la cámara o el RUT para no digitar ──────────────────────
+
+    /**
+     * Recibe un certificado de cámara de comercio o un RUT y devuelve los
+     * datos que trae, para que el formulario se llene solo.
+     *
+     * El PDF NO se guarda aquí: esto solo lee. Guardarlo como soporte es otra
+     * decisión, y se hace desde la ficha una vez creada.
+     */
+    public function leerDocumento(Request $request, LectorDocumentoRazonSocialService $lector)
+    {
+        $request->validate([
+            'archivo' => 'required|file|mimes:pdf|max:15360',
+            'nit' => 'nullable|numeric',
+        ], [
+            'archivo.mimes' => 'Tiene que ser un PDF.',
+            'archivo.max' => 'El archivo no puede pesar más de 15 MB.',
+        ]);
+
+        $resultado = $lector->leer($request->file('archivo'), $request->get('nit'));
+
+        return response()->json($resultado, $resultado['ok'] ? 200 : 422);
+    }
+
     // ─── Poner una razón social en seguimiento ────────────────────────
 
     /**
@@ -165,9 +190,18 @@ class BrynexRazonSocialController extends Controller
             'periodicidad_ica' => 'nullable|in:bimestral,anual',
             'firma_electronica_vence' => 'nullable|date',
             'contador_id' => 'nullable|integer|exists:users,id',
+            // Vienen del RUT leído, separadas por coma: '07,09,14,42,47,48'.
+            'responsabilidades_rut_texto' => 'nullable|string|max:120',
         ], [
             'fecha_constitucion.required' => 'La fecha de constitución es obligatoria: define desde qué año se genera el checklist.',
         ]);
+
+        // Sin ellas no se generan la retención ni la exógena, así que se
+        // guardan desde el primer momento si el RUT las trajo.
+        $datos['responsabilidades_rut'] = array_values(array_filter(
+            array_map('trim', explode(',', $datos['responsabilidades_rut_texto'] ?? ''))
+        ));
+        unset($datos['responsabilidades_rut_texto']);
 
         if (BrynexRazonSocial::where('nit', $datos['nit'])->exists()) {
             return back()->with('error', 'Esa razón social ya tiene ficha.');
