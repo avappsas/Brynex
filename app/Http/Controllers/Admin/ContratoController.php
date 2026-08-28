@@ -15,8 +15,8 @@ use App\Models\Eps;
 use App\Models\MotivoAfiliacion;
 use App\Models\MotivoRetiro;
 use App\Models\Pension;
-use App\Models\Plano;
 use App\Models\PlanContrato;
+use App\Models\Plano;
 use App\Models\Radicado;
 use App\Models\RazonSocial;
 use App\Models\TipoModalidad;
@@ -95,6 +95,8 @@ class ContratoController extends Controller
                 $data['arl_nit_cotizante'] = (int) $data['cedula'];
             }
         }
+
+        $data = $this->completarArlDesdeRazonSocial($data);
 
         DB::transaction(function () use ($data, &$nuevoContrato) {
             $nuevoContrato = Contrato::create($data);
@@ -348,9 +350,13 @@ class ContratoController extends Controller
         $puedeEditarEconomico = $this->puedeEditarEconomico();
 
         if ($rsBloquedaPorAfiliacion) {
+            // El nivel de riesgo NO entra aquí: una persona cambia de cargo y su
+            // riesgo sube o baja, y eso pasa con la afiliación ya radicada. Lo
+            // que cambia es lo que se cotiza y lo que va en la planilla de ahí
+            // en adelante, no la afiliación que ya viajó. Queda en bitácora.
             $congelados = [
                 'eps_id', 'pension_id', 'arl_id', 'caja_id',
-                'n_arl', 'fecha_ingreso', 'fecha_retiro', 'fecha_arl',
+                'fecha_ingreso', 'fecha_retiro', 'fecha_arl',
             ];
 
             if (! $puedeEditarEconomico) {
@@ -498,6 +504,8 @@ class ContratoController extends Controller
             }
         }
 
+        $data = $this->completarArlDesdeRazonSocial($data, $contrato);
+
         // ── Rastro de cambios forzados por superadmin ──────────────────
         // Si el contrato tenía afiliaciones activas y el usuario es superadmin,
         // los campos que normalmente estarían bloqueados sí pudieron cambiar.
@@ -526,9 +534,16 @@ class ContratoController extends Controller
             }
         }
 
+        // Cambio de nivel de riesgo: cualquiera lo puede mover, pero mueve lo que
+        // se cotiza y lo que se le reporta a la ARL, así que queda registrado.
+        $cambioNivelArl = null;
+        if (array_key_exists('n_arl', $data) && (int) $data['n_arl'] !== (int) $contrato->n_arl) {
+            $cambioNivelArl = ['old' => (int) $contrato->n_arl, 'new' => (int) $data['n_arl']];
+        }
+
         $avisoMesActual = null;
 
-        DB::transaction(function () use ($contrato, $data, $alidoId, $cambiosForzados, &$avisoMesActual) {
+        DB::transaction(function () use ($contrato, $data, $alidoId, $cambiosForzados, $cambioNivelArl, &$avisoMesActual) {
             $oldPlanId = $contrato->plan_id;
 
             // Detectar cambios en campos sensibles de tarifa
@@ -555,7 +570,7 @@ class ContratoController extends Controller
             if ($avisoMesActual) {
                 \App\Models\Bitacora::registrar(
                     'updated', 'Contrato', $contrato->id,
-                    "Período de cotización cambiado a ".($contrato->paga_mes_actual ? 'mes actual' : 'mes vencido')
+                    'Período de cotización cambiado a '.($contrato->paga_mes_actual ? 'mes actual' : 'mes vencido')
                         ." (Cédula: {$contrato->cedula}). {$avisoMesActual}",
                     ['paga_mes_actual' => ['antes' => ! $contrato->paga_mes_actual, 'despues' => (bool) $contrato->paga_mes_actual]],
                     $alidoId
@@ -567,6 +582,15 @@ class ContratoController extends Controller
                     'updated', 'Contrato', $contrato->id,
                     "Tarifas de contrato modificadas (Cédula: {$contrato->cedula}).",
                     ['cambios' => $cambios],
+                    $alidoId
+                );
+            }
+
+            if ($cambioNivelArl) {
+                \App\Models\Bitacora::registrar(
+                    'updated', 'Contrato', $contrato->id,
+                    "Nivel de riesgo ARL cambiado de {$cambioNivelArl['old']} a {$cambioNivelArl['new']} (Cédula: {$contrato->cedula}).",
+                    ['n_arl' => $cambioNivelArl],
                     $alidoId
                 );
             }
@@ -645,7 +669,7 @@ class ContratoController extends Controller
             return null;
         }
 
-        $antes   = (bool) $contrato->paga_mes_actual;
+        $antes = (bool) $contrato->paga_mes_actual;
         $despues = (bool) $data['paga_mes_actual'];
 
         if ($antes === $despues || ! $contrato->estaVigente()) {
@@ -1419,6 +1443,49 @@ class ContratoController extends Controller
             'clienteOperadorId' => $cliente?->operador_planilla_id,
             'planosExistentes' => $planosExistentes,
         ];
+    }
+
+    // ─── ARL de la razón social ───────────────────────────────────────
+    /**
+     * Completa la ARL del contrato con la de su razón social.
+     *
+     * En una razón social de empresa la ARL la define la empresa (`arl_nit`) y
+     * el formulario deja su selector bloqueado; al estar deshabilitado ni
+     * siquiera viaja en el POST, así que el contrato se guardaba con `arl_id`
+     * vacío por más que en pantalla se viera la ARL correcta. Se rellena solo
+     * cuando el plan cubre ARL y el contrato no trae ninguna.
+     *
+     * Las razones sociales de independientes quedan fuera: ahí conviven
+     * afiliados de varias ARL y manda la del contrato (ver ResuelveArlEfectiva).
+     */
+    private function completarArlDesdeRazonSocial(array $data, ?Contrato $contrato = null): array
+    {
+        if (! empty($data['arl_id'])) {
+            return $data;
+        }
+
+        $planId = $data['plan_id'] ?? $contrato?->plan_id;
+        $plan = $planId ? \App\Models\PlanContrato::find($planId) : null;
+        if (! $plan || ! $plan->incluye_arl) {
+            return $data;
+        }
+
+        $rsId = $data['razon_social_id'] ?? $contrato?->razon_social_id;
+        if (! $rsId) {
+            return $data;
+        }
+
+        $rs = DB::table('razones_sociales')->where('id', $rsId)->first();
+        if (! $rs || $rs->es_independiente || ! $rs->arl_nit) {
+            return $data;
+        }
+
+        $arlId = DB::table('arls')->where('nit', $rs->arl_nit)->value('id');
+        if ($arlId) {
+            $data['arl_id'] = $arlId;
+        }
+
+        return $data;
     }
 
     // ─── Cajas ordenadas por departamento del cliente ─────────────────

@@ -2112,8 +2112,11 @@ function filtrarModalidades(soloIndependiente, evitarRecalcular = false) {
 
     // Sincronizar valor seleccionado
     selMod.value = valorSigueDisponible ? valorActual : '';
-    // Sincronizar Alpine
-    if (!valorSigueDisponible) {
+    // Sincronizar Alpine. Solo cuando la modalidad que había dejó de estar
+    // disponible: si venía vacía —contratos guardados sin modalidad— no cambió
+    // nada, y borrar el plan solo hacía desaparecer de la pantalla el que ya
+    // estaba guardado en la BD.
+    if (!valorSigueDisponible && valorActual) {
         const alpineComp = document.querySelector('[x-data]')?._x_dataStack?.[0];
         if (alpineComp) { alpineComp.tipoModalidadId = ''; alpineComp.planId = ''; }
     }
@@ -2345,7 +2348,12 @@ const STYLE_COMPLETO   = 'width:100%;padding:0.38rem 0.5rem;border:2px solid #22
 function aplicarEstadoEntidad(sel, incluido) {
     if (!sel) return;
     if (!incluido) {
-        // Deshabilitado: no aplica este plan
+        // Deshabilitado: no aplica este plan. El valor se guarda antes de
+        // limpiarlo porque pasar por un plan que no cubre la entidad no puede
+        // costar el dato: al volver a un plan que sí la cubre el usuario no
+        // siempre lo puede reponer (la ARL la manda la Razón Social y su
+        // selector queda bloqueado).
+        if (sel.value) sel.dataset.valorPrevio = sel.value;
         sel.disabled  = true;
         sel.required  = false;
         sel.style.cssText = STYLE_DESHABILITADO;
@@ -2354,6 +2362,8 @@ function aplicarEstadoEntidad(sel, incluido) {
         // Habilitado y requerido
         sel.disabled  = false;
         sel.required  = true;
+        // Reponer lo que se limpió al pasar por un plan sin esta entidad.
+        if (!sel.value && sel.dataset.valorPrevio) sel.value = sel.dataset.valorPrevio;
         // Color segun si tiene valor
         if (!sel.value) {
             sel.style.cssText = STYLE_REQUERIDO;
@@ -2394,6 +2404,10 @@ function bloquearEntidadesPorPlan(planId) {
         }
     } else {
         actualizarBloqueoArl();
+        // La ARL de la Razón Social es el valor por defecto del contrato: si el
+        // selector quedó vacío se repone, porque cuando está bloqueado nadie
+        // más lo puede llenar y el guardado se quedaba trabado en rojo.
+        if (!arlSel.value && ARL_ID_RS) arlSel.value = ARL_ID_RS;
         arlSel.required = true;
         arlSel.style.cssText = arlSel.value ? STYLE_COMPLETO : STYLE_REQUERIDO;
         // Restaurar panel Modo ARL y nivel ARL si la modalidad lo permite
@@ -2614,6 +2628,17 @@ document.addEventListener('DOMContentLoaded', () => {
             // Se pregunta de último, cuando el resto del formulario ya es válido.
             if (RS_WARN && !confirmarCambiosProtegidos(form)) {
                 e.preventDefault();
+                return;
+            }
+
+            // ── La ARL bloqueada por la Razón Social sí tiene que viajar ────
+            // Un <select disabled> no se envía en el POST, y el de ARL lo está
+            // siempre que la Razón Social sea de empresa: sin esto el contrato
+            // se guardaba una y otra vez con arl_id vacío. Se habilita en el
+            // último momento, con el envío ya decidido.
+            const arlSubmit = document.getElementById('sel_arl');
+            if (arlSubmit && arlSubmit.disabled && d.arl && arlSubmit.value) {
+                arlSubmit.disabled = false;
             }
         });
     }
