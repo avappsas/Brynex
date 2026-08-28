@@ -285,6 +285,10 @@ class BrynexRazonSocialService
             $meses[(int) $fila->mes]['n_'.$columna] += (int) $fila->cuantas;
         }
 
+        foreach ($this->detalleSalidas($ids, $anio) as $mes => $filas) {
+            $meses[$mes]['detalle_salidas'] = $filas;
+        }
+
         foreach ($this->baseFacturada($cuentas, $anio) as $mes => $fila) {
             $meses[$mes]['base'] = $fila['base'];
             $meses[$mes]['n_base'] = $fila['n'];
@@ -348,6 +352,48 @@ class BrynexRazonSocialService
             'neto_parcial' => (bool) array_filter(array_column($meses, 'salidas_incompletas')),
             'por_aliado' => $porAliado,
         ];
+    }
+
+    /**
+     * Uno por uno, los gastos que forman la columna de salidas.
+     *
+     * Van precargados y no por AJAX porque son pocos —veinte en todo 2026 para
+     * la cuenta de BRYGAR— y una consulta más al abrir la ficha pesa menos que
+     * una ruta nueva con su permiso y su control de aliado. Los pagos de
+     * planilla quedan fuera a propósito: son cientos y tienen su propia
+     * columna.
+     *
+     * @param  array<int,int>  $ids
+     * @return array<int,array<int,array<string,mixed>>>
+     */
+    private function detalleSalidas(array $ids, int $anio): array
+    {
+        return DB::table('gastos as g')
+            ->leftJoin('users as u', 'u.id', '=', 'g.usuario_id')
+            ->whereIn('g.banco_origen_id', $ids)
+            ->whereYear('g.fecha', $anio)
+            ->where('g.tipo', '!=', self::TIPO_PLANILLA)
+            ->orderBy('g.fecha')
+            ->orderByDesc('g.valor')
+            ->get([
+                DB::raw('MONTH(g.fecha) as mes'),
+                DB::raw('CONVERT(varchar(10), g.fecha, 23) as fecha'),
+                'g.tipo', 'g.valor', 'g.descripcion', 'g.pagado_a', 'g.observacion',
+                'u.nombre as usuario',
+            ])
+            ->groupBy('mes')
+            // `valor` se castea porque el driver de SQL Server devuelve los
+            // números como texto, y al otro lado hay un `Intl.NumberFormat`.
+            ->map(fn ($g) => $g->map(fn ($x) => [
+                'fecha' => $x->fecha,
+                'tipo' => $x->tipo,
+                'valor' => (int) $x->valor,
+                'descripcion' => $x->descripcion,
+                'pagado_a' => $x->pagado_a,
+                'observacion' => $x->observacion,
+                'usuario' => $x->usuario,
+            ])->values()->all())
+            ->all();
     }
 
     /**
@@ -440,7 +486,7 @@ class BrynexRazonSocialService
                 'n_entradas' => 0, 'n_terceros' => 0, 'n_salidas' => 0,
                 'n_base' => 0, 'n_facturado' => 0,
                 'neto' => 0.0, 'acumulado' => 0.0,
-                'salidas_incompletas' => false,
+                'salidas_incompletas' => false, 'detalle_salidas' => [],
             ];
         }
 

@@ -16,6 +16,10 @@
         // contra null tira 'Cannot read properties of null'.
         verEditar: false,
         editar: { id: null, nombre: '', periodo: '', estado: 'pendiente', valor_pagado: '', fecha_pago: '', observacion: '' },
+        // El detalle de salidas del mes que se está mirando. Los gastos ya
+        // vienen en la página, así que abrirlo no pide nada al servidor.
+        verSalidas: false,
+        salidas: { mes: '', total: 0, gastos: [] },
         verClave: false,
         clave: { credencial_id: '', tipo: 'DIAN', entidad: '', usuario: '', link_acceso: '', observacion: '' },
         revelada: {},
@@ -394,8 +398,21 @@
                             </td>
 
                             <td style="{{ $celda }}color:#b91c1c;">
-                                {{ $d['salidas'] ? '$' . number_format($d['salidas'], 0, ',', '.') : '—' }}
-                                @if($d['n_salidas'])<span style="{{ $conteo }}">{{ $d['n_salidas'] }}</span>@endif
+                                @if($d['salidas'])
+                                    <button type="button"
+                                            @click="verSalidas = true; salidas = {{ Js::from([
+                                                'mes' => $meses[$m] . ' ' . $anio,
+                                                'total' => $d['salidas'],
+                                                'gastos' => $d['detalle_salidas'],
+                                            ]) }}"
+                                            title="Ver de dónde salieron"
+                                            style="background:none;border:none;padding:0;color:#b91c1c;font:inherit;font-variant-numeric:tabular-nums;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px;">
+                                        ${{ number_format($d['salidas'], 0, ',', '.') }}
+                                    </button>
+                                    <span style="{{ $conteo }}">{{ $d['n_salidas'] }}</span>
+                                @else
+                                    —
+                                @endif
                             </td>
 
                             @if($d['salidas_incompletas'] ?? false)
@@ -751,6 +768,58 @@
     </div>
 
     {{-- ── Modal: clave ────────────────────────────────────────────── --}}
+    {{-- ══ MODAL: de dónde salieron las salidas del mes ══════════════ --}}
+    <div x-show="verSalidas" x-cloak
+         style="position:fixed;inset:0;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;z-index:60;padding:1rem;"
+         @click.self="verSalidas = false"
+         @keydown.escape.window="verSalidas = false">
+        <div style="background:#fff;border-radius:16px;max-width:760px;width:100%;max-height:85vh;display:flex;flex-direction:column;">
+            <div style="padding:1.3rem 1.5rem 0.9rem 1.5rem;border-bottom:1px solid #e2e8f0;">
+                <h2 style="font-size:1.05rem;font-weight:800;color:#0d2550;margin:0;">
+                    Salidas de <span x-text="salidas.mes"></span>
+                </h2>
+                <p style="margin:0.3rem 0 0 0;font-size:0.8rem;color:#64748b;">
+                    <span x-text="salidas.gastos.length"></span> gasto<span x-show="salidas.gastos.length !== 1">s</span>
+                    por <strong style="color:#b91c1c;">$<span x-text="new Intl.NumberFormat('es-CO').format(salidas.total)"></span></strong>.
+                    Los pagos de planilla no están aquí: van en su propia columna.
+                </p>
+            </div>
+
+            <div style="overflow-y:auto;padding:0.4rem 1.5rem 1.2rem 1.5rem;">
+                <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+                    <thead>
+                        <tr style="color:#475569;font-size:0.68rem;text-transform:uppercase;text-align:left;">
+                            <th style="padding:0.55rem 0.4rem 0.55rem 0;font-weight:700;">Fecha</th>
+                            <th style="padding:0.55rem 0.4rem;font-weight:700;">Concepto</th>
+                            <th style="padding:0.55rem 0.4rem;font-weight:700;">Pagado a</th>
+                            <th style="padding:0.55rem 0 0.55rem 0.4rem;font-weight:700;text-align:right;">Valor</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="g in salidas.gastos" :key="g.fecha + '-' + g.valor + '-' + g.descripcion">
+                            <tr style="border-top:1px solid #f1f5f9;vertical-align:top;">
+                                <td style="padding:0.55rem 0.4rem 0.55rem 0;color:#64748b;white-space:nowrap;" x-text="g.fecha"></td>
+                                <td style="padding:0.55rem 0.4rem;color:#0f172a;">
+                                    <span x-text="g.descripcion || '(sin descripción)'"></span>
+                                    <span x-show="g.observacion" x-cloak style="display:block;color:#94a3b8;font-size:0.72rem;" x-text="g.observacion"></span>
+                                    <span style="display:inline-block;margin-top:0.15rem;background:#f1f5f9;color:#475569;font-size:0.65rem;font-weight:700;padding:0.05rem 0.4rem;border-radius:20px;" x-text="g.tipo"></span>
+                                </td>
+                                <td style="padding:0.55rem 0.4rem;color:#334155;" x-text="g.pagado_a || '—'"></td>
+                                <td style="padding:0.55rem 0 0.55rem 0.4rem;text-align:right;font-weight:700;color:#b91c1c;font-variant-numeric:tabular-nums;white-space:nowrap;"
+                                    x-text="'$' + new Intl.NumberFormat('es-CO').format(g.valor)"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="padding:0.9rem 1.5rem;border-top:1px solid #e2e8f0;text-align:right;">
+                <button type="button" @click="verSalidas = false"
+                        style="background:#f1f5f9;color:#334155;border:none;padding:0.5rem 1rem;border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer;">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
     <div x-show="verClave" x-cloak
          style="position:fixed;inset:0;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;z-index:60;padding:1rem;"
          @click.self="verClave = false">
