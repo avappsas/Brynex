@@ -889,37 +889,24 @@ const MF = (function () {
                 prestPanel.style.display = 'none';
             }
 
-            // Sincronizar los días de cotización en Alpine con el valor sugerido del servidor
+            // Sincronizar los días de cotización en Alpine con el valor sugerido del
+            // servidor. Manda el servidor y no el cotizador: el modal puede haber
+            // corrido el período (mes ya facturado) y los días del formulario serían
+            // los de otro mes.
             const elAlpine = document.querySelector('[x-data]');
-            console.log('[MF DEBUG] elAlpine encontrado:', elAlpine);
-            if (elAlpine) {
-                const alpineComp = elAlpine._x_dataStack?.[0];
-                console.log('[MF DEBUG] alpineComp:', alpineComp);
-                if (alpineComp) {
-                    const diasSugeridos = parseInt(data.dias_sugeridos) || 30;
-                    console.log('[MF DEBUG] Seteando diasCotizar a:', diasSugeridos);
-                    alpineComp.diasCotizar = diasSugeridos;
-                    const sel = document.getElementById('sel_dias_cotizar');
-                    if (sel) sel.value = diasSugeridos;
-                    
-                    try {
-                        console.log('[MF DEBUG] Llamando a alpineComp.recalcular()...');
-                        const p = alpineComp.recalcular();
-                        if (p instanceof Promise) {
-                            console.log('[MF DEBUG] Esperando resolucion de recalcular...');
-                            await p;
-                            console.log('[MF DEBUG] recalcular resuelto.');
-                        } else {
-                            console.log('[MF DEBUG] recalcular se ejecuto de forma sincrona.');
-                        }
-                    } catch (errRecalc) {
-                        console.error('[MF DEBUG] Error al ejecutar alpineComp.recalcular():', errRecalc);
-                    }
-                } else {
-                    console.warn('[MF DEBUG] No se pudo obtener alpineComp de _x_dataStack');
+            const alpineComp = elAlpine?._x_dataStack?.[0];
+            if (alpineComp) {
+                const diasSugeridos = parseInt(data.dias_sugeridos) || 30;
+                alpineComp.diasCotizar = diasSugeridos;
+                const sel = document.getElementById('sel_dias_cotizar');
+                if (sel) sel.value = diasSugeridos;
+
+                try {
+                    const p = alpineComp.recalcular();
+                    if (p instanceof Promise) await p;
+                } catch (errRecalc) {
+                    console.warn('MF: falló el recálculo del cotizador:', errRecalc);
                 }
-            } else {
-                console.warn('[MF DEBUG] No se encontro ningun elemento [x-data]');
             }
 
             recalc();

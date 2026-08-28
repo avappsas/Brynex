@@ -195,8 +195,18 @@ class CobroContratoService
             return 0;
         }
 
-        // ① Mes de ingreso → afiliación, no hay días de planilla
+        // ① Mes de ingreso → afiliación, no hay días de planilla.
+        //    Salvo que el contrato cotice el mes en curso: ese paga afiliación y
+        //    planilla juntas desde el mes de ingreso, y su planilla es proporcional
+        //    a los días que alcanza a estar activo (ingresa el 28 → 3 días).
+        //    Devolver 0 aquí dejaba al modal de facturar cotizando el mes completo:
+        //    el JS lee dias_sugeridos con `parseInt(x) || 30`, así que el 0 se volvía
+        //    30 y pisaba los días que el cotizador ya había calculado bien.
         if ($mesIngreso === $mes && $anioIngreso === $anio) {
+            if ((bool) ($contrato->paga_mes_actual ?? false)) {
+                return max(1, 30 - $fIng->day + 1);
+            }
+
             return 0;
         }
 
