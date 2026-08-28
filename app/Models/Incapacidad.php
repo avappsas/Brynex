@@ -299,6 +299,7 @@ class Incapacidad extends BaseModel
     /**
      * Saldo pendiente de cobro a la EPS/ARL/AFP.
      * saldo = valor_esperado - SUM(entrada_incapacidad) - SUM(pago_cliente)
+     *                          - SUM(pago_directo_entidad)
      *
      * Los préstamos del aliado (tipo='abono') NO descuentan este saldo,
      * son solo informativos para que el aliado sepa cuánto recuperar.
@@ -311,12 +312,12 @@ class Incapacidad extends BaseModel
 
         if ($this->relationLoaded('abonos')) {
             $pagado = $this->abonos
-                ->whereIn('tipo', ['entrada_incapacidad', 'pago_cliente'])
+                ->whereIn('tipo', AbonoIncapacidad::TIPOS_DESCUENTAN)
                 ->sum('valor');
         } else {
             $pagado = DB::table('abonos_incapacidades')
                 ->where('incapacidad_id', $this->id)
-                ->whereIn('tipo', ['entrada_incapacidad', 'pago_cliente'])
+                ->whereIn('tipo', AbonoIncapacidad::TIPOS_DESCUENTAN)
                 ->sum('valor');
         }
 

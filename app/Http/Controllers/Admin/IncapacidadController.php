@@ -789,9 +789,9 @@ class IncapacidadController extends Controller
             + (float) $inc->prorrogas->sum('valor_esperado')
             - $descuentoCruce;
 
-        // Total ya pagado (abonos tipo entrada_incapacidad en la incapacidad original)
+        // Total ya pagado (todo lo que cierra el saldo por cobrar a la entidad)
         $totalPagado = (float) $inc->abonos
-            ->whereIn('tipo', ['entrada_incapacidad', 'pago_cliente'])
+            ->whereIn('tipo', \App\Models\AbonoIncapacidad::TIPOS_DESCUENTAN)
             ->sum('valor');
 
         // Contar prórrogas con estado NO final (pendientes de gestión)
@@ -928,6 +928,20 @@ class IncapacidadController extends Controller
             ], 422);
         }
 
+        // 'Directo al cliente' no es una forma de recibir el pago en la razón
+        // social: si la entidad le pagó al afiliado, esa plata nunca entró a la
+        // caja del aliado. Registrarla aquí crea una entrada falsa que infla el
+        // Canal 5 del informe financiero (pasó con 28 prórrogas de una misma
+        // incapacidad en ago-2026: $15.2M que nunca llegaron). El botón ya no
+        // existe en la pantalla; esto atrapa lo que llegue por otra vía.
+        if ($nuevoEstado === 'pagada_razon_social' && $request->input('forma_pago_rs') === 'directo') {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Si la entidad le pagó directamente al afiliado, la plata no entró a la razón social. '
+                    .'Registra la gestión con el estado "Pagada al Afiliado" y marca el pago directo, no con "Pagada a Razón Social".',
+            ], 422);
+        }
+
         $gestion = GestionIncapacidad::create([
             'incapacidad_id' => $incGestionId,
             'user_id' => Auth::id(),
@@ -984,7 +998,6 @@ class IncapacidadController extends Controller
                         'opi' => 'OPI (Orden de Pago Inmediata - ARL)',
                         'odi' => 'ODI (Orden de la entidad)',
                         'cheque' => 'Cheque',
-                        'directo' => 'Pago directo al cliente',
                         default => 'Otro medio de pago',
                     };
                     $refLabel = $request->filled('ref_pago_rs') ? ' · Ref: '.$request->ref_pago_rs : '';
@@ -1052,7 +1065,10 @@ class IncapacidadController extends Controller
                         'incapacidad_id' => $incActualizar->id,
                         'razon_social_id' => $rsIdAbono,
                         'gestion_incapacidad_id' => $gestion->id,
-                        'tipo' => 'pago_cliente',
+                        // Tipo propio: cierra el saldo por cobrar sin figurar en el
+                        // Canal 5. Como 'pago_cliente' quedaría un pago sin entrada
+                        // y el informe mostraría un saldo negativo que nunca existió.
+                        'tipo' => 'pago_directo_entidad',
                         'valor' => $valorDirecto,
                         'fecha' => $fechaPago,
                         'banco_cuenta_id' => null,
@@ -1332,16 +1348,20 @@ class IncapacidadController extends Controller
                 $gastos = $q->get();
             }
 
+            // 'pago_directo_entidad' entra aquí: es el abono que deja el pago
+            // directo de la entidad al afiliado, y se reversa igual que el pago normal.
+            $tiposPago = ['pago_cliente', 'pago_directo_entidad'];
+
             $abonos = DB::table('abonos_incapacidades')
                 ->where('incapacidad_id', $inc->id)
-                ->where('tipo', 'pago_cliente')
+                ->whereIn('tipo', $tiposPago)
                 ->where('gestion_incapacidad_id', $g->id)
                 ->get();
 
             if ($abonos->isEmpty()) {
                 $q = DB::table('abonos_incapacidades')
                     ->where('incapacidad_id', $inc->id)
-                    ->where('tipo', 'pago_cliente')
+                    ->whereIn('tipo', $tiposPago)
                     ->whereNull('gestion_incapacidad_id');
                 if ($fechaPago) {
                     $q->whereDate('fecha', $fechaPago);

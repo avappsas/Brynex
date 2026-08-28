@@ -1967,10 +1967,13 @@ function _cargarCuentasRS(incId) {
             </div>
             <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:.45rem" id="gFormasPago">
                 ${[
+                    // 'Directo al cliente' NO va aquí: si la entidad le pagó al
+                    // afiliado, la plata nunca entró a la razón social y no puede
+                    // registrarse como una forma de recibirla — eso infla el Canal 5.
+                    // Ese caso se registra con el estado 'Pagada al afiliado'.
                     ['transferencia', '🏦', 'Transferencia\n/ Consignación'],
                     ['odi',           '📋', 'ODI'],
                     ['cheque',        '🧾', 'Cheque'],
-                    ['directo',       '👤', 'Directo al\nCliente'],
                     ['otro',          '📎', 'Otro'],
                 ].map(([val, ico, lbl]) => `
                     <button type="button" onclick="_selFormaRS('${val}')"
@@ -2000,22 +2003,6 @@ function _selFormaRS(forma) {
         activeBtn.style.background  = '#1e40af';
         activeBtn.style.borderColor = '#1e40af';
         activeBtn.style.color       = '#fff';
-    }
-
-    if (forma === 'directo') {
-        // Sin mini-modal — solo marcar y mostrar resumen
-        document.getElementById('gFormaPagoRS').value = 'directo';
-        document.getElementById('gBancoCuentaId').value = '';
-        document.getElementById('gValorPagoRS').value   = '';
-        document.getElementById('gFechaPagoRS').value   = new Date().toISOString().substring(0,10);
-        document.getElementById('gRefPagoRS').value     = '';
-        const resumen = document.getElementById('gResumenFormaRS');
-        if (resumen) {
-            resumen.style.display = 'block';
-            resumen.innerHTML = '👤 <strong>Directo al cliente</strong> — La entidad pagó directamente al afiliado. Ingresa el valor en el campo de gestión o deja en $0 si es solo registro.';
-        }
-        _abrirMiniModalRS(forma);
-        return;
     }
 
     _abrirMiniModalRS(forma);
@@ -2104,22 +2091,6 @@ function _abrirMiniModalRS(forma) {
             </div>
             <div class="form-group" style="margin:0">
                 <label>Fecha *</label>
-                <input type="date" id="_mFecha" class="form-control" value="${today}">
-            </div>
-        </div>`;
-    } else if (forma === 'directo') {
-        titulo = '👤 Directo al Cliente';
-        cuerpo = `
-        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:.5rem .7rem;font-size:.8rem;color:#065f46;margin-bottom:.5rem">
-            La entidad pagó directamente al afiliado.
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">
-            <div class="form-group" style="margin:0">
-                <label>Valor (informativo)</label>
-                <input type="number" id="_mValor" class="form-control" placeholder="0 si no se conoce" min="0" step="1000" autofocus>
-            </div>
-            <div class="form-group" style="margin:0">
-                <label>Fecha</label>
                 <input type="date" id="_mFecha" class="form-control" value="${today}">
             </div>
         </div>`;
