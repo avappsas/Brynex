@@ -89,7 +89,11 @@ class CotizadorService
         $admon = (float) ($p['administracion'] ?? 0);
         $admonAsesor = (float) ($p['admon_asesor'] ?? 0);
         $seguro = (float) ($p['seguro'] ?? 0);
-        $dias = max(1, min(30, (int) ($p['dias'] ?? 30))); // entre 1 y 30
+        // Entre 0 y 30. El 0 es un valor legítimo y no un dato faltante: es lo que
+        // cotiza un mes de afiliación pura (o un contrato de Gestión ARL, que nunca
+        // paga planilla). Subirlo a 1 hacía que esos meses mostraran seguridad
+        // social que después no se cobra. Quien no manda el campo sigue en 30.
+        $dias = max(0, min(30, (int) ($p['dias'] ?? 30)));
         $cedula = $p['cedula'] ?? null;
 
         $esIndep = $tipoModalidad && $tipoModalidad->esIndependiente();
@@ -171,8 +175,11 @@ class CotizadorService
             $cajaMes = ($plan && $plan->incluye_caja) ? $r($ibc * $pctCaja / 100) : 0;
 
             // ── Cargo sin-CCF: dependiente E (id=0) o Ingreso-Retiro (id=12) sin caja ──
+            // Solo cuando hay planilla que pagar: con 0 días no se cotiza nada y el
+            // cargo dejaría la caja en $100 sola. Misma condición que en
+            // Contrato::calcularCotizacion().
             $tipoModalidadIdInt = (int) ($p['tipo_modalidad_id'] ?? -99);
-            if ($cajaMes === 0 && in_array($tipoModalidadIdInt, Contrato::IDS_SIN_CCF)
+            if ($cajaMes === 0 && $dias > 0 && in_array($tipoModalidadIdInt, Contrato::IDS_SIN_CCF)
                 && $plan && ! $plan->incluye_caja) {
                 $cajaMes = Contrato::CARGO_SIN_CCF;
             }

@@ -659,7 +659,9 @@
         <select id="sel_dias_cotizar" x-model="diasCotizar"
             @change="recalcular()"
             style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:5px;color:#fff;font-size:0.7rem;padding:0.15rem 0.25rem;cursor:pointer;width:52px;">
-          @for($d = 1; $d <= 30; $d++)
+          {{-- Desde 0: es lo que cotiza un mes de afiliación pura o un contrato de
+               Gestión ARL. Sin esa opción el select quedaba en blanco al ponerle 0. --}}
+          @for($d = 0; $d <= 30; $d++)
           <option value="{{ $d }}" style="color:#000;">{{ $d }}</option>
           @endfor
         </select>
@@ -3319,7 +3321,10 @@ function cotizador() {
                     admon_asesor:      parseInt(document.getElementById('inp_admon_asesor')?.dataset?.raw || document.getElementById('inp_admon_asesor')?.value?.replace(/\./g,'') || 0),
                     seguro:            this.seguro || 0,
                     porcentaje_caja:   this.pctCaja || 2,
-                    dias:              parseInt(this.diasCotizar) || 30,
+                    // 0 días es un valor válido (afiliación pura, Gestión ARL): con
+                    // `|| 30` se colaba el mes completo y el panel mostraba una
+                    // seguridad social que esa factura no cobra.
+                    dias:              Number.isFinite(parseInt(this.diasCotizar)) ? parseInt(this.diasCotizar) : 30,
                     cedula
                 }),
             })
@@ -3419,7 +3424,8 @@ if (typeof MF !== 'undefined' && FC_CONTRATO_ID) {
             if (!alpine) return 30;
             // ARL (id=15): siempre 0 días — nunca planilla
             if (parseInt(alpine.tipoModalidadId || 0) === 15) return 0;
-            return parseInt(alpine.diasCotizar) || 30;
+            const d = parseInt(alpine.diasCotizar);
+            return Number.isFinite(d) ? d : 30;
         },
         // Multi-contrato
         otrosContratos:         FC_OTROS_CONTRATOS,

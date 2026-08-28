@@ -55,6 +55,9 @@ const MF = (function () {
     const parse = s => parseInt(('' + (s || 0)).replace(/[^0-9]/g, '')) || 0;
     const ceil = v => Math.ceil((v || 0) / 100) * 100; // redondeo al centena superior
     const el = id => document.getElementById(id);
+    // Días cotizados: 0 es un valor legítimo (afiliación pura, Gestión ARL), así que
+    // no sirve `parseInt(x) || 30` — ese 0 se volvía un mes completo.
+    const dias0 = (v, def = 30) => { const n = parseInt(v); return Number.isFinite(n) ? n : def; };
     const setText = (id, v) => { const e = el(id); if (e) e.textContent = v; };
     const setVal = (id, v) => { const e = el(id); if (e) e.value = v; };
 
@@ -724,7 +727,7 @@ const MF = (function () {
             const arlBadge = el('mf-arl-badge');
             if (arlBadge) arlBadge.textContent = maxArlNivel ? 'N' + maxArlNivel : '';
 
-            const dias = _selContratos.length === 1 ? (_selContratos[0].dias || 30) : 30;
+            const dias = _selContratos.length === 1 ? dias0(_selContratos[0].dias) : 30;
             if (_selContratos.length === 1) {
                 setText('mf-badge-dias', '📅 ' + (_selContratos[0].nombre || '1 trab.') + ' · ' + dias + ' días');
             } else {
@@ -754,7 +757,7 @@ const MF = (function () {
             if (parseInt(_cfg.tipoModalidadId || 0) === 15) {
                 setText('mf-badge-dias', '🛡️ ARL — Afiliación');
             } else {
-                const diasN = dias || parseInt(document.getElementById('sel_dias_cotizar')?.value) || 30;
+                const diasN = dias0(dias, dias0(document.getElementById('sel_dias_cotizar')?.value));
                 setText('mf-badge-dias', '📅 ' + diasN + ' día' + (diasN === 1 ? '' : 's'));
             }
 
@@ -896,7 +899,7 @@ const MF = (function () {
             const elAlpine = document.querySelector('[x-data]');
             const alpineComp = elAlpine?._x_dataStack?.[0];
             if (alpineComp) {
-                const diasSugeridos = parseInt(data.dias_sugeridos) || 30;
+                const diasSugeridos = dias0(data.dias_sugeridos);
                 alpineComp.diasCotizar = diasSugeridos;
                 const sel = document.getElementById('sel_dias_cotizar');
                 if (sel) sel.value = diasSugeridos;
@@ -1299,7 +1302,7 @@ const MF = (function () {
             if (parseInt(_cfg.tipoModalidadId || 0) === 15) {
                 setText('mf-badge-dias', '🛡️ ARL — Afiliación');
             } else {
-                const dias = (_cfg.getDias && _cfg.getDias()) || parseInt(document.getElementById('sel_dias_cotizar')?.value) || 30;
+                const dias = dias0(_cfg.getDias && _cfg.getDias(), dias0(document.getElementById('sel_dias_cotizar')?.value));
                 setText('mf-badge-dias', '📅 ' + dias + ' día' + (dias === 1 ? '' : 's'));
             }
         }
@@ -1942,7 +1945,7 @@ const MF = (function () {
 
         try {
             // Leer días proporcionales del cotizador
-            const diasFacturar = parseInt(document.getElementById('sel_dias_cotizar')?.value || 30);
+            const diasFacturar = dias0(document.getElementById('sel_dias_cotizar')?.value);
 
             const body = {
                 contratos: ids,
