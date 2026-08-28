@@ -223,7 +223,8 @@ class PayloadBuilder
 
     private function actions(DataicoConfiguracion $cfg, array $adq): array
     {
-        $tieneCorreoReal = filled($adq['correo']) || filled($cfg->correo_fallback);
+        $tieneCorreoReal = $this->correoValido($adq['correo'] ?? null)
+                        || $this->correoValido($cfg->correo_fallback);
 
         // Sin correo real no se manda representación gráfica. La factura igual
         // queda emitida ante la DIAN: es la salida acordada para el 44% de
@@ -238,9 +239,37 @@ class PayloadBuilder
 
     private function correo(DataicoConfiguracion $cfg, array $adq): string
     {
-        return filled($adq['correo'])
-            ? $adq['correo']
-            : ($cfg->correo_fallback ?: self::CORREO_RELLENO);
+        return $this->correoValido($adq['correo'] ?? null)
+            ?? $this->correoValido($cfg->correo_fallback)
+            ?? self::CORREO_RELLENO;
+    }
+
+    /**
+     * El correo solo si de verdad lo es.
+     *
+     * La columna de correo de los clientes viejos trae de todo: una «X», un
+     * guion, un «no tiene». Con `filled()` bastaba para darlo por bueno y
+     * Dataico respondía «HTTP 500: Correo invalido: X», tumbando la factura por
+     * un campo que ni siquiera se usa cuando no se manda representación
+     * gráfica.
+     */
+    private function correoValido(?string $correo): ?string
+    {
+        // Antes de descartarlo se intenta rescatar: hay direcciones buenas
+        // envueltas en basura —un `mailto:` pegado, una coma al final, dos
+        // correos en la misma casilla— y tirarlas le quita la representación
+        // gráfica a un cliente que sí tiene dónde recibirla.
+        $limpio = preg_replace('/^mailto:/i', '', trim((string) $correo));
+
+        foreach (preg_split('/[\s,;]+/', $limpio, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $parte) {
+            $parte = trim($parte, '.,;:-');
+
+            if (filter_var($parte, FILTER_VALIDATE_EMAIL)) {
+                return $parte;
+            }
+        }
+
+        return null;
     }
 
     /**
