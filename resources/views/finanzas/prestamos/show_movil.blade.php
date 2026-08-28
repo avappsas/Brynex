@@ -373,7 +373,7 @@
                 $principal = $movs->firstWhere('tipo', 'abono_capital') ?? $movs->firstWhere('tipo', 'abono_interes') ?? $movs->first();
             @endphp
             <div class="mov-item"
-                 @click="mov={id:{{ $principal->id }},fecha:'{{ $principal->fecha }}',monto:{{ $principal->monto }},obs:'{{ addslashes($principal->observacion ?? '') }}',soporte:'{{ $principal->soporte_path ?? '' }}'}; openMov=true">
+                 @click="mov={id:{{ $principal->id }},pago:{{ $esPago ? 'true' : 'false' }},fecha:'{{ $f['fecha'] }}',monto:{{ $esPago ? $f['abono_interes'] + $f['abono_capital'] : $principal->monto }},obs:'{{ addslashes(($esPago ? $f['observacion'] : $principal->observacion) ?? '') }}',soporte:'{{ $f['soporte_path'] ?? $principal->soporte_path ?? '' }}'}; openMov=true">
                 <div class="mov-dot" style="background:{{ $dotC }}"></div>
                 <div class="mov-info">
                     <div class="mov-tipo"><span class="btype {{ $claseTag }}">{{ $label }}</span></div>
@@ -514,7 +514,12 @@
                 <h3>✏️ Editar Movimiento</h3>
                 <button @click="openMov=false" class="bs-close">&times;</button>
             </div>
-            <form :action="'{{ route('finanzas.prestamos.movimiento.update', '') }}/' + mov.id" method="POST" enctype="multipart/form-data" class="bs-body">
+            <form :action="(mov.pago ? '{{ route('finanzas.prestamos.pago.update', '') }}' : '{{ route('finanzas.prestamos.movimiento.update', '') }}') + '/' + mov.id" method="POST" enctype="multipart/form-data" class="bs-body">
+                <template x-if="mov.pago">
+                    <p style="font-size:.68rem; color:var(--t2); background:var(--verde-bg); border:1px solid rgba(16,185,129,0.25); border-radius:8px; padding:.5rem .6rem; margin-bottom:.6rem;">
+                        Editás el pago completo: si cambia la fecha o el monto, el reparto interés/capital y las fechas de corte se recalculan solos.
+                    </p>
+                </template>
                 @csrf
                 <div class="fg"><label>Fecha del Movimiento</label><input type="date" name="fecha" x-model="mov.fecha" required></div>
                 <div class="fg">
@@ -538,7 +543,7 @@
                 <div class="bs-actions" style="justify-content:space-between">
                     <button type="button" class="btn-danger"
                             @click="if(confirm('¿Eliminar este movimiento? Recalcula todos los saldos.')) {
-                                        $refs.delForm.action = '{{ route('finanzas.prestamos.movimiento.destroy', '') }}/' + mov.id;
+                                        $refs.delForm.action = (mov.pago ? '{{ route('finanzas.prestamos.pago.destroy', '') }}' : '{{ route('finanzas.prestamos.movimiento.destroy', '') }}') + '/' + mov.id;
                                         $refs.delForm.submit();
                                     }">
                         🗑️ Eliminar

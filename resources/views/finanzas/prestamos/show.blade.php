@@ -5,7 +5,7 @@
 
 @section('contenido')
 @include('finanzas.partials._responsive_fin')
-<div class="finanzas-container" x-data="{ openAbono: false, openAnexar: false, openEditarMov: false, openCastigar: false, openReactivar: false, openNoTelefono: false, movEditar: { id: null, fecha: '', monto: 0, observacion: '', soporte_path: '' } }">
+<div class="finanzas-container" x-data="{ openAbono: false, openAnexar: false, openEditarMov: false, openEditarPago: false, openCastigar: false, openReactivar: false, openNoTelefono: false, movEditar: { id: null, fecha: '', monto: 0, observacion: '', soporte_path: '' }, pagoEditar: { id: null, fecha: '', monto: 0, observacion: '', soporte_path: '', interes: 0, abInt: 0, abCap: 0 } }">
 
     @component('finanzas.partials._header_banner', [
         'titulo' => '👤 Ficha: ' . $prestamo->nombre_deudor,
@@ -260,18 +260,24 @@
                                         <a href="{{ route('finanzas.prestamos.movimiento.descargar-soporte', $movSoporte->id) }}" target="_blank" class="badge-info" style="font-size:0.65rem; padding: 0.05rem 0.25rem;">📄 Soporte</a>
                                     @endif
                                 @endif
-                                @foreach($fila['movimientos'] as $mov)
+                                @if($fila['clase'] === 'pago')
+                                    @php
+                                        $grupoMovs = collect($fila['movimientos']);
+                                        $principal = $grupoMovs->firstWhere('tipo', 'abono_capital') ?? $grupoMovs->firstWhere('tipo', 'abono_interes') ?? $grupoMovs->first();
+                                    @endphp
+                                    <button @click="pagoEditar = { id: {{ $principal->id }}, fecha: '{{ $fila['fecha'] }}', monto: {{ $fila['abono_interes'] + $fila['abono_capital'] }}, observacion: '{{ addslashes($fila['observacion'] ?? '') }}', soporte_path: '{{ $fila['soporte_path'] }}', interes: {{ $fila['cargo'] }}, abInt: {{ $fila['abono_interes'] }}, abCap: {{ $fila['abono_capital'] }} }; openEditarPago = true"
+                                            class="badge-info"
+                                            style="border:none; cursor:pointer; padding: 0.15rem 0.35rem; font-size:0.62rem; background: rgba(59,130,246,0.08); color: var(--azul-btn);">
+                                        ✏️ Editar
+                                    </button>
+                                @else
+                                    @php $mov = $fila['movimientos'][0]; @endphp
                                     <button @click="movEditar = { id: {{ $mov->id }}, fecha: '{{ $mov->fecha }}', monto: {{ $mov->monto }}, observacion: '{{ addslashes($mov->observacion ?? '') }}', soporte_path: '{{ $mov->soporte_path }}' }; openEditarMov = true"
                                             class="badge-info"
                                             style="border:none; cursor:pointer; padding: 0.15rem 0.35rem; font-size:0.62rem; background: rgba(59,130,246,0.08); color: var(--azul-btn);">
-                                        ✏️ {{ count($fila['movimientos']) > 1 ? match($mov->tipo) {
-                                            'interes_proporcional' => 'Interés',
-                                            'abono_interes' => 'Ab. Int.',
-                                            'abono_capital' => 'Ab. Cap.',
-                                            default => 'Editar',
-                                        } : 'Editar' }}
+                                        ✏️ Editar
                                     </button>
-                                @endforeach
+                                @endif
                             </div>
                         </td>
                     </tr>
@@ -558,6 +564,84 @@
             </form>
             
             <form x-ref="deleteForm" method="POST" style="display:none;">
+                @csrf
+                @method('DELETE')
+            </form>
+        </div>
+    </div>
+
+    {{-- Modal Editar Pago (edita el pago completo; el motor recalcula el reparto) --}}
+    <div x-show="openEditarPago" class="modal-overlay-bx" @click.self="openEditarPago = false" x-cloak>
+        <div class="modal-box-bx" style="max-width: 480px;">
+            <div class="modal-head-bx" style="background: linear-gradient(135deg, #166534, #15803d);">
+                <h3>✏️ Editar Pago</h3>
+                <button @click="openEditarPago = false" class="modal-close-bx">&times;</button>
+            </div>
+
+            <form :action="'{{ route('finanzas.prestamos.pago.update', '') }}/' + pagoEditar.id" method="POST" enctype="multipart/form-data">
+                @csrf
+                <div class="modal-body-bx">
+                    <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:0.6rem 0.8rem; margin-bottom:1rem; font-size:0.72rem; color:#166534; line-height:1.6;">
+                        Reparto actual:
+                        <template x-if="pagoEditar.interes > 0"><span> interés del ciclo $<span x-text="Number(pagoEditar.interes).toLocaleString('es-CO')"></span> ·</span></template>
+                        <span> a interés $<span x-text="Number(pagoEditar.abInt).toLocaleString('es-CO')"></span></span>
+                        <span> · a capital $<span x-text="Number(pagoEditar.abCap).toLocaleString('es-CO')"></span></span>
+                    </div>
+
+                    <div class="form-group-bx">
+                        <label class="form-label-bx">Fecha del Pago</label>
+                        <input type="date" name="fecha" x-model="pagoEditar.fecha" class="form-input-bx" required>
+                    </div>
+
+                    <div class="form-group-bx" style="margin-top:1rem;">
+                        <label class="form-label-bx">Monto Recibido ($ COP)</label>
+                        <input type="number" name="monto" x-model="pagoEditar.monto" class="form-input-bx" required min="1" step="any" autocomplete="off">
+                        <small style="color:#64748b; font-size:0.7rem; display:block; margin-top:0.25rem;">
+                            Al cambiar la fecha o el monto, el sistema re-aplica la historia del préstamo:
+                            el reparto entre interés y capital y las fechas de corte se recalculan solos
+                            desde este pago en adelante.
+                        </small>
+                    </div>
+
+                    <div class="form-group-bx" style="margin-top:1rem;">
+                        <label class="form-label-bx">Observaciones</label>
+                        <input type="text" name="observacion" x-model="pagoEditar.observacion" placeholder="Detalle del pago" class="form-input-bx">
+                    </div>
+
+                    <div class="form-group-bx" style="margin-top:1rem;">
+                        <label class="form-label-bx">Archivo Soporte</label>
+                        <input type="file" name="soporte" class="form-input-bx" accept="image/*,application/pdf">
+
+                        <template x-if="pagoEditar.soporte_path">
+                            <div style="margin-top:0.5rem; display:flex; align-items:center; justify-content:space-between; background:#f8fafc; padding:0.4rem; border-radius:6px; border:1px solid #e2e8f0;">
+                                <span style="font-size:0.72rem; color:#475569;">Tiene soporte cargado</span>
+                                <label style="font-size:0.72rem; color:#ef4444; display:flex; align-items:center; gap:0.25rem; cursor:pointer;">
+                                    <input type="checkbox" name="eliminar_soporte" value="1"> Eliminar
+                                </label>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="modal-foot-bx" style="display:flex; justify-content:space-between; align-items:center; width:100%; box-sizing:border-box;">
+                    <button type="button"
+                            @click="if(confirm('¿Eliminar este pago completo? Se borran sus partes y el préstamo se recalcula como si el pago no hubiera existido.')) {
+                                        $refs.deletePagoForm.action = '{{ route('finanzas.prestamos.pago.destroy', '') }}/' + pagoEditar.id;
+                                        $refs.deletePagoForm.submit();
+                                    }"
+                            class="btn-glass-bx"
+                            style="color:#ef4444; border-color:#fca5a5; background:rgba(239,68,68,0.04);">
+                        🗑️ Eliminar Pago
+                    </button>
+
+                    <div style="display:flex; gap:0.5rem;">
+                        <button type="button" @click="openEditarPago = false" class="btn-glass-bx">Cancelar</button>
+                        <button type="submit" class="btn-fin success">Guardar Cambios</button>
+                    </div>
+                </div>
+            </form>
+
+            <form x-ref="deletePagoForm" method="POST" style="display:none;">
                 @csrf
                 @method('DELETE')
             </form>

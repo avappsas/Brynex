@@ -528,6 +528,84 @@ class PrestamoLiquidacionService
     }
 
     /**
+     * ¿El historial completo lo generó el motor? Solo entonces se puede reconstruir
+     * sin perder ajustes: las capitalizaciones y los cortes importados de planillas
+     * viejas no se pueden regenerar.
+     */
+    public function esReconstruible(Prestamo $prestamo): bool
+    {
+        return $prestamo->movimientos()
+            ->whereIn('tipo', ['interes_mensual', 'interes_proporcional', 'capitalizacion'])
+            ->get()
+            ->every(fn ($m) => $m->tipo !== 'capitalizacion' && $this->esCorteDelMotor($m));
+    }
+
+    /**
+     * Un corte generado por el motor se reconoce por su observación.
+     */
+    private function esCorteDelMotor(PrestamoMovimiento $movimiento): bool
+    {
+        $obs = (string) $movimiento->observacion;
+
+        foreach (['Interés compuesto liquidado', 'Interés proporcional liquidado', 'Interés causado por', self::MARCA_REANCLA] as $marca) {
+            if (str_starts_with($obs, $marca)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Borra el historial y lo reconstruye re-aplicando los eventos de plata real
+     * (desembolsos y pagos) en orden cronológico, regenerando los cortes con el motor.
+     * Es la vía para editar o eliminar un pago sin romper la coherencia del reparto.
+     *
+     * Cada evento: ['tipo' => 'desembolso'|'pago', 'fecha', 'monto', 'observacion',
+     * 'soporte_path', 'cuenta_id'].
+     */
+    public function reconstruirEventos(Prestamo $prestamo, array $eventos): void
+    {
+        usort($eventos, fn ($a, $b) => [$a['fecha'], $a['orden'] ?? 0] <=> [$b['fecha'], $b['orden'] ?? 0]);
+
+        DB::connection('finanzas')->transaction(function () use ($prestamo, $eventos) {
+            PrestamoMovimiento::where('prestamo_id', $prestamo->id)->delete();
+
+            $primerDesembolso = collect($eventos)->firstWhere('tipo', 'desembolso');
+            $fechaInicio = $primerDesembolso['fecha'] ?? $prestamo->fecha_desembolso;
+
+            $prestamo->update([
+                'monto_original' => 0,
+                'saldo_actual' => 0,
+                'fecha_desembolso' => $fechaInicio,
+                'ultimo_corte' => $fechaInicio,
+                'dia_cobro' => (int) Carbon::parse($fechaInicio)->day,
+                'estado' => 'activo',
+            ]);
+            $prestamo->refresh();
+
+            foreach ($eventos as $ev) {
+                if ($ev['tipo'] === 'desembolso') {
+                    $this->registrarDesembolsoAdicional($prestamo, (float) $ev['monto'], $ev['fecha'], $ev['observacion'] ?? null, $ev['soporte_path'] ?? null);
+                } else {
+                    $res = $this->registrarPago($prestamo, (float) $ev['monto'], $ev['fecha'], $ev['observacion'] ?? null, $ev['soporte_path'] ?? null, $ev['cuenta_id'] ?? null);
+
+                    if (! ($res['success'] ?? false)) {
+                        throw new \RuntimeException("No se pudo re-aplicar el pago del {$ev['fecha']}: ".($res['message'] ?? 'error desconocido'));
+                    }
+                }
+
+                $prestamo->refresh();
+            }
+
+            // Cortes vencidos posteriores al último evento
+            $this->liquidarPeriodo($prestamo, null, Carbon::now()->toDateString(), [], true);
+        });
+
+        $prestamo->refresh();
+    }
+
+    /**
      * Registra el desembolso inicial de un préstamo.
      */
     public function registrarDesembolso(Prestamo $prestamo): void

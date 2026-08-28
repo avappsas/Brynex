@@ -1204,6 +1204,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/prestamos-cuenta-corriente', fn () => redirect()->route('finanzas.cuenta-corriente.index'))->name('prestamos.cuenta-corriente');
         Route::post('/prestamos-movimiento/{movimiento}', [$pre, 'updateMovimiento'])->name('prestamos.movimiento.update');
         Route::delete('/prestamos-movimiento/{movimiento}', [$pre, 'destroyMovimiento'])->name('prestamos.movimiento.destroy');
+        Route::post('/prestamos-pago/{movimiento}', [$pre, 'updatePago'])->name('prestamos.pago.update');
+        Route::delete('/prestamos-pago/{movimiento}', [$pre, 'destroyPago'])->name('prestamos.pago.destroy');
         Route::get('/prestamos/{prestamo}/soporte', [$pre, 'descargarSoporte'])->name('prestamos.descargar-soporte');
         Route::get('/prestamos-movimiento/{movimiento}/soporte', [$pre, 'descargarSoporteMovimiento'])->name('prestamos.movimiento.descargar-soporte');
 

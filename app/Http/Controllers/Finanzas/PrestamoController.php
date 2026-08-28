@@ -613,6 +613,195 @@ class PrestamoController extends Controller
     }
 
     /**
+     * Edita un pago completo (las 2-3 filas que lo componen) re-aplicando la historia
+     * con el motor: el reparto interés/capital y las fechas de corte se recalculan solos.
+     * El movimiento recibido puede ser cualquiera de las partes del pago.
+     */
+    public function updatePago(Request $request, $id)
+    {
+        $movimiento = PrestamoMovimiento::findOrFail($id);
+        $prestamo = Prestamo::where('user_id', Auth::id())->findOrFail($movimiento->prestamo_id);
+
+        $request->validate([
+            'fecha' => 'required|date',
+            'monto' => 'required|numeric|min:1',
+            'observacion' => 'nullable|string|max:255',
+            'soporte' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:10240',
+            'eliminar_soporte' => 'nullable|boolean',
+        ]);
+
+        $grupo = $this->grupoDePago($prestamo, (int) $id);
+        if (! $grupo) {
+            return redirect()->route('finanzas.prestamos.show', $prestamo->id)
+                ->with('error', 'El movimiento no pertenece a un pago.');
+        }
+
+        $montoActual = round($grupo['abono_interes'] + $grupo['abono_capital'], 2);
+        $cambiaPlata = $grupo['fecha'] !== $request->fecha
+            || round((float) $request->monto, 2) !== $montoActual;
+
+        // Soporte: reemplazar o eliminar
+        $soportePath = $grupo['soporte_path'];
+        if ($request->hasFile('soporte')) {
+            if ($soportePath) {
+                Storage::disk('local')->delete($soportePath);
+            }
+            $soportePath = $request->file('soporte')->store('finanzas/prestamos', 'local');
+        } elseif ($request->boolean('eliminar_soporte') && $soportePath) {
+            Storage::disk('local')->delete($soportePath);
+            $soportePath = null;
+        }
+
+        if (! $cambiaPlata) {
+            // Solo cambió la observación o el soporte: se aplica directo, sin reconstruir
+            foreach ($grupo['movimientos'] as $mov) {
+                if (in_array($mov->tipo, ['abono_interes', 'abono_capital', 'pago_total'])) {
+                    $mov->update(['observacion' => $request->observacion, 'soporte_path' => $soportePath]);
+                }
+            }
+
+            return redirect()->route('finanzas.prestamos.show', $prestamo->id)
+                ->with('success', 'Pago actualizado.');
+        }
+
+        if (! $this->liquidacionService->esReconstruible($prestamo)) {
+            return redirect()->route('finanzas.prestamos.show', $prestamo->id)
+                ->with('error', 'Este préstamo tiene movimientos importados o ajustados a mano: cambiar la fecha o el monto de un pago requiere revisarlo contra la planilla (comando finanzas:recalcular-abonos).');
+        }
+
+        $idsGrupo = collect($grupo['movimientos'])->pluck('id')->all();
+        $eventos = $this->eventosDelPrestamo($prestamo, $idsGrupo);
+        $eventos[] = [
+            'tipo' => 'pago',
+            'fecha' => $request->fecha,
+            'monto' => (float) $request->monto,
+            'observacion' => $request->observacion,
+            'soporte_path' => $soportePath,
+            'cuenta_id' => $grupo['cuenta_id'],
+        ];
+
+        try {
+            $this->liquidacionService->reconstruirEventos($prestamo, $eventos);
+        } catch (\Throwable $e) {
+            return redirect()->route('finanzas.prestamos.show', $prestamo->id)
+                ->with('error', 'No se pudo re-aplicar el pago: '.$e->getMessage());
+        }
+
+        $this->invalidarCacheFinanzas();
+
+        return redirect()->route('finanzas.prestamos.show', $prestamo->id)
+            ->with('success', 'Pago corregido: el reparto entre interés y capital y las fechas de corte se recalcularon desde ese pago en adelante.');
+    }
+
+    /**
+     * Elimina un pago completo (todas sus partes) y reconstruye la historia.
+     */
+    public function destroyPago($id)
+    {
+        $movimiento = PrestamoMovimiento::findOrFail($id);
+        $prestamo = Prestamo::where('user_id', Auth::id())->findOrFail($movimiento->prestamo_id);
+
+        $grupo = $this->grupoDePago($prestamo, (int) $id);
+        if (! $grupo) {
+            return redirect()->route('finanzas.prestamos.show', $prestamo->id)
+                ->with('error', 'El movimiento no pertenece a un pago.');
+        }
+
+        if ($grupo['soporte_path']) {
+            Storage::disk('local')->delete($grupo['soporte_path']);
+        }
+
+        $idsGrupo = collect($grupo['movimientos'])->pluck('id')->all();
+
+        if ($this->liquidacionService->esReconstruible($prestamo)) {
+            $eventos = $this->eventosDelPrestamo($prestamo, $idsGrupo);
+
+            try {
+                $this->liquidacionService->reconstruirEventos($prestamo, $eventos);
+            } catch (\Throwable $e) {
+                return redirect()->route('finanzas.prestamos.show', $prestamo->id)
+                    ->with('error', 'No se pudo reconstruir el préstamo: '.$e->getMessage());
+            }
+        } else {
+            // Historial con piezas importadas: se eliminan las partes y se recalculan saldos
+            PrestamoMovimiento::whereIn('id', $idsGrupo)->delete();
+            $this->recalcularSaldos($prestamo);
+        }
+
+        $this->invalidarCacheFinanzas();
+
+        return redirect()->route('finanzas.prestamos.show', $prestamo->id)
+            ->with('success', 'Pago eliminado y saldos recalculados.');
+    }
+
+    /**
+     * Fila agrupada del historial a la que pertenece un movimiento de pago.
+     */
+    private function grupoDePago(Prestamo $prestamo, int $movimientoId): ?array
+    {
+        $movimientos = $prestamo->movimientos()->orderBy('fecha', 'desc')->orderBy('id', 'desc')->get();
+
+        foreach ($this->agruparHistorial($movimientos) as $fila) {
+            if ($fila['clase'] !== 'pago') {
+                continue;
+            }
+
+            $movs = collect($fila['movimientos']);
+            if ($movs->contains(fn ($m) => (int) $m->id === $movimientoId)) {
+                $fila['cuenta_id'] = $movs->firstWhere('cuenta_id', '!=', null)->cuenta_id ?? null;
+
+                return $fila;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Convierte el historial en la lista de eventos de plata real (desembolsos y pagos),
+     * excluyendo los movimientos indicados. Los cortes no viajan: los regenera el motor.
+     */
+    private function eventosDelPrestamo(Prestamo $prestamo, array $excluirIds = []): array
+    {
+        $movimientos = $prestamo->movimientos()->orderBy('fecha', 'desc')->orderBy('id', 'desc')->get();
+        $eventos = [];
+        $orden = 0;
+
+        foreach (array_reverse($this->agruparHistorial($movimientos)) as $fila) {
+            $movs = collect($fila['movimientos']);
+            if ($movs->contains(fn ($m) => in_array((int) $m->id, $excluirIds))) {
+                continue;
+            }
+
+            if ($fila['clase'] === 'cargo' && $fila['tipo'] === 'desembolso') {
+                $mov = $movs->first();
+                $eventos[] = [
+                    'tipo' => 'desembolso',
+                    'fecha' => $fila['fecha'],
+                    'monto' => (float) $fila['cargo'],
+                    'observacion' => $mov->observacion,
+                    'soporte_path' => $mov->soporte_path,
+                    'orden' => $orden++,
+                ];
+            } elseif ($fila['clase'] === 'pago') {
+                $eventos[] = [
+                    'tipo' => 'pago',
+                    'fecha' => $fila['fecha'],
+                    'monto' => round($fila['abono_interes'] + $fila['abono_capital'], 2),
+                    'observacion' => $fila['observacion'],
+                    'soporte_path' => $fila['soporte_path'],
+                    'cuenta_id' => $movs->firstWhere('cuenta_id', '!=', null)->cuenta_id ?? null,
+                    'orden' => $orden++,
+                ];
+            }
+            // Cortes y capitalizaciones no viajan: en un préstamo reconstruible no hay
+            // capitalizaciones y los cortes los regenera el motor.
+        }
+
+        return $eventos;
+    }
+
+    /**
      * Recalcula cronológicamente los saldos de los movimientos del préstamo.
      */
     private function recalcularSaldos(Prestamo $prestamo)
