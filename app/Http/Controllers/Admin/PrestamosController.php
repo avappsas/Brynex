@@ -253,14 +253,27 @@ class PrestamosController extends Controller
             'forma_pago'       => 'required|in:efectivo,consignacion,mixto',
             'valor_efectivo'   => 'nullable|numeric|min:0',
             'valor_consignado' => 'nullable|numeric|min:0',
-            'banco_cuenta_id'  => 'nullable|integer',
+            // La cuenta se exige cuando entra plata por el banco, igual que el
+            // certificado. Sin ella no se sabe qué recaudo le toca a cada razón
+            // social, y la facturación electrónica —que emite lo que entra a la
+            // cuenta de la emisora— no ve el pago del préstamo.
+            'banco_cuenta_id'  => ($exigeSoporte ? 'required' : 'nullable')
+                                  . '|integer|exists:banco_cuentas,id',
             'observacion'      => 'nullable|string|max:500',
             'soporte'          => ($exigeSoporte ? 'required' : 'nullable') . '|file|mimes:jpeg,jpg,png,pdf|max:10240',
         ], [
+            'banco_cuenta_id.required' => 'Dinos a qué cuenta entró la consignación.',
             'soporte.required' => 'Adjunta el certificado de la consignación.',
             'soporte.mimes'    => 'El certificado debe ser una imagen (JPG/PNG) o un PDF.',
             'soporte.max'      => 'El certificado no puede pesar más de 10 MB.',
         ]);
+
+        // La cuenta tiene que ser del aliado en sesión: el id viaja desde el
+        // formulario y `exists` solo comprueba que exista en la tabla.
+        if (! empty($validated['banco_cuenta_id'])
+            && ! BancoCuenta::where('id', $validated['banco_cuenta_id'])->where('aliado_id', $aliadoId)->exists()) {
+            return response()->json(['ok' => false, 'message' => 'Esa cuenta no es de este aliado.'], 422);
+        }
 
         // Soporte al disco `local` (storage/app): lleva datos bancarios del cliente
         $soportePath   = null;

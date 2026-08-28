@@ -2749,14 +2749,29 @@ class FacturacionController extends Controller
         $aliadoId = session('aliado_id_activo');
         $factura = Factura::where('aliado_id', $aliadoId)->findOrFail($facturaId);
 
+        // Cuando entra plata por el banco hay que decir a qué cuenta: sin eso
+        // no se sabe qué recaudo le toca a cada razón social, y la facturación
+        // electrónica —que emite lo que entra a la cuenta de la emisora— no ve
+        // el pago. Los 43 abonos de BRYGAR anteriores a esto quedaron sin
+        // cuenta y hoy no hay forma de saber por dónde entraron esos $31M.
+        $porBanco = in_array($request->input('forma_pago'), ['consignacion', 'mixto'], true);
+
         $validated = $request->validate([
             'valor' => 'required|numeric|min:1',
             'forma_pago' => 'required|in:efectivo,consignacion,mixto',
             'valor_efectivo' => 'nullable|numeric|min:0',
             'valor_consignado' => 'nullable|numeric|min:0',
-            'banco_cuenta_id' => 'nullable|integer',
+            'banco_cuenta_id' => ($porBanco ? 'required' : 'nullable').'|integer|exists:banco_cuentas,id',
             'observacion' => 'nullable|string|max:300',
+        ], [
+            'banco_cuenta_id.required' => 'Dinos a qué cuenta entró la consignación.',
         ]);
+
+        // El id viaja desde el formulario y `exists` solo mira que exista.
+        if (! empty($validated['banco_cuenta_id'])
+            && ! BancoCuenta::where('id', $validated['banco_cuenta_id'])->where('aliado_id', $aliadoId)->exists()) {
+            return response()->json(['ok' => false, 'mensaje' => 'Esa cuenta no es de este aliado.'], 422);
+        }
 
         $abono = DB::transaction(function () use ($factura, $validated) {
             $ab = Abono::create([

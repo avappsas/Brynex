@@ -382,6 +382,19 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
             <label>Valor consignado</label>
             <input type="number" id="ab-cs" min="0">
         </div>
+        {{-- A qué cuenta entró la plata. Sin esto no hay forma de saber qué
+             recaudo le corresponde a cada razón social, y la facturación
+             electrónica —que emite lo que entra a la cuenta de la emisora— se
+             queda sin ver los pagos de préstamos. --}}
+        <div id="ab-banco-row" class="form-grp" style="display:none;">
+            <label id="ab-banco-lbl">🏦 Cuenta que recibió el pago *</label>
+            <select id="ab-banco">
+                <option value="">— Elige la cuenta —</option>
+                @foreach($bancos as $b)
+                    <option value="{{ $b->id }}">{{ $b->banco }} — {{ $b->nombre }} ({{ $b->numero_cuenta }})</option>
+                @endforeach
+            </select>
+        </div>
         <div id="ab-sop-row" class="form-grp">
             <label id="ab-sop-lbl">📎 Certificado de la consignación</label>
             <input type="file" id="ab-sop" accept="image/jpeg,image/png,application/pdf">
@@ -468,6 +481,7 @@ function abrirAbonar(id, saldo) {
     document.getElementById('ab-cs').value = '';
     document.getElementById('ab-obs').value = '';
     document.getElementById('ab-sop').value = '';
+    document.getElementById('ab-banco').value = '';
     toggleForma();
     document.getElementById('modalAbonar').classList.add('open');
 }
@@ -475,8 +489,11 @@ function toggleForma() {
     const f = document.getElementById('ab-forma').value;
     document.getElementById('ab-ef-row').style.display = (f==='efectivo'||f==='mixto') ? '' : 'none';
     document.getElementById('ab-cs-row').style.display = (f==='consignacion'||f==='mixto') ? '' : 'none';
-    // El certificado solo se exige cuando hay plata entrando por el banco
+    // El certificado y la cuenta solo se exigen cuando hay plata entrando por
+    // el banco: en un abono en efectivo no hay cuenta que registrar.
     const exige = (f==='consignacion'||f==='mixto');
+    document.getElementById('ab-banco-row').style.display = exige ? '' : 'none';
+    document.getElementById('ab-banco').required = exige;
     document.getElementById('ab-sop').required = exige;
     document.getElementById('ab-sop-lbl').textContent = exige
         ? '📎 Certificado de la consignación *'
@@ -491,6 +508,7 @@ document.getElementById('formAbonar').addEventListener('submit', async e => {
     fd.append('valor_efectivo',   document.getElementById('ab-ef').value || 0);
     fd.append('valor_consignado', document.getElementById('ab-cs').value || 0);
     fd.append('observacion',      document.getElementById('ab-obs').value);
+    fd.append('banco_cuenta_id',  document.getElementById('ab-banco').value || '');
     const sop = document.getElementById('ab-sop').files[0];
     if (sop) fd.append('soporte', sop);
 

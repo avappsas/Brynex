@@ -113,14 +113,34 @@ class SeleccionFacturasService
                            + ISNULL(CAST(f.afiliacion AS BIGINT), 0)) AS base_admon'),
                 DB::raw('MIN(f.razon_social_id) AS razon_social_afiliacion_id'),
             ])
-            // Solo lo que entró por la cuenta de la razón social emisora.
-            ->whereExists(function ($sub) use ($cfg) {
-                $sub->select(DB::raw(1))
-                    ->from('consignaciones as cs')
-                    ->join('facturas as sf', 'sf.id', '=', 'cs.factura_id')
-                    ->whereColumn('sf.numero_factura', 'f.numero_factura')
-                    ->where('sf.aliado_id', $cfg->aliado_id)
-                    ->where('cs.banco_cuenta_id', $cfg->banco_cuenta_id);
+            // Solo lo que entró por la cuenta de la razón social emisora, y la
+            // plata entra por dos caminos distintos.
+            //
+            // `consignaciones` es el pago del momento de facturar. `abonos` es
+            // lo que el cliente paga después contra un préstamo, y NO crea una
+            // consignación: vive solo en su propia tabla. Mirar únicamente
+            // consignaciones dejaba los préstamos fuera para siempre — se
+            // facturaban al facturar (si hubo pago inicial) o nunca.
+            //
+            // Con el abono se llega a la factura, y de la factura sale la
+            // administración a cobrar. El préstamo se emite cuando el cliente
+            // paga, que es cuando la plata efectivamente entra a BRYGAR.
+            ->where(function ($w) use ($cfg) {
+                $w->whereExists(function ($sub) use ($cfg) {
+                    $sub->select(DB::raw(1))
+                        ->from('consignaciones as cs')
+                        ->join('facturas as sf', 'sf.id', '=', 'cs.factura_id')
+                        ->whereColumn('sf.numero_factura', 'f.numero_factura')
+                        ->where('sf.aliado_id', $cfg->aliado_id)
+                        ->where('cs.banco_cuenta_id', $cfg->banco_cuenta_id);
+                })->orWhereExists(function ($sub) use ($cfg) {
+                    $sub->select(DB::raw(1))
+                        ->from('abonos as ab')
+                        ->join('facturas as af', 'af.id', '=', 'ab.factura_id')
+                        ->whereColumn('af.numero_factura', 'f.numero_factura')
+                        ->where('af.aliado_id', $cfg->aliado_id)
+                        ->where('ab.banco_cuenta_id', $cfg->banco_cuenta_id);
+                });
             })
             // Nunca pisar lo que ya se subió a mano con el Excel del módulo
             // viejo: `fe_marcada` es la marca que dejaba ese flujo.
