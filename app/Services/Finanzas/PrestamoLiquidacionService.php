@@ -16,6 +16,15 @@ class PrestamoLiquidacionService
     public const MARCA_REANCLA = 'Liquidación del ciclo al pago';
 
     /**
+     * Proporción del interés corrido que basta para dar el ciclo por pagado.
+     * Quien paga su cuota unos días después del corte queda corto por esos días;
+     * exigir el 100% le impediría reiniciar el ciclo para siempre. Lo que falta
+     * (siempre parte de la fracción aún no causada, nunca interés ya liquidado)
+     * simplemente no se causa, y queda anotado en el movimiento.
+     */
+    public const TOLERANCIA_REANCLA = 0.95;
+
+    /**
      * Realiza la liquidación mensual (corte) de intereses de un préstamo.
      * Si han pasado 30 o más días desde el último corte (o desembolso), se liquida la tasa mensual completa.
      * Si es menos, se calcula proporcionalmente.
@@ -216,14 +225,21 @@ class PrestamoLiquidacionService
             // Interés corrido del ciclo abierto sobre todo el saldo (compuesto dentro del ciclo)
             $fraccionCiclo = round($saldoAntes * $this->factorFraccion($prestamo, $fechaPago), 2);
             $interesTotal = $interesesPendientes + $fraccionCiclo;
+            $condonado = 0.00;
 
-            if (! $prestamo->es_cuenta_corriente && $monto >= $interesTotal && $interesTotal > 0) {
-                // El pago liquida todo el interés corrido: el ciclo se reinicia hoy
+            // Da el ciclo por pagado si cubre todo el interés ya liquidado y al menos la
+            // tolerancia del corrido; lo que falte sale de la fracción, que aún no se causó.
+            $cubreElCiclo = $monto >= $interesesPendientes
+                && $monto >= round($interesTotal * self::TOLERANCIA_REANCLA, 2);
+
+            if (! $prestamo->es_cuenta_corriente && $interesTotal > 0 && $cubreElCiclo) {
+                // El pago liquida el interés corrido: el ciclo se reinicia hoy
                 $reanclado = true;
-                $interesFraccion = $fraccionCiclo;
-                $abonoInteres = $interesTotal;
+                $interesFraccion = min($fraccionCiclo, round($monto - $interesesPendientes, 2));
+                $condonado = round($fraccionCiclo - $interesFraccion, 2);
+                $abonoInteres = $interesesPendientes + $interesFraccion;
 
-                $disponible = $monto - $interesTotal;
+                $disponible = round($monto - $abonoInteres, 2);
                 $abonoCapital = min($disponible, $capitalVigente);
 
                 // Lo que sobre por encima de toda la deuda es rendimiento, no saldo a favor
@@ -260,10 +276,14 @@ class PrestamoLiquidacionService
 
             // Causar el interés de la fracción (sube el saldo) antes de aplicarle el abono encima.
             // Se usa un tipo propio y no 'interes_mensual' para no correr la fecha de corte del ciclo.
-            if ($interesFraccion > 0) {
+            if ($interesFraccion > 0 || $reanclado) {
                 $dias = $this->diasFraccion($prestamo, $fechaPago);
                 if ($reanclado) {
                     $detalle = self::MARCA_REANCLA." ({$dias} días corridos): el ciclo se reinicia en esta fecha.";
+                    if ($condonado > 0) {
+                        $detalle .= ' No se causaron $'.number_format($condonado, 0, ',', '.')
+                            .' por la tolerancia del '.round(self::TOLERANCIA_REANCLA * 100).'%.';
+                    }
                     if ($excedente > 0) {
                         $detalle .= ' Incluye excedente del abono.';
                     }
@@ -349,6 +369,7 @@ class PrestamoLiquidacionService
                 'interes_fraccion' => $interesFraccion,
                 'excedente' => $excedente,
                 'reanclado' => $reanclado,
+                'condonado' => $condonado,
             ];
         });
     }
