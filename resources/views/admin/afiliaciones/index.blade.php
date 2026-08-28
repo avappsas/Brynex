@@ -672,6 +672,8 @@ function sortClass($col, $currSort, $currDir) {
             @if($plan?->incluye_pension && $rPen)
             <button class="badge-estado badge-{{ $rPen->estadoClaseEfectiva() }} btn-rad"
                 data-rad-id="{{ $rPen->id }}"
+                data-contrato-id="{{ $c->id }}"
+                data-pension-formulario="{{ $c->pension?->formulario_pdf ? '1' : '0' }}"
                 data-rad='{{ json_encode(['id'=>$rPen->id,'tipo'=>$rPen->tipo,'estado'=>$rPen->estado,'numero_radicado'=>$rPen->numero_radicado,'canal_envio'=>$rPen->canal_envio,'canal_envio_cliente'=>$rPen->canal_envio_cliente,'enviado_al_cliente'=>$rPen->enviado_al_cliente,'ruta_pdf'=>$rPen->ruta_pdf,'observacion'=>$rPen->observacion]) }}'
                 data-ctx='{{ $contexto }}'>
                 {{ $rPen->estadoTextoEfectivo() }}
@@ -683,6 +685,7 @@ function sortClass($col, $currSort, $currDir) {
                 @else
                 <button class="badge-estado badge-pendiente btn-rad-crear"
                     data-contrato-id="{{ $c->id }}" data-tipo="pension"
+                    data-pension-formulario="{{ $c->pension?->formulario_pdf ? '1' : '0' }}"
                     data-ctx='{{ $contexto }}'
                     title="Sin radicado registrado — clic para abrir el trámite">⏳ P</button>
                 @endif
@@ -1341,8 +1344,9 @@ document.addEventListener('click', function(e) {
         const radData       = JSON.parse(btn.dataset.rad);
         const ctx           = btn.dataset.ctx ? JSON.parse(btn.dataset.ctx) : {};
         const contratoId    = btn.dataset.contratoId || null;
-        const epsFormulario = btn.dataset.epsFormulario === '1';
-        abrirModalRadicado(radId, radData, ctx, contratoId, epsFormulario);
+        // El formulario mapeado puede ser el de la EPS o el del fondo de pensión
+        const tieneFormulario = btn.dataset.epsFormulario === '1' || btn.dataset.pensionFormulario === '1';
+        abrirModalRadicado(radId, radData, ctx, contratoId, tieneFormulario);
         return;
     }
     // Contrato sin radicado en BD (típico de los migrados desde el legacy):
@@ -1397,7 +1401,7 @@ async function crearRadicadoPendiente(btn) {
             data.radicado,
             btn.dataset.ctx ? JSON.parse(btn.dataset.ctx) : {},
             btn.dataset.contratoId || null,
-            btn.dataset.epsFormulario === '1'
+            btn.dataset.epsFormulario === '1' || btn.dataset.pensionFormulario === '1'
         );
     } catch (err) {
         btn.textContent = textoOriginal;
@@ -1407,7 +1411,7 @@ async function crearRadicadoPendiente(btn) {
 }
 
 // ── Modal Radicado ──
-function abrirModalRadicado(radId, radData, ctx = {}, contratoId = null, epsFormulario = false) {
+function abrirModalRadicado(radId, radData, ctx = {}, contratoId = null, tieneFormulario = false) {
     radicadoActivo = radData;
     document.getElementById('mrad-id').value = radId;
     document.getElementById('mrad-titulo').textContent = '📝 ' + (radData.tipo?.toUpperCase() || 'Radicado');
@@ -1452,16 +1456,17 @@ function abrirModalRadicado(radId, radData, ctx = {}, contratoId = null, epsForm
         }
     }
 
-    // ── Botón PDF Formulario EPS / Ver Datos ──
+    // ── Botón PDF Formulario (EPS o Pensión) / Ver Datos ──
     const secFormulario = document.getElementById('seccionFormularioEps');
     const btnPdf        = document.getElementById('btnFormularioPdf');
     const btnVerDatos   = document.getElementById('btnVerDatosCotizante');
-    const esEps = (radData.tipo === 'eps');
+    // Solo EPS y pensión tienen formulario de afiliación mapeado
+    const tipoFormulario = ['eps', 'pension'].includes(radData.tipo) ? radData.tipo : null;
 
-    // Botón Formulario PDF: visible solo si la EPS tiene formulario configurado
+    // Botón Formulario PDF: visible solo si la entidad tiene formulario configurado
     if (btnPdf) {
-        if (esEps && epsFormulario && contratoId) {
-            btnPdf.href = `/admin/afiliaciones/${contratoId}/formulario/eps`;
+        if (tipoFormulario && tieneFormulario && contratoId) {
+            btnPdf.href = `/admin/afiliaciones/${contratoId}/formulario/${tipoFormulario}`;
             btnPdf.style.display = 'inline-flex';
         } else {
             btnPdf.style.display = 'none';

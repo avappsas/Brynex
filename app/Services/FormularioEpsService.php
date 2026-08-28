@@ -8,17 +8,58 @@ use setasign\Fpdi\Fpdi;
 class FormularioEpsService
 {
     /**
+     * Formulario de afiliación a la EPS del contrato.
+     *
      * @param array<string,string> $customDatos  Valores de campos custom.* pasados desde la vista
      */
     public function generar(Contrato $contrato, bool $incluirBeneficiarios = false, array $customDatos = []): string
     {
-        $eps = $contrato->eps;
-        if (!$eps || !$eps->formulario_pdf) abort(404, 'Sin formulario configurado para esta EPS.');
+        return $this->generarDesde(
+            $contrato,
+            $contrato->eps,
+            'formularios/eps',
+            'Sin formulario configurado para esta EPS.',
+            $incluirBeneficiarios,
+            $customDatos
+        );
+    }
 
-        $ruta = storage_path('app/formularios/eps/' . $eps->formulario_pdf);
+    /**
+     * Formulario de afiliación al fondo de pensión del contrato (COLPENSIONES y demás).
+     * Mismo mapeo y mismos datos: solo cambia la entidad dueña del PDF.
+     *
+     * @param array<string,string> $customDatos
+     */
+    public function generarPension(Contrato $contrato, bool $incluirBeneficiarios = false, array $customDatos = []): string
+    {
+        return $this->generarDesde(
+            $contrato,
+            $contrato->pension,
+            'formularios/pensiones',
+            'Sin formulario configurado para este fondo de pensión.',
+            $incluirBeneficiarios,
+            $customDatos
+        );
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Model|null  $entidad  Dueña del PDF (Eps o Pension)
+     * @param  array<string,string>  $customDatos
+     */
+    protected function generarDesde(
+        Contrato $contrato,
+        $entidad,
+        string $subdir,
+        string $mensajeSinPdf,
+        bool $incluirBeneficiarios,
+        array $customDatos
+    ): string {
+        if (!$entidad || !$entidad->formulario_pdf) abort(404, $mensajeSinPdf);
+
+        $ruta = storage_path('app/' . $subdir . '/' . $entidad->formulario_pdf);
         if (!file_exists($ruta)) abort(404, 'PDF no encontrado en el servidor.');
 
-        $campos = $eps->formulario_campos ?? [];
+        $campos = $entidad->formulario_campos ?? [];
         if (empty($campos)) return file_get_contents($ruta);
 
         $datos = $this->ensamblarDatos($contrato, $incluirBeneficiarios, $customDatos);
@@ -82,6 +123,7 @@ class FormularioEpsService
             // Estáticos
             'static.COLOMBIANA'        => 'COLOMBIANA',
             // ── ARL y Pensión ──────────────────────────────────────
+            'eps.nombre'               => strtoupper($contrato->eps?->nombre ?? ''),
             'arl.nombre'               => strtoupper($contrato->arl?->nombre_arl ?? $contrato->arl?->razon_social ?? ''),
             'pension.nombre'           => strtoupper($contrato->pension?->razon_social ?? ''),
             // ── Contrato ───────────────────────────────────────────
@@ -225,7 +267,7 @@ class FormularioEpsService
     /** Ruta donde se cachea la versión normalizada de una plantilla, o null si no se puede escribir. */
     protected function rutaCacheNormalizado(string $rutaPdf): ?string
     {
-        $dir = storage_path('app/formularios/eps/_normalizados');
+        $dir = storage_path('app/formularios/_normalizados');
         if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) return null;
         if (!is_writable($dir)) return null;
 
@@ -255,7 +297,7 @@ class FormularioEpsService
                 }
             } else {
                 throw new \RuntimeException(
-                    'La plantilla PDF de esta EPS está cifrada o comprimida en un formato que ' .
+                    'La plantilla PDF de este formulario está cifrada o comprimida en un formato que ' .
                     'FPDI no puede leer, y no se pudo reescribir con qpdf ni GhostScript en el ' .
                     'servidor. Instale qpdf (`apt install qpdf`) o vuelva a subir la plantilla ' .
                     'guardándola como PDF 1.4.',

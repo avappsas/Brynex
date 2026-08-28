@@ -424,6 +424,16 @@ Route::middleware('auth')->group(function () {
             Route::post('configuracion/eps/{eps}/formulario/pdf', [$ef, 'subirPdf'])->name('configuracion.eps.formulario.pdf');
         });
 
+        // Formularios de fondos de pensión (COLPENSIONES y demás AFP) —
+        // mismo editor visual, otra entidad dueña del PDF.
+        $pf = \App\Http\Controllers\Admin\PensionFormularioController::class;
+        Route::middleware('permiso:formularios_pdf.editar')->group(function () use ($pf) {
+            Route::get('configuracion/pensiones/{pension}/formulario', [$pf, 'editor'])->name('configuracion.pensiones.formulario');
+            Route::get('configuracion/pensiones/{pension}/formulario/pdf', [$pf, 'verPdf'])->name('configuracion.pensiones.formulario.vpdf');
+            Route::post('configuracion/pensiones/{pension}/formulario', [$pf, 'guardar'])->name('configuracion.pensiones.formulario.guardar');
+            Route::post('configuracion/pensiones/{pension}/formulario/pdf', [$pf, 'subirPdf'])->name('configuracion.pensiones.formulario.pdf');
+        });
+
         // Planillas de Pago SS — mapeo visual de coordenadas
         $opf = \App\Http\Controllers\Admin\OperadorPlanillaFormularioController::class;
         Route::middleware('permiso:formularios_pdf.editar')->group(function () use ($opf) {
@@ -884,6 +894,10 @@ Route::middleware('auth')->group(function () {
         Route::get('/{contrato}/formulario/eps', [$fc, 'vista'])->name('formulario.eps');
         Route::get('/{contrato}/formulario/eps/raw', [$fc, 'generar'])->name('formulario.eps.raw');
         Route::post('/{contrato}/formulario/eps/firma', [$fc, 'guardarFirma'])->name('formulario.eps.firma');
+        // Formulario del fondo de pensión (COLPENSIONES y demás). La firma es la
+        // misma del cliente, por eso no se duplica la ruta.
+        Route::get('/{contrato}/formulario/pension', [$fc, 'vistaPension'])->name('formulario.pension');
+        Route::get('/{contrato}/formulario/pension/raw', [$fc, 'generarPension'])->name('formulario.pension.raw');
     });
 
     // ── Tareas ───────────────────────────────────────────────────────────────

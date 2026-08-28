@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Formulario {{ $eps->nombre }} — {{ $nombreCompleto }}</title>
+    <title>Formulario {{ $tituloEntidad }} — {{ $nombreCompleto }}</title>
     <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -103,15 +103,15 @@
 
 <div class="top-bar">
     <div class="info">
-        <h1>📋 {{ $eps->nombre }} — {{ $nombreCompleto }}</h1>
+        <h1>📋 {{ $tituloEntidad }} — {{ $nombreCompleto }}</h1>
         <p>{{ $empresa }} &nbsp;·&nbsp; Ingreso: {{ $fechaIngreso }} &nbsp;·&nbsp; Salario: {{ $salario }}</p>
     </div>
 
     @if($conBeneficiarios)
-    <a href="{{ route('admin.afiliaciones.formulario.eps', ['contrato' => $contrato->id]) }}"
+    <a href="{{ $urlVista }}"
        class="btn btn-secondary" target="_blank">👤 Sin beneficiarios</a>
     @else
-    <a href="{{ route('admin.afiliaciones.formulario.eps', ['contrato' => $contrato->id, 'beneficiarios' => 1]) }}"
+    <a href="{{ $urlVista }}?beneficiarios=1"
        class="btn btn-secondary" target="_blank">👨‍👩‍👧 Con beneficiarios</a>
     @endif
 
@@ -146,8 +146,8 @@
 @endif
 
 <iframe id="pdfFrame"
-    src="{{ route('admin.afiliaciones.formulario.eps.raw', ['contrato' => $contrato->id, 'beneficiarios' => $conBeneficiarios ? 1 : 0]) }}"
-    title="Formulario {{ $eps->nombre }}">
+    src="{{ $urlRaw }}?beneficiarios={{ $conBeneficiarios ? 1 : 0 }}"
+    title="Formulario {{ $tituloEntidad }}">
 </iframe>
 
 {{-- ══ MODAL FIRMA ══ --}}
@@ -192,8 +192,8 @@
 </div>
 
 <script>
-const FIRMA_URL  = "{{ route('admin.afiliaciones.formulario.eps.firma', $contrato->id) }}";
-const PDF_BASE   = "{{ route('admin.afiliaciones.formulario.eps.raw', ['contrato' => $contrato->id]) }}";
+const FIRMA_URL  = "{{ $urlFirma }}";
+const PDF_BASE   = "{{ $urlRaw }}";
 const BEN_PARAM  = {{ $conBeneficiarios ? 'true' : 'false' }};
 const CSRF       = document.querySelector('meta[name="csrf-token"]').content;
 let tabActivo    = 'texto';

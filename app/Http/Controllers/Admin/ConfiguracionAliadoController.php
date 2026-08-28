@@ -27,13 +27,22 @@ class ConfiguracionAliadoController extends Controller
             ?? \App\Models\Eps::select('id', 'nombre', 'formulario_pdf')
                 ->orderBy('nombre')->first();
 
+        // Fondo de pensión de entrada al editor: COLPENSIONES, que es el que
+        // tiene formulario propio; si no, cualquiera con PDF ya cargado.
+        $primeraPension = \App\Models\Pension::select('id', 'razon_social', 'formulario_pdf')
+            ->whereNotNull('formulario_pdf')->orderBy('razon_social')->first()
+            ?? \App\Models\Pension::select('id', 'razon_social', 'formulario_pdf')
+                ->where('razon_social', 'like', '%COLPENSIONES%')->first()
+            ?? \App\Models\Pension::select('id', 'razon_social', 'formulario_pdf')
+                ->orderBy('razon_social')->first();
+
         // Obtener el primer operador de planilla disponible para el editor de planillas
         $primerOperador = \App\Models\OperadorPlanilla::orderBy('nombre')->first();
 
         // Slug del aliado activo, para el link de la tarjeta "Página Web Pública"
         $aliadoActivo = Aliado::select('id', 'slug')->find(session('aliado_id_activo'));
 
-        return view('admin.configuracion.hub', compact('primeraEps', 'primerOperador', 'aliadoActivo'));
+        return view('admin.configuracion.hub', compact('primeraEps', 'primeraPension', 'primerOperador', 'aliadoActivo'));
     }
 
     /**
@@ -505,15 +514,15 @@ class ConfiguracionAliadoController extends Controller
         $alidoId = session('aliado_id_activo');
 
         $v = $request->validate([
-            'nombre'      => 'required|string|max:120',
-            'valor'       => 'required|numeric|min:0',
+            'nombre' => 'required|string|max:120',
+            'valor' => 'required|numeric|min:0',
             'descripcion' => 'nullable|string|max:500',
-            'orden'       => 'nullable|integer|min:0|max:999',
+            'orden' => 'nullable|integer|min:0|max:999',
         ]);
 
         $v['aliado_id'] = $alidoId;
-        $v['orden']     = $v['orden'] ?? 99;
-        $v['activo']    = $request->boolean('activo', true);
+        $v['orden'] = $v['orden'] ?? 99;
+        $v['activo'] = $request->boolean('activo', true);
 
         \App\Models\AliadoSeguro::create($v);
 
@@ -524,16 +533,16 @@ class ConfiguracionAliadoController extends Controller
     public function updateSeguro(Request $request, int $id)
     {
         $alidoId = session('aliado_id_activo');
-        $seguro  = \App\Models\AliadoSeguro::where('aliado_id', $alidoId)->findOrFail($id);
+        $seguro = \App\Models\AliadoSeguro::where('aliado_id', $alidoId)->findOrFail($id);
 
         $v = $request->validate([
-            'nombre'      => 'required|string|max:120',
-            'valor'       => 'required|numeric|min:0',
+            'nombre' => 'required|string|max:120',
+            'valor' => 'required|numeric|min:0',
             'descripcion' => 'nullable|string|max:500',
-            'orden'       => 'nullable|integer|min:0|max:999',
+            'orden' => 'nullable|integer|min:0|max:999',
         ]);
 
-        $v['orden']  = $v['orden'] ?? $seguro->orden;
+        $v['orden'] = $v['orden'] ?? $seguro->orden;
         $v['activo'] = $request->boolean('activo');
 
         // El valor nuevo es la tarifa de aquí en adelante: los contratos que ya lo
@@ -551,11 +560,11 @@ class ConfiguracionAliadoController extends Controller
     public function destroySeguro(int $id)
     {
         $alidoId = session('aliado_id_activo');
-        $seguro  = \App\Models\AliadoSeguro::where('aliado_id', $alidoId)->findOrFail($id);
+        $seguro = \App\Models\AliadoSeguro::where('aliado_id', $alidoId)->findOrFail($id);
 
         if ($seguro->contratos()->exists()) {
             return response()->json([
-                'ok'      => false,
+                'ok' => false,
                 'mensaje' => 'Este seguro ya está vendido en uno o más contratos. Solo puede inactivarse.',
             ], 422);
         }

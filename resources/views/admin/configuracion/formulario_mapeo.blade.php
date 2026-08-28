@@ -1,5 +1,5 @@
 @extends('layouts.app')
-@section('modulo','Formularios EPS')
+@section('modulo', $titulo)
 
 @section('contenido')
 <style>
@@ -107,21 +107,21 @@
 
 {{-- ══ PANEL IZQUIERDO ══ --}}
 <div class="fmap-panel">
-    <div class="fmap-title">🗺️ Formularios EPS</div>
-    <div class="fmap-sub">Selecciona la EPS, elige un campo y arrastra en el PDF para definir el cuadro donde se escribirá el dato.</div>
+    <div class="fmap-title">🗺️ {{ $titulo }}</div>
+    <div class="fmap-sub">Selecciona {{ $subtitulo }}, elige un campo y arrastra en el PDF para definir el cuadro donde se escribirá el dato.</div>
 
-    <select class="eps-select" id="selectorEps" onchange="cambiarEps()">
+    <select class="eps-select" id="selectorEps" onchange="cambiarEntidad()">
         <optgroup label="✅ Con formulario PDF">
-            @foreach($epsLista->where('formulario_pdf','!=',null)->sortBy('nombre') as $e)
-            <option value="{{ $e->id }}" {{ $e->id == $eps->id ? 'selected' : '' }}
+            @foreach($lista->where('formulario_pdf','!=',null)->sortBy('nombre') as $e)
+            <option value="{{ $e->id }}" {{ $e->id == $entidad->id ? 'selected' : '' }}
                 style="color:#86efac;">
                 ✅ {{ $e->nombre }}
             </option>
             @endforeach
         </optgroup>
         <optgroup label="⬜ Sin formulario">
-            @foreach($epsLista->whereNull('formulario_pdf')->sortBy('nombre') as $e)
-            <option value="{{ $e->id }}" {{ $e->id == $eps->id ? 'selected' : '' }}
+            @foreach($lista->whereNull('formulario_pdf')->sortBy('nombre') as $e)
+            <option value="{{ $e->id }}" {{ $e->id == $entidad->id ? 'selected' : '' }}
                 style="color:#94a3b8;">
                 {{ $e->nombre }}
             </option>
@@ -129,10 +129,10 @@
         </optgroup>
     </select>
 
-    <form id="formPdf" action="{{ route('admin.configuracion.eps.formulario.pdf', $eps) }}" method="POST" enctype="multipart/form-data">
+    <form id="formPdf" action="{{ $urlSubirPdf }}" method="POST" enctype="multipart/form-data">
         @csrf
         <div class="upload-zone" onclick="document.getElementById('inputPdf').click()">
-            📁 {{ $eps->formulario_pdf ? 'Cambiar PDF' : 'Subir PDF del formulario' }}
+            📁 {{ $entidad->formulario_pdf ? 'Cambiar PDF' : 'Subir PDF del formulario' }}
             <input type="file" id="inputPdf" name="pdf" accept=".pdf" onchange="this.form.submit()">
         </div>
         @if(session('success'))
@@ -187,7 +187,7 @@
         <span id="zoomInfo" style="font-size:0.7rem;color:#94a3b8;">100%</span>
         <button onclick="cambiarZoom(0.15)">+</button>
         <span id="statusCampo" class="fmap-status">
-            @if($eps->formulario_pdf) 👆 Selecciona un campo y arrastra en el PDF
+            @if($entidad->formulario_pdf) 👆 Selecciona un campo y arrastra en el PDF
             @else ⚠️ Sube el PDF primero
             @endif
         </span>
@@ -225,7 +225,7 @@
 
 </div>{{-- fin fmap-wrap --}}
 
-<form id="formMapeo" method="POST" action="{{ route('admin.configuracion.eps.formulario.guardar', $eps) }}">
+<form id="formMapeo" method="POST" action="{{ $urlGuardar }}">
     @csrf
     <input type="hidden" name="formulario_campos" id="inputMapeoJson">
 </form>
@@ -337,8 +337,8 @@ function colorDe(clave) {
 }
 
 // ── Cargar PDF ───────────────────────────────────────────────
-@if($eps->formulario_pdf)
-cargarPdf('{{ route('admin.configuracion.eps.formulario.vpdf', $eps) }}');
+@if($entidad->formulario_pdf)
+cargarPdf('{{ $urlVerPdf }}');
 @endif
 
 function cargarPdf(url) {
@@ -667,10 +667,10 @@ function guardarMapeo() {
     document.getElementById('formMapeo').submit();
 }
 
-// ── Cambiar EPS ──────────────────────────────────────────────
-function cambiarEps() {
+// ── Cambiar de entidad (EPS o fondo de pensión) ──────────────
+function cambiarEntidad() {
     const id = document.getElementById('selectorEps').value;
-    window.location = `/admin/configuracion/eps/${id}/formulario`;
+    window.location = `{{ $urlBase }}/${id}/formulario`;
 }
 
 // ── Contador ─────────────────────────────────────────────────

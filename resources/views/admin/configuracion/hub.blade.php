@@ -181,6 +181,16 @@
         </a>
         @endif
 
+        @if(($primeraPension ?? null) && auth()->user()->can('formularios_pdf.editar'))
+        <a class="cfg-card" href="{{ route('admin.configuracion.pensiones.formulario', $primeraPension) }}"
+           style="--c:#0891b2;--bc:#67e8f9">
+            <span class="c-badge" style="background:#cffafe;color:#0e7490">Solo BryNex</span>
+            <div class="c-icon">🗺️</div>
+            <div class="c-title">Editor de Formularios Pensión</div>
+            <div class="c-desc">Igual que el de EPS, pero para los fondos de pensión: COLPENSIONES y las demás AFP con formulario propio de afiliación.</div>
+        </a>
+        @endif
+
         @if(($primerOperador ?? null) && auth()->user()->can('formularios_pdf.editar'))
         <a class="cfg-card" href="{{ route('admin.configuracion.operadores.formulario', $primerOperador) }}"
            style="--c:#0f172a;--bc:#94a3b8">

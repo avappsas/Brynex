@@ -85,7 +85,7 @@ class AfiliacionController extends Controller
             'eps:id,nombre,formulario_pdf',
             'arl:id,nombre_arl,razon_social',
             'caja:id,nombre',
-            'pension:id,razon_social',
+            'pension:id,razon_social,formulario_pdf',
             'plan:id,nombre,incluye_eps,incluye_arl,incluye_pension,incluye_caja',
             'tipoModalidad:id,tipo_modalidad,modalidad',
             'aliado:id,nombre',
@@ -271,7 +271,7 @@ class AfiliacionController extends Controller
             'eps:id,nombre,formulario_pdf',
             'arl:id,nombre_arl,razon_social',
             'caja:id,nombre',
-            'pension:id,razon_social',
+            'pension:id,razon_social,formulario_pdf',
             'encargado:id,nombre',
             'radicados',
         ])
