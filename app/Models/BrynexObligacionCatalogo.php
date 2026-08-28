@@ -16,6 +16,9 @@ class BrynexObligacionCatalogo extends BaseModel
     protected $fillable = [
         'codigo', 'nombre', 'entidad', 'formulario', 'regimen',
         'periodicidad', 'requiere_iva', 'periodicidad_iva_requerida',
+        // Responsabilidad(es) del RUT que exige la obligación, separadas por
+        // coma. Basta con tener una.
+        'requiere_responsabilidad',
         // Años entre el año gravable y el plazo: la anual del 2026 se presenta
         // en 2027, pero la renovación de cámara del 2026 se hace en 2026.
         'anios_desfase',
@@ -65,6 +68,24 @@ class BrynexObligacionCatalogo extends BaseModel
         if ($this->periodicidad_iva_requerida !== null
             && $this->periodicidad_iva_requerida !== $ficha->periodicidad_iva) {
             return false;
+        }
+
+        // Lo que de verdad decide si una obligación aplica no siempre es el
+        // régimen: la retención la declara quien sea agente retenedor (07/09)
+        // aunque esté en el simple, y la exógena la informa quien tenga la 14.
+        //
+        // Si la ficha no tiene las responsabilidades cargadas, la obligación NO
+        // se genera. Es deliberado: generar de más ensucia el checklist con
+        // renglones que el contador tiene que ir marcando «no aplica» uno por
+        // uno. La ficha avisa en pantalla cuando le faltan, y con subir el RUT
+        // quedan puestas.
+        if ($this->requiere_responsabilidad) {
+            $exigidas = array_map('trim', explode(',', $this->requiere_responsabilidad));
+            $tiene = array_map('strval', $ficha->responsabilidades_rut ?? []);
+
+            if (! array_intersect($exigidas, $tiene)) {
+                return false;
+            }
         }
 
         // El ICA no lo fija la DIAN sino cada municipio, y su periodicidad

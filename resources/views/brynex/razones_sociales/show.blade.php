@@ -73,6 +73,16 @@
                     <span class="rs-chip" title="{{ $vinculos->pluck('aliado')->filter()->implode(' · ') }}">
                         🏢 <b>{{ $vinculos->count() }}</b> {{ $vinculos->count() === 1 ? 'aliado la usa' : 'aliados la usan' }}
                     </span>
+
+                    {{-- Sin las responsabilidades del RUT no se generan la
+                         retención ni la exógena, y eso no puede pasar en
+                         silencio: son declaraciones mensuales y anuales. --}}
+                    @if(empty($ficha->responsabilidades_rut))
+                        <span class="rs-chip alerta"
+                              title="La retención en la fuente y la información exógena se generan según las responsabilidades del RUT (07/09 y 14). Sin ellas no se está vigilando ninguna de las dos.">
+                            ⚠️ Sin responsabilidades del RUT
+                        </span>
+                    @endif
                 </div>
             </div>
 

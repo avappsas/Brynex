@@ -48,6 +48,22 @@ class BrynexObligacionesSeeder extends Seeder
 
     // ─── Qué obligaciones existen ─────────────────────────────────────
 
+    /**
+     * Responsabilidades del RUT que exige cada obligación.
+     *
+     * Va aparte del catálogo para que se lea de un golpe qué depende del RUT y
+     * qué no. Lo demás (renta, IVA, anticipos, cámara) depende del régimen y de
+     * la periodicidad, no de una casilla del RUT.
+     */
+    private const RESPONSABILIDADES = [
+        // 07 agente retenedor de renta · 09 agente retenedor de IVA. Ambas se
+        // declaran en el mismo formulario 350, y las tiene tanto el régimen
+        // ordinario como el simple.
+        'retefuente_mensual' => '07,09',
+        // 14 informante de exógena.
+        'exogena' => '14',
+    ];
+
     private function catalogo(): void
     {
         $filas = [
@@ -68,7 +84,7 @@ class BrynexObligacionesSeeder extends Seeder
                 'Aplica a quienes el año anterior tuvieron ingresos brutos iguales o superiores a 92.000 UVT.', 0],
             ['iva_cuatrimestral', 'IVA cuatrimestral', 'DIAN', '300', 'ORDINARIO', 'cuatrimestral', true, 'cuatrimestral', 21,
                 'Aplica a quienes el año anterior tuvieron ingresos brutos inferiores a 92.000 UVT.', 0],
-            ['retefuente_mensual', 'Retención en la fuente', 'DIAN', '350', 'ORDINARIO', 'mensual', false, null, 22,
+            ['retefuente_mensual', 'Retención en la fuente', 'DIAN', '350', null, 'mensual', false, null, 22,
                 'Mensual y con pago total: sin el pago, la declaración se tiene por no presentada.', 0],
             ['renta_juridica', 'Renta persona jurídica — declaración y 1ª cuota', 'DIAN', '110', 'ORDINARIO', 'anual', false, null, 23,
                 'Se declara y paga la primera cuota en mayo del año siguiente.', 1],
@@ -88,6 +104,8 @@ class BrynexObligacionesSeeder extends Seeder
                 'Lo fija el municipio. Cargar la fecha a mano en la pantalla de calendario.', 1],
         ];
 
+        $responsabilidades = self::RESPONSABILIDADES;
+
         foreach ($filas as $f) {
             BrynexObligacionCatalogo::updateOrCreate(
                 ['codigo' => $f[0]],
@@ -99,6 +117,7 @@ class BrynexObligacionesSeeder extends Seeder
                     'periodicidad' => $f[5],
                     'requiere_iva' => $f[6],
                     'periodicidad_iva_requerida' => $f[7],
+                    'requiere_responsabilidad' => $responsabilidades[$f[0]] ?? null,
                     'orden' => $f[8],
                     'descripcion' => $f[9],
                     // Años entre el año gravable y el plazo. Ordena el
