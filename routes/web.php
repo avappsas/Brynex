@@ -790,6 +790,24 @@ Route::middleware('auth')->group(function () {
         });
     });
 
+    // Consulta DIAN por documento. Va fuera del hub por la misma razón que
+    // razones sociales: se usa para llenar la ficha de un cliente y quien la
+    // necesita no tiene por qué entrar al hub entero. Cruza aliados a
+    // propósito — la consulta sale de la cuenta de Dataico de la casa.
+    Route::prefix('brynex/consulta-dian')->name('brynex.dian.')->group(function () {
+        $bdc = \App\Http\Controllers\BrynexDianController::class;
+
+        Route::middleware('permiso:brynex_dian.ver')->group(function () use ($bdc) {
+            Route::get('/', [$bdc, 'index'])->name('index');
+            Route::post('/consultar', [$bdc, 'consultar'])->name('consultar');
+        });
+
+        // La contraseña del portal es una credencial: permiso aparte y
+        // restringido, como el resto de las credenciales del sistema.
+        Route::post('/credenciales', [$bdc, 'guardarCredenciales'])
+            ->middleware('permiso:brynex_dian.configurar')->name('credenciales');
+    });
+
     // ── Cuadre Diario ────────────────────────────────────────────────
 
     Route::prefix('cuadre-diario')->name('admin.cuadre-diario.')->middleware(['permiso:cuadre_diario.ver', 'permiso.escritura:cuadre_diario.gestionar'])->group(function () {

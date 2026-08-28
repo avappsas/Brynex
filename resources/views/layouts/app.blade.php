@@ -962,6 +962,18 @@
                 @endunless
             @endcan
 
+            {{-- Consulta DIAN. Va suelto por lo mismo que razones sociales:
+                 quien la usa está llenando la ficha de un cliente, no
+                 administrando la plataforma. --}}
+            @can('brynex_dian.ver')
+                @unless(Auth::user()->hasRole('superadmin') && Auth::user()->es_brynex)
+                <a href="{{ route('brynex.dian.index') }}" class="menu-item {{ request()->routeIs('brynex.dian*') ? 'activo' : '' }}">
+                    <div class="icono">🔎</div>
+                    <div class="label">Consulta DIAN</div>
+                </a>
+                @endunless
+            @endcan
+
             {{-- ───────────────────────────────────────────────────────────── --}}
             {{-- DROPDOWN BRYNEX: solo para superadmin es_brynex              --}}
             {{-- ───────────────────────────────────────────────────────────── --}}
@@ -987,6 +999,11 @@
                     @can('brynex_razones.ver')
                     <a href="{{ route('brynex.razones.index') }}" class="panel-item {{ request()->routeIs('brynex.razones*') ? 'activo' : '' }}">
                         <div class="pi">🏛️</div> Razones Sociales
+                    </a>
+                    @endcan
+                    @can('brynex_dian.ver')
+                    <a href="{{ route('brynex.dian.index') }}" class="panel-item {{ request()->routeIs('brynex.dian*') ? 'activo' : '' }}">
+                        <div class="pi">🔎</div> Consulta DIAN
                     </a>
                     @endcan
 

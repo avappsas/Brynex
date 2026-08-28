@@ -299,6 +299,13 @@ class ModulosPermisosSeeder extends Seeder
                 'claves' => ['Ver claves de DIAN y cámara',       [], false, true],
                 'claves_banco' => ['Ver claves de banco',              [], true,  true],
             ]],
+            // Consulta DIAN por documento, a través del portal de Dataico. La
+            // clave del portal es una credencial y por eso `configurar` va
+            // restringido: no lo hereda ni el superadmin.
+            ['brynex_dian', 'Consulta DIAN', 'brynex', '🔎', 'brynex.dian.index', [
+                'ver' => ['Consultar terceros en la DIAN',        [], false, true],
+                'configurar' => ['Guardar las credenciales del portal', [], true,  true],
+            ]],
             // Cuadre de cierre: qué vigentes se quedaron por fuera de la
             // planilla. Es solo de BryNex a propósito — una razón social
             // agrupa varias empresas cliente, así que ver "faltan 239" sin

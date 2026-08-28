@@ -83,6 +83,23 @@
             </div>
         </div>
 
+        {{-- ── Consulta DIAN ───────────────────────────────────────────────── --}}
+        @can('brynex_dian.ver')
+        <div class="hub-section" style="border:1px solid #c7d2fe">
+            <div class="hub-section-title" style="color:#4338ca">🔎 Consulta DIAN</div>
+            <div class="hub-cards">
+                <a href="{{ route('brynex.dian.index') }}" class="hub-card" style="border-color:#c7d2fe;background:#eef2ff">
+                    <div class="hc-icon">🔎</div>
+                    <div class="hc-body">
+                        <div class="hc-name" style="color:#4338ca">Consultar un documento en la DIAN</div>
+                        <div class="hc-desc">El nombre y el correo como los tiene registrados la DIAN · Muestra en qué aliados ya existe esa cédula y en qué se diferencia de la ficha</div>
+                    </div>
+                    <div class="hc-arrow" style="color:#4338ca">→</div>
+                </a>
+            </div>
+        </div>
+        @endcan
+
         {{-- ── Razones sociales ante la DIAN ───────────────────────────────── --}}
         {{-- Ojo: esta tarjeta solo la ve quien entre al hub, y el hub exige
              `brynex_hub.ver`. El contable llega al módulo por el ítem suelto
