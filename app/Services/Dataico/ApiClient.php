@@ -15,7 +15,14 @@ use Illuminate\Support\Facades\Log;
  * Regla que no se negocia: un 4xx NO se reintenta. Un 422 significa que la
  * DIAN o Dataico rechazaron los datos; repetir el envío no arregla el dato y
  * sí puede emitir dos veces si el rechazo fue parcial. Solo se reintentan las
- * fallas de red y los 5xx.
+ * fallas de red, los 5xx y el 429.
+ *
+ * El 429 es la excepción a la regla del 4xx, y por eso está aparte: no dice
+ * que el dato esté mal, dice que se le está pegando muy rápido. Emitir un mes
+ * son doscientos envíos seguidos, así que además del reintento hay un piso de
+ * tiempo entre llamada y llamada — sin él, Dataico empieza a devolver 429 a
+ * mitad del lote y esas facturas quedan en error por una razón que no tiene
+ * nada que ver con su contenido.
  */
 class ApiClient
 {
@@ -29,6 +36,8 @@ class ApiClient
         $url = rtrim(config('dataico.base_url'), '/')
              .config('dataico.endpoints.crear_factura');
 
+        $this->respirar();
+
         try {
             $respuesta = Http::withHeaders([
                 'Content-Type' => 'application/json',
@@ -39,12 +48,15 @@ class ApiClient
                 ->connectTimeout(config('dataico.connect_timeout'))
                 ->retry(
                     config('dataico.reintentos'),
-                    config('dataico.espera_ms'),
-                    // Solo red y 5xx. Un 4xx se acepta como respuesta final.
-                    // Ojo: ConnectionException NO tiene ->response, así que el
-                    // instanceof va antes de tocar la propiedad.
+                    // Espera creciente: si el primer reintento tampoco pasó, el
+                    // segundo tiene que llegar más tarde, no igual de pronto.
+                    fn (int $intento) => $intento * (int) config('dataico.espera_ms'),
+                    // Red, 5xx y 429. Los demás 4xx se aceptan como respuesta
+                    // final. Ojo: ConnectionException NO tiene ->response, así
+                    // que el instanceof va antes de tocar la propiedad.
                     fn ($e, $req) => $e instanceof ConnectionException
-                        || ($e instanceof RequestException && $e->response->serverError()),
+                        || ($e instanceof RequestException
+                            && ($e->response->serverError() || $e->response->status() === 429)),
                     throw: false
                 )
                 ->post($url, $payload);
@@ -116,6 +128,33 @@ class ApiClient
 
         return "HTTP {$status}: ".mb_substr((string) $msg, 0, 900);
     }
+
+    /**
+     * Deja pasar el tiempo mínimo entre una llamada y la siguiente.
+     *
+     * Vive aquí y no en el comando porque los envíos salen por varios caminos
+     * —el comando manual, el cierre diario, la cola— y el límite lo pone
+     * Dataico para todos por igual.
+     */
+    private function respirar(): void
+    {
+        $pausa = (int) config('dataico.pausa_ms');
+
+        if ($pausa <= 0) {
+            return;
+        }
+
+        $falta = self::$ultimaLlamada + $pausa * 1000 - (int) (microtime(true) * 1e6);
+
+        if ($falta > 0) {
+            usleep($falta);
+        }
+
+        self::$ultimaLlamada = (int) (microtime(true) * 1e6);
+    }
+
+    /** Microsegundos del último envío de este proceso. */
+    private static int $ultimaLlamada = 0;
 
     /** ¿El fallo amerita reintento posterior, o es un dato malo? */
     public static function esReintentable(?int $status): bool

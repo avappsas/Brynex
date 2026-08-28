@@ -25,6 +25,10 @@ return [
     'reintentos' => (int) env('DATAICO_REINTENTOS', 2),
     'espera_ms' => (int) env('DATAICO_ESPERA_MS', 1500),
 
+    // Piso de tiempo entre dos llamadas seguidas al API. Emitir un mes son
+    // ~200 envíos: sin esto Dataico responde 429 a mitad del lote.
+    'pausa_ms' => (int) env('DATAICO_PAUSA_MS', 400),
+
     // Tope de intentos por factura antes de dejarla quieta esperando revisión.
     'max_intentos' => (int) env('DATAICO_MAX_INTENTOS', 5),
 
