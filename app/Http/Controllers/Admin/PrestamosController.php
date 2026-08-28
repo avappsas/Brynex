@@ -150,10 +150,16 @@ class PrestamosController extends Controller
         $sinGestion     = $individuales->whereIn('semaforo', ['gris', 'rojo'])->count()
                         + $empresasAgrupadas->whereIn('semaforo', ['gris', 'rojo'])->count();
 
+        // El abono se registra desde este listado, y `abonar()` exige la cuenta
+        // cuando el pago entra por el banco: sin las cuentas aquí el modal no
+        // podía preguntarla y el guardado rebotaba.
+        $bancos = BancoCuenta::paraFacturacion($aliadoId);
+
         return view('admin.prestamos.index', compact(
             'individuales', 'empresasAgrupadas',
             'tab', 'buscar', 'sort',
-            'totalDeudaInd', 'totalDeudaEmp', 'totalPrestamos', 'sinGestion'
+            'totalDeudaInd', 'totalDeudaEmp', 'totalPrestamos', 'sinGestion',
+            'bancos'
         ));
     }
 
