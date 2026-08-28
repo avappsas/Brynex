@@ -161,10 +161,17 @@
                         </td>
                         <td style="padding:0.65rem 0.7rem;color:#475569;font-variant-numeric:tabular-nums;">{{ number_format($r->nit, 0, ',', '.') }}</td>
                         <td style="padding:0.65rem 0.7rem;text-align:center;">
-                            <span title="{{ $r->n_activas }} fila(s) activa(s) de {{ $r->n_aliados }} aliado(s)"
-                                  style="background:{{ $r->n_aliados > 1 ? '#fef3c7' : '#f1f5f9' }};color:{{ $r->n_aliados > 1 ? '#92400e' : '#475569' }};font-weight:700;font-size:0.75rem;padding:0.15rem 0.5rem;border-radius:20px;">
-                                {{ $r->n_aliados }}
-                            </span>
+                            @if($r->n_aliados === 0)
+                                {{-- Tiene ficha pero ningún aliado la registró: se sigue
+                                     solo por la DIAN, sin afiliados ni movimientos. --}}
+                                <span title="Ningún aliado tiene registrada esta razón social. La ficha vigila la DIAN, pero no va a mostrar afiliados ni movimientos."
+                                      style="color:#cbd5e1;font-size:0.75rem;">—</span>
+                            @else
+                                <span title="{{ $r->n_activas }} fila(s) activa(s) de {{ $r->n_aliados }} aliado(s)"
+                                      style="background:{{ $r->n_aliados > 1 ? '#fef3c7' : '#f1f5f9' }};color:{{ $r->n_aliados > 1 ? '#92400e' : '#475569' }};font-weight:700;font-size:0.75rem;padding:0.15rem 0.5rem;border-radius:20px;">
+                                    {{ $r->n_aliados }}
+                                </span>
+                            @endif
                         </td>
                         <td style="padding:0.65rem 0.7rem;text-align:right;font-weight:700;color:{{ $r->afiliados > 0 ? '#0f172a' : '#cbd5e1' }};font-variant-numeric:tabular-nums;">
                             {{ number_format($r->afiliados, 0, ',', '.') }}

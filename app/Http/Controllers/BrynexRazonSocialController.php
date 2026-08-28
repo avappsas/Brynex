@@ -96,6 +96,36 @@ class BrynexRazonSocialController extends Controller
             ];
         });
 
+        // Una ficha cuyo NIT no está en `razones_sociales` no aparecería: el
+        // listado se arma desde esa tabla. Pasa con las que se siguen solo por
+        // la DIAN y con las que ningún aliado ha registrado todavía, y sin
+        // esto quedan inalcanzables salvo escribiendo la URL a mano.
+        //
+        // No se agregan cuando se filtra por aliado: no pertenecen a ninguno.
+        if (! $alidoId) {
+            $yaListadas = $filas->pluck('nit')->map(fn ($n) => (string) $n)->flip();
+
+            foreach ($fichas as $nit => $ficha) {
+                if ($yaListadas->has((string) $nit)) {
+                    continue;
+                }
+
+                $filas->push((object) [
+                    'nit' => $nit,
+                    'razon_social' => $ficha->razon_social,
+                    'dv' => $ficha->dv,
+                    'fecha_constitucion' => $ficha->fecha_constitucion?->toDateString(),
+                    'n_aliados' => 0,
+                    'n_activas' => 0,
+                    'afiliados' => 0,
+                    'ficha' => $ficha,
+                    'seguida' => (bool) $ficha->en_seguimiento,
+                    'propiedad' => $ficha->propiedad,
+                    'regimen' => $ficha->regimen,
+                ]);
+            }
+        }
+
         if ($buscar !== '') {
             $filas = $filas->filter(
                 fn ($f) => stripos($f->razon_social, $buscar) !== false
@@ -110,7 +140,12 @@ class BrynexRazonSocialController extends Controller
             default => $filas,
         };
 
-        $filas = $filas->sortByDesc('afiliados')->values();
+        // Las que se están siguiendo van arriba: son las que el contador
+        // abre todos los días. Dentro de cada grupo manda el tamaño.
+        $filas = $filas->sortBy([
+            ['seguida', 'desc'],
+            ['afiliados', 'desc'],
+        ])->values();
 
         // Paginación en PHP: son ~200 NIT y ya vinieron todos agrupados; pedir
         // la página al servidor costaría otro viaje de 250 ms sin ganar nada.
