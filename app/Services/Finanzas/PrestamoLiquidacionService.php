@@ -125,7 +125,7 @@ class PrestamoLiquidacionService
 
             $detalle = "Interés compuesto liquidado por mes calendario completo ({$diasPeriodo} días).";
             if ($noDevengado > 0) {
-                $detalle .= ' Descuenta $'.number_format($noDevengado, 2).' del capital que entró dentro del ciclo.';
+                $detalle .= ' Descuenta $'.number_format($noDevengado, 0, ',', '.').' del capital que entró dentro del ciclo.';
             }
 
             $ciclos[] = [

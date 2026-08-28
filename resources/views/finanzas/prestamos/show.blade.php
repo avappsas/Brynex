@@ -84,14 +84,14 @@
                     <span>Celular:</span> <strong>{{ $prestamo->telefono_deudor ?: 'No registrado' }}</strong>
                 </div>
                 <div class="fdcg-row">
-                    <span>Fecha Desembolso:</span> <strong>{{ Carbon\Carbon::parse($prestamo->fecha_desembolso)->format('d/m/Y') }}</strong>
+                    <span>Fecha Desembolso:</span> <strong>{{ Carbon\Carbon::parse($prestamo->fecha_desembolso)->locale('es')->translatedFormat('d-F-Y') }}</strong>
                 </div>
                 <div class="fdcg-row">
-                    <span>Última Liquidación:</span> <strong>{{ $prestamo->ultimo_corte ? Carbon\Carbon::parse($prestamo->ultimo_corte)->format('d/m/Y') : 'Ninguna' }}</strong>
+                    <span>Última Liquidación:</span> <strong>{{ $prestamo->ultimo_corte ? Carbon\Carbon::parse($prestamo->ultimo_corte)->locale('es')->translatedFormat('d-F-Y') : 'Ninguna' }}</strong>
                 </div>
                 <div class="fdcg-row">
                     <span>Próximo Corte:</span>
-                    <strong>{{ $prestamo->fecha_corte->format('d/m/Y') }}
+                    <strong>{{ $prestamo->fecha_corte->locale('es')->translatedFormat('d-F-Y') }}
                         <small style="font-weight:500; color:#6b7280;">({{ $prestamo->dias_para_corte }}d)</small>
                     </strong>
                 </div>
@@ -107,7 +107,7 @@
                     </strong>
                 </div>
                 @if($prestamo->soporte_path)
-                    <div class="fdcg-row" style="margin-top:0.75rem;">
+                    <div class="fdcg-row">
                         <span>Archivo Soporte:</span>
                         <a href="{{ route('finanzas.prestamos.descargar-soporte', $prestamo->id) }}" target="_blank" class="badge-info" style="text-decoration:none;">
                             📄 Ver Soporte
@@ -196,19 +196,20 @@
         <table class="tabla-brynex-bx">
             <thead>
                 <tr>
-                    <th style="width: 10%">Fecha</th>
-                    <th style="width: 14%">Movimiento</th>
-                    <th style="text-align:right; width: 13%;">Cargo / Interés</th>
-                    <th style="text-align:right; width: 13%;">Abono Interés</th>
-                    <th style="text-align:right; width: 13%;">Abono Capital</th>
-                    <th style="text-align:right; width: 13%;">Saldo</th>
-                    <th style="width: 24%">Detalle</th>
+                    <th style="width: 13%">Fecha</th>
+                    <th style="width: 13%">Movimiento</th>
+                    <th style="text-align:right; width: 12%;">Cargo / Interés</th>
+                    <th style="text-align:right; width: 12%;">Abono Interés</th>
+                    <th style="text-align:right; width: 12%;">Abono Capital</th>
+                    <th style="text-align:right; width: 12%;">Saldo</th>
+                    <th style="width: 18%">Detalle</th>
+                    <th style="text-align:center; width: 8%;">Acciones</th>
                 </tr>
             </thead>
             <tbody>
                 @forelse($historial as $fila)
                     <tr>
-                        <td>{{ Carbon\Carbon::parse($fila['fecha'])->format('d/m/Y') }}</td>
+                        <td style="white-space:nowrap;">{{ Carbon\Carbon::parse($fila['fecha'])->locale('es')->translatedFormat('d-F-Y') }}</td>
                         <td>
                             @if($fila['clase'] === 'pago')
                                 <span class="mov-tipo-tag abono_interes">💵 Pago</span>
@@ -226,64 +227,54 @@
                                 </span>
                             @endif
                         </td>
-                        <td style="text-align:right; font-weight:700; color:#ef4444;">
-                            @if($fila['cargo'] > 0)
-                                ${{ number_format($fila['cargo'], 0, ',', '.') }}
-                                @if($fila['dias'])
-                                    <small style="display:block; font-weight:500; color:#94a3b8; font-size:0.62rem;">{{ $fila['dias'] }} días</small>
-                                @endif
-                            @else
-                                <span style="color:#cbd5e1; font-weight:400;">—</span>
+                        <td style="text-align:right; font-weight:700; color:{{ $fila['cargo'] > 0 ? '#ef4444' : '#cbd5e1' }};">
+                            ${{ number_format($fila['cargo'], 0, ',', '.') }}
+                            @if($fila['cargo'] > 0 && $fila['dias'])
+                                <small style="display:block; font-weight:500; color:#94a3b8; font-size:0.62rem;">{{ $fila['dias'] }} días</small>
                             @endif
                         </td>
-                        <td style="text-align:right; font-weight:700; color:#16a34a;">
-                            @if($fila['abono_interes'] > 0)
-                                ${{ number_format($fila['abono_interes'], 0, ',', '.') }}
-                            @else
-                                <span style="color:#cbd5e1; font-weight:400;">—</span>
-                            @endif
+                        <td style="text-align:right; font-weight:700; color:{{ $fila['abono_interes'] > 0 ? '#16a34a' : '#cbd5e1' }};">
+                            ${{ number_format($fila['abono_interes'], 0, ',', '.') }}
                         </td>
-                        <td style="text-align:right; font-weight:700; color:#15803d;">
-                            @if($fila['abono_capital'] > 0)
-                                ${{ number_format($fila['abono_capital'], 0, ',', '.') }}
-                            @else
-                                <span style="color:#cbd5e1; font-weight:400;">—</span>
-                            @endif
+                        <td style="text-align:right; font-weight:700; color:{{ $fila['abono_capital'] > 0 ? '#15803d' : '#cbd5e1' }};">
+                            ${{ number_format($fila['abono_capital'], 0, ',', '.') }}
                         </td>
                         <td style="text-align:right; font-weight:700; color:#0f172a;">${{ number_format($fila['saldo_despues'], 0, ',', '.') }}</td>
                         <td style="color:#475569; font-size:0.75rem;">
-                            {{ $fila['observacion'] ?: '-' }}
-                            <div style="margin-top:0.25rem; display:flex; gap:0.3rem; flex-wrap:wrap; align-items:center;">
-                                @if($fila['soporte_path'])
-                                    @php $movSoporte = collect($fila['movimientos'])->firstWhere('soporte_path', $fila['soporte_path']); @endphp
-                                    @if($movSoporte)
+                            {{ $fila['observacion'] }}
+                            @if($fila['soporte_path'])
+                                @php $movSoporte = collect($fila['movimientos'])->firstWhere('soporte_path', $fila['soporte_path']); @endphp
+                                @if($movSoporte)
+                                    <div style="margin-top:0.25rem;">
                                         <a href="{{ route('finanzas.prestamos.movimiento.descargar-soporte', $movSoporte->id) }}" target="_blank" class="badge-info" style="font-size:0.65rem; padding: 0.05rem 0.25rem;">📄 Soporte</a>
-                                    @endif
+                                    </div>
                                 @endif
-                                @if($fila['clase'] === 'pago')
-                                    @php
-                                        $grupoMovs = collect($fila['movimientos']);
-                                        $principal = $grupoMovs->firstWhere('tipo', 'abono_capital') ?? $grupoMovs->firstWhere('tipo', 'abono_interes') ?? $grupoMovs->first();
-                                    @endphp
-                                    <button @click="pagoEditar = { id: {{ $principal->id }}, fecha: '{{ $fila['fecha'] }}', monto: {{ $fila['abono_interes'] + $fila['abono_capital'] }}, observacion: '{{ addslashes($fila['observacion'] ?? '') }}', soporte_path: '{{ $fila['soporte_path'] }}', interes: {{ $fila['cargo'] }}, abInt: {{ $fila['abono_interes'] }}, abCap: {{ $fila['abono_capital'] }} }; openEditarPago = true"
-                                            class="badge-info"
-                                            style="border:none; cursor:pointer; padding: 0.15rem 0.35rem; font-size:0.62rem; background: rgba(59,130,246,0.08); color: var(--azul-btn);">
-                                        ✏️ Editar
-                                    </button>
-                                @else
-                                    @php $mov = $fila['movimientos'][0]; @endphp
-                                    <button @click="movEditar = { id: {{ $mov->id }}, fecha: '{{ $mov->fecha }}', monto: {{ $mov->monto }}, observacion: '{{ addslashes($mov->observacion ?? '') }}', soporte_path: '{{ $mov->soporte_path }}' }; openEditarMov = true"
-                                            class="badge-info"
-                                            style="border:none; cursor:pointer; padding: 0.15rem 0.35rem; font-size:0.62rem; background: rgba(59,130,246,0.08); color: var(--azul-btn);">
-                                        ✏️ Editar
-                                    </button>
-                                @endif
-                            </div>
+                            @endif
+                        </td>
+                        <td style="text-align:center;">
+                            @if($fila['clase'] === 'pago')
+                                @php
+                                    $grupoMovs = collect($fila['movimientos']);
+                                    $principal = $grupoMovs->firstWhere('tipo', 'abono_capital') ?? $grupoMovs->firstWhere('tipo', 'abono_interes') ?? $grupoMovs->first();
+                                @endphp
+                                <button @click="pagoEditar = { id: {{ $principal->id }}, fecha: '{{ $fila['fecha'] }}', monto: {{ $fila['abono_interes'] + $fila['abono_capital'] }}, observacion: '{{ addslashes($fila['observacion'] ?? '') }}', soporte_path: '{{ $fila['soporte_path'] }}', interes: {{ $fila['cargo'] }}, abInt: {{ $fila['abono_interes'] }}, abCap: {{ $fila['abono_capital'] }} }; openEditarPago = true"
+                                        class="badge-info"
+                                        style="border:none; cursor:pointer; padding: 0.2rem 0.45rem; font-size:0.65rem; background: rgba(59,130,246,0.08); color: var(--azul-btn); white-space:nowrap;">
+                                    ✏️ Editar
+                                </button>
+                            @else
+                                @php $mov = $fila['movimientos'][0]; @endphp
+                                <button @click="movEditar = { id: {{ $mov->id }}, fecha: '{{ $mov->fecha }}', monto: {{ $mov->monto }}, observacion: '{{ addslashes($mov->observacion ?? '') }}', soporte_path: '{{ $mov->soporte_path }}' }; openEditarMov = true"
+                                        class="badge-info"
+                                        style="border:none; cursor:pointer; padding: 0.2rem 0.45rem; font-size:0.65rem; background: rgba(59,130,246,0.08); color: var(--azul-btn); white-space:nowrap;">
+                                    ✏️ Editar
+                                </button>
+                            @endif
                         </td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="7" style="text-align:center; padding:2rem; color:#64748b;">
+                        <td colspan="8" style="text-align:center; padding:2rem; color:#64748b;">
                             No hay movimientos registrados en el préstamo.
                         </td>
                     </tr>
@@ -734,7 +725,7 @@
 
 @push('styles')
 <style>
-.finanzas-container { max-width: 1040px; margin: 0 auto; padding: 0.5rem; }
+.finanzas-container { max-width: 1360px; margin: 0 auto; padding: 0.5rem; }
 
 /* Top Bar & Breadcrumb */
 
@@ -750,7 +741,7 @@
     /* Tabla scrolleable en móvil */
     .card-tabla-bx { overflow: hidden; }
     .card-tabla-bx .tabla-scroll-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .tabla-brynex-bx { min-width: 620px; }
+    .tabla-brynex-bx { min-width: 760px; }
     /* Modales en pantalla completa móvil */
     .modal-overlay-bx { padding: 0; align-items: flex-end; }
     .modal-box-bx { border-bottom-left-radius: 0; border-bottom-right-radius: 0; max-height: 90vh; overflow-y: auto; }
@@ -767,10 +758,13 @@
 .fdc-val { font-size: 1.1rem; font-weight: 700; color: #1e293b; margin-top: 0.2rem; }
 .fdc-val.destacado { color: #b91c1c; font-size: 1.2rem; }
 
-.fdc-general-list { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem; }
-.fdcg-row { display: flex; justify-content: space-between; font-size: 0.8rem; padding: 0.35rem 0; border-bottom: 1px solid #f8fafc; }
-.fdcg-row span { color: #64748b; font-weight: 500; }
-.fdcg-row strong { color: #1e293b; font-weight: 600; }
+.fdc-general-list { display: grid; grid-template-columns: 1fr 1fr; gap: 0.15rem 1.25rem; margin-top: 0.5rem; }
+.fdcg-row { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; font-size: 0.78rem; padding: 0.3rem 0; border-bottom: 1px solid #f8fafc; }
+.fdcg-row span { color: #64748b; font-weight: 500; white-space: nowrap; }
+.fdcg-row strong { color: #1e293b; font-weight: 600; text-align: right; }
+@media (max-width: 640px) {
+    .fdc-general-list { grid-template-columns: 1fr; }
+}
 
 .sep-light { height: 1px; background: #e2e8f0; margin: 1.25rem 0; }
 
