@@ -336,59 +336,75 @@
             ⚠️ <strong>Ojo con lo que este número no es.</strong> La mayor parte de lo que entra a estas cuentas es plata de
             los afiliados para pagar su seguridad social, no ingreso de la empresa. Sirve para conciliar contra el extracto
             y para saber cuánto se movió la cuenta, no como base gravable.
-            <br>La base gravable es la columna <strong>Admón + afiliación</strong>: lo que la razón social cobra por su
-            servicio y lo único que se le sube a Dataico.
-            <br><strong>Facturado</strong> es la parte de esa base que ya tiene factura electrónica emitida en Dataico.
+            <br><strong>Terceros SS</strong> es esa misma plata saliendo: los pagos de planilla a las EPS, las ARL y los
+            fondos. <strong>Admón + afil</strong> es lo que sí es de la empresa —lo que cobra por su servicio— y lo único
+            que se le sube a Dataico. <strong>Facturado</strong> es la parte de esa base que ya tiene factura electrónica
+            emitida. <strong>Salidas</strong> son los demás gastos: nómina, arriendo, servicios, préstamos.
         </div>
 
         <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:1.2rem;margin-bottom:1rem;">
             <h3 style="font-size:1rem;font-weight:800;color:#0d2550;margin:0 0 0.8rem 0;">Movimientos {{ $anio }}, mes a mes</h3>
             <div style="overflow-x:auto;">
                 <table style="width:100%;border-collapse:collapse;font-size:0.83rem;">
+                    {{-- El conteo va dentro de la celda y no en una columna aparte: con seis
+                         columnas de plata, doblarlas con una de "#" hacía la tabla ilegible. --}}
                     <thead>
                         <tr style="background:#f8fafc;color:#475569;font-size:0.7rem;text-transform:uppercase;text-align:right;">
                             <th style="padding:0.55rem 0.7rem;font-weight:700;text-align:left;">Mes</th>
-                            <th style="padding:0.55rem;font-weight:700;">Entradas</th>
-                            <th style="padding:0.55rem;font-weight:700;">#</th>
-                            <th style="padding:0.55rem;font-weight:700;color:#0d2550;" title="Administración + afiliación de las facturas pagadas por esta cuenta. Es la base que se le sube a Dataico.">Admón + afiliación</th>
-                            <th style="padding:0.55rem;font-weight:700;">#</th>
+                            <th style="padding:0.55rem;font-weight:700;" title="Lo que consignaron los clientes en esta cuenta.">Entradas</th>
+                            <th style="padding:0.55rem;font-weight:700;" title="Pagos de planilla: la seguridad social que se le gira a las EPS, las ARL y los fondos. Es plata de paso, no gasto de la empresa.">Terceros SS</th>
+                            <th style="padding:0.55rem;font-weight:700;color:#0d2550;" title="Administración + afiliación de las facturas pagadas por esta cuenta. Es la base que se le sube a Dataico.">Admón + afil</th>
                             <th style="padding:0.55rem;font-weight:700;color:#5b21b6;" title="De esa base, lo que ya tiene factura electrónica emitida en Dataico.">Facturado</th>
-                            <th style="padding:0.55rem;font-weight:700;">#</th>
-                            <th style="padding:0.55rem;font-weight:700;">Salidas</th>
-                            <th style="padding:0.55rem;font-weight:700;">#</th>
+                            <th style="padding:0.55rem;font-weight:700;" title="Los demás gastos pagados desde esta cuenta: nómina, arriendo, servicios, préstamos.">Salidas</th>
                             <th style="padding:0.55rem;font-weight:700;">Neto</th>
                             <th style="padding:0.55rem 0.7rem;font-weight:700;">Acumulado</th>
                         </tr>
                     </thead>
                     <tbody>
+                    @php
+                        $celda = 'padding:0.5rem;font-variant-numeric:tabular-nums;';
+                        $conteo = 'color:#94a3b8;font-size:0.68rem;font-weight:400;margin-left:0.3rem;';
+                    @endphp
                     @foreach($movimientos['meses'] as $m => $d)
-                        <tr style="border-top:1px solid #f1f5f9;text-align:right;{{ $d['entradas'] == 0 && $d['salidas'] == 0 ? 'opacity:0.45;' : '' }}">
-                            <td style="padding:0.5rem 0.7rem;text-align:left;font-weight:600;color:#334155;">
-{{ $meses[$m] }}</td>
-                            <td style="padding:0.5rem;color:#047857;font-variant-numeric:tabular-nums;">{{ $d['entradas'] ? '$' . number_format($d['entradas'], 0, ',', '.') : '—' }}</td>
-                            <td style="padding:0.5rem;color:#94a3b8;font-size:0.75rem;">{{ $d['n_entradas'] ?: '' }}</td>
-                            <td style="padding:0.5rem;color:#0d2550;font-weight:700;font-variant-numeric:tabular-nums;">{{ $d['base'] ? '$' . number_format($d['base'], 0, ',', '.') : '—' }}</td>
-                            <td style="padding:0.5rem;color:#94a3b8;font-size:0.75rem;">{{ $d['n_base'] ?: '' }}</td>
+                        <tr style="border-top:1px solid #f1f5f9;text-align:right;{{ $d['entradas'] == 0 && $d['salidas'] == 0 && $d['terceros'] == 0 ? 'opacity:0.45;' : '' }}">
+                            <td style="padding:0.5rem 0.7rem;text-align:left;font-weight:600;color:#334155;">{{ $meses[$m] }}</td>
+
+                            <td style="{{ $celda }}color:#047857;">
+                                {{ $d['entradas'] ? '$' . number_format($d['entradas'], 0, ',', '.') : '—' }}
+                                @if($d['n_entradas'])<span style="{{ $conteo }}">{{ $d['n_entradas'] }}</span>@endif
+                            </td>
+
+                            <td style="{{ $celda }}color:#0369a1;">
+                                {{ $d['terceros'] ? '$' . number_format($d['terceros'], 0, ',', '.') : '—' }}
+                                @if($d['n_terceros'])<span style="{{ $conteo }}">{{ $d['n_terceros'] }}</span>@endif
+                            </td>
+
+                            <td style="{{ $celda }}color:#0d2550;font-weight:700;">
+                                {{ $d['base'] ? '$' . number_format($d['base'], 0, ',', '.') : '—' }}
+                                @if($d['n_base'])<span style="{{ $conteo }}">{{ $d['n_base'] }}</span>@endif
+                            </td>
+
                             @php $falta = $d['base'] - $d['facturado']; @endphp
-                            <td style="padding:0.5rem;color:#5b21b6;font-variant-numeric:tabular-nums;"
+                            <td style="{{ $celda }}color:#5b21b6;"
                                 title="{{ $falta > 0 ? 'Faltan por emitir $' . number_format($falta, 0, ',', '.') : '' }}">
                                 {{ $d['facturado'] ? '$' . number_format($d['facturado'], 0, ',', '.') : '—' }}
                                 @if($d['base'] > 0)
-                                    <span style="color:{{ $falta > 0 ? '#b45309' : '#047857' }};font-size:0.7rem;">
-                                        {{ round($d['facturado'] / $d['base'] * 100) }}%
-                                    </span>
+                                    <span style="color:{{ $falta > 0 ? '#b45309' : '#047857' }};font-size:0.7rem;">{{ round($d['facturado'] / $d['base'] * 100) }}%</span>
                                 @endif
                             </td>
-                            <td style="padding:0.5rem;color:#94a3b8;font-size:0.75rem;">{{ $d['n_facturado'] ?: '' }}</td>
-                            <td style="padding:0.5rem;color:#b91c1c;font-variant-numeric:tabular-nums;">{{ $d['salidas'] ? '$' . number_format($d['salidas'], 0, ',', '.') : '—' }}</td>
-                            <td style="padding:0.5rem;color:#94a3b8;font-size:0.75rem;">{{ $d['n_salidas'] ?: '' }}</td>
+
+                            <td style="{{ $celda }}color:#b91c1c;">
+                                {{ $d['salidas'] ? '$' . number_format($d['salidas'], 0, ',', '.') : '—' }}
+                                @if($d['n_salidas'])<span style="{{ $conteo }}">{{ $d['n_salidas'] }}</span>@endif
+                            </td>
+
                             @if($d['salidas_incompletas'] ?? false)
                                 <td colspan="2" style="padding:0.5rem 0.7rem;color:#a16207;font-size:0.72rem;text-align:center;"
                                     title="Este mes no tiene un solo gasto atado a la cuenta: los gastos migrados llegaron sin decir de dónde salieron, así que el neto sería falso.">
                                     sin gastos atados
                                 </td>
                             @else
-                                <td style="padding:0.5rem;font-weight:600;color:{{ $d['neto'] >= 0 ? '#0f172a' : '#b91c1c' }};font-variant-numeric:tabular-nums;">
+                                <td style="{{ $celda }}font-weight:600;color:{{ $d['neto'] >= 0 ? '#0f172a' : '#b91c1c' }};">
                                     {{ $d['neto'] ? '$' . number_format($d['neto'], 0, ',', '.') : '—' }}
                                 </td>
                                 <td style="padding:0.5rem 0.7rem;color:#475569;font-variant-numeric:tabular-nums;">${{ number_format($d['acumulado'], 0, ',', '.') }}</td>
@@ -400,13 +416,10 @@
                         <tr style="border-top:2px solid #e2e8f0;background:#f8fafc;text-align:right;font-weight:800;color:#0d2550;">
                             <td style="padding:0.6rem 0.7rem;text-align:left;">Total</td>
                             <td style="padding:0.6rem;color:#047857;">${{ number_format($movimientos['total_entradas'], 0, ',', '.') }}</td>
-                            <td></td>
+                            <td style="padding:0.6rem;color:#0369a1;">${{ number_format($movimientos['total_terceros'] ?? 0, 0, ',', '.') }}</td>
                             <td style="padding:0.6rem;color:#0d2550;">${{ number_format($movimientos['total_base'] ?? 0, 0, ',', '.') }}</td>
-                            <td></td>
                             <td style="padding:0.6rem;color:#5b21b6;">${{ number_format($movimientos['total_facturado'] ?? 0, 0, ',', '.') }}</td>
-                            <td></td>
                             <td style="padding:0.6rem;color:#b91c1c;">${{ number_format($movimientos['total_salidas'], 0, ',', '.') }}</td>
-                            <td></td>
                             <td style="padding:0.6rem;" colspan="2">
                                 @if($movimientos['neto_parcial'] ?? false)
                                     <span style="color:#a16207;font-size:0.72rem;font-weight:600;">Neto no comparable: hay meses sin gastos atados a la cuenta</span>

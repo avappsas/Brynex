@@ -186,6 +186,9 @@ class BrynexRazonSocialService
         return strlen((string) $base) >= 9 && strlen((string) $base) <= 10 ? (string) $base : '';
     }
 
+    /** El gasto con el que se paga la planilla: seguridad social de terceros. */
+    private const TIPO_PLANILLA = 'pago_planilla';
+
     /** Lo único que se le factura a la DIAN: administración más afiliación. */
     private const BASE = 'ISNULL(CAST(f.admon AS BIGINT), 0) + ISNULL(CAST(f.afiliacion AS BIGINT), 0)';
 
@@ -210,9 +213,10 @@ class BrynexRazonSocialService
      *
      * Ojo con lo que las entradas NO son: la mayor parte de lo que entra a una
      * razón social de estas es plata de los afiliados para pagar su seguridad
-     * social, no ingreso de la empresa. Sirve para conciliar contra el extracto
-     * y para saber cuánto se movió, no como base gravable. La base gravable es
-     * la otra columna, y es entre un 15 y un 25 % de las entradas.
+     * social, no ingreso de la empresa — por eso al lado va la columna de
+     * terceros, que es esa misma plata saliendo. Sirve para conciliar contra el
+     * extracto, no como base gravable. La base gravable es la de admón más
+     * afiliación, entre un 15 y un 25 % de las entradas.
      *
      * Enero a abril de 2026 salían en cero porque la migración no trajo el
      * `banco_cuenta_id` de las consignaciones. Eso ya no se arregla aquí sino
@@ -250,12 +254,20 @@ class BrynexRazonSocialService
                 DB::raw('COUNT(*) as cuantas'),
             ]);
 
+        // La plata que sale se parte en dos porque son cosas distintas.
+        //
+        // `pago_planilla` es la seguridad social de los afiliados: plata que
+        // entró para pagarle a las EPS, las ARL y los fondos, y que solo está
+        // de paso. Es la contrapartida de casi toda la columna de entradas, y
+        // mezclarla con el arriendo y los salarios esconde lo único que
+        // interesa mirar: cuánto de lo que se movió era de la empresa.
         $salidas = DB::table('gastos')
             ->whereIn('banco_origen_id', $ids)
             ->whereYear('fecha', $anio)
-            ->groupBy(DB::raw('MONTH(fecha)'))
+            ->groupBy(DB::raw('MONTH(fecha)'), 'tipo')
             ->get([
                 DB::raw('MONTH(fecha) as mes'),
+                'tipo',
                 DB::raw('SUM(valor) as total'),
                 DB::raw('COUNT(*) as cuantas'),
             ]);
@@ -268,8 +280,9 @@ class BrynexRazonSocialService
         }
 
         foreach ($salidas as $fila) {
-            $meses[(int) $fila->mes]['salidas'] = (float) $fila->total;
-            $meses[(int) $fila->mes]['n_salidas'] = (int) $fila->cuantas;
+            $columna = $fila->tipo === self::TIPO_PLANILLA ? 'terceros' : 'salidas';
+            $meses[(int) $fila->mes][$columna] += (float) $fila->total;
+            $meses[(int) $fila->mes]['n_'.$columna] += (int) $fila->cuantas;
         }
 
         foreach ($this->baseFacturada($cuentas, $anio) as $mes => $fila) {
@@ -290,7 +303,7 @@ class BrynexRazonSocialService
         // acumulado arranca donde los datos vuelven a estar completos.
         $acumulado = 0.0;
         foreach ($meses as $m => $datos) {
-            if ($datos['entradas'] > 0.0 && $datos['salidas'] == 0.0) {
+            if ($datos['entradas'] > 0.0 && $datos['salidas'] + $datos['terceros'] == 0.0) {
                 $meses[$m]['neto'] = null;
                 $meses[$m]['acumulado'] = null;
                 $meses[$m]['salidas_incompletas'] = true;
@@ -298,8 +311,9 @@ class BrynexRazonSocialService
                 continue;
             }
 
-            $acumulado += $datos['entradas'] - $datos['salidas'];
-            $meses[$m]['neto'] = $datos['entradas'] - $datos['salidas'];
+            $neto = $datos['entradas'] - $datos['terceros'] - $datos['salidas'];
+            $acumulado += $neto;
+            $meses[$m]['neto'] = $neto;
             $meses[$m]['acumulado'] = $acumulado;
         }
 
@@ -319,16 +333,18 @@ class BrynexRazonSocialService
             ]);
 
         $totalEntradas = array_sum(array_column($meses, 'entradas'));
+        $totalTerceros = array_sum(array_column($meses, 'terceros'));
         $totalSalidas = array_sum(array_column($meses, 'salidas'));
 
         return [
             'cuentas' => $cuentas,
             'meses' => $meses,
             'total_entradas' => $totalEntradas,
+            'total_terceros' => $totalTerceros,
             'total_salidas' => $totalSalidas,
             'total_base' => array_sum(array_column($meses, 'base')),
             'total_facturado' => array_sum(array_column($meses, 'facturado')),
-            'neto' => $totalEntradas - $totalSalidas,
+            'neto' => $totalEntradas - $totalTerceros - $totalSalidas,
             'neto_parcial' => (bool) array_filter(array_column($meses, 'salidas_incompletas')),
             'por_aliado' => $porAliado,
         ];
@@ -401,8 +417,10 @@ class BrynexRazonSocialService
         $meses = [];
         for ($m = 1; $m <= 12; $m++) {
             $meses[$m] = [
-                'entradas' => 0.0, 'salidas' => 0.0, 'base' => 0.0, 'facturado' => 0.0,
-                'n_entradas' => 0, 'n_salidas' => 0, 'n_base' => 0, 'n_facturado' => 0,
+                'entradas' => 0.0, 'terceros' => 0.0, 'salidas' => 0.0,
+                'base' => 0.0, 'facturado' => 0.0,
+                'n_entradas' => 0, 'n_terceros' => 0, 'n_salidas' => 0,
+                'n_base' => 0, 'n_facturado' => 0,
                 'neto' => 0.0, 'acumulado' => 0.0,
                 'salidas_incompletas' => false,
             ];
