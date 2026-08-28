@@ -19,6 +19,11 @@ namespace App\Services\Dataico;
  */
 class Adquiriente
 {
+    /** Nombres de ciudad que el listado DANE escribe distinto a Dataico. */
+    private const CIUDADES_DATAICO = [
+        'BOGOTA_D.E.' => 'BOGOTA, D.C.',
+    ];
+
     /** Identificación con la que la DIAN recibe una venta a consumidor final. */
     public const CONSUMIDOR_FINAL_ID = '222222222222';
 
@@ -73,6 +78,30 @@ class Adquiriente
         ];
     }
 
+    /**
+     * El nombre de la ciudad como lo espera Dataico.
+     *
+     * La tabla de ciudades es el listado DANE y trae un solo nombre raro en
+     * 1.122: el 11001, que quedó escrito «BOGOTA_D.E.» —con guion bajo y con el
+     * nombre anterior a 1991, cuando Bogotá era Distrito Especial y no
+     * Distrito Capital—. Dataico responde «HTTP 500: Ciudad 'BOGOTA_D.E.' es
+     * inválida para el departamento 'BOGOTA'» y tumba la factura.
+     *
+     * El valor bueno salió del formulario de Dataico, no de adivinar: al crear
+     * una factura a mano el selector de ciudad muestra «BOGOTA, D.C.», con
+     * coma. Sin la coma también la rechaza.
+     *
+     * Se traduce aquí y no se corrige en la tabla porque ese listado lo usan
+     * los archivos planos de PILA, donde el nombre viaja junto al código DANE y
+     * cambiarlo tiene consecuencias que no se ven desde acá.
+     */
+    private static function ciudad(?string $nombre): string
+    {
+        $nombre = trim((string) $nombre);
+
+        return self::CIUDADES_DATAICO[$nombre] ?? $nombre;
+    }
+
     /** Adquiriente de una factura individual: el propio cliente. */
     public static function deCliente(object $cl): array
     {
@@ -91,7 +120,7 @@ class Adquiriente
             'apellido' => $apellidos,
             'direccion' => trim($cl->direccion_vivienda ?? ''),
             'telefono' => trim($cl->celular ?: ($cl->telefono ?? '')),
-            'ciudad' => trim($cl->ciudad_nombre ?? ''),
+            'ciudad' => self::ciudad($cl->ciudad_nombre ?? ''),
             'departamento' => trim($cl->departamento_nombre ?? ''),
             'correo' => trim($cl->correo ?? ''),
             'sin_documento' => false,
