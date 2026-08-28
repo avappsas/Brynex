@@ -1183,7 +1183,6 @@ Route::middleware('auth')->group(function () {
         Route::put('/prestamos/{prestamo}', [$pre, 'update'])->name('prestamos.update');
         Route::post('/prestamos/{prestamo}/pago', [$pre, 'registrarPago'])->name('prestamos.pago');
         Route::post('/prestamos/{prestamo}/anexar', [$pre, 'anexarValor'])->name('prestamos.anexar');
-        Route::post('/prestamos/{prestamo}/liquidar', [$pre, 'liquidarMes'])->name('prestamos.liquidar');
         Route::post('/prestamos/{prestamo}/whatsapp', [$pre, 'enviarWhatsapp'])->name('prestamos.whatsapp');
         Route::post('/prestamos/{prestamo}/toggle-alertas', [$pre, 'toggleAlertas'])->name('prestamos.toggle-alertas');
         Route::post('/prestamos/{prestamo}/castigar', [$pre, 'castigar'])->name('prestamos.castigar');

@@ -5,7 +5,7 @@
 
 @section('contenido')
 @include('finanzas.partials._responsive_fin')
-<div class="finanzas-container" x-data="{ openAbono: false, openLiquidar: false, openAnexar: false, openEditarMov: false, openCastigar: false, openReactivar: false, openNoTelefono: false, movEditar: { id: null, fecha: '', monto: 0, observacion: '', soporte_path: '' } }">
+<div class="finanzas-container" x-data="{ openAbono: false, openAnexar: false, openEditarMov: false, openCastigar: false, openReactivar: false, openNoTelefono: false, movEditar: { id: null, fecha: '', monto: 0, observacion: '', soporte_path: '' } }">
 
     @component('finanzas.partials._header_banner', [
         'titulo' => '👤 Ficha: ' . $prestamo->nombre_deudor,
@@ -128,11 +128,6 @@
                         💵 Registrar Abono / Pago
                     </button>
 
-                    {{-- Liquidar Intereses --}}
-                    <button @click="openLiquidar = true" class="btn-fac-action blue">
-                        ⚙️ Liquidar Intereses Manual
-                    </button>
-                    
                     {{-- Anexar Valor Préstamo --}}
                     <button @click="openAnexar = true" class="btn-fac-action orange">
                         ➕ Anexar Valor Préstamo
@@ -201,54 +196,83 @@
         <table class="tabla-brynex-bx">
             <thead>
                 <tr>
-                    <th style="width: 15%">Fecha</th>
-                    <th style="width: 20%">Concepto / Movimiento</th>
-                    <th style="text-align:right; width: 15%;">Monto</th>
-                    <th style="text-align:right; width: 15%;">Saldo Anterior</th>
-                    <th style="text-align:right; width: 15%;">Saldo Posterior</th>
-                    <th style="width: 20%">Observación</th>
-                    <th style="text-align:center; width: 10%;">Acciones</th>
+                    <th style="width: 10%">Fecha</th>
+                    <th style="width: 14%">Movimiento</th>
+                    <th style="text-align:right; width: 13%;">Cargo / Interés</th>
+                    <th style="text-align:right; width: 13%;">Abono Interés</th>
+                    <th style="text-align:right; width: 13%;">Abono Capital</th>
+                    <th style="text-align:right; width: 13%;">Saldo</th>
+                    <th style="width: 24%">Detalle</th>
                 </tr>
             </thead>
             <tbody>
-                @forelse($prestamo->movimientos as $mov)
+                @forelse($historial as $fila)
                     <tr>
-                        <td>{{ Carbon\Carbon::parse($mov->fecha)->format('d/m/Y') }}</td>
+                        <td>{{ Carbon\Carbon::parse($fila['fecha'])->format('d/m/Y') }}</td>
                         <td>
-                            <span class="mov-tipo-tag {{ $mov->tipo }}">
-                                {{ match($mov->tipo) {
-                                    'desembolso' => 'Capital Inicial',
-                                    'interes_mensual' => 'Liquidación Interés',
-                                    'interes_proporcional' => 'Interés por Días',
-                                    'capitalizacion' => 'Capitalización',
-                                    'abono_interes' => 'Abono Interés',
-                                    'abono_capital' => 'Abono Capital',
-                                    'pago_total' => 'Pago Total',
-                                    default => $mov->tipo
-                                } }}
-                            </span>
-                        </td>
-                        <td style="text-align:right; font-weight:700; color:{{ in_array($mov->tipo, ['abono_interes', 'abono_capital', 'pago_total']) ? '#16a34a' : '#ef4444' }};">
-                            ${{ number_format($mov->monto, 0, ',', '.') }}
-                        </td>
-                        <td style="text-align:right; color:#64748b;">${{ number_format($mov->saldo_antes, 0, ',', '.') }}</td>
-                        <td style="text-align:right; font-weight:700; color:#0f172a;">${{ number_format($mov->saldo_despues, 0, ',', '.') }}</td>
-                        <td style="color:#475569; font-size:0.75rem;">
-                            {{ $mov->observacion ?: '-' }}
-                            @if($mov->soporte_path)
-                                <div style="margin-top: 0.2rem;">
-                                    <a href="{{ route('finanzas.prestamos.movimiento.descargar-soporte', $mov->id) }}" target="_blank" class="badge-info" style="font-size:0.65rem; padding: 0.05rem 0.25rem;">
-                                        📄 Soporte
-                                    </a>
-                                </div>
+                            @if($fila['clase'] === 'pago')
+                                <span class="mov-tipo-tag abono_interes">💵 Pago</span>
+                                @if($fila['reancla'])
+                                    <span title="El pago cubrió todo el interés corrido: el próximo corte es un mes después de esta fecha" style="font-size:0.62rem; color:#2563eb; font-weight:700; display:block; margin-top:0.2rem;">↻ ciclo reiniciado</span>
+                                @endif
+                            @else
+                                <span class="mov-tipo-tag {{ $fila['tipo'] }}">
+                                    {{ match($fila['tipo']) {
+                                        'desembolso' => 'Desembolso',
+                                        'interes_mensual' => 'Corte de Interés',
+                                        'capitalizacion' => 'Capitalización',
+                                        default => $fila['tipo'],
+                                    } }}
+                                </span>
                             @endif
                         </td>
-                        <td style="text-align:center;">
-                            <button @click="movEditar = { id: {{ $mov->id }}, fecha: '{{ $mov->fecha }}', monto: {{ $mov->monto }}, observacion: '{{ addslashes($mov->observacion ?? '') }}', soporte_path: '{{ $mov->soporte_path }}' }; openEditarMov = true" 
-                                    class="badge-info" 
-                                    style="border:none; cursor:pointer; padding: 0.2rem 0.4rem; background: rgba(59,130,246,0.08); color: var(--azul-btn);">
-                                ✏️ Editar
-                            </button>
+                        <td style="text-align:right; font-weight:700; color:#ef4444;">
+                            @if($fila['cargo'] > 0)
+                                ${{ number_format($fila['cargo'], 0, ',', '.') }}
+                                @if($fila['dias'])
+                                    <small style="display:block; font-weight:500; color:#94a3b8; font-size:0.62rem;">{{ $fila['dias'] }} días</small>
+                                @endif
+                            @else
+                                <span style="color:#cbd5e1; font-weight:400;">—</span>
+                            @endif
+                        </td>
+                        <td style="text-align:right; font-weight:700; color:#16a34a;">
+                            @if($fila['abono_interes'] > 0)
+                                ${{ number_format($fila['abono_interes'], 0, ',', '.') }}
+                            @else
+                                <span style="color:#cbd5e1; font-weight:400;">—</span>
+                            @endif
+                        </td>
+                        <td style="text-align:right; font-weight:700; color:#15803d;">
+                            @if($fila['abono_capital'] > 0)
+                                ${{ number_format($fila['abono_capital'], 0, ',', '.') }}
+                            @else
+                                <span style="color:#cbd5e1; font-weight:400;">—</span>
+                            @endif
+                        </td>
+                        <td style="text-align:right; font-weight:700; color:#0f172a;">${{ number_format($fila['saldo_despues'], 0, ',', '.') }}</td>
+                        <td style="color:#475569; font-size:0.75rem;">
+                            {{ $fila['observacion'] ?: '-' }}
+                            <div style="margin-top:0.25rem; display:flex; gap:0.3rem; flex-wrap:wrap; align-items:center;">
+                                @if($fila['soporte_path'])
+                                    @php $movSoporte = collect($fila['movimientos'])->firstWhere('soporte_path', $fila['soporte_path']); @endphp
+                                    @if($movSoporte)
+                                        <a href="{{ route('finanzas.prestamos.movimiento.descargar-soporte', $movSoporte->id) }}" target="_blank" class="badge-info" style="font-size:0.65rem; padding: 0.05rem 0.25rem;">📄 Soporte</a>
+                                    @endif
+                                @endif
+                                @foreach($fila['movimientos'] as $mov)
+                                    <button @click="movEditar = { id: {{ $mov->id }}, fecha: '{{ $mov->fecha }}', monto: {{ $mov->monto }}, observacion: '{{ addslashes($mov->observacion ?? '') }}', soporte_path: '{{ $mov->soporte_path }}' }; openEditarMov = true"
+                                            class="badge-info"
+                                            style="border:none; cursor:pointer; padding: 0.15rem 0.35rem; font-size:0.62rem; background: rgba(59,130,246,0.08); color: var(--azul-btn);">
+                                        ✏️ {{ count($fila['movimientos']) > 1 ? match($mov->tipo) {
+                                            'interes_proporcional' => 'Interés',
+                                            'abono_interes' => 'Ab. Int.',
+                                            'abono_capital' => 'Ab. Cap.',
+                                            default => 'Editar',
+                                        } : 'Editar' }}
+                                    </button>
+                                @endforeach
+                            </div>
                         </td>
                     </tr>
                 @empty
@@ -312,8 +336,9 @@
                         <label class="form-label-bx">Monto Recibido ($ COP)</label>
                         <input type="number" name="monto" x-ref="montoAbono" placeholder="Ej: 200000" class="form-input-bx" required min="1" autocomplete="off">
                         <small style="color:#64748b; font-size:0.7rem; display:block; margin-top:0.25rem;">
-                            El pago cubre primero los intereses ya liquidados, luego el interés causado por los días
-                            corridos del capital que se abona, y el resto baja capital.
+                            El pago cubre primero todo el interés corrido a la fecha y el resto baja capital.
+                            Si alcanza a cubrir el interés completo, el ciclo se reinicia: el próximo corte
+                            queda un mes después de este pago.
                         </small>
                     </div>
 
@@ -376,137 +401,6 @@
                 <div class="modal-foot-bx">
                     <button type="button" @click="openAbono = false" class="btn-glass-bx">Cancelar</button>
                     <button type="submit" class="btn-fin success" style="background:#16a34a;">Registrar Pago</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    {{-- Modal Liquidar Intereses Manual --}}
-    <div x-show="openLiquidar" class="modal-overlay-bx" @click.self="openLiquidar = false" x-cloak
-         x-data="{
-            fechaDesde: '{{ $prestamo->ultimo_corte ?: $prestamo->fecha_desembolso }}',
-            fechaHasta: '{{ now()->toDateString() }}',
-            diaCobro: {{ (int) \Carbon\Carbon::parse($prestamo->fecha_desembolso)->day }},
-            meses: [],
-            /* Mismo cálculo que siguienteCorte() en PrestamoLiquidacionService: el corte cae el
-               mismo día de cada mes y, si ese día no existe, en el último día del mes. */
-            siguienteCorte(desde) {
-                let diasMes = new Date(desde.getFullYear(), desde.getMonth() + 1, 0).getDate();
-                let dia = desde.getDate();
-                let mesBase = new Date(desde.getFullYear(), desde.getMonth(), 1);
-                if (dia === diasMes && this.diaCobro > dia) {
-                    dia = this.diaCobro;
-                } else if (dia <= 3 && this.diaCobro >= 29) {
-                    mesBase = new Date(desde.getFullYear(), desde.getMonth() - 1, 1);
-                    dia = this.diaCobro;
-                }
-                let sig = new Date(mesBase.getFullYear(), mesBase.getMonth() + 1, 1);
-                let diasSig = new Date(sig.getFullYear(), sig.getMonth() + 1, 0).getDate();
-                sig.setDate(Math.min(dia, diasSig));
-                return sig;
-            },
-            calcularMeses() {
-                if (!this.fechaDesde || !this.fechaHasta) {
-                    this.meses = [];
-                    return;
-                }
-                let start = new Date(this.fechaDesde + 'T00:00:00');
-                let end = new Date(this.fechaHasta + 'T00:00:00');
-
-                if (start >= end) {
-                    this.meses = [];
-                    return;
-                }
-
-                let result = [];
-                let current = new Date(start);
-
-                while (true) {
-                    let next = this.siguienteCorte(current);
-                    if (next > end) {
-                        break;
-                    }
-                    
-                    let label = next.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
-                    label = label.charAt(0).toUpperCase() + label.slice(1);
-                    
-                    let yyyy = next.getFullYear();
-                    let mm = String(next.getMonth() + 1).padStart(2, '0');
-                    let dd = String(next.getDate()).padStart(2, '0');
-                    let fechaStr = `${yyyy}-${mm}-${dd}`;
-                    
-                    result.push({
-                        fecha: fechaStr,
-                        label: label,
-                        seleccionado: true
-                    });
-                    current = next;
-                }
-                
-                let diffMs = end - current;
-                let diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-                if (diffDays > 0) {
-                    let yyyy = end.getFullYear();
-                    let mm = String(end.getMonth() + 1).padStart(2, '0');
-                    let dd = String(end.getDate()).padStart(2, '0');
-                    let fechaStr = `${yyyy}-${mm}-${dd}`;
-                    result.push({
-                        fecha: fechaStr,
-                        label: `Fracción de ${diffDays} días (hasta ${end.toLocaleDateString('es-ES')})`,
-                        seleccionado: true,
-                        esFraccion: true
-                    });
-                }
-                
-                this.meses = result;
-            }
-         }"
-         x-init="$watch('openLiquidar', val => { if(val) { calcularMeses(); } }); $watch('fechaDesde', () => calcularMeses()); $watch('fechaHasta', () => calcularMeses());"
-    >
-        <div class="modal-box-bx" style="max-width: 480px;">
-            <div class="modal-head-bx">
-                <h3>⚙️ Liquidar Intereses Manual</h3>
-                <button @click="openLiquidar = false" class="modal-close-bx">&times;</button>
-            </div>
-            <form action="{{ route('finanzas.prestamos.liquidar', $prestamo->id) }}" method="POST">
-                @csrf
-                <div class="modal-body-bx">
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-bottom:1rem;">
-                        <div class="form-group-bx">
-                            <label class="form-label-bx">Fecha Desde</label>
-                            <input type="date" name="fecha_desde" x-model="fechaDesde" class="form-input-bx" required>
-                        </div>
-                        <div class="form-group-bx">
-                            <label class="form-label-bx">Fecha Hasta</label>
-                            <input type="date" name="fecha_hasta" x-model="fechaHasta" class="form-input-bx" required>
-                        </div>
-                    </div>
-                    
-                    <div class="form-group-bx" style="margin-top:0.75rem;" x-show="meses.length > 0">
-                        <label class="form-label-bx" style="margin-bottom:0.4rem; display:block;">Periodos a Liquidar:</label>
-                        <div style="max-height: 200px; overflow-y: auto; border: 1px solid #cbd5e1; border-radius: 10px; padding: 0.25rem 0.5rem; background: #f8fafc;">
-                            <template x-for="(mes, idx) in meses" :key="idx">
-                                <div style="display:flex; align-items:center; justify-content:space-between; padding:0.4rem 0.5rem; border-bottom: 1px solid #f1f5f9;">
-                                    <div style="display:flex; align-items:center; gap:0.5rem;">
-                                        <input type="checkbox" :id="'chk_' + idx" x-model="mes.seleccionado" class="form-checkbox-bx">
-                                        <label :for="'chk_' + idx" style="font-size:0.8rem; color:#334155; cursor:pointer;" x-text="mes.label"></label>
-                                    </div>
-                                    <!-- Si el checkbox no está seleccionado, se envía la fecha en meses_excluidos[] -->
-                                    <input type="hidden" name="meses_excluidos[]" :value="mes.fecha" :disabled="mes.seleccionado">
-                                </div>
-                            </template>
-                        </div>
-                        <small style="color:#64748b; font-size:0.7rem; display:block; margin-top:0.4rem;">
-                            Desmarca los meses en los que no cobrarás intereses. Los intereses de los meses marcados se capitalizarán.
-                        </small>
-                    </div>
-                    <div x-show="meses.length === 0" style="padding:1rem; text-align:center; background:#fee2e2; color:#991b1b; border-radius:8px; font-size:0.8rem; font-weight:600; margin-top:0.75rem;">
-                        ⚠️ Rango de fechas inválido o menor a 1 día de diferencia.
-                    </div>
-                </div>
-                <div class="modal-foot-bx">
-                    <button type="button" @click="openLiquidar = false" class="btn-glass-bx">Cancelar</button>
-                    <button type="submit" class="btn-fin success" :disabled="meses.length === 0">Ejecutar Liquidación</button>
                 </div>
             </form>
         </div>

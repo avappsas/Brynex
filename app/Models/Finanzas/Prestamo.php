@@ -58,6 +58,7 @@ class Prestamo extends BaseFinanzasModel
         'tasa_interes_mensual',
         'fecha_desembolso',
         'ultimo_corte',
+        'dia_cobro',
         'saldo_actual',
         'estado', // activo | pagado | mora | castigado
         'dias_mora_alerta',
@@ -78,6 +79,7 @@ class Prestamo extends BaseFinanzasModel
         'monto_original' => 'float',
         'tasa_interes_mensual' => 'float',
         'saldo_actual' => 'float',
+        'dia_cobro' => 'integer',
         'dias_mora_alerta' => 'integer',
         'alertas_activas' => 'boolean',
         'aviso_previo_enviado_para' => 'date',

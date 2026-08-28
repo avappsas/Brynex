@@ -174,12 +174,100 @@ class PrestamoController extends Controller
             ? $this->liquidacionService->calcularCierre($prestamo)
             : null;
 
+        // Un pago genera hasta tres movimientos (interés del ciclo, abono a interés, abono a
+        // capital); el historial los muestra como una sola fila
+        $historial = $this->agruparHistorial($prestamo->movimientos);
+
         // Vista optimizada para dispositivos móviles
         if ($this->isMobileDevice(request())) {
-            return view('finanzas.prestamos.show_movil', compact('prestamo', 'cuentas', 'cierre'));
+            return view('finanzas.prestamos.show_movil', compact('prestamo', 'cuentas', 'cierre', 'historial'));
         }
 
-        return view('finanzas.prestamos.show', compact('prestamo', 'cuentas', 'cierre'));
+        return view('finanzas.prestamos.show', compact('prestamo', 'cuentas', 'cierre', 'historial'));
+    }
+
+    /**
+     * Agrupa los movimientos en filas de historial: los cargos (desembolsos, cortes,
+     * capitalizaciones) son filas propias, y las partes de un mismo pago (interés del
+     * ciclo + abono a interés + abono a capital) se funden en una sola.
+     */
+    private function agruparHistorial($movimientos): array
+    {
+        $observacionesPorDefecto = ['Abono a intereses acumulados.', 'Abono a capital.'];
+        $filas = [];
+        $idx = -1; // fila de pago abierta
+
+        foreach ($movimientos->sortBy([['fecha', 'asc'], ['id', 'asc']])->values() as $mov) {
+            $esParteDePago = in_array($mov->tipo, ['interes_proporcional', 'abono_interes', 'abono_capital', 'pago_total']);
+
+            if (! $esParteDePago) {
+                $idx = -1;
+                $filas[] = [
+                    'clase' => 'cargo',
+                    'tipo' => $mov->tipo,
+                    'fecha' => $mov->fecha,
+                    'cargo' => (float) $mov->monto,
+                    'abono_interes' => 0.00,
+                    'abono_capital' => 0.00,
+                    'saldo_despues' => (float) $mov->saldo_despues,
+                    'dias' => $mov->dias_periodo,
+                    'observacion' => $mov->observacion,
+                    'soporte_path' => $mov->soporte_path,
+                    'reancla' => false,
+                    'movimientos' => [$mov],
+                ];
+
+                continue;
+            }
+
+            // Un interés de ciclo siempre abre un pago nuevo; un tipo repetido o un cambio
+            // de fecha también (dos pagos el mismo día quedan separados)
+            $abre = $idx < 0
+                || $filas[$idx]['fecha'] !== $mov->fecha
+                || $mov->tipo === 'interes_proporcional'
+                || ($mov->tipo === 'abono_interes' && $filas[$idx]['abono_interes'] > 0)
+                || (in_array($mov->tipo, ['abono_capital', 'pago_total']) && $filas[$idx]['abono_capital'] > 0);
+
+            if ($abre) {
+                $filas[] = [
+                    'clase' => 'pago',
+                    'tipo' => 'pago',
+                    'fecha' => $mov->fecha,
+                    'cargo' => 0.00,
+                    'abono_interes' => 0.00,
+                    'abono_capital' => 0.00,
+                    'saldo_despues' => (float) $mov->saldo_despues,
+                    'dias' => null,
+                    'observacion' => null,
+                    'soporte_path' => null,
+                    'reancla' => false,
+                    'movimientos' => [],
+                ];
+                $idx = count($filas) - 1;
+            }
+
+            if ($mov->tipo === 'interes_proporcional') {
+                $filas[$idx]['cargo'] += (float) $mov->monto;
+                $filas[$idx]['dias'] = $mov->dias_periodo;
+                $filas[$idx]['reancla'] = str_starts_with((string) $mov->observacion, PrestamoLiquidacionService::MARCA_REANCLA);
+            } elseif ($mov->tipo === 'abono_interes') {
+                $filas[$idx]['abono_interes'] += (float) $mov->monto;
+            } else {
+                $filas[$idx]['abono_capital'] += (float) $mov->monto;
+            }
+
+            if ($mov->tipo !== 'interes_proporcional') {
+                if (! $filas[$idx]['observacion'] && ! in_array($mov->observacion, $observacionesPorDefecto)) {
+                    $filas[$idx]['observacion'] = $mov->observacion;
+                }
+                $filas[$idx]['soporte_path'] = $filas[$idx]['soporte_path'] ?: $mov->soporte_path;
+            }
+
+            $filas[$idx]['saldo_despues'] = (float) $mov->saldo_despues;
+            $filas[$idx]['movimientos'][] = $mov;
+        }
+
+        return array_reverse($filas);
     }
 
     /**
@@ -262,7 +350,13 @@ class PrestamoController extends Controller
 
             if (! empty($res['interes_fraccion'])) {
                 $detalle .= ' Incluye $'.number_format($res['interes_fraccion'], 0, ',', '.')
-                    .' de interés causado por los días corridos del capital abonado.';
+                    .' de interés por los días corridos del ciclo.';
+            }
+
+            if (! empty($res['reanclado']) && $res['nuevo_saldo'] > 0) {
+                $prestamo->refresh();
+                $detalle .= ' El ciclo se reinició: próximo corte el '
+                    .$this->liquidacionService->proximoCorte($prestamo)->format('d/m/Y').'.';
             }
 
             return redirect()->route('finanzas.prestamos.show', $prestamo->id)->with('success', $detalle);
@@ -337,25 +431,6 @@ class PrestamoController extends Controller
         }
 
         return redirect()->route('finanzas.prestamos.show', $prestamo->id)->with('error', $res['message']);
-    }
-
-    /**
-     * Realiza el corte y liquidación mensual de intereses manualmente a la fecha seleccionada.
-     */
-    public function liquidarMes(Request $request, $id)
-    {
-        $prestamo = Prestamo::where('user_id', Auth::id())->findOrFail($id);
-
-        $fechaDesde = $request->input('fecha_desde', $prestamo->ultimo_corte);
-        $fechaHasta = $request->input('fecha_hasta', now()->toDateString());
-
-        $mesesExcluidos = $request->input('meses_excluidos', []);
-
-        $interes = $this->liquidacionService->liquidarPeriodo($prestamo, $fechaDesde, $fechaHasta, $mesesExcluidos);
-        $this->invalidarCacheFinanzas();
-
-        return redirect()->route('finanzas.prestamos.show', $prestamo->id)
-            ->with('success', "Liquidación ejecutada. Intereses liquidados e incorporados al saldo: \${$interes}");
     }
 
     /**
@@ -546,6 +621,7 @@ class PrestamoController extends Controller
         $saldo = 0.00;
         $capital = 0.00;
         $ultimoCorteFecha = null;
+        $diaCobroReancla = null;
 
         foreach ($movimientos as $mov) {
             $mov->saldo_antes = $saldo;
@@ -569,10 +645,15 @@ class PrestamoController extends Controller
             $mov->save();
             $saldo = $mov->saldo_despues;
 
-            // Sólo los cortes mensuales mueven la fecha de corte. El interés proporcional de un abono
-            // se cobra dentro del ciclo abierto y no lo reinicia.
+            // Mueven la fecha de corte: los cortes mensuales y los pagos que liquidaron el
+            // ciclo completo (llevan la marca de re-anclaje). El interés proporcional de un
+            // abono parcial se cobra dentro del ciclo abierto y no lo reinicia.
             if ($mov->tipo === 'interes_mensual') {
                 $ultimoCorteFecha = $mov->fecha;
+            } elseif ($mov->tipo === 'interes_proporcional'
+                && str_starts_with((string) $mov->observacion, PrestamoLiquidacionService::MARCA_REANCLA)) {
+                $ultimoCorteFecha = $mov->fecha;
+                $diaCobroReancla = (int) \Carbon\Carbon::parse($mov->fecha)->day;
             }
         }
 
@@ -585,12 +666,20 @@ class PrestamoController extends Controller
         // Si no existen movimientos de intereses mensuales, el corte vuelve a la fecha de desembolso.
         $corteVigente = $ultimoCorteFecha ?: $prestamo->fecha_desembolso;
 
-        $prestamo->update([
+        $cambios = [
             'saldo_actual' => $saldo,
             'monto_original' => $saldo <= 0 ? 0.00 : round(min($capital, $saldo), 2),
             'ultimo_corte' => $corteVigente,
             'estado' => $estadoCalculado,
-        ]);
+        ];
+
+        // El día de cobro solo se toca si hubo un re-anclaje: los cortes mensuales pueden
+        // caer en el último día de un mes corto sin que eso cambie el día real de cobro.
+        if ($diaCobroReancla !== null) {
+            $cambios['dia_cobro'] = $diaCobroReancla;
+        }
+
+        $prestamo->update($cambios);
     }
 
     /**

@@ -158,7 +158,7 @@
 @endphp
 
 <body x-data="{
-    openAbono:false, openLiquidar:false, openAnexar:false, openMov:false, openNoTelefono:false,
+    openAbono:false, openAnexar:false, openMov:false, openNoTelefono:false,
     mov:{id:null,fecha:'',monto:0,obs:'',soporte:''},
     pvAbono:null, pvAnexar:null,
     fileAbono(e){ const f=e.target.files[0]; this.pvAbono = f&&f.type.startsWith('image/') ? URL.createObjectURL(f) : null; },
@@ -319,9 +319,6 @@
             <button @click="openAbono=true" class="btn-acc green">
                 <i class="fas fa-dollar-sign"></i>Registrar Abono
             </button>
-            <button @click="openLiquidar=true" class="btn-acc blue">
-                <i class="fas fa-calculator"></i>Liquidar Intereses
-            </button>
             <button @click="openAnexar=true" class="btn-acc orange">
                 <i class="fas fa-plus-circle"></i>Anexar Capital
             </button>
@@ -356,40 +353,43 @@
         @endif
 
         <!-- HISTORIAL -->
-        <p class="sec-title" style="margin-top:.5rem">📜 Historial ({{ $prestamo->movimientos->count() }} movimientos)</p>
+        <p class="sec-title" style="margin-top:.5rem">📜 Historial ({{ count($historial) }} movimientos)</p>
         <div class="mov-list">
-            @forelse($prestamo->movimientos as $m)
+            @forelse($historial as $f)
             @php
-                $isAbono = in_array($m->tipo, ['abono_interes','abono_capital','pago_total']);
-                $isCargo = in_array($m->tipo, ['interes_mensual','interes_proporcional','capitalizacion','desembolso']);
-                $cColor  = $isAbono ? 'c-green' : ($isCargo ? 'c-red' : 'c-gray');
-                $dotC    = $isAbono ? '#10b981' : ($isCargo ? '#f43f5e' : '#94a3b8');
-                $sig     = $isAbono ? '+' : '-';
-                $label   = match($m->tipo) {
-                    'desembolso'      => 'Capital Inicial',
-                    'interes_mensual' => 'Liq. Interés',
-                    'interes_proporcional' => 'Interés x Días',
-                    'capitalizacion'  => 'Capitalización',
-                    'abono_interes'   => 'Abono Interés',
-                    'abono_capital'   => 'Abono Capital',
-                    'pago_total'      => 'Pago Total',
-                    default           => $m->tipo
-                };
+                $esPago = $f['clase'] === 'pago';
+                $dotC = $esPago ? '#10b981' : ($f['tipo'] === 'desembolso' ? '#94a3b8' : '#f43f5e');
+                $label = $esPago
+                    ? ('Pago'.($f['reancla'] ? ' ↻' : ''))
+                    : match($f['tipo']) {
+                        'desembolso'      => 'Desembolso',
+                        'interes_mensual' => 'Corte de Interés',
+                        'capitalizacion'  => 'Capitalización',
+                        default           => $f['tipo'],
+                    };
+                $claseTag = $esPago ? 'abono_interes' : $f['tipo'];
+                $monto = $esPago ? $f['abono_interes'] + $f['abono_capital'] : $f['cargo'];
+                $movs = collect($f['movimientos']);
+                $principal = $movs->firstWhere('tipo', 'abono_capital') ?? $movs->firstWhere('tipo', 'abono_interes') ?? $movs->first();
             @endphp
             <div class="mov-item"
-                 @click="mov={id:{{ $m->id }},fecha:'{{ $m->fecha }}',monto:{{ $m->monto }},obs:'{{ addslashes($m->observacion ?? '') }}',soporte:'{{ $m->soporte_path ?? '' }}'}; openMov=true">
+                 @click="mov={id:{{ $principal->id }},fecha:'{{ $principal->fecha }}',monto:{{ $principal->monto }},obs:'{{ addslashes($principal->observacion ?? '') }}',soporte:'{{ $principal->soporte_path ?? '' }}'}; openMov=true">
                 <div class="mov-dot" style="background:{{ $dotC }}"></div>
                 <div class="mov-info">
-                    <div class="mov-tipo"><span class="btype {{ $m->tipo }}">{{ $label }}</span></div>
+                    <div class="mov-tipo"><span class="btype {{ $claseTag }}">{{ $label }}</span></div>
                     <div class="mov-obs">
-                        {{ $m->observacion ?: '—' }}
-                        @if($m->soporte_path)<span style="color:var(--azul);font-size:.62rem"> · 📎</span>@endif
+                        @if($esPago)
+                            @if($f['cargo'] > 0)Interés {{ $f['dias'] }}d ${{ number_format($f['cargo'], 0, ',', '.') }} · @endif Int ${{ number_format($f['abono_interes'], 0, ',', '.') }} · Cap ${{ number_format($f['abono_capital'], 0, ',', '.') }}
+                        @else
+                            {{ $f['observacion'] ?: '—' }}
+                        @endif
+                        @if($f['soporte_path'])<span style="color:var(--azul);font-size:.62rem"> · 📎</span>@endif
                     </div>
                 </div>
                 <div class="mov-right">
-                    <div class="mov-monto {{ $cColor }}">{{ $sig }}${{ number_format($m->monto, 0, ',', '.') }}</div>
-                    <div class="mov-date">{{ \Carbon\Carbon::parse($m->fecha)->format('d/m/Y') }}</div>
-                    <div class="mov-saldo">Saldo: ${{ number_format($m->saldo_despues, 0, ',', '.') }}</div>
+                    <div class="mov-monto {{ $esPago ? 'c-green' : 'c-red' }}">{{ $esPago ? '+' : '-' }}${{ number_format($monto, 0, ',', '.') }}</div>
+                    <div class="mov-date">{{ \Carbon\Carbon::parse($f['fecha'])->format('d/m/Y') }}</div>
+                    <div class="mov-saldo">Saldo: ${{ number_format($f['saldo_despues'], 0, ',', '.') }}</div>
                 </div>
             </div>
             @empty
@@ -415,7 +415,7 @@
                 <div class="fg">
                     <label>Monto Recibido ($ COP)</label>
                     <input type="number" name="monto" x-ref="montoAbono" placeholder="Ej: 200000" required min="1" autocomplete="off">
-                    <small>Cubre primero los intereses liquidados, luego el interés por los días corridos del capital abonado, y el resto baja capital.</small>
+                    <small>Cubre primero todo el interés corrido y el resto baja capital. Si paga el interés completo, el próximo corte queda un mes después de este pago.</small>
                 </div>
                 @if(!empty($cierre))
                 <div style="border:1px solid #bbf7d0; background:#f0fdf4; border-radius:10px; padding:.6rem .7rem; margin-bottom:.8rem;">
@@ -460,134 +460,6 @@
                 <div class="bs-actions">
                     <button type="button" @click="openAbono=false" class="btn-cancel">Cancelar</button>
                     <button type="submit" class="btn-ok green">Registrar Pago</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- ===== BOTTOM SHEET: Liquidar ===== -->
-    <div x-show="openLiquidar" class="bs-overlay" @click.self="openLiquidar=false" x-cloak
-         x-data="{
-            fechaDesde: '{{ $prestamo->ultimo_corte ?: $prestamo->fecha_desembolso }}',
-            fechaHasta: '{{ now()->toDateString() }}',
-            diaCobro: {{ (int) \Carbon\Carbon::parse($prestamo->fecha_desembolso)->day }},
-            meses: [],
-            /* Mismo cálculo que siguienteCorte() en PrestamoLiquidacionService: el corte cae el
-               mismo día de cada mes y, si ese día no existe, en el último día del mes. */
-            siguienteCorte(desde) {
-                let diasMes = new Date(desde.getFullYear(), desde.getMonth() + 1, 0).getDate();
-                let dia = desde.getDate();
-                let mesBase = new Date(desde.getFullYear(), desde.getMonth(), 1);
-                if (dia === diasMes && this.diaCobro > dia) {
-                    dia = this.diaCobro;
-                } else if (dia <= 3 && this.diaCobro >= 29) {
-                    mesBase = new Date(desde.getFullYear(), desde.getMonth() - 1, 1);
-                    dia = this.diaCobro;
-                }
-                let sig = new Date(mesBase.getFullYear(), mesBase.getMonth() + 1, 1);
-                let diasSig = new Date(sig.getFullYear(), sig.getMonth() + 1, 0).getDate();
-                sig.setDate(Math.min(dia, diasSig));
-                return sig;
-            },
-            calcularMeses() {
-                if (!this.fechaDesde || !this.fechaHasta) {
-                    this.meses = [];
-                    return;
-                }
-                let start = new Date(this.fechaDesde + 'T00:00:00');
-                let end = new Date(this.fechaHasta + 'T00:00:00');
-
-                if (start >= end) {
-                    this.meses = [];
-                    return;
-                }
-
-                let result = [];
-                let current = new Date(start);
-
-                while (true) {
-                    let next = this.siguienteCorte(current);
-                    if (next > end) {
-                        break;
-                    }
-                    
-                    let label = next.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
-                    label = label.charAt(0).toUpperCase() + label.slice(1);
-                    
-                    let yyyy = next.getFullYear();
-                    let mm = String(next.getMonth() + 1).padStart(2, '0');
-                    let dd = String(next.getDate()).padStart(2, '0');
-                    let fechaStr = `${yyyy}-${mm}-${dd}`;
-                    
-                    result.push({
-                        fecha: fechaStr,
-                        label: label,
-                        seleccionado: true
-                    });
-                    current = next;
-                }
-                
-                let diffMs = end - current;
-                let diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-                if (diffDays > 0) {
-                    let yyyy = end.getFullYear();
-                    let mm = String(end.getMonth() + 1).padStart(2, '0');
-                    let dd = String(end.getDate()).padStart(2, '0');
-                    let fechaStr = `${yyyy}-${mm}-${dd}`;
-                    result.push({
-                        fecha: fechaStr,
-                        label: `Fracc. de ${diffDays} días (hasta ${end.toLocaleDateString('es-ES')})`,
-                        seleccionado: true,
-                        esFraccion: true
-                    });
-                }
-                
-                this.meses = result;
-            }
-         }"
-         x-init="$watch('openLiquidar', val => { if(val) { calcularMeses(); } }); $watch('fechaDesde', () => calcularMeses()); $watch('fechaHasta', () => calcularMeses());"
-    >
-        <div class="bs-box">
-            <div class="bs-handle"></div>
-            <div class="bs-head">
-                <h3>⚙️ Liquidar Intereses</h3>
-                <button @click="openLiquidar=false" class="bs-close">&times;</button>
-            </div>
-            <form action="{{ route('finanzas.prestamos.liquidar', $prestamo->id) }}" method="POST" class="bs-body">
-                @csrf
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin-bottom:0.75rem;">
-                    <div class="fg">
-                        <label style="font-size:0.75rem;">Fecha Desde</label>
-                        <input type="date" name="fecha_desde" x-model="fechaDesde" required style="font-size:0.85rem; padding:0.4rem;">
-                    </div>
-                    <div class="fg">
-                        <label style="font-size:0.75rem;">Fecha Hasta</label>
-                        <input type="date" name="fecha_hasta" x-model="fechaHasta" required style="font-size:0.85rem; padding:0.4rem;">
-                    </div>
-                </div>
-                
-                <div class="fg" x-show="meses.length > 0" style="margin-top:0.5rem;">
-                    <label style="font-size:0.75rem; margin-bottom:0.3rem;">Periodos a Liquidar:</label>
-                    <div style="max-height: 160px; overflow-y: auto; border: 1px solid #cbd5e1; border-radius: 10px; padding: 0.25rem 0.5rem; background: #f8fafc;">
-                        <template x-for="(mes, idx) in meses" :key="idx">
-                            <div style="display:flex; align-items:center; justify-content:space-between; padding:0.35rem 0.5rem; border-bottom: 1px solid #f1f5f9;">
-                                <div style="display:flex; align-items:center; gap:0.5rem;">
-                                    <input type="checkbox" :id="'chk_mob_' + idx" x-model="mes.seleccionado" style="width:16px; height:16px;">
-                                    <label :for="'chk_mob_' + idx" style="font-size:0.75rem; color:#334155;" x-text="mes.label"></label>
-                                </div>
-                                <input type="hidden" name="meses_excluidos[]" :value="mes.fecha" :disabled="mes.seleccionado">
-                            </div>
-                        </template>
-                    </div>
-                </div>
-                
-                <div x-show="meses.length === 0" style="padding:0.75rem; text-align:center; background:#fee2e2; color:#991b1b; border-radius:8px; font-size:0.75rem; font-weight:600; margin-bottom:0.75rem;">
-                    ⚠️ Rango inválido o menor a 1 día de diferencia.
-                </div>
-                
-                <div class="bs-actions" style="margin-top:0.75rem;">
-                    <button type="button" @click="openLiquidar=false" class="btn-cancel">Cancelar</button>
-                    <button type="submit" class="btn-ok blue" :disabled="meses.length === 0">Ejecutar Liquidación</button>
                 </div>
             </form>
         </div>

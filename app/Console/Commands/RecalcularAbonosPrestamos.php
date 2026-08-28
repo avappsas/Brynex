@@ -24,7 +24,8 @@ class RecalcularAbonosPrestamos extends Command
 {
     protected $signature = 'finanzas:recalcular-abonos
                             {ids* : IDs de los préstamos a reconstruir}
-                            {--apply : Persiste los cambios. Sin esta bandera sólo simula y revierte}';
+                            {--apply : Persiste los cambios. Sin esta bandera sólo simula y revierte}
+                            {--rehacer-cortes : Rehace también los cortes de interés, siempre que los haya generado el motor}';
 
     protected $description = 'Reconstruye préstamos re-aplicando sus abonos con el interés proporcional corregido';
 
@@ -52,8 +53,17 @@ class RecalcularAbonosPrestamos extends Command
             $movimientos = $prestamo->movimientos()->orderBy('fecha')->orderBy('id')->get();
 
             $cortes = $movimientos->whereIn('tipo', ['interes_mensual', 'interes_proporcional', 'capitalizacion']);
-            if ($cortes->isNotEmpty()) {
-                $this->error("  {$prestamo->nombre_deudor}: tiene {$cortes->count()} movimiento(s) de interés ya registrados. Se omite para no perder ajustes manuales.");
+            $rehacerCortes = (bool) $this->option('rehacer-cortes');
+
+            if ($cortes->isNotEmpty() && ! $rehacerCortes) {
+                $this->error("  {$prestamo->nombre_deudor}: tiene {$cortes->count()} movimiento(s) de interés ya registrados. Se omite para no perder ajustes manuales. Use --rehacer-cortes si los generó el motor.");
+
+                continue;
+            }
+
+            $ajenos = $cortes->reject(fn ($m) => $this->esCorteDelMotor($m));
+            if ($ajenos->isNotEmpty()) {
+                $this->error("  {$prestamo->nombre_deudor}: tiene {$ajenos->count()} movimiento(s) de interés que no generó el motor (importados o ajustados a mano). Se omite; hay que revisarlo contra la planilla del deudor.");
 
                 continue;
             }
@@ -65,7 +75,7 @@ class RecalcularAbonosPrestamos extends Command
             $conn->beginTransaction();
 
             try {
-                $this->reconstruir($prestamo, $movimientos, $liquidacion);
+                $this->reconstruir($prestamo, $movimientos, $liquidacion, $rehacerCortes);
 
                 $prestamo->refresh();
                 $this->info('  DESPUÉS: capital $'.number_format($prestamo->monto_original, 2).' · saldo $'.number_format($prestamo->saldo_actual, 2)." · estado {$prestamo->estado}");
@@ -102,7 +112,7 @@ class RecalcularAbonosPrestamos extends Command
     /**
      * Borra el historial y lo vuelve a construir movimiento por movimiento en orden cronológico.
      */
-    private function reconstruir(Prestamo $prestamo, $movimientos, PrestamoLiquidacionService $liquidacion): void
+    private function reconstruir(Prestamo $prestamo, $movimientos, PrestamoLiquidacionService $liquidacion, bool $rehacerCortes = false): void
     {
         PrestamoMovimiento::where('prestamo_id', $prestamo->id)->delete();
 
@@ -113,7 +123,11 @@ class RecalcularAbonosPrestamos extends Command
             'estado' => 'activo',
         ]);
 
-        foreach ($this->agruparPagos($movimientos) as $paso) {
+        // Sólo se re-aplican los hechos reales (plata que entró o salió). Los cortes de interés
+        // no se re-aplican: se regeneran al final, si se pidió rehacerlos.
+        $eventos = $movimientos->whereIn('tipo', ['desembolso', 'abono_interes', 'abono_capital', 'pago_total']);
+
+        foreach ($this->agruparPagos($eventos) as $paso) {
             if ($paso['tipo'] === 'desembolso') {
                 $liquidacion->registrarDesembolsoAdicional(
                     $prestamo,
@@ -143,6 +157,29 @@ class RecalcularAbonosPrestamos extends Command
 
             $prestamo->refresh();
         }
+
+        if ($rehacerCortes) {
+            // Regenerar los cortes mensuales vencidos, ya con la liquidación corregida
+            $liquidacion->liquidarPeriodo($prestamo, null, now()->toDateString(), [], true);
+            $prestamo->refresh();
+        }
+    }
+
+    /**
+     * Un corte generado por el motor se reconoce por su observación. Los importados de las
+     * planillas viejas no cuentan: pueden traer ajustes que la reconstrucción perdería.
+     */
+    private function esCorteDelMotor($movimiento): bool
+    {
+        $obs = (string) $movimiento->observacion;
+
+        foreach (['Interés compuesto liquidado', 'Interés proporcional liquidado', 'Interés causado por'] as $marca) {
+            if (str_starts_with($obs, $marca)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -10,6 +10,12 @@ use Illuminate\Support\Facades\DB;
 class PrestamoLiquidacionService
 {
     /**
+     * Prefijo de la observación del movimiento que liquida el ciclo completo en un pago.
+     * `recalcularSaldos` lo usa para saber que en esa fecha el ciclo se reinició.
+     */
+    public const MARCA_REANCLA = 'Liquidación del ciclo al pago';
+
+    /**
      * Realiza la liquidación mensual (corte) de intereses de un préstamo.
      * Si han pasado 30 o más días desde el último corte (o desembolso), se liquida la tasa mensual completa.
      * Si es menos, se calcula proporcionalmente.
@@ -88,7 +94,14 @@ class PrestamoLiquidacionService
         $total = 0.00;
         $ciclos = [];
         $corteIter = $ultimoCorte->copy();
-        $diaCobro = (int) Carbon::parse($prestamo->fecha_desembolso)->day;
+        $diaCobro = $this->diaCobro($prestamo);
+
+        // Capital que entró después del último corte: no debe pagar el mes entero, sólo los
+        // días que alcanzó a estar dentro del ciclo en que cayó.
+        $desembolsosDelTramo = PrestamoMovimiento::where('prestamo_id', $prestamo->id)
+            ->where('tipo', 'desembolso')
+            ->where('fecha', '>', $ultimoCorte->toDateString())
+            ->get(['fecha', 'monto']);
 
         // Iterar mes a mes calendario para mantener el mismo día del mes de cobro
         while ($this->siguienteCorte($corteIter, $diaCobro)->startOfDay()->lte($fechaCorte->copy()->startOfDay())) {
@@ -103,10 +116,16 @@ class PrestamoLiquidacionService
                 continue;
             }
 
-            $interesCiclo = round($saldo * $tasaDecimal, 2);
+            $noDevengado = $this->interesNoDevengado($desembolsosDelTramo, $corteAnterior, $corteIter, $tasaDecimal);
+            $interesCiclo = round($saldo * $tasaDecimal - $noDevengado, 2);
 
             if ($interesCiclo <= 0) {
                 continue;
+            }
+
+            $detalle = "Interés compuesto liquidado por mes calendario completo ({$diasPeriodo} días).";
+            if ($noDevengado > 0) {
+                $detalle .= ' Descuenta $'.number_format($noDevengado, 2).' del capital que entró dentro del ciclo.';
             }
 
             $ciclos[] = [
@@ -115,7 +134,7 @@ class PrestamoLiquidacionService
                 'saldo_antes' => $saldo,
                 'saldo_despues' => $saldo + $interesCiclo,
                 'dias' => $diasPeriodo,
-                'observacion' => "Interés compuesto liquidado por mes calendario completo ({$diasPeriodo} días).",
+                'observacion' => $detalle,
             ];
 
             $saldo += $interesCiclo;
@@ -159,17 +178,18 @@ class PrestamoLiquidacionService
     }
 
     /**
-     * Registra un abono/pago a un préstamo.
+     * Registra un abono/pago a un préstamo. Modelo de saldo insoluto por días:
+     * el interés corre día a día sobre el saldo, y cada pago liquida primero
+     * todo el interés corrido hasta ese día.
      *
-     * El pago se aplica en tres capas, en este orden:
-     *   1. Intereses ya liquidados y pendientes (cortes de meses completos).
-     *   2. Interés causado por los días corridos del ciclo abierto sobre el capital que se retira.
-     *      Sin esto, abonar a mitad de ciclo borraba hacia atrás el interés de esos días: el capital
-     *      bajaba el día del abono pero el interés sólo se causaba al cumplir el mes completo.
-     *   3. Capital.
-     *
-     * La fecha de corte mensual NO se mueve por el abono: el ciclo siguiente se sigue cobrando
-     * el mismo día del mes, ahora sobre el capital ya reducido.
+     * - Si el pago cubre TODO el interés (cortes pendientes + días corridos del ciclo
+     *   abierto), el resto baja capital y el ciclo SE REINICIA en la fecha del pago:
+     *   el próximo corte es un mes después de pagar, sobre el capital que quedó.
+     * - Si no lo cubre, paga primero los intereses ya liquidados; un eventual resto
+     *   baja capital pagando los días corridos de ese capital, y la fecha NO se mueve
+     *   (no se premia pagar menos).
+     * - En cuenta corriente no hay fracciones ni re-anclaje: el interés nace solo al
+     *   cumplirse el mes.
      */
     public function registrarPago(Prestamo $prestamo, float $monto, ?string $fecha = null, ?string $observacion = null, ?string $soportePath = null, ?int $cuentaId = null): array
     {
@@ -191,8 +211,28 @@ class PrestamoLiquidacionService
             $abonoCapital = 0.00;
             $interesFraccion = 0.00;
             $excedente = 0.00;
+            $reanclado = false;
 
-            if ($monto <= $interesesPendientes) {
+            // Interés corrido del ciclo abierto sobre todo el saldo (compuesto dentro del ciclo)
+            $fraccionCiclo = round($saldoAntes * $this->factorFraccion($prestamo, $fechaPago), 2);
+            $interesTotal = $interesesPendientes + $fraccionCiclo;
+
+            if (! $prestamo->es_cuenta_corriente && $monto >= $interesTotal && $interesTotal > 0) {
+                // El pago liquida todo el interés corrido: el ciclo se reinicia hoy
+                $reanclado = true;
+                $interesFraccion = $fraccionCiclo;
+                $abonoInteres = $interesTotal;
+
+                $disponible = $monto - $interesTotal;
+                $abonoCapital = min($disponible, $capitalVigente);
+
+                // Lo que sobre por encima de toda la deuda es rendimiento, no saldo a favor
+                $excedente = round($disponible - $abonoCapital, 2);
+                if ($excedente > 0) {
+                    $interesFraccion += $excedente;
+                    $abonoInteres += $excedente;
+                }
+            } elseif ($monto <= $interesesPendientes) {
                 // El abono no alcanza a cubrir los intereses ya liquidados: no toca capital
                 $abonoInteres = $monto;
             } else {
@@ -206,19 +246,11 @@ class PrestamoLiquidacionService
                 //   disponible = capital + capital * factor  =>  capital = disponible / (1 + factor)
                 $capitalRetirado = $factor > 0 ? round($disponible / (1 + $factor), 2) : $disponible;
 
-                if ($capitalRetirado >= $capitalVigente) {
-                    // El abono alcanza para cerrar el capital completo: se cobra la fracción sobre todo él
-                    $capitalRetirado = $capitalVigente;
-                    $interesFraccion = round($capitalVigente * $factor, 2);
-                    // Lo que sobre por encima de capital + interés causado es rendimiento, no saldo a favor
-                    $excedente = round($disponible - $capitalRetirado - $interesFraccion, 2);
-                    if ($excedente < 0) {
-                        $excedente = 0.00;
-                    }
-                    $interesFraccion += $excedente;
-                } else {
-                    $interesFraccion = round($disponible - $capitalRetirado, 2);
-                }
+                // Caso límite: si el reparto pretende retirar más capital del que existe
+                // (mucho interés capitalizado encima), se cierra el capital y el resto
+                // del disponible queda como abono al interés.
+                $capitalRetirado = min($capitalRetirado, $capitalVigente);
+                $interesFraccion = round($disponible - $capitalRetirado, 2);
 
                 $abonoCapital = $capitalRetirado;
                 $abonoInteres += $interesFraccion;
@@ -230,9 +262,16 @@ class PrestamoLiquidacionService
             // Se usa un tipo propio y no 'interes_mensual' para no correr la fecha de corte del ciclo.
             if ($interesFraccion > 0) {
                 $dias = $this->diasFraccion($prestamo, $fechaPago);
-                $detalle = $excedente > 0
-                    ? "Interés causado por {$dias} días corridos sobre el capital pagado, más excedente del abono."
-                    : "Interés causado por {$dias} días corridos sobre el capital abonado.";
+                if ($reanclado) {
+                    $detalle = self::MARCA_REANCLA." ({$dias} días corridos): el ciclo se reinicia en esta fecha.";
+                    if ($excedente > 0) {
+                        $detalle .= ' Incluye excedente del abono.';
+                    }
+                } else {
+                    $detalle = $excedente > 0
+                        ? "Interés causado por {$dias} días corridos sobre el capital pagado, más excedente del abono."
+                        : "Interés causado por {$dias} días corridos sobre el capital abonado.";
+                }
 
                 PrestamoMovimiento::create([
                     'prestamo_id' => $prestamo->id,
@@ -287,11 +326,19 @@ class PrestamoLiquidacionService
 
             $nuevoEstado = $nuevoSaldo <= 0 ? 'pagado' : $this->evaluarEstado($prestamo, $fechaPago);
 
-            $prestamo->update([
+            $cambios = [
                 'monto_original' => $nuevoMontoOriginal,
                 'saldo_actual' => $nuevoSaldo,
                 'estado' => $nuevoEstado,
-            ]);
+            ];
+
+            if ($reanclado) {
+                // El próximo corte es un mes después de este pago, sobre el capital que quedó
+                $cambios['ultimo_corte'] = $fechaPago->toDateString();
+                $cambios['dia_cobro'] = (int) $fechaPago->day;
+            }
+
+            $prestamo->update($cambios);
 
             return [
                 'success' => true,
@@ -301,6 +348,7 @@ class PrestamoLiquidacionService
                 'abono_capital' => $abonoCapital,
                 'interes_fraccion' => $interesFraccion,
                 'excedente' => $excedente,
+                'reanclado' => $reanclado,
             ];
         });
     }
@@ -321,12 +369,12 @@ class PrestamoLiquidacionService
         $saldoTrasMeses = $plan['saldo_final'];
         $interesesPendientes = max(0.00, $saldoTrasMeses - $capital);
 
-        // Días sueltos del ciclo abierto, cobrados sobre el capital.
+        // Días sueltos del ciclo abierto, sobre todo el saldo (compuesto dentro del ciclo).
         // En cuenta corriente no se cobran: el interés solo aparece al cumplir el mes.
         $dias = max(0, (int) $plan['corte_final']->diffInDays($fechaCorte, false));
         $interesFraccion = $prestamo->es_cuenta_corriente
             ? 0.00
-            : round($capital * ($this->tasaVigente($prestamo) / 100) * ($dias / 30), 2);
+            : round($saldoTrasMeses * ($this->tasaVigente($prestamo) / 100) * ($dias / 30), 2);
 
         return [
             'fecha' => $fechaCorte->toDateString(),
@@ -335,8 +383,37 @@ class PrestamoLiquidacionService
             'interes_meses' => round($plan['total'], 2),
             'interes_fraccion' => $interesFraccion,
             'dias_fraccion' => $dias,
-            'total' => round($capital + $interesesPendientes + $interesFraccion, 2),
+            'total' => round($saldoTrasMeses + $interesFraccion, 2),
         ];
+    }
+
+    /**
+     * Interés que el corte cobraría de más por el capital que entró con el ciclo ya empezado.
+     *
+     * El corte aplica la tasa mensual completa sobre el saldo, pero ese capital sólo estuvo
+     * parte del ciclo; se descuenta la porción que no alcanzó a devengar. Es el simétrico del
+     * interés proporcional que paga el capital cuando sale antes del corte.
+     */
+    private function interesNoDevengado($desembolsos, Carbon $corteAnterior, Carbon $corteActual, float $tasaDecimal): float
+    {
+        $ajuste = 0.00;
+
+        foreach ($desembolsos as $d) {
+            $fecha = Carbon::parse($d->fecha);
+
+            if ($fecha->lte($corteAnterior) || $fecha->gt($corteActual)) {
+                continue;
+            }
+
+            $diasDentro = $fecha->diffInDays($corteActual);
+            $diasFuera = max(0, 30 - $diasDentro);
+
+            if ($diasFuera > 0) {
+                $ajuste += (float) $d->monto * $tasaDecimal * ($diasFuera / 30);
+            }
+        }
+
+        return round($ajuste, 2);
     }
 
     /**
@@ -368,6 +445,15 @@ class PrestamoLiquidacionService
     }
 
     /**
+     * Día del mes en que corta el préstamo. Nace con el desembolso y se actualiza
+     * cuando un pago completo re-ancla el ciclo.
+     */
+    private function diaCobro(Prestamo $prestamo): int
+    {
+        return (int) ($prestamo->dia_cobro ?: Carbon::parse($prestamo->fecha_desembolso)->day);
+    }
+
+    /**
      * Fecha desde la que corre el ciclo de interés vigente.
      */
     private function corteVigente(Prestamo $prestamo): Carbon
@@ -386,7 +472,7 @@ class PrestamoLiquidacionService
      */
     public function proximoCorte(Prestamo $prestamo, ?Carbon $desde = null): Carbon
     {
-        $diaCobro = (int) Carbon::parse($prestamo->fecha_desembolso)->day;
+        $diaCobro = $this->diaCobro($prestamo);
         $hoy = ($desde ?: Carbon::now())->copy()->startOfDay();
         $corte = $this->siguienteCorte($this->corteVigente($prestamo), $diaCobro);
 
