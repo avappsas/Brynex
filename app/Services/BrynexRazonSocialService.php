@@ -282,8 +282,25 @@ class BrynexRazonSocialService
             $meses[$mes]['legacy'] = true;
         }
 
+        // El neto de un mes migrado no se puede calcular y no se inventa.
+        //
+        // El legacy responde por lo que ENTRÓ, pero los gastos de esos meses
+        // llegaron a BryNex sin `banco_origen_id`: existen — 83 en enero por
+        // 78 millones — pero no dicen de qué cuenta salieron, y no hay forma
+        // de repartirlos entre las cuentas de la razón social. Restarle cero a
+        // una entrada real da un neto falso y un acumulado que arrastra el
+        // error hasta diciembre, así que esos meses van en blanco y el
+        // acumulado arranca donde los datos vuelven a estar completos.
         $acumulado = 0.0;
         foreach ($meses as $m => $datos) {
+            if (($datos['legacy'] ?? false) && $datos['salidas'] == 0.0) {
+                $meses[$m]['neto'] = null;
+                $meses[$m]['acumulado'] = null;
+                $meses[$m]['salidas_incompletas'] = true;
+
+                continue;
+            }
+
             $acumulado += $datos['entradas'] - $datos['salidas'];
             $meses[$m]['neto'] = $datos['entradas'] - $datos['salidas'];
             $meses[$m]['acumulado'] = $acumulado;
@@ -314,6 +331,7 @@ class BrynexRazonSocialService
             'total_salidas' => $totalSalidas,
             'total_base' => array_sum(array_column($meses, 'base')),
             'neto' => $totalEntradas - $totalSalidas,
+            'neto_parcial' => (bool) array_filter(array_column($meses, 'salidas_incompletas')),
             'por_aliado' => $porAliado,
             'legacy' => $legacy,
         ];
@@ -436,6 +454,7 @@ class BrynexRazonSocialService
                 'entradas' => 0.0, 'salidas' => 0.0, 'base' => 0.0,
                 'n_entradas' => 0, 'n_salidas' => 0, 'n_base' => 0,
                 'neto' => 0.0, 'acumulado' => 0.0, 'legacy' => false,
+                'salidas_incompletas' => false,
             ];
         }
 

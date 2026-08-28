@@ -376,10 +376,17 @@
                             <td style="padding:0.5rem;color:#94a3b8;font-size:0.75rem;">{{ $d['n_base'] ?: '' }}</td>
                             <td style="padding:0.5rem;color:#b91c1c;font-variant-numeric:tabular-nums;">{{ $d['salidas'] ? '$' . number_format($d['salidas'], 0, ',', '.') : '—' }}</td>
                             <td style="padding:0.5rem;color:#94a3b8;font-size:0.75rem;">{{ $d['n_salidas'] ?: '' }}</td>
-                            <td style="padding:0.5rem;font-weight:600;color:{{ $d['neto'] >= 0 ? '#0f172a' : '#b91c1c' }};font-variant-numeric:tabular-nums;">
-                                {{ $d['neto'] ? '$' . number_format($d['neto'], 0, ',', '.') : '—' }}
-                            </td>
-                            <td style="padding:0.5rem 0.7rem;color:#475569;font-variant-numeric:tabular-nums;">${{ number_format($d['acumulado'], 0, ',', '.') }}</td>
+                            @if($d['salidas_incompletas'] ?? false)
+                                <td colspan="2" style="padding:0.5rem 0.7rem;color:#a16207;font-size:0.72rem;text-align:center;"
+                                    title="Los gastos de este mes llegaron de la migración sin decir de qué cuenta salieron, así que el neto sería falso.">
+                                    sin gastos migrados
+                                </td>
+                            @else
+                                <td style="padding:0.5rem;font-weight:600;color:{{ $d['neto'] >= 0 ? '#0f172a' : '#b91c1c' }};font-variant-numeric:tabular-nums;">
+                                    {{ $d['neto'] ? '$' . number_format($d['neto'], 0, ',', '.') : '—' }}
+                                </td>
+                                <td style="padding:0.5rem 0.7rem;color:#475569;font-variant-numeric:tabular-nums;">${{ number_format($d['acumulado'], 0, ',', '.') }}</td>
+                            @endif
                         </tr>
                     @endforeach
                     </tbody>
@@ -392,7 +399,13 @@
                             <td></td>
                             <td style="padding:0.6rem;color:#b91c1c;">${{ number_format($movimientos['total_salidas'], 0, ',', '.') }}</td>
                             <td></td>
-                            <td style="padding:0.6rem;" colspan="2">Neto ${{ number_format($movimientos['neto'], 0, ',', '.') }}</td>
+                            <td style="padding:0.6rem;" colspan="2">
+                                @if($movimientos['neto_parcial'] ?? false)
+                                    <span style="color:#a16207;font-size:0.72rem;font-weight:600;">Neto no comparable: faltan los gastos de los meses migrados</span>
+                                @else
+                                    Neto ${{ number_format($movimientos['neto'], 0, ',', '.') }}
+                                @endif
+                            </td>
                         </tr>
                     </tfoot>
                 </table>
