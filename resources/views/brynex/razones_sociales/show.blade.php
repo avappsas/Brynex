@@ -336,6 +336,12 @@
             ⚠️ <strong>Ojo con lo que este número no es.</strong> La mayor parte de lo que entra a estas cuentas es plata de
             los afiliados para pagar su seguridad social, no ingreso de la empresa. Sirve para conciliar contra el extracto
             y para saber cuánto se movió la cuenta, no como base gravable.
+            <br>La base gravable es la columna <strong>Admón + afiliación</strong>: lo que la razón social cobra por su
+            servicio y lo único que se le sube a Dataico.
+            @if(($movimientos['legacy']['meses'] ?? []) !== [])
+                <br>Los meses marcados con <strong>·L</strong> los responde la base vieja: la migración no trajo a qué
+                cuenta entró la plata, así que en BryNex esos meses salían en cero.
+            @endif
         </div>
 
         <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:1.2rem;margin-bottom:1rem;">
@@ -347,6 +353,8 @@
                             <th style="padding:0.55rem 0.7rem;font-weight:700;text-align:left;">Mes</th>
                             <th style="padding:0.55rem;font-weight:700;">Entradas</th>
                             <th style="padding:0.55rem;font-weight:700;">#</th>
+                            <th style="padding:0.55rem;font-weight:700;color:#0d2550;" title="Administración + afiliación de las facturas pagadas por esta cuenta. Es la base que se le sube a Dataico.">Admón + afiliación</th>
+                            <th style="padding:0.55rem;font-weight:700;">#</th>
                             <th style="padding:0.55rem;font-weight:700;">Salidas</th>
                             <th style="padding:0.55rem;font-weight:700;">#</th>
                             <th style="padding:0.55rem;font-weight:700;">Neto</th>
@@ -356,9 +364,16 @@
                     <tbody>
                     @foreach($movimientos['meses'] as $m => $d)
                         <tr style="border-top:1px solid #f1f5f9;text-align:right;{{ $d['entradas'] == 0 && $d['salidas'] == 0 ? 'opacity:0.45;' : '' }}">
-                            <td style="padding:0.5rem 0.7rem;text-align:left;font-weight:600;color:#334155;">{{ $meses[$m] }}</td>
+                            <td style="padding:0.5rem 0.7rem;text-align:left;font-weight:600;color:#334155;">
+                                {{ $meses[$m] }}
+                                @if($d['legacy'] ?? false)
+                                    <span title="Este mes lo responde la base vieja: la migración no trajo a qué cuenta entró la plata." style="color:#a16207;font-size:0.7rem;font-weight:700;">·L</span>
+                                @endif
+                            </td>
                             <td style="padding:0.5rem;color:#047857;font-variant-numeric:tabular-nums;">{{ $d['entradas'] ? '$' . number_format($d['entradas'], 0, ',', '.') : '—' }}</td>
                             <td style="padding:0.5rem;color:#94a3b8;font-size:0.75rem;">{{ $d['n_entradas'] ?: '' }}</td>
+                            <td style="padding:0.5rem;color:#0d2550;font-weight:700;font-variant-numeric:tabular-nums;">{{ $d['base'] ? '$' . number_format($d['base'], 0, ',', '.') : '—' }}</td>
+                            <td style="padding:0.5rem;color:#94a3b8;font-size:0.75rem;">{{ $d['n_base'] ?: '' }}</td>
                             <td style="padding:0.5rem;color:#b91c1c;font-variant-numeric:tabular-nums;">{{ $d['salidas'] ? '$' . number_format($d['salidas'], 0, ',', '.') : '—' }}</td>
                             <td style="padding:0.5rem;color:#94a3b8;font-size:0.75rem;">{{ $d['n_salidas'] ?: '' }}</td>
                             <td style="padding:0.5rem;font-weight:600;color:{{ $d['neto'] >= 0 ? '#0f172a' : '#b91c1c' }};font-variant-numeric:tabular-nums;">
@@ -372,6 +387,8 @@
                         <tr style="border-top:2px solid #e2e8f0;background:#f8fafc;text-align:right;font-weight:800;color:#0d2550;">
                             <td style="padding:0.6rem 0.7rem;text-align:left;">Total</td>
                             <td style="padding:0.6rem;color:#047857;">${{ number_format($movimientos['total_entradas'], 0, ',', '.') }}</td>
+                            <td></td>
+                            <td style="padding:0.6rem;color:#0d2550;">${{ number_format($movimientos['total_base'] ?? 0, 0, ',', '.') }}</td>
                             <td></td>
                             <td style="padding:0.6rem;color:#b91c1c;">${{ number_format($movimientos['total_salidas'], 0, ',', '.') }}</td>
                             <td></td>
