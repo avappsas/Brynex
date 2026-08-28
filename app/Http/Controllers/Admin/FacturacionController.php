@@ -4077,6 +4077,8 @@ class FacturacionController extends Controller
             // Nombre según el documento: es el que viaja a la factura
             // electrónica. `empresa` sigue siendo el nombre del negocio.
             'nombre_legal' => 'nullable|string|max:255',
+            // Apagado, la factura sale a consumidor final.
+            'factura_electronica' => 'nullable|boolean',
             'contacto' => 'nullable|string|max:255',
             'contacto_celular' => 'nullable|string|max:50',
             'telefono' => 'nullable|string|max:50',
@@ -4096,6 +4098,10 @@ class FacturacionController extends Controller
      */
     private function normalizarEmpresa(array $datos): array
     {
+        // Una casilla sin marcar no llega en la petición: hay que traducirla a
+        // un false explícito o el interruptor nunca se podría apagar.
+        $datos['factura_electronica'] = ! empty($datos['factura_electronica']);
+
         // Una sociedad no tiene «nombre según el documento»: su razón social ya
         // es el nombre legal. Guardarlo dejaría un dato colgando si mañana
         // alguien cambia el tipo.

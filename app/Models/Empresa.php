@@ -6,6 +6,10 @@ class Empresa extends BaseModel
 {
     protected $table = 'empresas';
 
+    protected $casts = [
+        'factura_electronica' => 'boolean',
+    ];
+
     /**
      * Lista blanca explícita. Antes era `$guarded = []`, que permitía escribir
      * cualquier columna vía asignación masiva. `id` y `aliado_id` van incluidos
@@ -18,6 +22,7 @@ class Empresa extends BaseModel
         'tipo_documento',
         'empresa',
         'nombre_legal',
+        'factura_electronica',
         'contacto',
         'contacto_celular',
         'telefono',

@@ -213,7 +213,7 @@ class FacturacionElectronicaController extends Controller
         if (! empty($empresaIds)) {
             $empresasMap = DB::table('empresas')
                 ->whereIn('id', $empresaIds)
-                ->select(['id', 'empresa', 'nombre_legal', 'nit', 'tipo_documento', 'contacto', 'telefono', 'celular', 'correo', 'direccion'])
+                ->select(['id', 'empresa', 'nombre_legal', 'factura_electronica', 'nit', 'tipo_documento', 'contacto', 'telefono', 'celular', 'correo', 'direccion'])
                 ->get()
                 ->keyBy('id')
                 ->all();

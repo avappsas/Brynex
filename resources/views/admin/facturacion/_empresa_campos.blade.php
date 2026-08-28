@@ -67,6 +67,25 @@
                 <label class="flb">Celular de la empresa</label>
                 <input class="finp" type="text" name="celular" value="{{ old('celular', $empresa->celular) }}">
             </div>
+            {{-- Interruptor de facturación electrónica. Apagado, la factura sale
+                 a consumidor final: es para las empresas cuyo documento no es
+                 suyo —un establecimiento a nombre del dueño, o una cédula mal
+                 digitada— donde facturar a ese número sería emitirle a un
+                 tercero. --}}
+            <div class="form-full">
+                <label class="flb">Facturación electrónica</label>
+                <label style="display:flex;gap:.5rem;align-items:center;font-size:.85rem;color:#334155;padding:.45rem 0;">
+                    <input type="checkbox" name="factura_electronica" value="1"
+                           @checked(old('factura_electronica', $empresa->factura_electronica ?? true))>
+                    <span>Facturar a nombre de esta empresa</span>
+                </label>
+                <div style="font-size:.72rem;color:#94a3b8">
+                    Si lo apagas, sus facturas salen a <strong>consumidor final</strong>. Úsalo cuando
+                    el documento no sea de la empresa: un negocio a nombre del dueño, o una cédula
+                    que resultó ser de otra persona.
+                </div>
+            </div>
+
             <div>
                 <label class="flb">IVA</label>
                 <div class="iva-group">

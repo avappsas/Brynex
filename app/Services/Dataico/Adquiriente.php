@@ -33,6 +33,15 @@ class Adquiriente
     {
         $doc = self::soloDigitos($e->nit ?? '');
 
+        // La empresa puede tener el interruptor de facturación electrónica
+        // apagado: pasa cuando el documento guardado no es suyo. CHOMPAS y
+        // TORQUE son establecimientos a nombre de su dueño; DARIO CRUZ tiene
+        // la cédula de otra persona. Facturar a ese número sería emitirle a un
+        // tercero, así que se trata como si no hubiera documento.
+        if (isset($e->factura_electronica) && ! $e->factura_electronica) {
+            $doc = '';
+        }
+
         // El nombre que viaja a la DIAN es el del documento, no el del
         // establecimiento: una factura a la cédula de ANCIZAR GARCIA no puede
         // salir a nombre de MAXIDROGAS. `empresa` sigue siendo el nombre con
