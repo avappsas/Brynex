@@ -224,29 +224,65 @@ class SeleccionFacturasService
      * Grupos que quedan fuera por tener más de un adquiriente posible.
      *
      * No es una rareza teórica: son facturas reales cuyo `numero_factura`
-     * agrupa filas de empresas distintas. Se listan para que alguien las
-     * arregle o las facture a mano, porque en silencio serían plata cobrada a
-     * quien no corresponde.
+     * agrupa filas de empresas distintas —la numeración vieja y la de BryNex
+     * corrieron en paralelo y las dos llegaron a los mismos números—. Se
+     * listan para que alguien las separe con `facturas:separar-grupo` o las
+     * facture a mano, porque en silencio serían plata cobrada a quien no
+     * corresponde.
+     *
+     * Solo los que le tocan a esta emisora: la plata tiene que haber entrado
+     * por su cuenta, y lo que ya se emitió no se vuelve a nombrar. Sin esos
+     * dos filtros el aviso nombraría grupos de otras razones sociales y
+     * repetiría para siempre los que ya se resolvieron — y una alarma que
+     * siempre suena deja de leerse.
+     *
+     * Con `$numeros` se pregunta por una lista concreta, que es como trabaja
+     * la emisión de un mes: ahí el recorte de fecha no aplica porque los
+     * números ya vienen resueltos.
+     *
+     * @param  array<int,string>|null  $numeros
      */
-    public function gruposAmbiguos(DataicoConfiguracion $cfg): Collection
+    public function gruposAmbiguos(DataicoConfiguracion $cfg, ?array $numeros = null): Collection
     {
-        return collect(DB::select(
-            "SELECT f.numero_factura,
-                    COUNT(*) AS filas,
-                    COUNT(DISTINCT ISNULL(CAST(f.empresa_id AS VARCHAR(20)), 'X')) AS adquirientes,
-                    SUM(ISNULL(CAST(f.admon AS BIGINT), 0)
-                      + ISNULL(CAST(f.afiliacion AS BIGINT), 0)) AS base_admon
-             FROM facturas f
-             WHERE f.aliado_id = ?
-               AND f.deleted_at IS NULL
-               AND f.estado IN ('pagada','abono','prestamo')
-               AND f.fecha_pago >= ?
-             GROUP BY f.numero_factura
-             HAVING COUNT(DISTINCT ISNULL(CAST(f.empresa_id AS VARCHAR(20)), 'X')) > 1
-                AND SUM(ISNULL(CAST(f.admon AS BIGINT), 0)
-                      + ISNULL(CAST(f.afiliacion AS BIGINT), 0)) > 0",
-            [$cfg->aliado_id, $cfg->fecha_inicio->toDateString()]
-        ));
+        $q = DB::table('facturas as f')
+            ->where('f.aliado_id', $cfg->aliado_id)
+            ->whereNull('f.deleted_at')
+            ->whereIn('f.estado', ['pagada', 'abono', 'prestamo'])
+            ->groupBy('f.numero_factura')
+            ->havingRaw("COUNT(DISTINCT ISNULL(CAST(f.empresa_id AS VARCHAR(20)), 'X')) > 1")
+            ->havingRaw('SUM(ISNULL(CAST(f.admon AS BIGINT), 0)
+                           + ISNULL(CAST(f.afiliacion AS BIGINT), 0)) > 0')
+            ->whereNotExists(fn ($s) => $s->select(DB::raw(1))->from('dataico_envios as de')
+                ->whereColumn('de.numero_factura', 'f.numero_factura')
+                ->where('de.aliado_id', $cfg->aliado_id)
+                ->whereIn('de.estado', ['enviado', 'enviando', 'omitido']));
+
+        if ($numeros !== null) {
+            $q->whereIn('f.numero_factura', $numeros);
+        } else {
+            $q->whereDate('f.fecha_pago', '>=', $cfg->fecha_inicio->toDateString())
+                ->where(function ($w) use ($cfg) {
+                    $w->whereExists(fn ($s) => $s->select(DB::raw(1))->from('consignaciones as cs')
+                        ->join('facturas as sf', 'sf.id', '=', 'cs.factura_id')
+                        ->whereColumn('sf.numero_factura', 'f.numero_factura')
+                        ->where('sf.aliado_id', $cfg->aliado_id)
+                        ->where('cs.banco_cuenta_id', $cfg->banco_cuenta_id))
+                        ->orWhereExists(fn ($s) => $s->select(DB::raw(1))->from('abonos as ab')
+                            ->join('facturas as af', 'af.id', '=', 'ab.factura_id')
+                            ->whereColumn('af.numero_factura', 'f.numero_factura')
+                            ->where('af.aliado_id', $cfg->aliado_id)
+                            ->where('ab.banco_cuenta_id', $cfg->banco_cuenta_id));
+                });
+        }
+
+        return $q->get([
+            'f.numero_factura',
+            DB::raw('COUNT(*) AS filas'),
+            DB::raw("COUNT(DISTINCT ISNULL(CAST(f.empresa_id AS VARCHAR(20)), 'X')) AS adquirientes"),
+            DB::raw('SUM(ISNULL(CAST(f.admon AS BIGINT), 0)
+                      + ISNULL(CAST(f.afiliacion AS BIGINT), 0)) AS base_admon'),
+            DB::raw('CONVERT(varchar(10), MIN(f.fecha_pago), 23) AS fecha_pago'),
+        ]);
     }
 
     // ─── Adquirientes ────────────────────────────────────────────────────

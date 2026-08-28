@@ -6,6 +6,7 @@ use App\Models\DataicoConfiguracion;
 use App\Services\Dataico\EmisionService;
 use App\Services\Dataico\SeleccionFacturasService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -78,6 +79,8 @@ class DataicoEmitir extends Command
                       ."errores: {$resumen['errores']}  "
                       ."omitidas: {$resumen['omitidas']}");
 
+            $this->avisarSaltados($cfg);
+
             if ($simular && ! empty($resumen['detalle'])) {
                 $this->newLine();
                 $this->line('  Payload de ejemplo ('.$resumen['detalle'][0]['numero_factura'].'):');
@@ -132,8 +135,9 @@ class DataicoEmitir extends Command
         $clasificado = app(SeleccionFacturasService::class)->porNumeros($cfg, $numeros);
         $emitibles = $clasificado['emitibles'];
 
-        $this->line("  {$mes}: {$emitibles->count()} por emitir de ".count($numeros).' que pasaron por la cuenta'
-                   .($clasificado['sin_documento']->count() ? '  ('.$clasificado['sin_documento']->count().' retenidas sin documento)' : ''));
+        $this->line("  {$mes}: {$emitibles->count()} por emitir de ".count($numeros).' que pasaron por la cuenta');
+
+        $this->avisarSaltados($cfg, $numeros, $clasificado['sin_documento']);
 
         if ($limite) {
             $emitibles = $emitibles->take($limite);
@@ -251,6 +255,61 @@ class DataicoEmitir extends Command
                 return substr((string) $c->hora_cierre, 0, 2) === $horaActual;
             })
             ->values();
+    }
+
+    /**
+     * Dice en voz alta lo que la selección dejó por fuera.
+     *
+     * Callar esto fue un error que costó caro: el comando reportaba «95 de 95
+     * emitidas» mientras retenía dos grupos, y los 443.000 pesos parados solo
+     * aparecieron cuando alguien notó que la ficha marcaba 99 % en vez de 100.
+     * Un resumen que solo cuenta lo que salió bien se lee como si todo hubiera
+     * salido.
+     *
+     * Son dos motivos distintos y se dicen aparte porque se arreglan distinto:
+     * el grupo con más de un adquiriente se separa con
+     * `facturas:separar-grupo`; el adquiriente sin documento necesita que
+     * alguien le complete la cédula o el NIT en su ficha.
+     *
+     * @param  array<int,string>|null  $numeros  lista concreta, cuando se emite un mes
+     */
+    private function avisarSaltados(DataicoConfiguracion $cfg, ?array $numeros = null, ?Collection $sinDocumento = null): void
+    {
+        // En el barrido diario nadie le pasó la lista, así que se calcula —pero
+        // solo si hace falta: con `consumidor_final` encendido la falta de
+        // documento deja de retener nada y volver a clasificar sería un
+        // recorrido completo cada hora para no decir nada.
+        if ($sinDocumento === null && ! $cfg->consumidor_final) {
+            $sinDocumento = app(SeleccionFacturasService::class)->sinDocumento($cfg);
+        }
+
+        if ($sinDocumento && $sinDocumento->isNotEmpty()) {
+            $base = $sinDocumento->sum('base_admon');
+            $this->warn('  ⚠ '.$sinDocumento->count().' grupo(s) retenidos por adquiriente sin documento'
+                       .'  ('.number_format($base).')');
+
+            foreach ($sinDocumento->take(10) as $g) {
+                $this->line('      #'.$g->numero_factura.'  '.number_format($g->base_admon)
+                           .'  '.($g->adquiriente['nombre_completo'] ?? ''));
+            }
+        }
+
+        $ambiguos = app(SeleccionFacturasService::class)->gruposAmbiguos($cfg, $numeros);
+
+        if ($ambiguos->isEmpty()) {
+            return;
+        }
+
+        $this->warn('  ⚠ '.$ambiguos->count().' grupo(s) saltados por tener más de un adquiriente'
+                   .'  ('.number_format($ambiguos->sum('base_admon')).')');
+        $this->line('      Un número de factura con dos clientes distintos no se puede emitir: le');
+        $this->line('      cobraría a uno la plata del otro. Se separan con facturas:separar-grupo.');
+
+        foreach ($ambiguos as $g) {
+            $this->line(sprintf('      #%-8s %s  %d filas, %d adquirientes, %s',
+                $g->numero_factura, $g->fecha_pago, $g->filas, $g->adquirientes,
+                number_format($g->base_admon)));
+        }
     }
 
     private function reportarUno(array $r, bool $simular): void
