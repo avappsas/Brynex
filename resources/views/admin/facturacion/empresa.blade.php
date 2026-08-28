@@ -293,8 +293,8 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
             <option value="todos">TIPO ▾</option>
         </select>
     </th>
-    <th onclick="ordenarTabla('cedula')" style="cursor:pointer; text-align:left;" title="Clic para ordenar por Cédula">
-        CÉDULA <span id="sort-icon-cedula" class="sort-icon"></span>
+    <th onclick="ordenarTabla('cedula')" style="cursor:pointer; text-align:left;" title="Clic para ordenar por Documento">
+        DOCUMENTO <span id="sort-icon-cedula" class="sort-icon"></span>
     </th>
     <th onclick="ordenarTabla('nombre')" style="cursor:pointer; text-align:left;" title="Clic para ordenar por Nombre">
         NOMBRE <span id="sort-icon-nombre" class="sort-icon"></span>
@@ -601,7 +601,9 @@ if ($esRetirado && $esAfil && !$fact) {
             </span>
         </span>
     </td>
-    <td style="font-family:monospace;font-size:.75rem">{{ $c->cedula }}</td>
+    <td style="font-family:monospace;font-size:.75rem;white-space:nowrap;">
+        @if($c->cliente?->tipo_doc)<span style="color:#94a3b8;font-weight:700;">{{ $c->cliente->tipo_doc }}</span> @endif{{ $c->cedula }}
+    </td>
     <td style="max-width:170px;overflow:hidden;text-overflow:ellipsis;font-weight:500">
         @if($c->cliente?->id)
         <a href="{{ route('admin.clientes.edit', $c->cliente->id) }}"
