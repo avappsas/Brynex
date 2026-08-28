@@ -420,8 +420,20 @@
                 <td class="td-num">${{ number_format((int)($f->total_efectivo ?? 0)) }}</td>
                 <td class="td-num" style="font-weight:700;">${{ number_format((int)($f->gran_total ?? 0)) }}</td>
                 <td>
-                    @if($feMarcada)
-                        <span class="badge-fe badge-fe-ok">✅ Facturada</span>
+                    @php $envio = $feEstados[$f->numero_factura] ?? null; @endphp
+                    @if($envio && $envio->estado === 'enviado' && $envio->dataico_numero)
+                        {{-- Con número de Dataico se muestra cuál es: saber que
+                             «está facturada» no sirve para buscarla en el portal. --}}
+                        <span class="badge-fe badge-fe-ok"
+                              title="{{ $envio->cufe ? 'CUFE '.$envio->cufe : 'Emitida ante la DIAN' }}">✅ {{ $envio->dataico_numero }}</span>
+                    @elseif($envio && $envio->estado === 'error')
+                        <span class="badge-fe badge-fe-parcial" style="background:#fee2e2;color:#991b1b;border-color:#fecaca"
+                              title="{{ $envio->error_mensaje }}">⚠️ Error</span>
+                    @elseif($envio && $envio->estado === 'omitido')
+                        <span class="badge-fe badge-fe-pendiente"
+                              title="{{ $envio->error_mensaje }}">🚫 Omitida</span>
+                    @elseif($feMarcada)
+                        <span class="badge-fe badge-fe-ok" title="Marcada como facturada, sin registro del número">✅ Facturada</span>
                     @elseif($feParcial)
                         <span class="badge-fe badge-fe-parcial">⚠️ Parcial</span>
                     @else

@@ -114,11 +114,20 @@ class FacturacionElectronicaController extends Controller
                 ->all();
         }
 
+        // Estado real en Dataico de la página que se está viendo: `fe_marcada`
+        // solo dice «sí o no», no con qué número quedó ni si la DIAN la
+        // rechazó. Se carga de una consulta para las filas visibles.
+        $feEstados = \App\Models\DataicoEnvio::where('aliado_id', $aliadoId)
+            ->whereIn('numero_factura', $itemsPag->pluck('numero_factura')->filter()->unique()->all() ?: [0])
+            ->get(['numero_factura', 'estado', 'dataico_numero', 'cufe', 'error_mensaje'])
+            ->keyBy('numero_factura')
+            ->all();
+
         return view('admin.facturacion.electronica', compact(
             'facturas', 'bancos', 'totales',
             'mesPago', 'anioPago', 'bancoCuentaId', 'estadoFe',
             'tipoFact', 'mesFiltro', 'anioFiltro',
-            'nombresClientes', 'nombresEmpresas'
+            'nombresClientes', 'nombresEmpresas', 'feEstados'
         ));
     }
 

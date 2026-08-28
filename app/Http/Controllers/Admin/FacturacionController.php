@@ -3784,12 +3784,14 @@ class FacturacionController extends Controller
 
         $operadoresTodosMap = \DB::table('operadores_planilla')->pluck('id', 'nombre');
 
+        $feEstados = $this->estadosFacturaElectronica($facturas, $aliadoId);
+
         return view('admin.facturacion.historial', compact(
             'cliente', 'contrato', 'cedula', 'agrupado',
             'filtroAnio', 'filtroRs', 'sinFiltros',
             'aniosDisp', 'rsSocDisp', 'meses', 'contratosporRS',
             'soportesPlanilla', 'operadoresPlanillaInfo', 'gastosPlanilla',
-            'operadoresTodosMap'
+            'operadoresTodosMap', 'feEstados'
         ));
     }
 
@@ -4047,6 +4049,9 @@ class FacturacionController extends Controller
                 'anio' => $primera->anio,
                 'estado' => $primera->estado,
                 'descripcion_tramite' => $primera->descripcion_tramite,
+                // Basta con que una fila del grupo esté marcada: la factura
+                // electrónica de un lote es una sola para todos sus afiliados.
+                'fe_marcada' => (bool) $grupo->max('fe_marcada'),
                 'total' => $grupo->sum(fn ($f) => (int) $f->total),
                 'cantidad' => $grupo->count(),
                 'usuario' => $primera->usuario,
@@ -4059,10 +4064,36 @@ class FacturacionController extends Controller
             ];
         })->values();
 
-        return view('admin.facturacion.historial_empresa', compact('empresa', 'grupos', 'facturas'));
+        $feEstados = $this->estadosFacturaElectronica($facturas, $aliadoId);
+
+        return view('admin.facturacion.historial_empresa', compact('empresa', 'grupos', 'facturas', 'feEstados'));
     }
 
     // ─── Crear empresa ──────────────────────────────────────────────
+    /**
+     * Estado de facturación electrónica de un grupo de facturas.
+     *
+     * Se carga de una sola consulta y se pasa a la vista: pedirlo por fila
+     * serían decenas de viajes al SQL Server, que a ~250 ms cada uno se notan
+     * en un historial de veinte filas.
+     *
+     * @param  \Illuminate\Support\Collection  $facturas
+     */
+    private function estadosFacturaElectronica($facturas, int $aliadoId): array
+    {
+        $numeros = $facturas->pluck('numero_factura')->filter()->unique()->values();
+
+        if ($numeros->isEmpty()) {
+            return [];
+        }
+
+        return \App\Models\DataicoEnvio::where('aliado_id', $aliadoId)
+            ->whereIn('numero_factura', $numeros->all())
+            ->get(['numero_factura', 'estado', 'dataico_numero', 'cufe', 'error_mensaje'])
+            ->keyBy('numero_factura')
+            ->all();
+    }
+
     /**
      * Reglas de la ficha de empresa. Las comparten crear y editar: si viven en
      * cada método, se agrega un campo a uno y el otro lo descarta en silencio.

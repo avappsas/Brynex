@@ -176,6 +176,7 @@ if ($sp > 0) {
     <td>
         <strong style="font-family:monospace">{{ str_pad($g->numero_factura,6,'0',STR_PAD_LEFT) }}</strong>
         @if($g->np)<span style="font-size:.65rem;color:#94a3b8;margin-left:.3rem">NP {{ $g->np }}</span>@endif
+        <div style="margin-top:.15rem">@include('admin.facturacion._fe_icono', ['f' => $g, 'contexto' => 'empresa'])</div>
     </td>
     <td style="font-size:.75rem">{{ $g->fecha_pago ? sqldate($g->fecha_pago)->format('d/m/Y') : '—' }}</td>
     <td>

@@ -291,7 +291,10 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
             }
             @endphp
             <tr>
-                <td style="font-family:monospace;font-weight:800;color:#1d4ed8;font-size:.76rem">#{{ $f->numero_factura ?? '—' }}</td>
+                <td style="font-family:monospace;font-weight:800;color:#1d4ed8;font-size:.76rem">
+                    #{{ $f->numero_factura ?? '—' }}
+                    <div style="margin-top:.15rem">@include('admin.facturacion._fe_icono', ['contexto' => 'cliente'])</div>
+                </td>
                 <td style="color:#64748b;font-size:.72rem">{{ $f->fecha_pago?->format('d/m/Y') ?? '—' }}</td>
                 <td style="font-weight:600;color:#0f172a">
                     {{ $meses[$f->mes] ?? '' }} {{ $f->anio }}
