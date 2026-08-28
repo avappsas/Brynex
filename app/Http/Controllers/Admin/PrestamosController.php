@@ -274,6 +274,31 @@ class PrestamosController extends Controller
             'soporte.max'      => 'El certificado no puede pesar más de 10 MB.',
         ]);
 
+        // El desglose lo manda el formulario, pero lo decide la forma de pago:
+        // en efectivo o consignación puros es el valor completo del abono. Sin
+        // esto una consignación se guardaba con la plata anotada en efectivo
+        // (25 de los 49 abonos que había en agosto de 2026) y el recaudo del
+        // banco quedaba en cero.
+        $valorAbono = (int) $validated['valor'];
+        if ($validated['forma_pago'] === 'efectivo') {
+            $validated['valor_efectivo'] = $valorAbono;
+            $validated['valor_consignado'] = 0;
+        } elseif ($validated['forma_pago'] === 'consignacion') {
+            $validated['valor_efectivo'] = 0;
+            $validated['valor_consignado'] = $valorAbono;
+        } else {
+            $efectivo = (int) ($validated['valor_efectivo'] ?? 0);
+            $consignado = (int) ($validated['valor_consignado'] ?? 0);
+            if ($efectivo + $consignado !== $valorAbono) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'En un pago mixto el efectivo y la consignación tienen que sumar el valor del abono.',
+                ], 422);
+            }
+            $validated['valor_efectivo'] = $efectivo;
+            $validated['valor_consignado'] = $consignado;
+        }
+
         // La cuenta tiene que ser del aliado en sesión: el id viaja desde el
         // formulario y `exists` solo comprueba que exista en la tabla.
         if (! empty($validated['banco_cuenta_id'])

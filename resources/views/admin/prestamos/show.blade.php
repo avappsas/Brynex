@@ -374,13 +374,20 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
                 <option value="mixto">🔀 Mixto</option>
             </select>
         </div>
-        <div id="ab-ef-row" class="form-grp">
-            <label>Valor efectivo</label>
-            <input type="number" id="ab-ef" min="0">
-        </div>
-        <div id="ab-cs-row" class="form-grp" style="display:none;">
-            <label>Valor consignado</label>
-            <input type="number" id="ab-cs" min="0">
+        {{-- El desglose solo se pregunta en un pago mixto: en efectivo o
+             consignación puros es el valor del abono completo, y pedirlo dos
+             veces solo servía para guardar una consignación con la plata
+             anotada en la casilla de efectivo. --}}
+        <div id="ab-mix-row" style="display:none;">
+            <div class="form-grp">
+                <label>Valor efectivo *</label>
+                <input type="number" id="ab-ef" min="0">
+            </div>
+            <div class="form-grp">
+                <label>Valor consignado *</label>
+                <input type="number" id="ab-cs" min="0">
+                <div style="font-size:.7rem;color:#94a3b8;margin-top:.15rem;">Los dos tienen que sumar el valor del abono.</div>
+            </div>
         </div>
         {{-- A qué cuenta entró la plata. Sin esto no hay forma de saber qué
              recaudo le corresponde a cada razón social, y la facturación
@@ -477,7 +484,7 @@ function abrirAbonar(id, saldo) {
     document.getElementById('ab-id').value = id;
     document.getElementById('ab-saldo-info').textContent = 'Saldo pendiente: ' + fmt(saldo);
     document.getElementById('ab-valor').value = saldo;
-    document.getElementById('ab-ef').value = saldo;
+    document.getElementById('ab-ef').value = '';
     document.getElementById('ab-cs').value = '';
     document.getElementById('ab-obs').value = '';
     document.getElementById('ab-sop').value = '';
@@ -487,8 +494,7 @@ function abrirAbonar(id, saldo) {
 }
 function toggleForma() {
     const f = document.getElementById('ab-forma').value;
-    document.getElementById('ab-ef-row').style.display = (f==='efectivo'||f==='mixto') ? '' : 'none';
-    document.getElementById('ab-cs-row').style.display = (f==='consignacion'||f==='mixto') ? '' : 'none';
+    document.getElementById('ab-mix-row').style.display = (f==='mixto') ? '' : 'none';
     // El certificado y la cuenta solo se exigen cuando hay plata entrando por
     // el banco: en un abono en efectivo no hay cuenta que registrar.
     const exige = (f==='consignacion'||f==='mixto');
@@ -503,10 +509,19 @@ document.getElementById('formAbonar').addEventListener('submit', async e => {
     e.preventDefault();
     const id = document.getElementById('ab-id').value;
     const fd = new FormData();
-    fd.append('valor',            document.getElementById('ab-valor').value);
-    fd.append('forma_pago',       document.getElementById('ab-forma').value);
-    fd.append('valor_efectivo',   document.getElementById('ab-ef').value || 0);
-    fd.append('valor_consignado', document.getElementById('ab-cs').value || 0);
+    // El desglose se deduce de la forma de pago; solo el mixto lo trae escrito.
+    const valor = parseInt(document.getElementById('ab-valor').value) || 0;
+    const forma = document.getElementById('ab-forma').value;
+    const ef = forma === 'efectivo' ? valor : (forma === 'mixto' ? (parseInt(document.getElementById('ab-ef').value) || 0) : 0);
+    const cs = forma === 'consignacion' ? valor : (forma === 'mixto' ? (parseInt(document.getElementById('ab-cs').value) || 0) : 0);
+    if (forma === 'mixto' && ef + cs !== valor) {
+        alert('El efectivo y la consignación tienen que sumar ' + fmt(valor) + '.');
+        return;
+    }
+    fd.append('valor',            valor);
+    fd.append('forma_pago',       forma);
+    fd.append('valor_efectivo',   ef);
+    fd.append('valor_consignado', cs);
     fd.append('observacion',      document.getElementById('ab-obs').value);
     fd.append('banco_cuenta_id',  document.getElementById('ab-banco').value || '');
     const sop = document.getElementById('ab-sop').files[0];
