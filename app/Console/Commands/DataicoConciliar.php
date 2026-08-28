@@ -29,9 +29,10 @@ use Illuminate\Support\Facades\Http;
  *
  * Cómo cruza: las facturas viejas no llevan el número de Brynex en ningún
  * campo (el Excel mandaba `NUMERO` vacío y sin referencia), así que el cruce
- * es por **documento del adquiriente + valor exacto**, con la fecha como
- * desempate cuando hay varias candidatas. Lo que no cruza se reporta; no se
- * inventa.
+ * es por **documento del adquiriente + valor exacto**, tomando la factura más
+ * antigua que quede libre. Ese orden no es arbitrario: los consecutivos de
+ * Dataico van en orden de carga y se subió mes a mes, de lo más viejo a lo más
+ * nuevo. Lo que no cruza se reporta; no se inventa.
  */
 class DataicoConciliar extends Command
 {
@@ -465,8 +466,17 @@ class DataicoConciliar extends Command
     // ─── Cruce, todo en memoria ──────────────────────────────────────────
 
     /**
-     * Documento + valor exacto, y la factura de Brynex NO puede ser posterior
-     * a la emisión en Dataico.
+     * Documento + valor exacto, la más ANTIGUA que quede libre, y nunca una
+     * factura posterior a la emisión.
+     *
+     * Se elige la más antigua porque así se cargaron: los consecutivos de
+     * Dataico van en orden de subida, y al recorrerlos se ve el patrón —
+     * FE357-456 concentra enero, FE557-656 febrero, FE757-856 marzo—. Es una
+     * carga mes a mes, de lo más viejo a lo más nuevo.
+     *
+     * Antes se desempataba por la fecha más cercana a la emisión, y eso repartía
+     * mal: con una carga masiva del 31 de mayo, «lo más cercano» tiraba todo
+     * hacia mayo en vez de respetar el orden en que se subió.
      *
      * Esa segunda condición no es un refinamiento, es lo que separa un cruce
      * real de uno inventado. Sin ella, la primera corrida ató 189 facturas de
@@ -502,14 +512,7 @@ class DataicoConciliar extends Command
             return $libres[0]['numero'];
         }
 
-        if ($f['fecha'] === null) {
-            return null;
-        }
-
-        $objetivo = strtotime($f['fecha']);
-
-        usort($libres, fn ($a, $b) => abs(strtotime($a['fecha']) - $objetivo)
-                                  <=> abs(strtotime($b['fecha']) - $objetivo));
+        usort($libres, fn ($a, $b) => strtotime($a['fecha']) <=> strtotime($b['fecha']));
 
         return $libres[0]['numero'];
     }

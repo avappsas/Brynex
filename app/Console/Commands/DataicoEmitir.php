@@ -4,7 +4,9 @@ namespace App\Console\Commands;
 
 use App\Models\DataicoConfiguracion;
 use App\Services\Dataico\EmisionService;
+use App\Services\Dataico\SeleccionFacturasService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Emite ante Dataico las facturas pendientes.
@@ -23,7 +25,9 @@ class DataicoEmitir extends Command
         {--limite= : Tope de facturas de la corrida}
         {--simular : Arma el JSON y lo muestra, sin enviar nada}
         {--ignorar-hora : En el barrido diario, no filtrar por la hora de cierre}
-        {--forzar : Emite aunque la configuración esté inactiva (tanda manual)}';
+        {--forzar : Emite aunque la configuración esté inactiva (tanda manual)}
+        {--mes= : Emite un mes concreto (YYYY-MM), resolviendo la cuenta también desde el legacy}
+        {--legacy-cuenta=8 : Id de la cuenta de la emisora en Brygar_BD (solo aliado 2)}';
 
     protected $description = 'Emite ante Dataico las facturas electrónicas pendientes';
 
@@ -45,6 +49,12 @@ class DataicoEmitir extends Command
         foreach ($configs as $cfg) {
             $etiqueta = "aliado {$cfg->aliado_id} / razón social {$cfg->razon_social_id}";
             $this->info("── Dataico: {$etiqueta}".($simular ? ' (SIMULACIÓN)' : ''));
+
+            if ($mes = $this->option('mes')) {
+                $this->emitirMes($emision, $cfg, $mes, $limite, $simular);
+
+                continue;
+            }
 
             if ($numero = $this->option('numero')) {
                 $r = $emision->emitirNumeroFactura($cfg, (int) $numero, $simular);
@@ -86,6 +96,117 @@ class DataicoEmitir extends Command
         }
 
         return $huboError ? self::FAILURE : self::SUCCESS;
+    }
+
+    /**
+     * Emite las facturas pendientes de un mes concreto.
+     *
+     * Para mayo en adelante basta con las consignaciones de Brynex. Para el
+     * período migrado no: sus consignaciones quedaron todas en la cuenta 137 y
+     * duplicadas siete veces, así que el filtro normal no las ve. La cuenta
+     * real la dice `Brygar_BD` en `FACTURACION.Consignacion`, y de ahí se saca
+     * la lista sin tocar la tabla dañada.
+     *
+     * Solo tiene sentido para el aliado 2: `Brygar_BD` es la base de BRYGAR y
+     * el id de cuenta significaba algo distinto en la de cada aliado.
+     */
+    private function emitirMes(EmisionService $emision, DataicoConfiguracion $cfg, string $mes, ?int $limite, bool $simular): void
+    {
+        if (! preg_match('/^\d{4}-\d{2}$/', $mes)) {
+            $this->error("El mes debe ir como YYYY-MM; llegó «{$mes}».");
+
+            return;
+        }
+
+        $desde = $mes.'-01';
+        $hasta = date('Y-m-d', strtotime($desde.' +1 month'));
+
+        $numeros = $this->gruposDelMes($cfg, $desde, $hasta);
+
+        if (empty($numeros)) {
+            $this->warn("  {$mes}: no hay facturas de la cuenta de la emisora.");
+
+            return;
+        }
+
+        $clasificado = app(SeleccionFacturasService::class)->porNumeros($cfg, $numeros);
+        $emitibles = $clasificado['emitibles'];
+
+        $this->line("  {$mes}: {$emitibles->count()} por emitir de ".count($numeros).' que pasaron por la cuenta'
+                   .($clasificado['sin_documento']->count() ? '  ('.$clasificado['sin_documento']->count().' retenidas sin documento)' : ''));
+
+        if ($limite) {
+            $emitibles = $emitibles->take($limite);
+        }
+
+        $ok = 0;
+        $mal = 0;
+
+        foreach ($emitibles as $grupo) {
+            $r = $emision->emitirGrupo($cfg, $grupo, $simular);
+
+            if ($simular) {
+                $this->line('    #'.$r['numero_factura'].'  '.($r['payload']['invoice']['items'][0]['description'] ?? ''));
+
+                continue;
+            }
+
+            $r['resultado'] === 'enviadas' ? $ok++ : $mal++;
+
+            if ($r['resultado'] === 'errores') {
+                $this->error("    #{$r['numero_factura']}: {$r['mensaje']}");
+            }
+        }
+
+        if (! $simular) {
+            $this->info("  {$mes}: {$ok} emitidas, {$mal} con error.");
+        }
+    }
+
+    /**
+     * Grupos de factura del mes que entraron por la cuenta de la emisora.
+     *
+     * Une las dos épocas: lo que Brynex registró con su cuenta, y lo que el
+     * legacy dice que entró por la cuenta equivalente.
+     */
+    private function gruposDelMes(DataicoConfiguracion $cfg, string $desde, string $hasta): array
+    {
+        $numeros = DB::table('facturas as f')
+            ->where('f.aliado_id', $cfg->aliado_id)
+            ->whereNull('f.deleted_at')
+            ->whereDate('f.fecha_pago', '>=', $desde)
+            ->whereDate('f.fecha_pago', '<', $hasta)
+            ->where(function ($w) use ($cfg) {
+                $w->whereExists(fn ($s) => $s->select(DB::raw(1))->from('consignaciones as cs')
+                    ->whereColumn('cs.factura_id', 'f.id')->where('cs.banco_cuenta_id', $cfg->banco_cuenta_id))
+                    ->orWhereExists(fn ($s) => $s->select(DB::raw(1))->from('abonos as ab')
+                        ->whereColumn('ab.factura_id', 'f.id')->where('ab.banco_cuenta_id', $cfg->banco_cuenta_id));
+            })
+            ->distinct()
+            ->pluck('f.numero_factura')
+            ->all();
+
+        // Período migrado: la cuenta la dice el legacy.
+        $cuentaLegacy = (string) $this->option('legacy-cuenta');
+
+        if ($cuentaLegacy !== '') {
+            try {
+                $ids = collect(DB::connection('sqlsrv_legacy')->select(
+                    'SELECT Id_Factura id FROM FACTURACION WHERE Consignacion = ? AND Fecha_Pago >= ? AND Fecha_Pago < ?',
+                    [$cuentaLegacy, $desde, $hasta]
+                ))->pluck('id');
+
+                foreach ($ids->chunk(400) as $ch) {
+                    $numeros = array_merge($numeros, DB::table('facturas')
+                        ->where('aliado_id', $cfg->aliado_id)->whereNull('deleted_at')
+                        ->whereIn('id_legacy', $ch->all())->pluck('numero_factura')->all());
+                }
+            } catch (\Throwable $e) {
+                $this->warn('  no se pudo consultar el legacy: '.$e->getMessage());
+            }
+        }
+
+        return array_values(array_unique(array_filter($numeros)));
     }
 
     /**

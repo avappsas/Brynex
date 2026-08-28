@@ -37,6 +37,28 @@ class SeleccionFacturasService
     }
 
     /**
+     * Grupos concretos, saltándose el filtro de cuenta y el corte de fecha.
+     *
+     * Existe para el período migrado del legacy. Ahí las consignaciones
+     * quedaron todas en la cuenta 137 y duplicadas, así que el filtro normal
+     * —«que tenga una consignación en la cuenta de la emisora»— no las ve. La
+     * cuenta real la dice `Brygar_BD`, factura por factura, y quien llama ya
+     * resolvió esa lista.
+     *
+     * Las guardas de seguridad SÍ se mantienen: base mayor que cero, un solo
+     * adquiriente, y nada que ya esté emitido o en vuelo. Lo único que se
+     * confía al llamador es a qué cuenta entró la plata.
+     */
+    public function porNumeros(DataicoConfiguracion $cfg, array $numeros): array
+    {
+        if (empty($numeros)) {
+            return ['emitibles' => collect(), 'sin_documento' => collect()];
+        }
+
+        return $this->clasificar($cfg, null, null, $numeros);
+    }
+
+    /**
      * Separa lo que se puede emitir de lo que no.
      *
      * `sin_documento` son grupos cuyo adquiriente no tiene cédula ni NIT en
@@ -52,9 +74,9 @@ class SeleccionFacturasService
      *
      * @return array{emitibles: Collection, sin_documento: Collection}
      */
-    public function clasificar(DataicoConfiguracion $cfg, ?int $numeroFactura = null, ?int $limite = null): array
+    public function clasificar(DataicoConfiguracion $cfg, ?int $numeroFactura = null, ?int $limite = null, ?array $numeros = null): array
     {
-        $grupos = $this->queryGrupos($cfg, $numeroFactura, $limite)->get();
+        $grupos = $this->queryGrupos($cfg, $numeroFactura, $limite, $numeros)->get();
 
         if ($grupos->isEmpty()) {
             return ['emitibles' => collect(), 'sin_documento' => collect()];
@@ -88,13 +110,18 @@ class SeleccionFacturasService
 
     // ─── Query base ──────────────────────────────────────────────────────
 
-    private function queryGrupos(DataicoConfiguracion $cfg, ?int $numeroFactura, ?int $limite = null)
+    private function queryGrupos(DataicoConfiguracion $cfg, ?int $numeroFactura, ?int $limite = null, ?array $numeros = null)
     {
+        // Lista explícita: el llamador ya decidió qué grupos entran, así que no
+        // se aplica ni el filtro de cuenta ni el corte de fecha.
+        $listaExplicita = ! empty($numeros);
+
         $q = DB::table('facturas as f')
             ->where('f.aliado_id', $cfg->aliado_id)
             ->whereNull('f.deleted_at')
             ->whereIn('f.estado', self::ESTADOS)
-            ->whereDate('f.fecha_pago', '>=', $cfg->fecha_inicio->toDateString())
+            ->when(! $listaExplicita, fn ($q) => $q->whereDate('f.fecha_pago', '>=', $cfg->fecha_inicio->toDateString()))
+            ->when($listaExplicita, fn ($q) => $q->whereIn('f.numero_factura', $numeros))
             ->groupBy('f.numero_factura')
             ->orderBy('f.numero_factura')
             ->select([
@@ -125,7 +152,7 @@ class SeleccionFacturasService
             // Con el abono se llega a la factura, y de la factura sale la
             // administración a cobrar. El préstamo se emite cuando el cliente
             // paga, que es cuando la plata efectivamente entra a BRYGAR.
-            ->where(function ($w) use ($cfg) {
+            ->when(! $listaExplicita, fn ($q) => $q->where(function ($w) use ($cfg) {
                 $w->whereExists(function ($sub) use ($cfg) {
                     $sub->select(DB::raw(1))
                         ->from('consignaciones as cs')
@@ -141,7 +168,7 @@ class SeleccionFacturasService
                         ->where('af.aliado_id', $cfg->aliado_id)
                         ->where('ab.banco_cuenta_id', $cfg->banco_cuenta_id);
                 });
-            })
+            }))
             // Nunca pisar lo que ya se subió a mano con el Excel del módulo
             // viejo: `fe_marcada` es la marca que dejaba ese flujo.
             ->havingRaw('MAX(CAST(f.fe_marcada AS INT)) = 0')
