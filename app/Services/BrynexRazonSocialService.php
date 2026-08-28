@@ -7,9 +7,7 @@ use App\Models\BrynexObligacion;
 use App\Models\BrynexObligacionCatalogo;
 use App\Models\BrynexRazonSocial;
 use App\Models\BrynexRazonSocialVinculo;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 /**
  * Consolida por NIT lo que en BryNex está repartido por aliado.
@@ -161,7 +159,7 @@ class BrynexRazonSocialService
         $vinculadas = $this->razonSocialIds($ficha);
 
         return DB::table('banco_cuentas')
-            ->get(['id', 'aliado_id', 'nombre', 'nit', 'banco', 'numero_cuenta', 'razon_social_id', 'id_legacy'])
+            ->get(['id', 'aliado_id', 'nombre', 'nit', 'banco', 'numero_cuenta', 'razon_social_id'])
             ->filter(function ($cuenta) use ($ficha, $vinculadas) {
                 if ($cuenta->razon_social_id && in_array((int) $cuenta->razon_social_id, array_map('intval', $vinculadas), true)) {
                     return true;
@@ -188,6 +186,19 @@ class BrynexRazonSocialService
         return strlen((string) $base) >= 9 && strlen((string) $base) <= 10 ? (string) $base : '';
     }
 
+    /** Lo único que se le factura a la DIAN: administración más afiliación. */
+    private const BASE = 'ISNULL(CAST(f.admon AS BIGINT), 0) + ISNULL(CAST(f.afiliacion AS BIGINT), 0)';
+
+    /**
+     * Si la factura ya tiene su electrónica emitida en Dataico.
+     *
+     * Llega por un join y no por un `EXISTS` porque SQL Server no deja sumar
+     * una expresión que contenga una subconsulta. El estado importa: un intento
+     * que la DIAN rechazó también deja fila en `dataico_envios`, y contarlo
+     * como facturado es justo lo contrario de lo que la columna quiere decir.
+     */
+    private const EMITIDA = 'fe.numero_factura IS NOT NULL';
+
     /**
      * Movimientos del año: qué entró y qué salió de las cuentas de la razón
      * social, mes a mes.
@@ -203,11 +214,11 @@ class BrynexRazonSocialService
      * y para saber cuánto se movió, no como base gravable. La base gravable es
      * la otra columna, y es entre un 15 y un 25 % de las entradas.
      *
-     * Los meses migrados los responde la base vieja. La migración no trajo el
-     * `banco_cuenta_id` de las consignaciones, así que de enero a abril de 2026
-     * BryNex tiene la plata registrada pero sin decir a qué cuenta entró: el
-     * mes salía en cero. El legacy sí lo dice, y esos meses ya no cambian
-     * nunca, así que se leen de allá y se cachean.
+     * Enero a abril de 2026 salían en cero porque la migración no trajo el
+     * `banco_cuenta_id` de las consignaciones. Eso ya no se arregla aquí sino
+     * en el dato: `consignaciones:vincular-legacy` les devolvió la cuenta y la
+     * factura leyendo `Brygar_BD`, así que esos meses ahora se calculan como
+     * todos los demás.
      */
     public function movimientos(BrynexRazonSocial $ficha, int $anio): array
     {
@@ -222,7 +233,6 @@ class BrynexRazonSocialService
             'total_base' => 0.0,
             'neto' => 0.0,
             'por_aliado' => collect(),
-            'legacy' => null,
         ];
 
         if (! $ids) {
@@ -265,35 +275,22 @@ class BrynexRazonSocialService
         foreach ($this->baseFacturada($cuentas, $anio) as $mes => $fila) {
             $meses[$mes]['base'] = $fila['base'];
             $meses[$mes]['n_base'] = $fila['n'];
+            $meses[$mes]['facturado'] = $fila['facturado'];
+            $meses[$mes]['n_facturado'] = $fila['n_facturado'];
         }
 
-        $legacy = $this->movimientosLegacy($cuentas, $anio);
-
-        // Se suma, no se reemplaza: son conjuntos ajenos. Lo que el legacy
-        // trae es lo que la migración dejó sin cuenta, y lo que BryNex tiene
-        // con cuenta se registró después del corte. Que no se pisen está
-        // verificado — ninguna factura del legacy tiene además una
-        // consignación de BryNex apuntando a estas cuentas.
-        foreach ($legacy['meses'] ?? [] as $mes => $fila) {
-            $meses[$mes]['entradas'] += $fila['entradas'];
-            $meses[$mes]['n_entradas'] += $fila['n_entradas'];
-            $meses[$mes]['base'] += $fila['base'];
-            $meses[$mes]['n_base'] += $fila['n_base'];
-            $meses[$mes]['legacy'] = true;
-        }
-
-        // El neto de un mes migrado no se puede calcular y no se inventa.
+        // Un mes con entradas y sin una sola salida no tiene neto, y no se
+        // inventa.
         //
-        // El legacy responde por lo que ENTRÓ, pero los gastos de esos meses
-        // llegaron a BryNex sin `banco_origen_id`: existen — 83 en enero por
-        // 78 millones — pero no dicen de qué cuenta salieron, y no hay forma
-        // de repartirlos entre las cuentas de la razón social. Restarle cero a
-        // una entrada real da un neto falso y un acumulado que arrastra el
-        // error hasta diciembre, así que esos meses van en blanco y el
+        // Los gastos migrados llegaron sin `banco_origen_id`: existen —83 en
+        // enero por 78 millones— pero no dicen de qué cuenta salieron, y no hay
+        // forma de repartirlos entre las cuentas de la razón social. Restarle
+        // cero a una entrada real da un neto falso y un acumulado que arrastra
+        // el error hasta diciembre, así que esos meses van en blanco y el
         // acumulado arranca donde los datos vuelven a estar completos.
         $acumulado = 0.0;
         foreach ($meses as $m => $datos) {
-            if (($datos['legacy'] ?? false) && $datos['salidas'] == 0.0) {
+            if ($datos['entradas'] > 0.0 && $datos['salidas'] == 0.0) {
                 $meses[$m]['neto'] = null;
                 $meses[$m]['acumulado'] = null;
                 $meses[$m]['salidas_incompletas'] = true;
@@ -330,10 +327,10 @@ class BrynexRazonSocialService
             'total_entradas' => $totalEntradas,
             'total_salidas' => $totalSalidas,
             'total_base' => array_sum(array_column($meses, 'base')),
+            'total_facturado' => array_sum(array_column($meses, 'facturado')),
             'neto' => $totalEntradas - $totalSalidas,
             'neto_parcial' => (bool) array_filter(array_column($meses, 'salidas_incompletas')),
             'por_aliado' => $porAliado,
-            'legacy' => $legacy,
         ];
     }
 
@@ -355,7 +352,15 @@ class BrynexRazonSocialService
         $ids = array_column($cuentas, 'id');
         $aliados = array_values(array_unique(array_map(fn ($c) => (int) $c->aliado_id, $cuentas)));
 
+        $emitidas = DB::table('dataico_envios')
+            ->where('estado', 'enviado')
+            ->distinct()
+            ->select('aliado_id', 'numero_factura');
+
         $filas = DB::table('facturas as f')
+            ->leftJoinSub($emitidas, 'fe', fn ($j) => $j
+                ->on('fe.aliado_id', '=', 'f.aliado_id')
+                ->on('fe.numero_factura', '=', 'f.numero_factura'))
             ->whereIn('f.aliado_id', $aliados)
             ->whereNull('f.deleted_at')
             ->whereYear('f.fecha_pago', $anio)
@@ -369,81 +374,26 @@ class BrynexRazonSocialService
             ->groupBy(DB::raw('MONTH(f.fecha_pago)'))
             ->get([
                 DB::raw('MONTH(f.fecha_pago) as mes'),
-                DB::raw('SUM(ISNULL(CAST(f.admon AS BIGINT), 0)
-                           + ISNULL(CAST(f.afiliacion AS BIGINT), 0)) as base'),
-                DB::raw('COUNT(*) as cuantas'),
+                DB::raw('SUM('.self::BASE.') as base'),
+                DB::raw('COUNT(DISTINCT f.id) as cuantas'),
+                // Lo mismo, pero solo de lo que ya tiene factura electrónica.
+                // El envío es por grupo y el grupo es el número de factura, así
+                // que la cuenta de emitidas va por número y no por fila.
+                DB::raw('SUM(CASE WHEN '.self::EMITIDA.' THEN '.self::BASE.' ELSE 0 END) as facturado'),
+                DB::raw('COUNT(DISTINCT CASE WHEN '.self::EMITIDA.' THEN f.numero_factura END) as n_facturado'),
             ]);
 
         $salida = [];
         foreach ($filas as $f) {
-            $salida[(int) $f->mes] = ['base' => (float) $f->base, 'n' => (int) $f->cuantas];
+            $salida[(int) $f->mes] = [
+                'base' => (float) $f->base,
+                'n' => (int) $f->cuantas,
+                'facturado' => (float) $f->facturado,
+                'n_facturado' => (int) $f->n_facturado,
+            ];
         }
 
         return $salida;
-    }
-
-    /**
-     * Lo que la base vieja registró en estas cuentas y la migración perdió.
-     *
-     * Devuelve `null` cuando no aplica — que es casi siempre. Solo entra en
-     * juego si la cuenta pertenece al aliado dueño de la base legacy
-     * configurada y trae `id_legacy`; ver `config/legacy.php` sobre por qué
-     * esa guarda no es opcional.
-     *
-     * El resultado se cachea: son meses cerrados que ya no cambian, y la base
-     * vieja vive en otro servidor al que no vale la pena pegarle en cada
-     * recarga de la ficha. Si no responde, la ficha se pinta igual sin ella.
-     *
-     * @param  array<int,object>  $cuentas
-     */
-    private function movimientosLegacy(array $cuentas, int $anio): ?array
-    {
-        $aliadoLegacy = (int) config('legacy.aliado_id');
-
-        $cuentasLegacy = array_values(array_filter(
-            $cuentas,
-            fn ($c) => (int) $c->aliado_id === $aliadoLegacy && $c->id_legacy !== null && $c->id_legacy !== ''
-        ));
-
-        if (! $cuentasLegacy || $anio > (int) substr((string) config('legacy.corte'), 0, 4)) {
-            return null;
-        }
-
-        $llaves = array_map(fn ($c) => (string) $c->id_legacy, $cuentasLegacy);
-        $clave = 'legacy.movimientos.'.$anio.'.'.implode('-', $llaves);
-
-        return Cache::remember($clave, now()->addHours(12), function () use ($llaves, $anio) {
-            try {
-                $filas = DB::connection(config('legacy.conexion'))->select(
-                    'SELECT MONTH(Fecha_Pago) mes,
-                            COUNT(*) n,
-                            SUM(ISNULL(TRY_CAST(Valor_Consignado AS float), 0)) entradas,
-                            SUM(ISNULL(TRY_CAST(Admon AS float), 0)
-                              + ISNULL(TRY_CAST(Afiliaciones AS float), 0)) base
-                       FROM FACTURACION
-                      WHERE Consignacion IN ('.implode(',', array_fill(0, count($llaves), '?')).')
-                        AND YEAR(Fecha_Pago) = ?
-                      GROUP BY MONTH(Fecha_Pago)',
-                    array_merge($llaves, [$anio])
-                );
-            } catch (\Throwable $e) {
-                Log::warning('razones sociales: la base legacy no respondió', ['error' => $e->getMessage()]);
-
-                return null;
-            }
-
-            $meses = [];
-            foreach ($filas as $f) {
-                $meses[(int) $f->mes] = [
-                    'entradas' => (float) $f->entradas,
-                    'n_entradas' => (int) $f->n,
-                    'base' => (float) $f->base,
-                    'n_base' => (int) $f->n,
-                ];
-            }
-
-            return ['meses' => $meses, 'cuentas' => $llaves];
-        });
     }
 
     private function mesesEnCero(): array
@@ -451,9 +401,9 @@ class BrynexRazonSocialService
         $meses = [];
         for ($m = 1; $m <= 12; $m++) {
             $meses[$m] = [
-                'entradas' => 0.0, 'salidas' => 0.0, 'base' => 0.0,
-                'n_entradas' => 0, 'n_salidas' => 0, 'n_base' => 0,
-                'neto' => 0.0, 'acumulado' => 0.0, 'legacy' => false,
+                'entradas' => 0.0, 'salidas' => 0.0, 'base' => 0.0, 'facturado' => 0.0,
+                'n_entradas' => 0, 'n_salidas' => 0, 'n_base' => 0, 'n_facturado' => 0,
+                'neto' => 0.0, 'acumulado' => 0.0,
                 'salidas_incompletas' => false,
             ];
         }

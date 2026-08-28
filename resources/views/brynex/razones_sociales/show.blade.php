@@ -338,10 +338,7 @@
             y para saber cuánto se movió la cuenta, no como base gravable.
             <br>La base gravable es la columna <strong>Admón + afiliación</strong>: lo que la razón social cobra por su
             servicio y lo único que se le sube a Dataico.
-            @if(($movimientos['legacy']['meses'] ?? []) !== [])
-                <br>Los meses marcados con <strong>·L</strong> los responde la base vieja: la migración no trajo a qué
-                cuenta entró la plata, así que en BryNex esos meses salían en cero.
-            @endif
+            <br><strong>Facturado</strong> es la parte de esa base que ya tiene factura electrónica emitida en Dataico.
         </div>
 
         <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:1.2rem;margin-bottom:1rem;">
@@ -355,6 +352,8 @@
                             <th style="padding:0.55rem;font-weight:700;">#</th>
                             <th style="padding:0.55rem;font-weight:700;color:#0d2550;" title="Administración + afiliación de las facturas pagadas por esta cuenta. Es la base que se le sube a Dataico.">Admón + afiliación</th>
                             <th style="padding:0.55rem;font-weight:700;">#</th>
+                            <th style="padding:0.55rem;font-weight:700;color:#5b21b6;" title="De esa base, lo que ya tiene factura electrónica emitida en Dataico.">Facturado</th>
+                            <th style="padding:0.55rem;font-weight:700;">#</th>
                             <th style="padding:0.55rem;font-weight:700;">Salidas</th>
                             <th style="padding:0.55rem;font-weight:700;">#</th>
                             <th style="padding:0.55rem;font-weight:700;">Neto</th>
@@ -365,21 +364,28 @@
                     @foreach($movimientos['meses'] as $m => $d)
                         <tr style="border-top:1px solid #f1f5f9;text-align:right;{{ $d['entradas'] == 0 && $d['salidas'] == 0 ? 'opacity:0.45;' : '' }}">
                             <td style="padding:0.5rem 0.7rem;text-align:left;font-weight:600;color:#334155;">
-                                {{ $meses[$m] }}
-                                @if($d['legacy'] ?? false)
-                                    <span title="Este mes lo responde la base vieja: la migración no trajo a qué cuenta entró la plata." style="color:#a16207;font-size:0.7rem;font-weight:700;">·L</span>
-                                @endif
-                            </td>
+{{ $meses[$m] }}</td>
                             <td style="padding:0.5rem;color:#047857;font-variant-numeric:tabular-nums;">{{ $d['entradas'] ? '$' . number_format($d['entradas'], 0, ',', '.') : '—' }}</td>
                             <td style="padding:0.5rem;color:#94a3b8;font-size:0.75rem;">{{ $d['n_entradas'] ?: '' }}</td>
                             <td style="padding:0.5rem;color:#0d2550;font-weight:700;font-variant-numeric:tabular-nums;">{{ $d['base'] ? '$' . number_format($d['base'], 0, ',', '.') : '—' }}</td>
                             <td style="padding:0.5rem;color:#94a3b8;font-size:0.75rem;">{{ $d['n_base'] ?: '' }}</td>
+                            @php $falta = $d['base'] - $d['facturado']; @endphp
+                            <td style="padding:0.5rem;color:#5b21b6;font-variant-numeric:tabular-nums;"
+                                title="{{ $falta > 0 ? 'Faltan por emitir $' . number_format($falta, 0, ',', '.') : '' }}">
+                                {{ $d['facturado'] ? '$' . number_format($d['facturado'], 0, ',', '.') : '—' }}
+                                @if($d['base'] > 0)
+                                    <span style="color:{{ $falta > 0 ? '#b45309' : '#047857' }};font-size:0.7rem;">
+                                        {{ round($d['facturado'] / $d['base'] * 100) }}%
+                                    </span>
+                                @endif
+                            </td>
+                            <td style="padding:0.5rem;color:#94a3b8;font-size:0.75rem;">{{ $d['n_facturado'] ?: '' }}</td>
                             <td style="padding:0.5rem;color:#b91c1c;font-variant-numeric:tabular-nums;">{{ $d['salidas'] ? '$' . number_format($d['salidas'], 0, ',', '.') : '—' }}</td>
                             <td style="padding:0.5rem;color:#94a3b8;font-size:0.75rem;">{{ $d['n_salidas'] ?: '' }}</td>
                             @if($d['salidas_incompletas'] ?? false)
                                 <td colspan="2" style="padding:0.5rem 0.7rem;color:#a16207;font-size:0.72rem;text-align:center;"
-                                    title="Los gastos de este mes llegaron de la migración sin decir de qué cuenta salieron, así que el neto sería falso.">
-                                    sin gastos migrados
+                                    title="Este mes no tiene un solo gasto atado a la cuenta: los gastos migrados llegaron sin decir de dónde salieron, así que el neto sería falso.">
+                                    sin gastos atados
                                 </td>
                             @else
                                 <td style="padding:0.5rem;font-weight:600;color:{{ $d['neto'] >= 0 ? '#0f172a' : '#b91c1c' }};font-variant-numeric:tabular-nums;">
@@ -397,11 +403,13 @@
                             <td></td>
                             <td style="padding:0.6rem;color:#0d2550;">${{ number_format($movimientos['total_base'] ?? 0, 0, ',', '.') }}</td>
                             <td></td>
+                            <td style="padding:0.6rem;color:#5b21b6;">${{ number_format($movimientos['total_facturado'] ?? 0, 0, ',', '.') }}</td>
+                            <td></td>
                             <td style="padding:0.6rem;color:#b91c1c;">${{ number_format($movimientos['total_salidas'], 0, ',', '.') }}</td>
                             <td></td>
                             <td style="padding:0.6rem;" colspan="2">
                                 @if($movimientos['neto_parcial'] ?? false)
-                                    <span style="color:#a16207;font-size:0.72rem;font-weight:600;">Neto no comparable: faltan los gastos de los meses migrados</span>
+                                    <span style="color:#a16207;font-size:0.72rem;font-weight:600;">Neto no comparable: hay meses sin gastos atados a la cuenta</span>
                                 @else
                                     Neto ${{ number_format($movimientos['neto'], 0, ',', '.') }}
                                 @endif
