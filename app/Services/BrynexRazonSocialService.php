@@ -373,25 +373,43 @@ class BrynexRazonSocialService
             ->distinct()
             ->select('aliado_id', 'numero_factura');
 
+        // Los grupos que pasaron por la cuenta, no las facturas sueltas.
+        //
+        // La electrónica se emite por `numero_factura`: una empresa con cinco
+        // afiliados son cinco facturas y una sola factura electrónica por el
+        // total. El pago, en cambio, entra como una consignación colgada de una
+        // de las cinco. Mirar factura por factura contaba una de cinco y dejaba
+        // la columna por debajo de lo que de verdad se le sube a la DIAN —en
+        // junio, 11,6 millones donde son 16,4.
+        $grupos = DB::table('facturas as g')
+            ->whereIn('g.aliado_id', $aliados)
+            ->whereNull('g.deleted_at')
+            ->whereYear('g.fecha_pago', $anio)
+            ->where(function ($w) use ($ids) {
+                $w->whereExists(fn ($s) => $s->select(DB::raw(1))->from('consignaciones as cs')
+                    ->whereColumn('cs.factura_id', 'g.id')->whereIn('cs.banco_cuenta_id', $ids)
+                    ->whereNull('cs.deleted_at'))
+                    ->orWhereExists(fn ($s) => $s->select(DB::raw(1))->from('abonos as ab')
+                        ->whereColumn('ab.factura_id', 'g.id')->whereIn('ab.banco_cuenta_id', $ids));
+            })
+            ->distinct()
+            ->select('g.aliado_id', 'g.numero_factura');
+
         $filas = DB::table('facturas as f')
+            ->joinSub($grupos, 'gr', fn ($j) => $j
+                ->on('gr.aliado_id', '=', 'f.aliado_id')
+                ->on('gr.numero_factura', '=', 'f.numero_factura'))
             ->leftJoinSub($emitidas, 'fe', fn ($j) => $j
                 ->on('fe.aliado_id', '=', 'f.aliado_id')
                 ->on('fe.numero_factura', '=', 'f.numero_factura'))
             ->whereIn('f.aliado_id', $aliados)
             ->whereNull('f.deleted_at')
             ->whereYear('f.fecha_pago', $anio)
-            ->where(function ($w) use ($ids) {
-                $w->whereExists(fn ($s) => $s->select(DB::raw(1))->from('consignaciones as cs')
-                    ->whereColumn('cs.factura_id', 'f.id')->whereIn('cs.banco_cuenta_id', $ids)
-                    ->whereNull('cs.deleted_at'))
-                    ->orWhereExists(fn ($s) => $s->select(DB::raw(1))->from('abonos as ab')
-                        ->whereColumn('ab.factura_id', 'f.id')->whereIn('ab.banco_cuenta_id', $ids));
-            })
             ->groupBy(DB::raw('MONTH(f.fecha_pago)'))
             ->get([
                 DB::raw('MONTH(f.fecha_pago) as mes'),
                 DB::raw('SUM('.self::BASE.') as base'),
-                DB::raw('COUNT(DISTINCT f.id) as cuantas'),
+                DB::raw('COUNT(DISTINCT f.numero_factura) as cuantas'),
                 // Lo mismo, pero solo de lo que ya tiene factura electrónica.
                 // El envío es por grupo y el grupo es el número de factura, así
                 // que la cuenta de emitidas va por número y no por fila.
