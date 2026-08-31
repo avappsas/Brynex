@@ -349,14 +349,18 @@ class Contrato extends BaseModel
 
         $seguro = (float) ($this->seguro ?? 0);
         $admon = (float) ($this->administracion ?? 0);
+        $admonAsesor = (float) ($this->admon_asesor ?? 0);
 
-        // IVA solo sobre la administración (la afiliación se grava aparte, en el
-        // controlador: este método solo cotiza planilla).
+        // IVA sobre la administración completa: la del aliado + la del asesor,
+        // igual que IvaService::deFactura() al generar la factura real. La
+        // afiliación se grava aparte, en el controlador: este método solo
+        // cotiza planilla. Ojo: 'admon' y 'total' siguen SIN incluir la parte
+        // del asesor — los consumidores la suman por su cuenta.
         // Admon, seguro e IVA son cargos fijos mensuales: NO se prorratean
         // $ivaCliente: pre-cargado por el controller (evita N+1).
         // Si viene null, se resuelve con la regla completa (cliente o su empresa).
         $tieneIva = $ivaCliente ?? \App\Services\IvaService::aplicaContrato($this);
-        $iva = \App\Services\IvaService::calcular($admon, $tieneIva);
+        $iva = \App\Services\IvaService::calcular($admon + $admonAsesor, $tieneIva);
 
         $total = $ss + $seguro + $admon + $iva;
 
