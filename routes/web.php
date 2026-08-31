@@ -879,6 +879,9 @@ Route::middleware('auth')->group(function () {
         // El ciclo mensual: anula la cobertura vigente y crea la del mes nuevo.
         // Sura no deja mover la fecha de una cobertura ya creada.
         Route::post('/{id}/renovar-sura', [$aa, 'renovar'])->name('renovar-sura');
+        // El certificado cambia de estado al llegar la fecha de cobertura, así
+        // que se puede volver por el bueno sin repetir ningún trámite.
+        Route::get('/{id}/certificado', [$aa, 'certificado'])->name('certificado');
         // Credencial del portal de esa empresa; al guardarla se descubre su póliza.
         Route::post('/{id}/credencial', [$aa, 'credencial'])->name('credencial');
 

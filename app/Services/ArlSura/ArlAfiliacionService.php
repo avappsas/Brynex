@@ -359,47 +359,32 @@ class ArlAfiliacionService
         // afiliaron a mano y nunca quedaron registrados aquí.
         $cobertura = $this->coberturaEnSura($contrato);
 
-        // Camino corto: mover la fecha de la cobertura que ya existe. Un solo
-        // trámite, sin el momento intermedio en que el trabajador se queda sin
-        // ARL, y sin gastar la ventana de 30 días que sí exige anular.
-        if ($cobertura && $movida = $this->moverCobertura($contrato, $cobertura, $nuevoInicio, $usuarioId)) {
-            return ['modificacion' => $movida, 'anulacion' => null, 'afiliacion' => null];
+        // Sin cobertura viva en el portal no hay nada que mover: se afilia.
+        if (! $cobertura) {
+            return [
+                'modificacion' => null,
+                'afiliacion'   => $this->afiliar($contrato, $nuevoInicio, $usuarioId),
+            ];
         }
 
-        $teniaCobertura = $cobertura !== null
-            || ArlAfiliacion::vigenteDe($contrato->id)
-            || $contrato->fecha_arl;
-
-        $anulacion = $teniaCobertura ? $this->anular($contrato, $usuarioId) : null;
-
-        try {
-            $afiliacion = $this->afiliar($contrato, $nuevoInicio, $usuarioId);
-        } catch (Throwable $e) {
-            // El punto sin retorno: la cobertura vieja ya no existe. Se avisa
-            // sin adornos para que alguien lo resuelva hoy mismo.
-            throw new RuntimeException(
-                $anulacion
-                    ? 'Se anuló la cobertura anterior pero la nueva no se pudo crear, así que el '
-                      .'trabajador quedó SIN ARL. Vuelve a intentarlo o afílialo en el portal. '
-                      .'Motivo: '.$e->getMessage()
-                    : $e->getMessage(),
-                0,
-                $e
-            );
-        }
-
-        return ['modificacion' => null, 'anulacion' => $anulacion, 'afiliacion' => $afiliacion];
+        // Se mueve la fecha de la cobertura que ya existe. No se cae a anular y
+        // reafiliar: la anulación pide la misma ventana de 30 días que el
+        // movimiento, así que como respaldo no salva ningún caso, y sí abriría
+        // el hueco en que el trabajador se queda sin ARL si el alta falla.
+        return [
+            'modificacion' => $this->moverCobertura($contrato, $cobertura, $nuevoInicio, $usuarioId),
+            'afiliacion'   => null,
+        ];
     }
 
     /**
      * Mueve la fecha de inicio de la cobertura que ya existe.
      *
-     * Devuelve null cuando el portal no deja moverla —hay coberturas que
-     * rechaza sin explicar por qué—, y ahí el ciclo cae al camino largo de
-     * anular y volver a afiliar. Que falle no rompe nada: la cobertura vieja
-     * sigue intacta.
+     * Si el portal la rechaza, se propaga su motivo tal cual: la cobertura
+     * vieja sigue intacta, así que no hay nada que deshacer ni que avisar más
+     * allá de por qué no se pudo.
      */
-    private function moverCobertura(Contrato $contrato, array $cobertura, Carbon $nuevoInicio, ?int $usuarioId): ?ArlAfiliacion
+    private function moverCobertura(Contrato $contrato, array $cobertura, Carbon $nuevoInicio, ?int $usuarioId): ArlAfiliacion
     {
         $poliza = (string) $contrato->razonSocial?->arl_poliza;
         $desde  = $cobertura['fechaInicioCobertura'] ?? null;
@@ -428,12 +413,14 @@ class ArlAfiliacionService
         );
 
         if (! ($resultado['ok'] ?? false)) {
+            $motivo = $resultado['error'] ?? 'No se pudo mover la cobertura.';
+
             $registro->fill([
                 'estado'        => ArlAfiliacion::ESTADO_FALLIDA,
-                'mensaje_error' => Str::limit($resultado['error'] ?? 'No se pudo mover la cobertura.', 500),
+                'mensaje_error' => Str::limit($motivo, 500),
             ])->save();
 
-            return null; // el ciclo sigue por el camino largo
+            throw new RuntimeException($motivo);
         }
 
         $registro->fill([

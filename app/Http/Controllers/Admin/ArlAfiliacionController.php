@@ -18,6 +18,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Throwable;
 
 /**
@@ -353,7 +354,7 @@ class ArlAfiliacionController extends Controller
             return response()->json(['ok' => false, 'mensaje' => $e->getMessage()], 422);
         }
 
-        // El camino corto mueve la cobertura; el largo la anula y crea otra.
+        // O se movió la cobertura que ya existía, o no había ninguna y se afilió.
         $movimiento = $ciclo['modificacion'] ?: $ciclo['afiliacion'];
         $desde      = $movimiento->fecha_inicio_cobertura->format('d/m/Y');
         $movida     = (bool) $ciclo['modificacion'];
@@ -363,12 +364,10 @@ class ArlAfiliacionController extends Controller
             'Contrato',
             $contrato->id,
             $movida
-                ? "Renovación ARL Sura: cobertura movida a {$desde} (sin anular ni recrear)"
-                : 'Renovación ARL Sura: '.($ciclo['anulacion'] ? 'cobertura anterior anulada y ' : '').
-                  "nueva cobertura desde {$desde} (transacción {$movimiento->codigo_transaccion})",
+                ? "Renovación ARL Sura: cobertura movida a {$desde}"
+                : "Renovación ARL Sura: nueva cobertura desde {$desde} (transacción {$movimiento->codigo_transaccion})",
             [
                 'arl_modificacion_id' => $ciclo['modificacion']?->id,
-                'arl_anulacion_id'    => $ciclo['anulacion']?->id,
                 'arl_afiliacion_id'   => $ciclo['afiliacion']?->id,
             ],
             (int) $contrato->aliado_id
@@ -377,17 +376,64 @@ class ArlAfiliacionController extends Controller
         return response()->json([
             'ok'      => true,
             'mensaje' => $movida
-                ? 'Cobertura movida en ARL Sura. No hizo falta anular ni volver a afiliar.'
-                : ($ciclo['anulacion']
-                    ? 'Cobertura anterior anulada y nueva afiliación creada en ARL Sura.'
-                    : 'Nueva afiliación creada en ARL Sura.'),
+                ? 'Cobertura movida en ARL Sura, con el certificado nuevo descargado.'
+                : 'No había cobertura activa, así que se creó la afiliación en ARL Sura.',
             'movida'             => $movida,
-            'anulo'              => (bool) $ciclo['anulacion'],
             'codigo_transaccion' => $movimiento->codigo_transaccion,
             'fecha_arl'          => $movimiento->fecha_inicio_cobertura->format('Y-m-d'),
             'fecha_display'      => $desde,
             'aviso'              => $movimiento->mensaje_error,
         ]);
+    }
+
+    /**
+     * Baja del portal el certificado y el carné de ese momento y los archiva.
+     *
+     * Existe aparte de la renovación porque el certificado cambia solo con el
+     * tiempo: el que se descarga el mismo día que se mueve la cobertura sale
+     * como "POR INICIAR", y al llegar la fecha pasa a estar activo. Este botón
+     * permite volver por el bueno sin repetir ningún trámite.
+     */
+    public function certificado(Request $request, int $contratoId)
+    {
+        // Baja dos PDF del portal, y si la sesión caducó hay que reabrirla.
+        $this->sinLimiteDeTiempo();
+
+        $contrato = $this->contrato($request, $contratoId);
+
+        if (! $contrato->razonSocial?->arl_poliza) {
+            return response()->json(['ok' => false, 'mensaje' => 'La empresa todavía no tiene póliza ARL registrada.'], 422);
+        }
+
+        try {
+            $servicio = ArlAfiliacionService::paraContrato($contrato);
+            $builder  = new ArlSuraPayloadBuilder(new ArlSuraApiService(
+                (int) $contrato->aliado_id,
+                (string) $contrato->razonSocial->arl_poliza
+            ));
+
+            $docs = $servicio->archivarDocumentos($contrato, $builder->tipoAfiliado($contrato), Auth::id());
+        } catch (Throwable $e) {
+            return response()->json(['ok' => false, 'mensaje' => $e->getMessage()], 422);
+        }
+
+        $soporte = $docs[ArlAfiliacionService::DOC_SOPORTE] ?? null;
+
+        if (! $soporte) {
+            return response()->json(['ok' => false, 'mensaje' => 'El portal no devolvió el certificado.'], 422);
+        }
+
+        Bitacora::registrar(
+            'created',
+            'Contrato',
+            $contrato->id,
+            'Certificado ARL Sura descargado del portal',
+            ['documento_id' => $soporte->id],
+            (int) $contrato->aliado_id
+        );
+
+        // Va al disco `local`: el certificado lleva cédula, cargo y salario.
+        return Storage::disk('local')->download($soporte->ruta, $soporte->nombre_archivo);
     }
 
     /** Contrato del aliado activo. El filtro por aliado va en el primer query. */

@@ -52,6 +52,7 @@ body{display:flex;flex-direction:column}
 /* ── Botones ── */
 .btn-accion{border:none;border-radius:7px;padding:.28rem .6rem;font-size:.68rem;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap;display:inline-flex;align-items:center;gap:.25rem}
 .btn-renovar {background:#0d9488;color:#fff}.btn-renovar:hover{background:#0f766e}
+.btn-certificado {background:#475569;color:#fff}.btn-certificado:hover{background:#334155}
 .btn-facturar{background:#1e40af;color:#fff}.btn-facturar:hover{background:#1d4ed8}
 .btn-retirar {background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0}.btn-retirar:hover{background:#fee2e2;color:#b91c1c}
 .btn-contrato{background:#64748b;color:#fff;text-decoration:none}.btn-contrato:hover{background:#475569;color:#fff}
@@ -336,8 +337,11 @@ body{display:flex;flex-direction:column}
             <a class="btn-accion btn-contrato" href="/admin/contratos/{{ $c->id }}/edit" title="Ver/Editar Contrato">
                 📄
             </a>
-            <button class="btn-accion btn-renovar" onclick="abrirRenovar({{ $ctx }})" title="Anular la cobertura vigente y crear la del mes nuevo en ARL Sura">
+            <button class="btn-accion btn-renovar" onclick="abrirRenovar({{ $ctx }})" title="Mover la cobertura del trabajador a la fecha del mes nuevo en ARL Sura">
                 📅 Renovar
+            </button>
+            <button class="btn-accion btn-certificado" onclick="descargarCertificado(this, {{ $c->id }})" title="Bajar del portal el certificado y el carné al día">
+                🧾
             </button>
             <button class="btn-accion btn-facturar" onclick="abrirFacturar({{ $ctx }})" title="Facturar afiliación ARL">
                 💳 Facturar
@@ -552,8 +556,8 @@ async function abrirRenovar(ctx) {
         aviso = `El sistema va a <strong>mover la cobertura</strong> que hoy arranca el <strong>${cob.desde}</strong>` +
                 (cob.confirmada_en_sura ? ` (confirmada en el portal${cob.centro ? ', centro ' + cob.centro : ''})` : '') +
                 ` a la fecha que elijas. Es un solo trámite: no se anula ni se vuelve a afiliar.<br>` +
-                `<span style="color:#78350f;">Si Sura no deja moverla, el sistema anula y crea una nueva por su cuenta. ` +
-                `Después baja el certificado al día y actualiza la fecha ARL. Todo queda en el historial.</span>`;
+                `<span style="color:#78350f;">Después baja el certificado y el carné nuevos y actualiza la fecha ARL del contrato. ` +
+                `Si Sura no deja moverla, te dice por qué y la cobertura queda como está.</span>`;
     } else {
         aviso = `En el portal de Sura este trabajador <strong>no tiene ninguna cobertura activa</strong>, así que solo se <strong>creará la afiliación nueva</strong>. Queda en el historial.`;
     }
@@ -661,6 +665,57 @@ async function guardarCredencialRenovar() {
 
     alert(data.mensaje || (data.ok ? 'Credencial guardada.' : 'No se pudo guardar la credencial.'));
     if (data.ok) abrirRenovar(renovarCtx); // vuelve a revisar, ya con póliza
+}
+
+/**
+ * Baja del portal el certificado del momento y lo archiva en los documentos.
+ *
+ * El estado cambia solo con el tiempo: el certificado que se saca el mismo día
+ * en que se mueve la cobertura sale como "POR INICIAR", y al llegar la fecha ya
+ * aparece activo. Por eso el botón vive aparte de la renovación.
+ */
+async function descargarCertificado(btn, contratoId) {
+    const textoOriginal = btn.textContent;
+    const parar = gaEsperar(btn, '');
+
+    try {
+        const res = await gaPedirArchivo(`/admin/gestion-arl/${contratoId}/certificado`, 280);
+
+        if (res.error) { alert(res.error); return; }
+
+        // El navegador no puede abrir el disco `local` del servidor: el PDF
+        // llega en la respuesta y se guarda desde aquí.
+        const url = URL.createObjectURL(res.blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = res.nombre || `certificado_arl_${contratoId}.pdf`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } finally {
+        parar();
+        btn.disabled = false; btn.textContent = textoOriginal;
+    }
+}
+
+/** Como gaPedir, pero la respuesta es un PDF y no un JSON. */
+async function gaPedirArchivo(url, limiteSeg) {
+    const corte  = new AbortController();
+    const alarma = setTimeout(() => corte.abort(), limiteSeg * 1000);
+    try {
+        const res = await fetch(url, { headers: { 'X-CSRF-TOKEN': CSRF }, signal: corte.signal });
+
+        if (!res.ok) {
+            const d = await res.json().catch(() => ({}));
+            return { error: d.mensaje || 'No se pudo bajar el certificado del portal.' };
+        }
+
+        const cd = res.headers.get('content-disposition') || '';
+        const m  = cd.match(/filename="?([^"';]+)"?/i);
+        return { blob: await res.blob(), nombre: m ? m[1] : null };
+    } catch (e) {
+        return { error: 'Se perdió la conexión mientras se bajaba el certificado.' };
+    } finally {
+        clearTimeout(alarma);
+    }
 }
 
 /** Respaldo: mueve el semáforo sin tocar la ARL, para trámites hechos por fuera. */
