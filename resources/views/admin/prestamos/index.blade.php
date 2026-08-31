@@ -20,18 +20,19 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
 .prest-title { font-size:1.3rem; font-weight:800; }
 .prest-sub   { font-size:.77rem; color:#94a3b8; margin-top:.15rem; }
 
-/* ── Cards ── */
-.cards-row { display:grid; grid-template-columns:repeat(4,1fr); gap:.7rem; }
-@media(max-width:768px){ .cards-row{grid-template-columns:1fr 1fr;} }
-.card-item { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:.85rem 1rem; }
-.ci-label { font-size:.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#64748b; }
-.ci-val   { font-size:1.45rem; font-weight:800; color:#0f172a; font-family:monospace; margin-top:.2rem; }
-.card-danger { border-top:3px solid #dc2626; }
-.card-warn   { border-top:3px solid #d97706; }
-.card-info   { border-top:3px solid #2563eb; }
-.card-red-val  .ci-val { color:#dc2626; }
-.card-oran-val .ci-val { color:#d97706; }
-.card-blue-val .ci-val { color:#2563eb; }
+/* ── Chips resumen (antes cards sueltas: ahora viven dentro de la barra) ── */
+.chips-row { display:flex; gap:.4rem; flex-wrap:wrap; margin-left:auto; }
+.chip {
+    display:flex; align-items:center; gap:.45rem; background:#f8fafc;
+    border:1px solid #e2e8f0; border-left:3px solid #2563eb;
+    border-radius:9px; padding:.3rem .6rem; line-height:1.1;
+}
+.chip-lbl { font-size:.62rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#64748b; }
+.chip-val { font-size:.95rem; font-weight:800; font-family:monospace; color:#0f172a; }
+.chip-danger { border-left-color:#dc2626; } .chip-danger .chip-val { color:#dc2626; }
+.chip-warn   { border-left-color:#d97706; } .chip-warn   .chip-val { color:#d97706; }
+.chip-info   { border-left-color:#2563eb; } .chip-info   .chip-val { color:#2563eb; }
+@media(max-width:900px){ .chips-row{ margin-left:0; width:100%; } }
 
 /* ── Tabs ── */
 .tabs-bar { display:flex; gap:.45rem; align-items:center; }
@@ -42,11 +43,12 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
 }
 .tab-link.active { background:#1e40af; border-color:#1e40af; color:#fff; }
 
-/* ── Filtros ── */
-.filtros {
+/* ── Barra única: tabs + buscador + chips ── */
+.barra-top {
     background:#fff; border:1px solid #e2e8f0; border-radius:12px;
-    padding:.7rem 1rem; display:flex; flex-wrap:wrap; gap:.5rem; align-items:center;
+    padding:.55rem .8rem; display:flex; flex-wrap:wrap; gap:.55rem; align-items:center;
 }
+.filtros { display:flex; flex-wrap:wrap; gap:.4rem; align-items:center; margin:0; }
 .filtros input { padding:.38rem .7rem; border:1px solid #cbd5e1; border-radius:8px; font-size:.82rem; outline:none; }
 .filtros input:focus { border-color:#3b82f6; }
 .btn-filtrar { padding:.38rem .95rem; background:#1e40af; color:#fff; border:none; border-radius:8px; font-size:.82rem; font-weight:600; cursor:pointer; }
@@ -56,6 +58,10 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
 .tbl-wrap { overflow-x:auto; border-radius:12px; border:1px solid #e2e8f0; background:#fff; }
 .tbl-prest { width:100%; border-collapse:collapse; font-size:.8rem; white-space:nowrap; }
 .tbl-prest thead th { background:#0f172a; color:#fff; padding:.5rem .7rem; font-size:.68rem; text-transform:uppercase; letter-spacing:.04em; font-weight:600; }
+.tbl-prest thead th.sortable { cursor:pointer; user-select:none; }
+.tbl-prest thead th.sortable:hover { background:#1e293b; }
+.sort-ind { margin-left:.25rem; font-size:.6rem; opacity:.35; }
+.tbl-prest thead th.sorted .sort-ind { opacity:1; color:#93c5fd; }
 .tbl-prest tbody tr { border-bottom:1px solid #f1f5f9; transition:background .12s; }
 .tbl-prest tbody tr:hover { background:#f8fafc; }
 .tbl-prest td { padding:.5rem .7rem; vertical-align:middle; color:#1e293b; }
@@ -107,28 +113,8 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
     </div>
 </div>
 
-{{-- ══ CARDS RESUMEN ══ --}}
-<div class="cards-row">
-    <div class="card-item card-info card-blue-val">
-        <div class="ci-label">📋 Préstamos activos</div>
-        <div class="ci-val">{{ $totalPrestamos }}</div>
-    </div>
-    <div class="card-item card-danger card-red-val">
-        <div class="ci-label">💸 Total deuda</div>
-        <div class="ci-val">{{ $fmt($totalDeudaInd + $totalDeudaEmp) }}</div>
-    </div>
-    <div class="card-item card-warn card-oran-val">
-        <div class="ci-label">🏢 Deuda empresas</div>
-        <div class="ci-val">{{ $fmt($totalDeudaEmp) }}</div>
-    </div>
-    <div class="card-item {{ $sinGestion > 0 ? 'card-danger card-red-val' : 'card-info card-blue-val' }}">
-        <div class="ci-label">🔴 Sin gestión reciente</div>
-        <div class="ci-val">{{ $sinGestion }}</div>
-    </div>
-</div>
-
-{{-- ══ TABS + FILTRO ══ --}}
-<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;">
+{{-- ══ BARRA: filtros + buscador + resumen, todo en una sola fila ══ --}}
+<div class="barra-top">
     <div class="tabs-bar">
         <a href="?tab=individuales{{ $buscar ? '&buscar='.urlencode($buscar) : '' }}"
            class="tab-link {{ $tab === 'individuales' ? 'active' : '' }}">
@@ -139,16 +125,35 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
             🏢 Empresas ({{ $empresasAgrupadas->count() }})
         </a>
     </div>
-</div>
 
-<form method="GET" class="filtros">
-    <input type="hidden" name="tab" value="{{ $tab }}">
-    <input type="text" name="buscar" value="{{ $buscar }}" placeholder="🔍 Nombre, cédula o empresa..." style="min-width:220px;">
-    <button type="submit" class="btn-filtrar">Buscar</button>
-    @if($buscar)
-    <a href="?tab={{ $tab }}" class="btn-limpiar">✕ Limpiar</a>
-    @endif
-</form>
+    <form method="GET" class="filtros">
+        <input type="hidden" name="tab" value="{{ $tab }}">
+        <input type="text" name="buscar" value="{{ $buscar }}" placeholder="🔍 Nombre, cédula o empresa..." style="min-width:200px;">
+        <button type="submit" class="btn-filtrar">Buscar</button>
+        @if($buscar)
+        <a href="?tab={{ $tab }}" class="btn-limpiar">✕ Limpiar</a>
+        @endif
+    </form>
+
+    <div class="chips-row">
+        <div class="chip chip-info" title="Préstamos activos">
+            <span class="chip-lbl">📋 Activos</span>
+            <span class="chip-val">{{ $totalPrestamos }}</span>
+        </div>
+        <div class="chip chip-danger" title="Total deuda">
+            <span class="chip-lbl">💸 Deuda</span>
+            <span class="chip-val">{{ $fmt($totalDeudaInd + $totalDeudaEmp) }}</span>
+        </div>
+        <div class="chip chip-warn" title="Deuda de empresas">
+            <span class="chip-lbl">🏢 Empresas</span>
+            <span class="chip-val">{{ $fmt($totalDeudaEmp) }}</span>
+        </div>
+        <div class="chip {{ $sinGestion > 0 ? 'chip-danger' : 'chip-info' }}" title="Sin gestión reciente">
+            <span class="chip-lbl">🔴 Sin gestión</span>
+            <span class="chip-val">{{ $sinGestion }}</span>
+        </div>
+    </div>
+</div>
 
 {{-- ══ TAB INDIVIDUALES ══ --}}
 @if($tab === 'individuales')
@@ -162,15 +167,15 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
     <table class="tbl-prest">
         <thead>
             <tr>
-                <th title="Semáforo de gestión"></th>
-                <th>Cliente</th>
-                <th>Cédula</th>
-                <th>Asesor</th>
-                <th>Período</th>
-                <th class="text-right">Valor original</th>
-                <th class="text-right">Abonado</th>
-                <th class="text-right">Saldo deuda</th>
-                <th>Última gestión</th>
+                <th data-sort="num" title="Semáforo de gestión — ordena por riesgo"></th>
+                <th data-sort="texto">Cliente</th>
+                <th data-sort="num">Cédula</th>
+                <th data-sort="texto">Asesor</th>
+                <th data-sort="num">Período</th>
+                <th data-sort="num" class="text-right">Valor original</th>
+                <th data-sort="num" class="text-right">Abonado</th>
+                <th data-sort="num" class="text-right">Saldo deuda</th>
+                <th data-sort="num">Última gestión</th>
                 <th style="text-align:center">Acciones</th>
             </tr>
         </thead>
@@ -188,27 +193,29 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
             'rojo'     => 'Más de 7 días sin gestión',
             default    => 'Sin gestiones registradas',
         };
+        // Peso para ordenar por la columna del semáforo: primero lo más urgente.
+        $riesgo = match($sem) { 'rojo' => 3, 'gris' => 2, 'amarillo' => 1, default => 0 };
         @endphp
         <tr>
-            <td style="text-align:center;">
+            <td style="text-align:center;" data-v="{{ $riesgo }}">
                 <span class="sem sem-{{ $sem }}" title="{{ $semTip }}"></span>
             </td>
-            <td>
+            <td data-v="{{ $nombre }}">
                 <div style="font-weight:700;color:#1e3a5f;">{{ $nombre ?: '—' }}</div>
             </td>
-            <td style="font-family:monospace;color:#64748b;font-size:.78rem;">
+            <td style="font-family:monospace;color:#64748b;font-size:.78rem;" data-v="{{ (int)$f->cedula }}">
                 {{ $f->cedula }}
             </td>
-            <td style="font-size:.75rem;color:#64748b;">{{ $f->contrato?->asesor?->nombre ?? '—' }}</td>
-            <td>
+            <td style="font-size:.75rem;color:#64748b;" data-v="{{ $f->contrato?->asesor?->nombre ?? '' }}">{{ $f->contrato?->asesor?->nombre ?? '—' }}</td>
+            <td data-v="{{ (int)$f->anio * 100 + (int)$f->mes }}">
                 <span style="background:#dbeafe;color:#1d4ed8;padding:.15rem .5rem;border-radius:20px;font-size:.7rem;font-weight:700;">
                     {{ $meses[$f->mes] }} {{ $f->anio }}
                 </span>
             </td>
-            <td style="text-align:right;font-family:monospace;font-weight:600;">{{ $fmt($f->total) }}</td>
-            <td style="text-align:right;" class="monto-abono">{{ $fmt($f->total_abonado) }}</td>
-            <td style="text-align:right;" class="monto-deuda">{{ $fmt($f->saldo_pendiente_prestamo) }}</td>
-            <td style="font-size:.73rem;">
+            <td style="text-align:right;font-family:monospace;font-weight:600;" data-v="{{ (int)$f->total }}">{{ $fmt($f->total) }}</td>
+            <td style="text-align:right;" class="monto-abono" data-v="{{ (int)$f->total_abonado }}">{{ $fmt($f->total_abonado) }}</td>
+            <td style="text-align:right;" class="monto-deuda" data-v="{{ (int)$f->saldo_pendiente_prestamo }}">{{ $fmt($f->saldo_pendiente_prestamo) }}</td>
+            <td style="font-size:.73rem;" data-v="{{ $f->ultima_gestion?->fecha_llamada?->timestamp ?? 0 }}">
                 @if($f->ultima_gestion)
                     <div style="font-weight:600;color:#334155;">
                         {{ \App\Models\BitacoraCobro::RESULTADOS[$f->ultima_gestion->resultado] ?? $f->ultima_gestion->resultado }}
@@ -258,34 +265,38 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
     <table class="tbl-prest">
         <thead>
             <tr>
-                <th></th>
-                <th>Empresa</th>
-                <th style="text-align:center;">Préstamos</th>
-                <th style="text-align:right;">Total original</th>
-                <th style="text-align:right;">Abonado</th>
-                <th style="text-align:right;">Saldo deuda</th>
-                <th>Última gestión</th>
+                <th data-sort="num" title="Semáforo de gestión — ordena por riesgo"></th>
+                <th data-sort="texto">Empresa</th>
+                <th data-sort="num" style="text-align:center;">Préstamos</th>
+                <th data-sort="num" style="text-align:right;">Total original</th>
+                <th data-sort="num" style="text-align:right;">Abonado</th>
+                <th data-sort="num" style="text-align:right;">Saldo deuda</th>
+                <th data-sort="num">Última gestión</th>
                 <th style="text-align:center;">Ver facturas</th>
             </tr>
         </thead>
         <tbody>
         @foreach($empresasAgrupadas as $grupo)
+        @php
+        $nombreEmp = $grupo->empresa?->empresa ?? 'Empresa #'.$grupo->empresa?->id;
+        $riesgoEmp = match($grupo->semaforo) { 'rojo' => 3, 'gris' => 2, 'amarillo' => 1, default => 0 };
+        @endphp
         <tr>
-            <td style="text-align:center;">
+            <td style="text-align:center;" data-v="{{ $riesgoEmp }}">
                 <span class="sem sem-{{ $grupo->semaforo }}"></span>
             </td>
-            <td style="font-weight:700;color:#1e3a5f;">
-                {{ $grupo->empresa?->empresa ?? 'Empresa #'.$grupo->empresa?->id }}
+            <td style="font-weight:700;color:#1e3a5f;" data-v="{{ $nombreEmp }}">
+                {{ $nombreEmp }}
             </td>
-            <td style="text-align:center;">
+            <td style="text-align:center;" data-v="{{ (int)$grupo->cant_facturas }}">
                 <span style="background:#e0f2fe;color:#0369a1;padding:.15rem .5rem;border-radius:20px;font-size:.72rem;font-weight:700;">
                     {{ $grupo->cant_facturas }}
                 </span>
             </td>
-            <td style="text-align:right;font-family:monospace;">{{ $fmt($grupo->total_original) }}</td>
-            <td style="text-align:right;" class="monto-abono">{{ $fmt($grupo->total_abonado) }}</td>
-            <td style="text-align:right;" class="monto-deuda">{{ $fmt($grupo->total_deuda) }}</td>
-            <td style="font-size:.73rem;">
+            <td style="text-align:right;font-family:monospace;" data-v="{{ (int)$grupo->total_original }}">{{ $fmt($grupo->total_original) }}</td>
+            <td style="text-align:right;" class="monto-abono" data-v="{{ (int)$grupo->total_abonado }}">{{ $fmt($grupo->total_abonado) }}</td>
+            <td style="text-align:right;" class="monto-deuda" data-v="{{ (int)$grupo->total_deuda }}">{{ $fmt($grupo->total_deuda) }}</td>
+            <td style="font-size:.73rem;" data-v="{{ $grupo->ultima_gestion?->fecha_llamada?->timestamp ?? 0 }}">
                 @if($grupo->ultima_gestion)
                     <div style="font-weight:600;color:#334155;">
                         {{ \App\Models\BitacoraCobro::RESULTADOS[$grupo->ultima_gestion->resultado] ?? $grupo->ultima_gestion->resultado }}
@@ -424,6 +435,55 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
 <script>
 const CSRF = document.querySelector('meta[name="csrf-token"]')?.content;
 const fmt  = v => '$' + parseInt(v||0).toLocaleString('es-CO');
+
+// ── Orden por encabezado ──────────────────────────────────────
+// El listado no está paginado (llega completo del controlador), así que el
+// orden se resuelve aquí sin recargar. El valor real de cada celda viene en
+// data-v; el texto pintado ($ con puntos, "Enero 2026") no sirve para comparar.
+function valorCelda(td, tipo) {
+    if (!td) return tipo === 'texto' ? '' : 0;
+    const crudo = td.dataset.v !== undefined ? td.dataset.v : td.textContent.trim();
+    if (tipo === 'texto') return crudo.toLowerCase();
+    if (td.dataset.v !== undefined) return parseFloat(crudo) || 0;
+    return parseFloat(crudo.replace(/[^\d-]/g, '')) || 0;
+}
+
+document.querySelectorAll('table.tbl-prest').forEach(tabla => {
+    const ths = [...tabla.querySelectorAll('thead th[data-sort]')];
+    ths.forEach(th => {
+        const col = [...th.parentNode.children].indexOf(th);
+        th.classList.add('sortable');
+        th.insertAdjacentHTML('beforeend', '<span class="sort-ind">⇅</span>');
+        th.addEventListener('click', () => {
+            const tipo = th.dataset.sort;
+            // Primer clic: los textos de la A a la Z, los números de mayor a
+            // menor (que es lo que se quiere ver en una cartera). Siguientes
+            // clics invierten.
+            const asc = th.classList.contains('sorted')
+                ? th.dataset.dir !== 'asc'
+                : tipo === 'texto';
+
+            ths.forEach(o => {
+                o.classList.remove('sorted');
+                o.querySelector('.sort-ind').textContent = '⇅';
+            });
+            th.classList.add('sorted');
+            th.dataset.dir = asc ? 'asc' : 'desc';
+            th.querySelector('.sort-ind').textContent = asc ? '▲' : '▼';
+
+            const tbody = tabla.tBodies[0];
+            [...tbody.rows]
+                .sort((a, b) => {
+                    const va = valorCelda(a.cells[col], tipo);
+                    const vb = valorCelda(b.cells[col], tipo);
+                    if (va < vb) return asc ? -1 : 1;
+                    if (va > vb) return asc ? 1 : -1;
+                    return 0;
+                })
+                .forEach(fila => tbody.appendChild(fila));
+        });
+    });
+});
 
 // ── Modales ───────────────────────────────────────────────────
 function cerrarModal(id) { document.getElementById(id).classList.remove('open'); }
