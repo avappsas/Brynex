@@ -400,6 +400,10 @@ class ArlAfiliacionService
             'tipo_cotizante'         => $cobertura['cdTipoCotizante'] ?? null,
             'nivel_riesgo'           => (int) $contrato->n_arl,
             'fecha_inicio_cobertura' => $nuevoInicio->toDateString(),
+            // De dónde venía la cobertura. En el portal ese dato se pierde al
+            // moverla, así que es el único sitio donde queda desde cuándo
+            // estaba afiliado antes de esta renovación.
+            'fecha_fin_cobertura'    => $desde ? Carbon::createFromFormat('d/m/Y', $desde)->toDateString() : null,
             'usuario_id'             => $usuarioId,
         ]);
 

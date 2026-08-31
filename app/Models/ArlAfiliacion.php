@@ -40,6 +40,12 @@ class ArlAfiliacion extends BaseModel
     /** El payload lleva datos personales del afiliado: nunca sale en un JSON de respuesta. */
     protected $hidden = ['payload', 'respuesta'];
 
+    /**
+     * En una modificación, `fecha_fin_cobertura` guarda la fecha DE LA QUE se
+     * movió la cobertura: el portal la borra al moverla, y sin esto no quedaría
+     * en ninguna parte desde cuándo estaba afiliado antes. La fecha de ingreso
+     * del contrato no se toca nunca.
+     */
     protected $casts = [
         'nivel_riesgo'           => 'integer',
         'fecha_inicio_cobertura' => 'date',
