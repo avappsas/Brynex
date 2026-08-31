@@ -250,16 +250,15 @@ class ArlAfiliacionController extends Controller
             'contrasena'     => 'required|string|max:100',
         ]);
 
-        $credencial = ArlCredencial::updateOrCreate(
-            ['nit' => $nit],
-            [
-                'aliado_id'      => $contrato->aliado_id,
-                'tipo_documento' => $datos['tipo_documento'],
-                'usuario'        => trim($datos['usuario']),
-                'contrasena'     => $datos['contrasena'],
-                'activo'         => true,
-                'ultimo_error'   => null,
-            ]
+        // La contraseña se guarda contra el usuario del portal, no contra la
+        // empresa: si esa persona administra varias razones sociales, cambiarla
+        // aquí la deja al día en todas.
+        $credencial = ArlCredencial::registrar(
+            (int) $contrato->aliado_id,
+            $nit,
+            $datos['tipo_documento'],
+            trim($datos['usuario']),
+            $datos['contrasena'],
         );
 
         $r = ArlSuraSesionService::descubrirPoliza($credencial, $nit);

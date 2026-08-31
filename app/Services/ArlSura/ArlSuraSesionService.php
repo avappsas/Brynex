@@ -3,6 +3,7 @@
 namespace App\Services\ArlSura;
 
 use App\Models\ArlCredencial;
+use App\Models\ArlUsuarioPortal;
 use App\Models\RazonSocial;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -242,16 +243,18 @@ class ArlSuraSesionService
             return null;
         }
 
-        $credencial = new ArlCredencial([
-            'nit'            => $nit,
+        $credencial = new ArlCredencial(['nit' => $nit, 'activo' => true]);
+        $credencial->exists = false;
+
+        // El login cuelga del usuario del portal, también cuando la credencial
+        // es de paso: así la lee el mismo código que las guardadas.
+        $credencial->setRelation('usuarioPortal', new ArlUsuarioPortal([
             // El módulo de claves no guarda el tipo de documento; los usuarios
             // registrados son cédulas.
             'tipo_documento' => 'C',
             'usuario'        => trim($clave->usuario),
             'contrasena'     => $clave->contrasena,
-            'activo'         => true,
-        ]);
-        $credencial->exists = false;
+        ]));
 
         return $credencial;
     }
