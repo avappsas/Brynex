@@ -551,12 +551,13 @@ async function abrirRenovar(ctx) {
     } else if (cob) {
         aviso = `El sistema va a hacer <strong>dos trámites</strong> en el portal de Sura:<br>` +
                 `<strong>1.</strong> Anular la cobertura vigente desde <strong>${cob.desde}</strong>` +
-                (cob.codigo_transaccion ? ` (transacción ${cob.codigo_transaccion})` : '') + `.<br>` +
+                (cob.codigo_transaccion ? ` (transacción ${cob.codigo_transaccion})` : '') +
+                (cob.confirmada_en_sura ? ` — confirmada en el portal${cob.centro ? ', centro ' + cob.centro : ''}` : '') + `.<br>` +
                 `<strong>2.</strong> Crear una nueva desde la fecha que elijas.<br>` +
                 `<span style="color:#78350f;">Son dos pasos porque Sura no permite mover la fecha de una cobertura ya creada. ` +
                 `Ambos quedan en el historial del contrato.</span>`;
     } else {
-        aviso = `Este contrato no tiene cobertura vigente registrada, así que solo se <strong>creará la afiliación nueva</strong> en Sura. Queda en el historial.`;
+        aviso = `En el portal de Sura este trabajador <strong>no tiene ninguna cobertura activa</strong>, así que solo se <strong>creará la afiliación nueva</strong>. Queda en el historial.`;
     }
     document.getElementById('renovar-aviso').innerHTML = aviso;
 

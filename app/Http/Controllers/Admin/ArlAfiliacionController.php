@@ -114,7 +114,7 @@ class ArlAfiliacionController extends Controller
             // Lo que la renovación va a anular. Se mira también `fecha_arl`
             // porque los contratos afiliados a mano antes de la integración no
             // tienen historial en BryNex, pero su cobertura sí existe en Sura.
-            'cobertura_actual' => $this->coberturaActual($contrato, $vigente),
+            'cobertura_actual' => $this->coberturaActual($contrato, $vigente, $faltaCredencial),
             'ya_afiliado'    => $vigente ? [
                 'codigo_transaccion' => $vigente->codigo_transaccion,
                 'desde'              => $vigente->fecha_inicio_cobertura?->format('d/m/Y'),
@@ -139,10 +139,31 @@ class ArlAfiliacionController extends Controller
         return ($proxima && $proxima->greaterThan($manana) ? $proxima : $manana)->toDateString();
     }
 
-    /** La cobertura viva del contrato, venga del historial o de `fecha_arl`. */
-    private function coberturaActual(Contrato $contrato, ?ArlAfiliacion $vigente): ?array
+    /**
+     * La cobertura viva del contrato.
+     *
+     * Se le pregunta al portal antes que nada: 45 de los contratos del módulo
+     * se afiliaron a mano y tienen `fecha_arl` vacía aunque su cobertura exista
+     * en Sura. Mostrar "no tiene cobertura" en esos casos llevaría a crear una
+     * segunda encima de la primera.
+     */
+    private function coberturaActual(Contrato $contrato, ?ArlAfiliacion $vigente, bool $faltaCredencial): ?array
     {
-        $desde = $vigente?->fecha_inicio_cobertura ?? $contrato->fecha_arl;
+        $enSura = null;
+
+        if (! $faltaCredencial) {
+            try {
+                $enSura = ArlAfiliacionService::paraContrato($contrato)->coberturaEnSura($contrato);
+            } catch (Throwable $e) {
+                Log::warning('ARL Sura: no se pudo consultar la cobertura vigente', [
+                    'contrato' => $contrato->id, 'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        $desde = $enSura && ! empty($enSura['fechaInicioCobertura'])
+            ? Carbon::createFromFormat('d/m/Y', $enSura['fechaInicioCobertura'])->startOfDay()
+            : ($vigente?->fecha_inicio_cobertura ?? $contrato->fecha_arl);
 
         if (! $desde) {
             return null;
@@ -153,6 +174,8 @@ class ArlAfiliacionController extends Controller
             'se_puede_anular'    => $desde->diffInDays(now(), false) <= 30,
             'codigo_transaccion' => $vigente?->codigo_transaccion,
             'en_historial'       => (bool) $vigente,
+            'confirmada_en_sura' => (bool) $enSura,
+            'centro'             => $enSura['dsCentroTrabajo'] ?? null,
         ];
     }
 

@@ -223,13 +223,17 @@ class ArlAfiliacionService
         // Los contratos afiliados a mano antes de la integración no tienen
         // historial en BryNex, pero su cobertura sí existe en Sura. La fecha de
         // ARL del contrato alcanza para saber si sigue dentro de los 30 días.
-        $inicioCobertura = $vigente?->fecha_inicio_cobertura ?? $contrato->fecha_arl;
+        // El portal manda: su fecha es la real, y existe aunque BryNex no la
+        // tenga registrada.
+        $inicioCobertura = $this->inicioEnSura($contrato)
+            ?? $vigente?->fecha_inicio_cobertura
+            ?? $contrato->fecha_arl;
 
         if (! $inicioCobertura) {
             throw new RuntimeException('Este contrato no tiene una afiliación registrada que anular.');
         }
 
-        $anulable = $vigente ? $vigente->sePuedeAnular() : $inicioCobertura->diffInDays(now(), false) <= 30;
+        $anulable = $inicioCobertura->diffInDays(now(), false) <= 30;
 
         if (! $anulable) {
             throw new RuntimeException(
@@ -296,6 +300,39 @@ class ArlAfiliacionService
         return $registro;
     }
 
+    /**
+     * La cobertura viva del trabajador según el portal.
+     *
+     * Es la única fuente confiable: los contratos afiliados a mano antes de la
+     * integración tienen `fecha_arl` vacía en BryNex aunque su cobertura exista
+     * en Sura, y renovar sin mirar aquí crearía una segunda cobertura sobre la
+     * primera en vez de reemplazarla.
+     */
+    public function coberturaEnSura(Contrato $contrato): ?array
+    {
+        foreach ($this->api->coberturasRetirables($this->dni($contrato)) as $cobertura) {
+            if (($cobertura['fechaRetiro'] ?? null) === null) {
+                return $cobertura;
+            }
+        }
+
+        return null;
+    }
+
+    /** La fecha en que arrancó esa cobertura, tal como la reporta el portal. */
+    private function inicioEnSura(Contrato $contrato): ?Carbon
+    {
+        try {
+            $cobertura = $this->coberturaEnSura($contrato);
+        } catch (Throwable $e) {
+            return null; // sin portal se sigue con lo que haya en BryNex
+        }
+
+        $fecha = $cobertura['fechaInicioCobertura'] ?? null;
+
+        return $fecha ? Carbon::createFromFormat('d/m/Y', $fecha)->startOfDay() : null;
+    }
+
     // ─── Renovación ──────────────────────────────────────────────────
 
     /**
@@ -317,8 +354,14 @@ class ArlAfiliacionService
             );
         }
 
-        $teniaCobertura = ArlAfiliacion::vigenteDe($contrato->id) || $contrato->fecha_arl;
-        $anulacion      = $teniaCobertura ? $this->anular($contrato, $usuarioId) : null;
+        // Se le pregunta al portal si ya hay cobertura viva. Fiarse de
+        // `fecha_arl` dejaría dos coberturas encima en los contratos que se
+        // afiliaron a mano y nunca quedaron registrados aquí.
+        $teniaCobertura = $this->coberturaEnSura($contrato) !== null
+            || ArlAfiliacion::vigenteDe($contrato->id)
+            || $contrato->fecha_arl;
+
+        $anulacion = $teniaCobertura ? $this->anular($contrato, $usuarioId) : null;
 
         try {
             $afiliacion = $this->afiliar($contrato, $nuevoInicio, $usuarioId);
