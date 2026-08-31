@@ -363,6 +363,22 @@ Route::middleware('auth')->group(function () {
             Route::delete('configuracion/operadores-planilla/{operador}/credenciales', [$opcr, 'destroyAliado'])->name('configuracion.operadores.credenciales.destroy');
         });
 
+        // Catálogo de cargos por razón social: alimenta el selector del contrato,
+        // y de ahí sale el nivel de riesgo con el que se elige el centro de ARL.
+        $rsc = \App\Http\Controllers\Admin\RazonSocialCargoController::class;
+        Route::get('razones-sociales/{razonSocial}/cargos', [$rsc, 'index'])->name('razones.cargos.index');
+        Route::post('razones-sociales/{razonSocial}/cargos', [$rsc, 'store'])->name('razones.cargos.store');
+
+        // Credenciales del portal de ARL Sura — mismo permiso restringido que las
+        // de operadores: con esto se afilia gente a una ARL, no lo hereda un rol.
+        $arlc = \App\Http\Controllers\Admin\ArlSuraCredencialController::class;
+        Route::middleware('permiso:operadores_planilla.credenciales')->group(function () use ($arlc) {
+            Route::get('configuracion/arl-sura', [$arlc, 'index'])->name('configuracion.arl-sura.index');
+            Route::post('configuracion/arl-sura', [$arlc, 'store'])->name('configuracion.arl-sura.store');
+            Route::post('configuracion/arl-sura/probar', [$arlc, 'probar'])->name('configuracion.arl-sura.probar');
+            Route::delete('configuracion/arl-sura', [$arlc, 'destroy'])->name('configuracion.arl-sura.destroy');
+        });
+
         // CRUD de Razones Sociales (empresas de afiliación) por aliado
         // ver: admin/contable/usuario · gestionar: admin · eliminar: superadmin
         $rsc = \App\Http\Controllers\Admin\RazonSocialController::class;
@@ -852,6 +868,16 @@ Route::middleware('auth')->group(function () {
         $ga = \App\Http\Controllers\Admin\GestionArlController::class;
         Route::get('/', [$ga, 'index'])->name('index');
         Route::patch('/{id}/renovar', [$ga, 'renovar'])->name('renovar');
+
+        // Afiliación directa contra el API de ARL Sura. El precheck no toca el
+        // portal: dice qué le falta al contrato antes de intentar nada.
+        $aa = \App\Http\Controllers\Admin\ArlAfiliacionController::class;
+        Route::get('/{id}/precheck', [$aa, 'precheck'])->name('precheck');
+        Route::post('/{id}/afiliar', [$aa, 'afiliar'])->name('afiliar');
+        // Anular NO tiene API en Sura: lo hace un navegador sobre el Struts.
+        Route::post('/{id}/anular', [$aa, 'anular'])->name('anular');
+        // Credencial del portal de esa empresa; al guardarla se descubre su póliza.
+        Route::post('/{id}/credencial', [$aa, 'credencial'])->name('credencial');
 
         // ── DEBUG TEMPORAL — borrar después ──
         Route::get('/debug/{cedula}', function ($cedula) {

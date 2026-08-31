@@ -52,6 +52,7 @@ body{display:flex;flex-direction:column}
 /* ── Botones ── */
 .btn-accion{border:none;border-radius:7px;padding:.28rem .6rem;font-size:.68rem;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap;display:inline-flex;align-items:center;gap:.25rem}
 .btn-renovar {background:#0d9488;color:#fff}.btn-renovar:hover{background:#0f766e}
+.btn-afiliar {background:linear-gradient(135deg,#1e40af,#2563eb);color:#fff}.btn-afiliar:hover{background:#1d4ed8}
 .btn-facturar{background:#1e40af;color:#fff}.btn-facturar:hover{background:#1d4ed8}
 .btn-retirar {background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0}.btn-retirar:hover{background:#fee2e2;color:#b91c1c}
 .btn-contrato{background:#64748b;color:#fff;text-decoration:none}.btn-contrato:hover{background:#475569;color:#fff}
@@ -336,7 +337,10 @@ body{display:flex;flex-direction:column}
             <a class="btn-accion btn-contrato" href="/admin/contratos/{{ $c->id }}/edit" title="Ver/Editar Contrato">
                 📄
             </a>
-            <button class="btn-accion btn-renovar" onclick="abrirRenovar({{ $ctx }})" title="Registrar renovación en portal ARL">
+            <button class="btn-accion btn-afiliar" onclick="abrirAfiliar({{ $ctx }})" title="Afiliar en ARL Sura sin entrar al portal">
+                🚀 Afiliar
+            </button>
+            <button class="btn-accion btn-renovar" onclick="abrirRenovar({{ $ctx }})" title="Registrar renovación hecha en el portal ARL">
                 📅 Renovar
             </button>
             <button class="btn-accion btn-facturar" onclick="abrirFacturar({{ $ctx }})" title="Facturar afiliación ARL">
@@ -376,6 +380,45 @@ body{display:flex;flex-direction:column}
 </div>
 </div>
 
+{{-- ══ MODAL AFILIAR EN ARL SURA ══ --}}
+<div class="modal-bg" id="modalAfiliar">
+<div class="modal-box">
+    <div class="modal-title">
+        <span>🚀 Afiliar en ARL Sura</span>
+        <button class="modal-close" onclick="cerrarModal('modalAfiliar')">✕</button>
+    </div>
+
+    {{-- Mientras se consulta qué le falta al contrato --}}
+    <div id="afiliar-cargando" style="padding:1.5rem;text-align:center;color:#64748b;font-size:.82rem;">
+        ⏳ Revisando los datos del contrato...
+    </div>
+
+    <div id="afiliar-contenido" style="display:none;">
+        <div id="afiliar-resumen" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:.65rem .8rem;margin-bottom:.75rem;font-size:.76rem;line-height:1.6;"></div>
+
+        {{-- Lo que impide afiliar: se listan todos juntos, no de a uno --}}
+        <div id="afiliar-problemas" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:.65rem .8rem;margin-bottom:.75rem;font-size:.75rem;color:#991b1b;">
+            <strong>Faltan datos para poder afiliar:</strong>
+            <ul id="afiliar-problemas-lista" style="margin:.4rem 0 0 1rem;padding:0;"></ul>
+        </div>
+
+        {{-- Cuando ya hay una afiliación viva en Sura --}}
+        <div id="afiliar-yaafiliado" style="display:none;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:.65rem .8rem;margin-bottom:.75rem;font-size:.75rem;color:#92400e;"></div>
+
+        <div class="form-group" id="afiliar-fecha-group">
+            <label>Fecha de inicio de cobertura *</label>
+            <input type="date" id="afiliar-fecha" required>
+            <span style="font-size:.7rem;color:#94a3b8;">Sura no cubre el mismo día en que se afilia: por eso se sugiere mañana.</span>
+        </div>
+
+        <button class="btn-save" id="afiliar-btn" onclick="confirmarAfiliacion()">🚀 Afiliar en Sura</button>
+    </div>
+
+    {{-- Resultado --}}
+    <div id="afiliar-resultado" style="display:none;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:.75rem .9rem;font-size:.8rem;color:#166534;"></div>
+</div>
+</div>
+
 {{-- ══ MODAL RETIRO (iframe contrato form) ══ --}}
 <div class="modal-bg" id="modalRetirar">
 <div class="modal-box wide" style="max-width:96vw;width:96vw;padding:0;overflow:hidden;">
@@ -410,6 +453,113 @@ function cerrarModal(id) {
 }
 
 /* ── Modal Renovar ── */
+let afiliarContratoId = null;
+
+async function abrirAfiliar(ctx) {
+    afiliarContratoId = ctx.id;
+
+    // Estado inicial del modal: solo el "cargando"
+    document.getElementById('afiliar-cargando').style.display  = 'block';
+    document.getElementById('afiliar-contenido').style.display = 'none';
+    document.getElementById('afiliar-resultado').style.display = 'none';
+    document.getElementById('modalAfiliar').classList.add('open');
+
+    let data;
+    try {
+        const res = await fetch(`/admin/gestion-arl/${ctx.id}/precheck`, {
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF },
+        });
+        data = await res.json();
+    } catch (e) {
+        document.getElementById('afiliar-cargando').textContent = '⚠️ No se pudo revisar el contrato.';
+        return;
+    }
+
+    document.getElementById('afiliar-cargando').style.display  = 'none';
+    document.getElementById('afiliar-contenido').style.display = 'block';
+
+    const r = data.resumen || {};
+    const linea = (etiqueta, valor) => valor
+        ? `<div><span style="color:#64748b;">${etiqueta}:</span> <strong>${valor}</strong></div>`
+        : '';
+
+    document.getElementById('afiliar-resumen').innerHTML =
+        linea('Trabajador', `${r.trabajador} — ${r.documento}`) +
+        linea('Empresa', `${r.razon_social} (póliza ${r.poliza ?? '—'})`) +
+        linea('Tipo', `${r.tipo}${r.modalidad ? ' · ' + r.modalidad : ''}`) +
+        linea('Seguridad social', `${r.eps ?? '—'} / ${r.afp ?? '—'}`) +
+        linea('IBC', r.ibc ? '$' + Number(r.ibc).toLocaleString('es-CO') : null) +
+        linea('Cargo', r.cargo) +
+        linea('Riesgo', r.nivel_riesgo ? `${r.nivel_riesgo} · centro ${r.centro ?? '—'}${r.tasa ? ' · tasa ' + r.tasa : ''}` : null);
+
+    // Problemas: se muestran todos, y mientras existan no se deja afiliar
+    const problemas = data.problemas || [];
+    const cajaProb  = document.getElementById('afiliar-problemas');
+    if (problemas.length) {
+        document.getElementById('afiliar-problemas-lista').innerHTML =
+            problemas.map(p => `<li>${p}</li>`).join('');
+        cajaProb.style.display = 'block';
+    } else {
+        cajaProb.style.display = 'none';
+    }
+
+    // Si ya está afiliado en Sura, avisar antes de crear una cobertura duplicada
+    const ya    = data.ya_afiliado;
+    const aviso = document.getElementById('afiliar-yaafiliado');
+    if (ya) {
+        aviso.innerHTML = `⚠️ Este contrato ya tiene una afiliación registrada desde <strong>${ya.desde}</strong>` +
+            (ya.codigo_transaccion ? ` (transacción ${ya.codigo_transaccion})` : '') + '.' +
+            (ya.se_puede_anular
+                ? ' Todavía está dentro de los 30 días para anularla si fue un error.'
+                : ' Ya pasaron los 30 días para anularla: para cerrarla hay que retirar.');
+        aviso.style.display = 'block';
+    } else {
+        aviso.style.display = 'none';
+    }
+
+    document.getElementById('afiliar-fecha').value = data.fecha_sugerida || '';
+
+    const btn = document.getElementById('afiliar-btn');
+    btn.disabled = problemas.length > 0;
+    btn.textContent = problemas.length ? '🚫 Completa los datos primero' : '🚀 Afiliar en Sura';
+    btn.style.opacity = problemas.length ? '.5' : '1';
+    document.getElementById('afiliar-fecha-group').style.display = problemas.length ? 'none' : 'block';
+}
+
+async function confirmarAfiliacion() {
+    const fecha = document.getElementById('afiliar-fecha').value;
+    if (!fecha) { alert('Selecciona la fecha de inicio de cobertura.'); return; }
+
+    const btn = document.getElementById('afiliar-btn');
+    btn.disabled = true; btn.textContent = '⏳ Afiliando en Sura...';
+
+    let data;
+    try {
+        const res = await fetch(`/admin/gestion-arl/${afiliarContratoId}/afiliar`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
+            body: JSON.stringify({ fecha_inicio_cobertura: fecha }),
+        });
+        data = await res.json();
+    } catch (e) {
+        data = { ok: false, mensaje: 'No se pudo conectar con el servidor.' };
+    }
+
+    if (data.ok) {
+        document.getElementById('afiliar-contenido').style.display = 'none';
+        const caja = document.getElementById('afiliar-resultado');
+        caja.innerHTML = `✅ <strong>${data.mensaje}</strong><br>` +
+            `Transacción <strong>${data.codigo_transaccion ?? '—'}</strong> · cobertura desde <strong>${data.fecha_display}</strong><br>` +
+            `<span style="color:#475569;">El soporte y el carné quedaron archivados en los documentos del cliente.</span>` +
+            (data.aviso ? `<br><span style="color:#b45309;">⚠️ ${data.aviso}</span>` : '');
+        caja.style.display = 'block';
+        setTimeout(() => location.reload(), 3500);
+    } else {
+        btn.disabled = false; btn.textContent = '🚀 Reintentar';
+        alert(data.mensaje || 'No se pudo afiliar.');
+    }
+}
+
 function abrirRenovar(ctx) {
     document.getElementById('renovar-nombre').textContent = ctx.nombre_completo || ctx.nombre;
     document.getElementById('renovar-rs').textContent     = ctx.razon_social;

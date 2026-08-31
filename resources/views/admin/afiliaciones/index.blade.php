@@ -467,6 +467,7 @@ function sortClass($col, $currSort, $currDir) {
         $ctxCelular        = $c->cliente?->celular ?? '';
         $ctxCorreo         = $c->cliente?->correo ?? '';
         $contexto          = json_encode([
+            'id'              => $c->id,
             'nombre'          => $ctxNombreCorto,
             'nombre_completo' => $ctxNombre,
             'razon_social'    => $ctxRazonSocial,
@@ -610,6 +611,12 @@ function sortClass($col, $currSort, $currDir) {
                     <span class="arl-nombre">{{ $c->arl_efectiva_nombre }}</span>
                     @if($c->n_arl)
                         <span class="arl-nivel-badge" title="Nivel de Riesgo {{ $c->n_arl }}">{{ $c->n_arl }}</span>
+                    @endif
+                    {{-- Solo tiene sentido con Sura: es la única ARL con API --}}
+                    @if(str_contains(mb_strtoupper($c->arl_efectiva_nombre ?? ''), 'SURA'))
+                        <button type="button" onclick="abrirAfiliarSura({{ $c->id }})"
+                                title="Afiliar en ARL Sura sin entrar al portal"
+                                style="border:none;background:#eff6ff;color:#1d4ed8;border-radius:5px;padding:0 .3rem;cursor:pointer;font-size:.72rem;line-height:1.5;">🚀</button>
                     @endif
                 </span>
             @else
@@ -770,6 +777,19 @@ function sortClass($col, $currSort, $currDir) {
                    style="display:none;align-items:center;gap:0.35rem;padding:0.3rem 0.7rem;background:#7c3aed;color:#fff;border-radius:7px;font-size:0.75rem;font-weight:700;text-decoration:none;">
                     📄 Formulario
                 </a>
+                {{-- Solo para radicados de ARL Sura: afilia por API y deja este
+                     mismo radicado en OK con el certificado adjunto. --}}
+                <button id="btnAfiliarApi" type="button"
+                    style="display:none;align-items:center;gap:0.35rem;padding:0.3rem 0.85rem;background:linear-gradient(135deg,#047857,#10b981);color:#fff;border:none;border-radius:7px;font-size:0.75rem;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(16,185,129,0.3);"
+                    onclick="afiliarApiDesdeRadicado()">
+                    🚀 Afiliar por API
+                </button>
+                {{-- Cuando ya está afiliado: deshacer, solo dentro de los 30 días --}}
+                <button id="btnAnularApi" type="button"
+                    style="display:none;align-items:center;gap:0.35rem;padding:0.3rem 0.85rem;background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;border-radius:7px;font-size:0.75rem;font-weight:700;cursor:pointer;"
+                    onclick="anularApiDesdeRadicado()">
+                    ↩️ Anular afiliación
+                </button>
                 <button id="btnVerDatosCotizante" type="button"
                     style="display:none;align-items:center;gap:0.35rem;padding:0.3rem 0.85rem;background:linear-gradient(135deg,#0f172a,#1e40af);color:#fff;border:none;border-radius:7px;font-size:0.75rem;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(30,64,175,0.25);"
                     onclick="abrirVerDatos(this._ctx, this._tipo)">
@@ -815,15 +835,18 @@ function sortClass($col, $currSort, $currDir) {
                 <textarea id="mrad-observacion" placeholder="Describe la acción realizada. Ej: Se envió correo al asesor de EPS, esperando respuesta..."></textarea>
             </div>
 
-            {{-- Sección PDF (solo si estado = ok) --}}
+            {{-- Sección PDF (solo si estado = ok o trámite).
+                 Con documento cargado se muestra una tarjeta y el subidor queda
+                 plegado: reemplazarlo es la excepción, no lo habitual. --}}
             <div class="pdf-upload-section" id="seccionPdf" style="display:none;">
-                <div style="font-size:0.75rem;font-weight:700;color:#15803d;margin-bottom:0.5rem;">📎 PDF del Radicado</div>
-                <div id="pdfActual" style="margin-bottom:0.5rem;"></div>
-                <div class="form-group">
-                    <label>Subir PDF (máx. 3MB)</label>
-                    <input type="file" id="mrad-pdf" accept=".pdf" style="border:1px dashed #cbd5e1;border-radius:8px;padding:0.4rem;">
+                <div id="pdfActual"></div>
+
+                <div id="pdfSubir">
+                    <div style="font-size:0.75rem;font-weight:700;color:#15803d;margin-bottom:0.4rem;">📎 PDF del Radicado</div>
+                    <input type="file" id="mrad-pdf" accept=".pdf"
+                           style="border:1px dashed #cbd5e1;border-radius:8px;padding:0.4rem;width:100%;font-size:0.78rem;">
+                    <div class="pdf-info" style="margin-top:0.25rem;">Solo PDF, máximo 3MB.</div>
                 </div>
-                <div class="pdf-info">Solo se acepta el formato PDF. Si ya existe un PDF será reemplazado.</div>
             </div>
 
             {{-- Sección enviado al cliente --}}
@@ -1417,6 +1440,17 @@ function abrirModalRadicado(radId, radData, ctx = {}, contratoId = null, tieneFo
     document.getElementById('mrad-titulo').textContent = '📝 ' + (radData.tipo?.toUpperCase() || 'Radicado');
     document.getElementById('mrad-tipo').textContent = (radData.tipo || '').toUpperCase();
     document.getElementById('mrad-num-rad').textContent = radData.numero_radicado ? 'N°: ' + radData.numero_radicado : 'Sin número asignado';
+
+    // Afiliar por API: solo en ARL, solo si es Sura y solo si aún no está en OK.
+    const btnApi   = document.getElementById('btnAfiliarApi');
+    const btnAnular = document.getElementById('btnAnularApi');
+    const esArlSura = (radData.tipo === 'arl') && /SURA/i.test(ctx.arl || '');
+
+    btnApi.style.display    = (esArlSura && radData.estado !== 'ok') ? 'inline-flex' : 'none';
+    btnAnular.style.display = (esArlSura && radData.estado === 'ok') ? 'inline-flex' : 'none';
+    // El badge de un radicado existente no trae data-contrato-id (solo el de
+    // crear), así que el id sale del contexto.
+    btnApi._contratoId = btnAnular._contratoId = contratoId || ctx.id || null;
     // Contexto del contrato
     document.getElementById('mrad-cotizante').textContent        = ctx.nombre         || '—';
     document.getElementById('mrad-empresa').textContent          = ctx.razon_social    || '—';
@@ -1507,6 +1541,48 @@ function actualizarColorEstadoSelect(sel) {
     sel.style.borderColor = p.bg;
 }
 
+// Afiliar por API desde el radicado: al terminar, el propio flujo deja este
+// radicado en OK con el certificado adjunto, así que basta con recargar.
+function afiliarApiDesdeRadicado() {
+    const contratoId = document.getElementById('btnAfiliarApi')._contratoId;
+    if (!contratoId) { alert('No se pudo identificar el contrato.'); return; }
+    cerrarModal('modalRadicado');
+    abrirAfiliarSura(contratoId);
+}
+
+// Anular la afiliación. Es irreversible en el sentido contrario: la cobertura
+// desaparece del portal, así que se pregunta antes con todas las letras.
+async function anularApiDesdeRadicado() {
+    const contratoId = document.getElementById('btnAnularApi')._contratoId;
+    if (!contratoId) { alert('No se pudo identificar el contrato.'); return; }
+
+    if (!confirm('¿Anular la afiliación en ARL Sura?\n\nLa cobertura desaparece del portal, como si nunca hubiera existido, ' +
+                 'y el radicado vuelve a pendiente.\n\nSi el trabajador ya estuvo cubierto, lo correcto es retirar, no anular.')) return;
+
+    const btn = document.getElementById('btnAnularApi');
+    btn.disabled = true; btn.textContent = '⏳ Anulando...';
+
+    let data;
+    try {
+        const res = await fetch(`/admin/gestion-arl/${contratoId}/anular`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
+        });
+        data = await res.json();
+    } catch (e) {
+        data = { ok: false, mensaje: 'No se pudo conectar con el servidor.' };
+    }
+
+    btn.disabled = false; btn.textContent = '↩️ Anular afiliación';
+
+    if (data.ok) {
+        alert(data.mensaje);
+        location.reload();
+    } else {
+        alert(data.mensaje || 'No se pudo anular.');
+    }
+}
+
 // ── Modal Ver Datos Cotizante ──
 let _datosCotizanteTexto = '';
 
@@ -1584,16 +1660,42 @@ function copiarDatosCotizante() {
 }
 
 function togglePdfSection(estado) {
-    const sec = document.getElementById('seccionPdf');
+    const sec        = document.getElementById('seccionPdf');
     const permitePdf = (estado === 'ok' || estado === 'tramite');
     sec.style.display = permitePdf ? 'block' : 'none';
-    if(permitePdf && radicadoActivo?.ruta_pdf) {
-        document.getElementById('pdfActual').innerHTML =
-            '<a class="pdf-link" href="{{ route("admin.radicados.pdf.download", ":id") }}" target="_blank">'.replace(':id', radicadoActivo.id) +
-            '📄 Ver PDF actual</a>';
+
+    const cajaActual = document.getElementById('pdfActual');
+    const cajaSubir  = document.getElementById('pdfSubir');
+    if (!permitePdf) { cajaActual.innerHTML = ''; return; }
+
+    if (radicadoActivo?.ruta_pdf) {
+        // Ya hay soporte: se ve de un vistazo y el subidor se pliega.
+        const url = '{{ route("admin.radicados.pdf.download", ":id") }}'.replace(':id', radicadoActivo.id);
+        cajaActual.innerHTML =
+            '<div style="display:flex;align-items:center;gap:0.6rem;background:#f0fdf4;border:1px solid #86efac;' +
+            'border-radius:9px;padding:0.55rem 0.75rem;">' +
+              '<span style="font-size:1.1rem;">📄</span>' +
+              '<div style="flex:1;min-width:0;">' +
+                '<div style="font-size:0.78rem;font-weight:700;color:#166534;">Soporte cargado</div>' +
+                '<div style="font-size:0.68rem;color:#15803d;">El certificado de la ARL está guardado en este radicado.</div>' +
+              '</div>' +
+              '<a href="' + url + '" target="_blank" style="background:#16a34a;color:#fff;border-radius:7px;' +
+                'padding:0.28rem 0.7rem;font-size:0.72rem;font-weight:700;text-decoration:none;white-space:nowrap;">Ver PDF</a>' +
+              '<button type="button" onclick="mostrarSubirPdf()" style="background:none;border:none;color:#15803d;' +
+                'font-size:0.7rem;font-weight:600;cursor:pointer;text-decoration:underline;white-space:nowrap;">Reemplazar</button>' +
+            '</div>';
+        cajaSubir.style.display = 'none';
     } else {
-        document.getElementById('pdfActual').innerHTML = '';
+        cajaActual.innerHTML = '';
+        cajaSubir.style.display = 'block';
     }
+}
+
+/** Despliega el subidor cuando de verdad se quiere cambiar el documento. */
+function mostrarSubirPdf() {
+    const c = document.getElementById('pdfSubir');
+    c.style.display = 'block';
+    document.getElementById('mrad-pdf')?.focus();
 }
 
 async function guardarRadicado(e) {
@@ -2164,5 +2266,8 @@ function mostrarToast(msg, tipo) {
 </script>
 @endpush
 @include('admin.partials._modal_claves_globales')
+
+
+@include('admin.partials._afiliar_arl_sura')
 
 @endsection

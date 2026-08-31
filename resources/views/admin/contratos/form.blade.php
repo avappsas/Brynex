@@ -276,7 +276,15 @@
       </div>
       <div>
         <label class="lb">Cargo / Ocupacion</label>
-        <input type="text" name="cargo" value="{{ old('cargo', $contrato->cargo ?? '') }}" style="{{ $I }}">
+        {{-- Sigue siendo un campo de texto —se puede escribir un cargo nuevo—
+             pero sugiere los de la razón social. Al elegir uno del catálogo se
+             ajusta solo el nivel de riesgo, que es de donde sale el centro de
+             trabajo al afiliar en ARL Sura. --}}
+        <input type="text" name="cargo" id="inp_cargo" list="lista_cargos" autocomplete="off"
+               value="{{ old('cargo', $contrato->cargo ?? '') }}" style="{{ $I }}"
+               placeholder="Escribe o elige uno de la lista">
+        <datalist id="lista_cargos"></datalist>
+        <span id="cargo_hint" style="display:none;font-size:.68rem;color:#1d4ed8;"></span>
       </div>
       {{-- Operador Planilla: visible SOLO cuando la RS es independiente, sin importar si hay ARL --}}
       <div id="panel-operador-planilla" style="display:none;">
@@ -1685,6 +1693,62 @@ function mrValidarPeriodoConsecutivo() {
 }
 
 // ── Init: establecer defaults al cargar ──────────────────────────────────
+// ── Cargos de la razón social ────────────────────────────────────────
+// El catálogo vive en razon_social_cargos y cada cargo trae su nivel de riesgo.
+// Elegir uno de la lista ajusta el N.ARL solo, que es lo que determina el centro
+// de trabajo al afiliar en ARL Sura. Escribir uno nuevo sigue permitido.
+(function () {
+    const inpCargo = document.getElementById('inp_cargo');
+    const dataList = document.getElementById('lista_cargos');
+    const hint     = document.getElementById('cargo_hint');
+    const selRS    = document.getElementById('sel_rs');
+    if (!inpCargo || !dataList) return;
+
+    let cargosRS = [];
+
+    async function cargarCargos() {
+        const rsId = selRS ? selRS.value : '{{ $contrato->razon_social_id ?? '' }}';
+        dataList.innerHTML = '';
+        cargosRS = [];
+        if (!rsId) return;
+
+        try {
+            const r = await fetch(`/admin/razones-sociales/${rsId}/cargos`, {
+                headers: { 'Accept': 'application/json' },
+            });
+            const d = await r.json();
+            cargosRS = d.cargos || [];
+            dataList.innerHTML = cargosRS
+                .map(c => `<option value="${c.cargo}">riesgo ${c.nivel_riesgo}</option>`)
+                .join('');
+        } catch (e) { /* sin catálogo se sigue escribiendo a mano */ }
+    }
+
+    function ajustarRiesgo() {
+        const elegido = cargosRS.find(c => c.cargo.toUpperCase() === inpCargo.value.trim().toUpperCase());
+        if (!elegido) { hint.style.display = 'none'; return; }
+
+        const selArl = document.querySelector('select[name="n_arl"]');
+        if (selArl && String(selArl.value) !== String(elegido.nivel_riesgo)) {
+            selArl.value = String(elegido.nivel_riesgo);
+            // x-model de Alpine escucha estos eventos: sin dispararlos, el
+            // cálculo del contrato seguiría con el riesgo anterior.
+            selArl.dispatchEvent(new Event('input',  { bubbles: true }));
+            selArl.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        hint.textContent = `Nivel de riesgo ${elegido.nivel_riesgo} según el catálogo de la razón social`;
+        hint.style.display = 'block';
+    }
+
+    inpCargo.addEventListener('change', ajustarRiesgo);
+    inpCargo.addEventListener('input',  ajustarRiesgo);
+    if (selRS) selRS.addEventListener('change', cargarCargos);
+
+    document.addEventListener('DOMContentLoaded', cargarCargos);
+    if (document.readyState !== 'loading') cargarCargos();
+})();
+
 document.addEventListener('DOMContentLoaded', function() { mrInitSelects(); });
 
 // ── Submit con loading state ──────────────────────────────────────────────

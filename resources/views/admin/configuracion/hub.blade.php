@@ -91,6 +91,15 @@
         </a>
 
 
+        <a class="cfg-card" href="{{ route('admin.configuracion.arl-sura.index') }}"
+           style="--c:#0c4a6e;--bc:#7dd3fc">
+            <span class="c-badge" style="background:#e0f2fe;color:#075985">ARL Sura</span>
+            <div class="c-icon">🛡️</div>
+            <div class="c-title">Conexión con ARL Sura</div>
+            <div class="c-desc">Credenciales del portal para afiliar, retirar y bajar carné y soporte sin entrar a Servicios en Línea. Se registran una sola vez.</div>
+        </a>
+
+
         {{-- ── USUARIOS Y ACCESO ────────────────────────────── --}}
         <hr class="cfg-sep">
         <div class="cfg-sep-label">👤 Usuarios y Acceso</div>
