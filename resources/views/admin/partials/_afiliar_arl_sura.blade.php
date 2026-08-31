@@ -70,6 +70,7 @@
           <label class="asu-label">Contraseña del portal</label>
           <input type="password" class="asu-input" id="asuCredClave" autocomplete="new-password">
           <button class="asu-btn" id="asuCredBtn" onclick="guardarCredencialSura()">🔐 Guardar y buscar la póliza</button>
+          <div id="asuCredNota" style="font-size:.68rem;color:#b45309;margin-top:.4rem;line-height:1.35"></div>
         </div>
 
         <div id="asuFechaGrupo">
@@ -91,6 +92,42 @@ let asuContratoId = null;
 const ASU_CSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
 function cerrarAfiliarSura() { document.getElementById('asuModal').classList.remove('open'); }
+
+// Estas dos operaciones abren un navegador dentro del servidor y tardan cerca
+// de minuto y medio. Sin un contador a la vista el botón parece congelado.
+function asuEsperar(btn, texto) {
+    const desde = Date.now();
+    const pintar = () => {
+        const seg = Math.round((Date.now() - desde) / 1000);
+        btn.textContent = `⏳ ${texto} ${seg}s`;
+    };
+    btn.disabled = true; pintar();
+    const reloj = setInterval(pintar, 1000);
+    return () => clearInterval(reloj);
+}
+
+async function asuPedir(url, opciones, limiteSeg) {
+    const corte = new AbortController();
+    const alarma = setTimeout(() => corte.abort(), limiteSeg * 1000);
+    try {
+        const res = await fetch(url, { ...opciones, signal: corte.signal });
+        return await res.json();
+    } finally {
+        clearTimeout(alarma);
+    }
+}
+
+// Si la conexión se corta, el trabajo puede haber terminado igual en el
+// servidor: se relee el contrato para ver si la póliza ya quedó guardada.
+async function asuPolizaYaQuedo() {
+    try {
+        const r = await fetch(`/admin/gestion-arl/${asuContratoId}/precheck`, { headers: { 'Accept': 'application/json' } });
+        const d = await r.json();
+        return !!(d.resumen && d.resumen.poliza);
+    } catch (e) {
+        return false;
+    }
+}
 
 async function abrirAfiliarSura(contratoId) {
     asuContratoId = contratoId;
@@ -174,24 +211,30 @@ async function guardarCredencialSura() {
     if (!usuario || !clave) { alert('Ingresa el usuario y la contraseña del portal.'); return; }
 
     const btn = document.getElementById('asuCredBtn');
-    btn.disabled = true; btn.textContent = '⏳ Entrando al portal...';
+    const parar = asuEsperar(btn, 'Entrando al portal de Sura...');
+    const nota = document.getElementById('asuCredNota');
+    if (nota) nota.textContent = 'Abriendo el portal y leyendo la póliza. Suele tardar entre 1 y 2 minutos: no cierres esta ventana.';
 
     let data;
     try {
-        const res = await fetch(`/admin/gestion-arl/${asuContratoId}/credencial`, {
+        data = await asuPedir(`/admin/gestion-arl/${asuContratoId}/credencial`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': ASU_CSRF, 'Accept': 'application/json' },
             body: JSON.stringify({
                 tipo_documento: document.getElementById('asuCredTipo').value,
                 usuario, contrasena: clave,
             }),
-        });
-        data = await res.json();
+        }, 240);
     } catch (e) {
-        data = { ok: false, mensaje: 'No se pudo conectar con el servidor.' };
+        // Consultar es inofensivo: solo lee lo que ya está guardado.
+        data = await asuPolizaYaQuedo()
+            ? { ok: true, mensaje: 'La póliza quedó guardada. La conexión se cortó, pero el proceso sí terminó.' }
+            : { ok: false, mensaje: 'Se perdió la conexión antes de terminar. Vuelve a intentarlo.' };
     }
 
+    parar();
     btn.disabled = false; btn.textContent = '🔐 Guardar y buscar la póliza';
+    if (nota) nota.textContent = '';
 
     if (data.ok) {
         alert(data.mensaje);
@@ -206,19 +249,22 @@ async function confirmarAfiliarSura() {
     if (!fecha) { alert('Selecciona la fecha de inicio de cobertura.'); return; }
 
     const btn = document.getElementById('asuBtn');
-    btn.disabled = true; btn.textContent = '⏳ Afiliando en Sura...';
+    const parar = asuEsperar(btn, 'Afiliando en Sura...');
 
     let data;
     try {
-        const res = await fetch(`/admin/gestion-arl/${asuContratoId}/afiliar`, {
+        data = await asuPedir(`/admin/gestion-arl/${asuContratoId}/afiliar`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': ASU_CSRF, 'Accept': 'application/json' },
             body: JSON.stringify({ fecha_inicio_cobertura: fecha }),
-        });
-        data = await res.json();
+        }, 280);
     } catch (e) {
-        data = { ok: false, mensaje: 'No se pudo conectar con el servidor.' };
+        // Aquí no se reintenta solo: la afiliación pudo haber quedado hecha y
+        // repetirla crearía un duplicado en Sura.
+        data = { ok: false, mensaje: 'Se perdió la conexión con el servidor. Antes de reintentar, revisa en el portal de Sura si la afiliación quedó hecha.' };
     }
+
+    parar();
 
     if (data.ok) {
         document.getElementById('asuContenido').style.display = 'none';
