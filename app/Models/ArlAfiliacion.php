@@ -21,6 +21,8 @@ class ArlAfiliacion extends BaseModel
     public const OP_AFILIACION = 'afiliacion';
     public const OP_RETIRO     = 'retiro';
     public const OP_ANULACION  = 'anulacion';
+    /** Mover la fecha de inicio de una cobertura ya creada: renovar sin recrear. */
+    public const OP_MODIFICACION = 'modificacion';
 
     public const ESTADO_EXITOSA = 'exitosa';
     public const ESTADO_FALLIDA = 'fallida';

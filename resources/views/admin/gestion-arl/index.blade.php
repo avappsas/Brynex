@@ -411,7 +411,7 @@ body{display:flex;flex-direction:column}
         </div>
 
         <input type="hidden" id="renovar-contrato-id">
-        <button class="btn-save" id="renovar-btn" onclick="confirmarRenovacion()">🔄 Anular y volver a afiliar</button>
+        <button class="btn-save" id="renovar-btn" onclick="confirmarRenovacion()">🔄 Renovar la cobertura</button>
 
         {{-- Salida para las empresas cuya credencial del portal todavía no está
              cargada: sin ella no se puede tocar Sura, pero el semáforo sí se
@@ -549,13 +549,11 @@ async function abrirRenovar(ctx) {
                 `Esta cobertura ya no se puede reemplazar: hay que <strong>retirar</strong> al trabajador y afiliarlo de nuevo.`;
         bloquea = true;
     } else if (cob) {
-        aviso = `El sistema va a hacer <strong>dos trámites</strong> en el portal de Sura:<br>` +
-                `<strong>1.</strong> Anular la cobertura vigente desde <strong>${cob.desde}</strong>` +
-                (cob.codigo_transaccion ? ` (transacción ${cob.codigo_transaccion})` : '') +
-                (cob.confirmada_en_sura ? ` — confirmada en el portal${cob.centro ? ', centro ' + cob.centro : ''}` : '') + `.<br>` +
-                `<strong>2.</strong> Crear una nueva desde la fecha que elijas.<br>` +
-                `<span style="color:#78350f;">Son dos pasos porque Sura no permite mover la fecha de una cobertura ya creada. ` +
-                `Ambos quedan en el historial del contrato.</span>`;
+        aviso = `El sistema va a <strong>mover la cobertura</strong> que hoy arranca el <strong>${cob.desde}</strong>` +
+                (cob.confirmada_en_sura ? ` (confirmada en el portal${cob.centro ? ', centro ' + cob.centro : ''})` : '') +
+                ` a la fecha que elijas. Es un solo trámite: no se anula ni se vuelve a afiliar.<br>` +
+                `<span style="color:#78350f;">Si Sura no deja moverla, el sistema anula y crea una nueva por su cuenta. ` +
+                `Después baja el certificado al día y actualiza la fecha ARL. Todo queda en el historial.</span>`;
     } else {
         aviso = `En el portal de Sura este trabajador <strong>no tiene ninguna cobertura activa</strong>, así que solo se <strong>creará la afiliación nueva</strong>. Queda en el historial.`;
     }
@@ -577,7 +575,7 @@ async function abrirRenovar(ctx) {
     btn.textContent  = falta.length ? '🚫 Completa los datos primero'
                      : cred         ? '🔒 Falta la contraseña del portal'
                      : (cob && !cob.se_puede_anular) ? '⛔ Fuera del plazo para anular'
-                     : '🔄 Anular y volver a afiliar';
+                     : '🔄 Renovar la cobertura';
 }
 
 async function confirmarRenovacion() {
@@ -607,8 +605,10 @@ async function confirmarRenovacion() {
         document.getElementById('renovar-contenido').style.display = 'none';
         const caja = document.getElementById('renovar-resultado');
         caja.innerHTML = `✅ <strong>${data.mensaje}</strong><br>` +
-            `Transacción <strong>${data.codigo_transaccion ?? '—'}</strong> · cobertura desde <strong>${data.fecha_display}</strong><br>` +
-            `<span style="color:#475569;">El soporte y el carné quedaron archivados en los documentos del cliente.</span>` +
+            `Cobertura desde <strong>${data.fecha_display}</strong>` +
+            (data.codigo_transaccion ? ` · transacción <strong>${data.codigo_transaccion}</strong>` : '') + `<br>` +
+            `<span style="color:#475569;">El certificado y el carné al día quedaron archivados en los documentos del cliente, ` +
+            `y la fecha ARL del contrato ya está actualizada.</span>` +
             (data.aviso ? `<br><span style="color:#b45309;">⚠️ ${data.aviso}</span>` : '');
         caja.style.display = 'block';
         setTimeout(() => location.reload(), 3500);

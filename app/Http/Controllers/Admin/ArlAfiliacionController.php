@@ -353,32 +353,40 @@ class ArlAfiliacionController extends Controller
             return response()->json(['ok' => false, 'mensaje' => $e->getMessage()], 422);
         }
 
-        $afiliacion = $ciclo['afiliacion'];
-        $desde      = $afiliacion->fecha_inicio_cobertura->format('d/m/Y');
+        // El camino corto mueve la cobertura; el largo la anula y crea otra.
+        $movimiento = $ciclo['modificacion'] ?: $ciclo['afiliacion'];
+        $desde      = $movimiento->fecha_inicio_cobertura->format('d/m/Y');
+        $movida     = (bool) $ciclo['modificacion'];
 
         Bitacora::registrar(
             'updated',
             'Contrato',
             $contrato->id,
-            'Renovación ARL Sura: '.($ciclo['anulacion'] ? 'cobertura anterior anulada y ' : '').
-                "nueva cobertura desde {$desde} (transacción {$afiliacion->codigo_transaccion})",
+            $movida
+                ? "Renovación ARL Sura: cobertura movida a {$desde} (sin anular ni recrear)"
+                : 'Renovación ARL Sura: '.($ciclo['anulacion'] ? 'cobertura anterior anulada y ' : '').
+                  "nueva cobertura desde {$desde} (transacción {$movimiento->codigo_transaccion})",
             [
-                'arl_anulacion_id'  => $ciclo['anulacion']?->id,
-                'arl_afiliacion_id' => $afiliacion->id,
+                'arl_modificacion_id' => $ciclo['modificacion']?->id,
+                'arl_anulacion_id'    => $ciclo['anulacion']?->id,
+                'arl_afiliacion_id'   => $ciclo['afiliacion']?->id,
             ],
             (int) $contrato->aliado_id
         );
 
         return response()->json([
-            'ok'                 => true,
-            'mensaje'            => $ciclo['anulacion']
-                ? 'Cobertura anterior anulada y nueva afiliación creada en ARL Sura.'
-                : 'Nueva afiliación creada en ARL Sura.',
+            'ok'      => true,
+            'mensaje' => $movida
+                ? 'Cobertura movida en ARL Sura. No hizo falta anular ni volver a afiliar.'
+                : ($ciclo['anulacion']
+                    ? 'Cobertura anterior anulada y nueva afiliación creada en ARL Sura.'
+                    : 'Nueva afiliación creada en ARL Sura.'),
+            'movida'             => $movida,
             'anulo'              => (bool) $ciclo['anulacion'],
-            'codigo_transaccion' => $afiliacion->codigo_transaccion,
-            'fecha_arl'          => $afiliacion->fecha_inicio_cobertura->format('Y-m-d'),
+            'codigo_transaccion' => $movimiento->codigo_transaccion,
+            'fecha_arl'          => $movimiento->fecha_inicio_cobertura->format('Y-m-d'),
             'fecha_display'      => $desde,
-            'aviso'              => $afiliacion->mensaje_error,
+            'aviso'              => $movimiento->mensaje_error,
         ]);
     }
 

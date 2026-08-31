@@ -4,6 +4,7 @@ namespace App\Services\ArlSura;
 
 use App\Models\ArlCredencial;
 use App\Models\RazonSocial;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
@@ -83,8 +84,9 @@ class ArlSuraSesionService
      */
     public static function anular(int $aliadoId, string $poliza, string $tipoId, string $numDoc): array
     {
-        $credencial = ArlCredencial::activaDe($aliadoId)
-            ?? self::credencialPorPoliza($poliza)
+        // La de la empresa primero: cada empresa entra al portal con su propio
+        // usuario, y la general del aliado no tiene por qué servir para todas.
+        $credencial = self::credencialPara($aliadoId, $poliza)
             ?? throw new RuntimeException('No hay credenciales del portal de ARL Sura para anular.');
 
         // Se mandan credenciales, no la cookie: Incapsula ata la sesión al
@@ -114,6 +116,57 @@ class ArlSuraSesionService
         }
 
         return $salida ?: ['ok' => false, 'error' => 'El proceso de anulación no devolvió respuesta.'];
+    }
+
+    /**
+     * Mueve la fecha de inicio de la cobertura de un trabajador.
+     *
+     * Es la renovación barata: un solo trámite en lugar de anular y volver a
+     * afiliar, sin el hueco en que el trabajador queda sin ARL y sin gastar la
+     * ventana de 30 días de la anulación. Sura solo exige que la fecha de
+     * destino sea posterior a hoy.
+     *
+     * Tampoco tiene API: la hace un navegador sobre el Struts, igual que la
+     * anulación.
+     */
+    public static function modificarCobertura(
+        int $aliadoId,
+        string $poliza,
+        string $tipoId,
+        string $numDoc,
+        Carbon $fechaNueva,
+        string $tipoAfiliado = '01',
+    ): array {
+        $credencial = self::credencialPara($aliadoId, $poliza)
+            ?? throw new RuntimeException('No hay credenciales del portal de ARL Sura para modificar la cobertura.');
+
+        $entrada = json_encode([
+            'tipoDocumento' => $credencial->tipo_documento,
+            'usuario'       => $credencial->usuario,
+            'contrasena'    => $credencial->contrasena,
+            'nitEmpresa'    => self::nitDeLaPoliza($poliza),
+            'tipoId'        => $tipoId,
+            'numDoc'        => $numDoc,
+            'fechaNueva'    => $fechaNueva->format('d/m/Y'),
+            'tipoAfiliado'  => $tipoAfiliado,
+        ], JSON_UNESCAPED_UNICODE);
+
+        $resultado = Process::path(base_path())
+            ->timeout(self::TIMEOUT_SEGUNDOS + 120)
+            ->input($entrada)
+            ->run(self::binarioNode().' scripts/arl-sura-modificar-cobertura.mjs');
+
+        $salida = json_decode(trim($resultado->output()), true) ?: [];
+
+        if (! ($salida['ok'] ?? false)) {
+            Log::warning('ARL Sura: no se pudo mover la cobertura', [
+                'aliado' => $aliadoId, 'documento' => $tipoId.$numDoc,
+                'fecha'  => $fechaNueva->toDateString(),
+                'error'  => $salida['error'] ?? $resultado->errorOutput(),
+            ]);
+        }
+
+        return $salida ?: ['ok' => false, 'error' => 'El proceso de modificación no devolvió respuesta.'];
     }
 
     /**

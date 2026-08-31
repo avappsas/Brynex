@@ -357,7 +357,16 @@ class ArlAfiliacionService
         // Se le pregunta al portal si ya hay cobertura viva. Fiarse de
         // `fecha_arl` dejaría dos coberturas encima en los contratos que se
         // afiliaron a mano y nunca quedaron registrados aquí.
-        $teniaCobertura = $this->coberturaEnSura($contrato) !== null
+        $cobertura = $this->coberturaEnSura($contrato);
+
+        // Camino corto: mover la fecha de la cobertura que ya existe. Un solo
+        // trámite, sin el momento intermedio en que el trabajador se queda sin
+        // ARL, y sin gastar la ventana de 30 días que sí exige anular.
+        if ($cobertura && $movida = $this->moverCobertura($contrato, $cobertura, $nuevoInicio, $usuarioId)) {
+            return ['modificacion' => $movida, 'anulacion' => null, 'afiliacion' => null];
+        }
+
+        $teniaCobertura = $cobertura !== null
             || ArlAfiliacion::vigenteDe($contrato->id)
             || $contrato->fecha_arl;
 
@@ -379,7 +388,74 @@ class ArlAfiliacionService
             );
         }
 
-        return ['anulacion' => $anulacion, 'afiliacion' => $afiliacion];
+        return ['modificacion' => null, 'anulacion' => $anulacion, 'afiliacion' => $afiliacion];
+    }
+
+    /**
+     * Mueve la fecha de inicio de la cobertura que ya existe.
+     *
+     * Devuelve null cuando el portal no deja moverla —hay coberturas que
+     * rechaza sin explicar por qué—, y ahí el ciclo cae al camino largo de
+     * anular y volver a afiliar. Que falle no rompe nada: la cobertura vieja
+     * sigue intacta.
+     */
+    private function moverCobertura(Contrato $contrato, array $cobertura, Carbon $nuevoInicio, ?int $usuarioId): ?ArlAfiliacion
+    {
+        $poliza = (string) $contrato->razonSocial?->arl_poliza;
+        $desde  = $cobertura['fechaInicioCobertura'] ?? null;
+
+        $registro = new ArlAfiliacion([
+            'aliado_id'              => $contrato->aliado_id,
+            'contrato_id'            => $contrato->id,
+            'razon_social_id'        => $contrato->razon_social_id,
+            'cedula'                 => $contrato->cedula,
+            'operacion'              => ArlAfiliacion::OP_MODIFICACION,
+            'poliza'                 => $poliza,
+            'tipo_afiliado'          => $cobertura['tipoAfiliado'] ?? null,
+            'tipo_cotizante'         => $cobertura['cdTipoCotizante'] ?? null,
+            'nivel_riesgo'           => (int) $contrato->n_arl,
+            'fecha_inicio_cobertura' => $nuevoInicio->toDateString(),
+            'usuario_id'             => $usuarioId,
+        ]);
+
+        $resultado = ArlSuraSesionService::modificarCobertura(
+            (int) $contrato->aliado_id,
+            $poliza,
+            ArlSuraPayloadBuilder::tipoDocumento($contrato->cliente?->tipo_doc),
+            (string) $contrato->cedula,
+            $nuevoInicio,
+            ($cobertura['cdTipoCotizante'] ?? '01') === '59' ? '02' : '01',
+        );
+
+        if (! ($resultado['ok'] ?? false)) {
+            $registro->fill([
+                'estado'        => ArlAfiliacion::ESTADO_FALLIDA,
+                'mensaje_error' => Str::limit($resultado['error'] ?? 'No se pudo mover la cobertura.', 500),
+            ])->save();
+
+            return null; // el ciclo sigue por el camino largo
+        }
+
+        $registro->fill([
+            'estado'        => ArlAfiliacion::ESTADO_EXITOSA,
+            'fecha_proceso' => now(),
+            'respuesta'     => json_encode($resultado + ['fechaAnterior' => $desde], JSON_UNESCAPED_UNICODE),
+        ])->save();
+
+        // La cobertura anterior deja de ser la vigente: la que vale es esta.
+        ArlAfiliacion::vigenteDe($contrato->id)?->update(['fecha_inicio_cobertura' => $nuevoInicio->toDateString()]);
+
+        $contrato->update(['fecha_arl' => $nuevoInicio->toDateString()]);
+
+        // El certificado viejo dice la fecha vieja, así que se vuelve a bajar.
+        try {
+            $docs = $this->archivarDocumentos($contrato, $registro->tipo_afiliado ?: 'D', $usuarioId);
+            $this->cerrarRadicado($contrato, $registro, $docs[self::DOC_SOPORTE] ?? null, $usuarioId);
+        } catch (Throwable $e) {
+            $registro->update(['mensaje_error' => 'Cobertura movida, pero sin documentos: '.Str::limit($e->getMessage(), 400)]);
+        }
+
+        return $registro;
     }
 
     // ─── Documentos ──────────────────────────────────────────────────
