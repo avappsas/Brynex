@@ -52,7 +52,6 @@ body{display:flex;flex-direction:column}
 /* ── Botones ── */
 .btn-accion{border:none;border-radius:7px;padding:.28rem .6rem;font-size:.68rem;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap;display:inline-flex;align-items:center;gap:.25rem}
 .btn-renovar {background:#0d9488;color:#fff}.btn-renovar:hover{background:#0f766e}
-.btn-afiliar {background:linear-gradient(135deg,#1e40af,#2563eb);color:#fff}.btn-afiliar:hover{background:#1d4ed8}
 .btn-facturar{background:#1e40af;color:#fff}.btn-facturar:hover{background:#1d4ed8}
 .btn-retirar {background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0}.btn-retirar:hover{background:#fee2e2;color:#b91c1c}
 .btn-contrato{background:#64748b;color:#fff;text-decoration:none}.btn-contrato:hover{background:#475569;color:#fff}
@@ -337,10 +336,7 @@ body{display:flex;flex-direction:column}
             <a class="btn-accion btn-contrato" href="/admin/contratos/{{ $c->id }}/edit" title="Ver/Editar Contrato">
                 📄
             </a>
-            <button class="btn-accion btn-afiliar" onclick="abrirAfiliar({{ $ctx }})" title="Afiliar en ARL Sura sin entrar al portal">
-                🚀 Afiliar
-            </button>
-            <button class="btn-accion btn-renovar" onclick="abrirRenovar({{ $ctx }})" title="Registrar renovación hecha en el portal ARL">
+            <button class="btn-accion btn-renovar" onclick="abrirRenovar({{ $ctx }})" title="Anular la cobertura vigente y crear la del mes nuevo en ARL Sura">
                 📅 Renovar
             </button>
             <button class="btn-accion btn-facturar" onclick="abrirFacturar({{ $ctx }})" title="Facturar afiliación ARL">
@@ -357,65 +353,84 @@ body{display:flex;flex-direction:column}
 </div>
 @endif
 
-{{-- ══ MODAL RENOVAR FECHA ARL ══ --}}
+{{-- ══ MODAL RENOVAR EN ARL SURA ══ --}}
 <div class="modal-bg" id="modalRenovar">
 <div class="modal-box">
     <div class="modal-title">
-        <span>📅 Renovar ARL en Portal</span>
+        <span>📅 Renovar ARL en Sura</span>
         <button class="modal-close" onclick="cerrarModal('modalRenovar')">✕</button>
     </div>
-    <div id="renovar-ctx" style="background:#f0fdf4;border-radius:8px;padding:.5rem .75rem;margin-bottom:.75rem;font-size:.78rem;">
-        <strong id="renovar-nombre"></strong> — <span id="renovar-rs" style="color:#475569;"></span>
-    </div>
-    <div style="background:#fef3c7;border-radius:8px;padding:.5rem .75rem;margin-bottom:.75rem;font-size:.75rem;color:#92400e;border:1px solid #fcd34d;">
-        💡 Registra aquí la nueva fecha de afiliación en el portal de la ARL. El semáforo se reinicia desde ese día (29 días de vigencia).
-    </div>
-    <div class="form-group">
-        <label>Nueva Fecha de Afiliación ARL *</label>
-        <input type="date" id="renovar-fecha" required>
-        <span style="font-size:.7rem;color:#94a3b8;">Coloca el día en que aparece la afiliación en el portal.</span>
-    </div>
-    <input type="hidden" id="renovar-contrato-id">
-    <button class="btn-save" onclick="guardarRenovacion()">✅ Registrar Fecha ARL</button>
-</div>
-</div>
 
-{{-- ══ MODAL AFILIAR EN ARL SURA ══ --}}
-<div class="modal-bg" id="modalAfiliar">
-<div class="modal-box">
-    <div class="modal-title">
-        <span>🚀 Afiliar en ARL Sura</span>
-        <button class="modal-close" onclick="cerrarModal('modalAfiliar')">✕</button>
-    </div>
-
-    {{-- Mientras se consulta qué le falta al contrato --}}
-    <div id="afiliar-cargando" style="padding:1.5rem;text-align:center;color:#64748b;font-size:.82rem;">
+    <div id="renovar-cargando" style="padding:1.5rem;text-align:center;color:#64748b;font-size:.82rem;">
         ⏳ Revisando los datos del contrato...
     </div>
 
-    <div id="afiliar-contenido" style="display:none;">
-        <div id="afiliar-resumen" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:.65rem .8rem;margin-bottom:.75rem;font-size:.76rem;line-height:1.6;"></div>
+    <div id="renovar-contenido" style="display:none;">
+        <div id="renovar-resumen" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:.65rem .8rem;margin-bottom:.75rem;font-size:.76rem;line-height:1.6;"></div>
 
-        {{-- Lo que impide afiliar: se listan todos juntos, no de a uno --}}
-        <div id="afiliar-problemas" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:.65rem .8rem;margin-bottom:.75rem;font-size:.75rem;color:#991b1b;">
-            <strong>Faltan datos para poder afiliar:</strong>
-            <ul id="afiliar-problemas-lista" style="margin:.4rem 0 0 1rem;padding:0;"></ul>
+        {{-- Lo que el botón va a hacer en el portal, dicho antes de hacerlo --}}
+        <div id="renovar-aviso" style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:.65rem .8rem;margin-bottom:.75rem;font-size:.75rem;color:#92400e;line-height:1.55;"></div>
+
+        {{-- Datos que le faltan al contrato: se listan todos juntos --}}
+        <div id="renovar-problemas" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:.65rem .8rem;margin-bottom:.75rem;font-size:.75rem;color:#991b1b;">
+            <strong>Faltan datos para poder renovar:</strong>
+            <ul id="renovar-problemas-lista" style="margin:.4rem 0 0 1rem;padding:0;"></ul>
         </div>
 
-        {{-- Cuando ya hay una afiliación viva en Sura --}}
-        <div id="afiliar-yaafiliado" style="display:none;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:.65rem .8rem;margin-bottom:.75rem;font-size:.75rem;color:#92400e;"></div>
-
-        <div class="form-group" id="afiliar-fecha-group">
-            <label>Fecha de inicio de cobertura *</label>
-            <input type="date" id="afiliar-fecha" required>
-            <span style="font-size:.7rem;color:#94a3b8;">Sura no cubre el mismo día en que se afilia: por eso se sugiere mañana.</span>
+        {{-- Sin la contraseña del portal no se puede tocar Sura. Se pide aquí
+             mismo y queda guardada contra el NIT, así sirve para todos los
+             aliados donde esa empresa esté registrada. --}}
+        <div id="renovar-credencial" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:.7rem .8rem;margin-bottom:.75rem;">
+            <div style="font-size:.75rem;color:#1e40af;margin-bottom:.5rem;line-height:1.5;">
+                Usuario y contraseña con que <strong id="renovar-cred-empresa"></strong> entra al portal de Sura. Se guarda una sola vez.
+            </div>
+            <div style="display:grid;grid-template-columns:110px 1fr;gap:.5rem;margin-bottom:.5rem;">
+                <div>
+                    <label style="font-size:.7rem;color:#475569;">Tipo</label>
+                    <select id="renovar-cred-tipo" style="width:100%;padding:.35rem;border:1px solid #cbd5e1;border-radius:6px;font-size:.78rem;">
+                        <option value="C">Cédula</option>
+                        <option value="N">NIT</option>
+                        <option value="E">C. extranjería</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:.7rem;color:#475569;">Número de identificación</label>
+                    <input type="text" id="renovar-cred-usuario" autocomplete="off" style="width:100%;padding:.35rem;border:1px solid #cbd5e1;border-radius:6px;font-size:.78rem;">
+                </div>
+            </div>
+            <label style="font-size:.7rem;color:#475569;">Contraseña del portal</label>
+            <input type="password" id="renovar-cred-clave" autocomplete="new-password" style="width:100%;padding:.35rem;border:1px solid #cbd5e1;border-radius:6px;font-size:.78rem;margin-bottom:.5rem;">
+            <button class="btn-save" id="renovar-cred-btn" style="width:100%" onclick="guardarCredencialRenovar()">🔐 Guardar y buscar la póliza</button>
+            <div id="renovar-cred-nota" style="font-size:.68rem;color:#b45309;margin-top:.4rem;line-height:1.35"></div>
         </div>
 
-        <button class="btn-save" id="afiliar-btn" onclick="confirmarAfiliacion()">🚀 Afiliar en Sura</button>
+        <div class="form-group" id="renovar-fecha-group">
+            <label>Fecha de inicio de la cobertura nueva *</label>
+            <input type="date" id="renovar-fecha" required>
+            <span style="font-size:.7rem;color:#94a3b8;">Se propone el día en que se vence la cobertura actual; si ya venció, mañana.</span>
+        </div>
+
+        <input type="hidden" id="renovar-contrato-id">
+        <button class="btn-save" id="renovar-btn" onclick="confirmarRenovacion()">🔄 Anular y volver a afiliar</button>
+
+        {{-- Salida para las empresas cuya credencial del portal todavía no está
+             cargada: sin ella no se puede tocar Sura, pero el semáforo sí se
+             puede poner al día a mano, como se hacía antes. --}}
+        <div style="margin-top:.85rem;border-top:1px solid #e2e8f0;padding-top:.6rem;">
+            <button onclick="document.getElementById('renovar-manual').style.display='block';this.style.display='none'"
+                    style="background:none;border:none;color:#64748b;font-size:.72rem;cursor:pointer;padding:0;text-decoration:underline;">
+                La renovación ya se hizo en el portal: solo registrar la fecha
+            </button>
+            <div id="renovar-manual" style="display:none;margin-top:.5rem;">
+                <div style="font-size:.72rem;color:#64748b;margin-bottom:.4rem;line-height:1.5;">
+                    Esto no toca la ARL: solo mueve el semáforo con la fecha que escribas. Úsalo cuando el trámite se hizo por fuera de BryNex.
+                </div>
+                <button class="btn-accion btn-renovar" style="width:100%" onclick="guardarFechaManual()">📅 Registrar solo la fecha</button>
+            </div>
+        </div>
     </div>
 
-    {{-- Resultado --}}
-    <div id="afiliar-resultado" style="display:none;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:.75rem .9rem;font-size:.8rem;color:#166534;"></div>
+    <div id="renovar-resultado" style="display:none;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:.75rem .9rem;font-size:.8rem;color:#166534;"></div>
 </div>
 </div>
 
@@ -452,17 +467,38 @@ function cerrarModal(id) {
     if (iframe) iframe.src = '';
 }
 
-/* ── Modal Renovar ── */
-let afiliarContratoId = null;
+/* ── Modal Renovar: el ciclo mensual contra ARL Sura ── */
+let renovarCtx = null;
 
-async function abrirAfiliar(ctx) {
-    afiliarContratoId = ctx.id;
+// Los trámites abren un navegador dentro del servidor y tardan un buen rato:
+// sin un contador a la vista el botón parece congelado.
+function gaEsperar(btn, texto) {
+    const desde = Date.now();
+    const pintar = () => btn.textContent = `⏳ ${texto} ${Math.round((Date.now() - desde) / 1000)}s`;
+    btn.disabled = true; pintar();
+    const reloj = setInterval(pintar, 1000);
+    return () => clearInterval(reloj);
+}
 
-    // Estado inicial del modal: solo el "cargando"
-    document.getElementById('afiliar-cargando').style.display  = 'block';
-    document.getElementById('afiliar-contenido').style.display = 'none';
-    document.getElementById('afiliar-resultado').style.display = 'none';
-    document.getElementById('modalAfiliar').classList.add('open');
+async function gaPedir(url, opciones, limiteSeg) {
+    const corte  = new AbortController();
+    const alarma = setTimeout(() => corte.abort(), limiteSeg * 1000);
+    try {
+        const res = await fetch(url, { ...opciones, signal: corte.signal });
+        return await res.json();
+    } finally {
+        clearTimeout(alarma);
+    }
+}
+
+async function abrirRenovar(ctx) {
+    renovarCtx = ctx;
+    document.getElementById('renovar-contrato-id').value = ctx.id;
+    document.getElementById('renovar-cargando').style.display  = 'block';
+    document.getElementById('renovar-contenido').style.display = 'none';
+    document.getElementById('renovar-resultado').style.display = 'none';
+    document.getElementById('renovar-manual').style.display    = 'none';
+    document.getElementById('modalRenovar').classList.add('open');
 
     let data;
     try {
@@ -471,19 +507,19 @@ async function abrirAfiliar(ctx) {
         });
         data = await res.json();
     } catch (e) {
-        document.getElementById('afiliar-cargando').textContent = '⚠️ No se pudo revisar el contrato.';
+        document.getElementById('renovar-cargando').textContent = '⚠️ No se pudo revisar el contrato.';
         return;
     }
 
-    document.getElementById('afiliar-cargando').style.display  = 'none';
-    document.getElementById('afiliar-contenido').style.display = 'block';
+    document.getElementById('renovar-cargando').style.display  = 'none';
+    document.getElementById('renovar-contenido').style.display = 'block';
 
     const r = data.resumen || {};
     const linea = (etiqueta, valor) => valor
         ? `<div><span style="color:#64748b;">${etiqueta}:</span> <strong>${valor}</strong></div>`
         : '';
 
-    document.getElementById('afiliar-resumen').innerHTML =
+    document.getElementById('renovar-resumen').innerHTML =
         linea('Trabajador', `${r.trabajador} — ${r.documento}`) +
         linea('Empresa', `${r.razon_social} (póliza ${r.poliza ?? '—'})`) +
         linea('Tipo', `${r.tipo}${r.modalidad ? ' · ' + r.modalidad : ''}`) +
@@ -492,62 +528,83 @@ async function abrirAfiliar(ctx) {
         linea('Cargo', r.cargo) +
         linea('Riesgo', r.nivel_riesgo ? `${r.nivel_riesgo} · centro ${r.centro ?? '—'}${r.tasa ? ' · tasa ' + r.tasa : ''}` : null);
 
-    // Problemas: se muestran todos, y mientras existan no se deja afiliar
-    const problemas = data.problemas || [];
-    const cajaProb  = document.getElementById('afiliar-problemas');
-    if (problemas.length) {
-        document.getElementById('afiliar-problemas-lista').innerHTML =
-            problemas.map(p => `<li>${p}</li>`).join('');
+    // Qué va a pasar en el portal. Sura no deja mover la fecha de una cobertura
+    // ya creada, así que renovar son dos trámites, y hay que decirlo antes.
+    const cob   = data.cobertura_actual;
+    const cred  = data.requiere_credencial;
+    const falta = data.problemas || [];
+    let bloquea = falta.length > 0;
+    let aviso;
+
+    const formCred = document.getElementById('renovar-credencial');
+    formCred.style.display = cred ? 'block' : 'none';
+
+    if (cred) {
+        document.getElementById('renovar-cred-empresa').textContent = cred.razon_social ?? 'esta empresa';
+        aviso = `🔒 <strong>${cred.razon_social ?? 'Esta empresa'}</strong> todavía no tiene cargada la contraseña del portal de Sura. ` +
+                `Cárgala aquí abajo y la renovación queda habilitada; se guarda contra el NIT, así que sirve para todos los aliados.`;
+        bloquea = true;
+    } else if (cob && !cob.se_puede_anular) {
+        aviso = `⛔ La cobertura arrancó el <strong>${cob.desde}</strong> y ya pasaron los 30 días que da Sura para anular. ` +
+                `Esta cobertura ya no se puede reemplazar: hay que <strong>retirar</strong> al trabajador y afiliarlo de nuevo.`;
+        bloquea = true;
+    } else if (cob) {
+        aviso = `El sistema va a hacer <strong>dos trámites</strong> en el portal de Sura:<br>` +
+                `<strong>1.</strong> Anular la cobertura vigente desde <strong>${cob.desde}</strong>` +
+                (cob.codigo_transaccion ? ` (transacción ${cob.codigo_transaccion})` : '') + `.<br>` +
+                `<strong>2.</strong> Crear una nueva desde la fecha que elijas.<br>` +
+                `<span style="color:#78350f;">Son dos pasos porque Sura no permite mover la fecha de una cobertura ya creada. ` +
+                `Ambos quedan en el historial del contrato.</span>`;
+    } else {
+        aviso = `Este contrato no tiene cobertura vigente registrada, así que solo se <strong>creará la afiliación nueva</strong> en Sura. Queda en el historial.`;
+    }
+    document.getElementById('renovar-aviso').innerHTML = aviso;
+
+    const cajaProb = document.getElementById('renovar-problemas');
+    if (falta.length) {
+        document.getElementById('renovar-problemas-lista').innerHTML = falta.map(p => `<li>${p}</li>`).join('');
         cajaProb.style.display = 'block';
     } else {
         cajaProb.style.display = 'none';
     }
 
-    // Si ya está afiliado en Sura, avisar antes de crear una cobertura duplicada
-    const ya    = data.ya_afiliado;
-    const aviso = document.getElementById('afiliar-yaafiliado');
-    if (ya) {
-        aviso.innerHTML = `⚠️ Este contrato ya tiene una afiliación registrada desde <strong>${ya.desde}</strong>` +
-            (ya.codigo_transaccion ? ` (transacción ${ya.codigo_transaccion})` : '') + '.' +
-            (ya.se_puede_anular
-                ? ' Todavía está dentro de los 30 días para anularla si fue un error.'
-                : ' Ya pasaron los 30 días para anularla: para cerrarla hay que retirar.');
-        aviso.style.display = 'block';
-    } else {
-        aviso.style.display = 'none';
-    }
+    document.getElementById('renovar-fecha').value = data.fecha_sugerida || '';
 
-    document.getElementById('afiliar-fecha').value = data.fecha_sugerida || '';
-
-    const btn = document.getElementById('afiliar-btn');
-    btn.disabled = problemas.length > 0;
-    btn.textContent = problemas.length ? '🚫 Completa los datos primero' : '🚀 Afiliar en Sura';
-    btn.style.opacity = problemas.length ? '.5' : '1';
-    document.getElementById('afiliar-fecha-group').style.display = problemas.length ? 'none' : 'block';
+    const btn = document.getElementById('renovar-btn');
+    btn.disabled     = bloquea;
+    btn.style.opacity = bloquea ? '.5' : '1';
+    btn.textContent  = falta.length ? '🚫 Completa los datos primero'
+                     : cred         ? '🔒 Falta la contraseña del portal'
+                     : (cob && !cob.se_puede_anular) ? '⛔ Fuera del plazo para anular'
+                     : '🔄 Anular y volver a afiliar';
 }
 
-async function confirmarAfiliacion() {
-    const fecha = document.getElementById('afiliar-fecha').value;
-    if (!fecha) { alert('Selecciona la fecha de inicio de cobertura.'); return; }
+async function confirmarRenovacion() {
+    const id    = document.getElementById('renovar-contrato-id').value;
+    const fecha = document.getElementById('renovar-fecha').value;
+    if (!fecha) { alert('Selecciona la fecha de inicio de la cobertura nueva.'); return; }
 
-    const btn = document.getElementById('afiliar-btn');
-    btn.disabled = true; btn.textContent = '⏳ Afiliando en Sura...';
+    const btn   = document.getElementById('renovar-btn');
+    const parar = gaEsperar(btn, 'Renovando en Sura...');
 
     let data;
     try {
-        const res = await fetch(`/admin/gestion-arl/${afiliarContratoId}/afiliar`, {
+        data = await gaPedir(`/admin/gestion-arl/${id}/renovar-sura`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
             body: JSON.stringify({ fecha_inicio_cobertura: fecha }),
-        });
-        data = await res.json();
+        }, 290);
     } catch (e) {
-        data = { ok: false, mensaje: 'No se pudo conectar con el servidor.' };
+        // No se reintenta solo: si la anulación ya pasó, repetir crearía un lío
+        // mayor que el que resuelve.
+        data = { ok: false, mensaje: 'Se perdió la conexión con el servidor. Revisa en el portal de Sura cómo quedó la cobertura antes de volver a intentarlo.' };
     }
 
+    parar();
+
     if (data.ok) {
-        document.getElementById('afiliar-contenido').style.display = 'none';
-        const caja = document.getElementById('afiliar-resultado');
+        document.getElementById('renovar-contenido').style.display = 'none';
+        const caja = document.getElementById('renovar-resultado');
         caja.innerHTML = `✅ <strong>${data.mensaje}</strong><br>` +
             `Transacción <strong>${data.codigo_transaccion ?? '—'}</strong> · cobertura desde <strong>${data.fecha_display}</strong><br>` +
             `<span style="color:#475569;">El soporte y el carné quedaron archivados en los documentos del cliente.</span>` +
@@ -555,9 +612,72 @@ async function confirmarAfiliacion() {
         caja.style.display = 'block';
         setTimeout(() => location.reload(), 3500);
     } else {
-        btn.disabled = false; btn.textContent = '🚀 Reintentar';
-        alert(data.mensaje || 'No se pudo afiliar.');
+        btn.disabled = false; btn.textContent = '🔄 Reintentar';
+        alert(data.mensaje || 'No se pudo renovar.');
     }
+}
+
+/**
+ * Guarda la contraseña del portal de esa empresa y descubre su póliza.
+ *
+ * Abre un navegador dentro del servidor, así que tarda: por eso el contador.
+ */
+async function guardarCredencialRenovar() {
+    const usuario = document.getElementById('renovar-cred-usuario').value.trim();
+    const clave   = document.getElementById('renovar-cred-clave').value;
+    if (!usuario || !clave) { alert('Ingresa el usuario y la contraseña del portal.'); return; }
+
+    const btn   = document.getElementById('renovar-cred-btn');
+    const nota  = document.getElementById('renovar-cred-nota');
+    const parar = gaEsperar(btn, 'Entrando al portal de Sura...');
+    nota.textContent = 'Abriendo el portal y leyendo la póliza. Suele tardar entre 1 y 2 minutos: no cierres esta ventana.';
+
+    let data;
+    try {
+        data = await gaPedir(`/admin/gestion-arl/${renovarCtx.id}/credencial`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
+            body: JSON.stringify({
+                tipo_documento: document.getElementById('renovar-cred-tipo').value,
+                usuario, contrasena: clave,
+            }),
+        }, 240);
+    } catch (e) {
+        // Consultar es inofensivo: solo lee lo que ya quedó guardado.
+        let quedo = false;
+        try {
+            const r = await fetch(`/admin/gestion-arl/${renovarCtx.id}/precheck`, { headers: { 'Accept': 'application/json' } });
+            quedo = !!(await r.json()).resumen?.poliza;
+        } catch (e2) { /* sin conexión: se reporta abajo */ }
+        data = quedo
+            ? { ok: true, mensaje: 'La póliza quedó guardada. La conexión se cortó, pero el proceso sí terminó.' }
+            : { ok: false, mensaje: 'Se perdió la conexión antes de terminar. Vuelve a intentarlo.' };
+    }
+
+    parar();
+    btn.disabled = false; btn.textContent = '🔐 Guardar y buscar la póliza';
+    nota.textContent = '';
+
+    alert(data.mensaje || (data.ok ? 'Credencial guardada.' : 'No se pudo guardar la credencial.'));
+    if (data.ok) abrirRenovar(renovarCtx); // vuelve a revisar, ya con póliza
+}
+
+/** Respaldo: mueve el semáforo sin tocar la ARL, para trámites hechos por fuera. */
+async function guardarFechaManual() {
+    const id    = document.getElementById('renovar-contrato-id').value;
+    const fecha = document.getElementById('renovar-fecha').value;
+    if (!fecha) { alert('Selecciona la fecha de afiliación ARL.'); return; }
+    if (!confirm('Esto NO toca la ARL: solo registra la fecha en BryNex. ¿Seguir?')) return;
+
+    const res = await fetch(`/admin/gestion-arl/${id}/renovar`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
+        body: JSON.stringify({ fecha_arl: fecha }),
+    });
+    const data = await res.json();
+
+    if (data.ok) { cerrarModal('modalRenovar'); location.reload(); }
+    else { alert(data.message || data.mensaje || 'Error al guardar.'); }
 }
 
 function abrirRenovar(ctx) {

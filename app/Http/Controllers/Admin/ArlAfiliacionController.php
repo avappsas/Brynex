@@ -110,15 +110,50 @@ class ArlAfiliacionController extends Controller
                 'centro'       => $centro ? $centro->codigo_centro.' — '.$centro->nombre_centro : null,
                 'tasa'         => $centro?->tasa,
             ],
-            // Por defecto mañana: salvo cobertura por horas, Sura no cubre el
-            // mismo día en que se afilia.
-            'fecha_sugerida' => now()->addDay()->toDateString(),
+            'fecha_sugerida' => $this->fechaSugerida($contrato),
+            // Lo que la renovación va a anular. Se mira también `fecha_arl`
+            // porque los contratos afiliados a mano antes de la integración no
+            // tienen historial en BryNex, pero su cobertura sí existe en Sura.
+            'cobertura_actual' => $this->coberturaActual($contrato, $vigente),
             'ya_afiliado'    => $vigente ? [
                 'codigo_transaccion' => $vigente->codigo_transaccion,
                 'desde'              => $vigente->fecha_inicio_cobertura?->format('d/m/Y'),
                 'se_puede_anular'    => $vigente->sePuedeAnular(),
             ] : null,
         ]);
+    }
+
+    /**
+     * Fecha que se propone para la cobertura nueva.
+     *
+     * El semáforo de Gestión ARL dura 29 días, así que lo natural es empezar
+     * justo cuando la cobertura vigente se acaba. Si esa fecha ya pasó —el
+     * contrato venía vencido— no tiene sentido proponer un día del pasado:
+     * se cae a mañana, que es lo más pronto que Sura cubre.
+     */
+    private function fechaSugerida(Contrato $contrato): string
+    {
+        $manana  = now()->addDay()->startOfDay();
+        $proxima = $contrato->fecha_arl?->copy()->addDays(29);
+
+        return ($proxima && $proxima->greaterThan($manana) ? $proxima : $manana)->toDateString();
+    }
+
+    /** La cobertura viva del contrato, venga del historial o de `fecha_arl`. */
+    private function coberturaActual(Contrato $contrato, ?ArlAfiliacion $vigente): ?array
+    {
+        $desde = $vigente?->fecha_inicio_cobertura ?? $contrato->fecha_arl;
+
+        if (! $desde) {
+            return null;
+        }
+
+        return [
+            'desde'              => $desde->format('d/m/Y'),
+            'se_puede_anular'    => $desde->diffInDays(now(), false) <= 30,
+            'codigo_transaccion' => $vigente?->codigo_transaccion,
+            'en_historial'       => (bool) $vigente,
+        ];
     }
 
     /** Ejecuta la afiliación y archiva soporte y carné. */
@@ -264,6 +299,63 @@ class ArlAfiliacionController extends Controller
         return response()->json([
             'ok'      => true,
             'mensaje' => 'Afiliación anulada en ARL Sura. La cobertura desapareció y el radicado volvió a pendiente.',
+        ]);
+    }
+
+    /**
+     * Renueva la cobertura del ciclo mensual: anula la vigente y crea una
+     * nueva desde la fecha pedida.
+     *
+     * Sura no deja mover la fecha de una cobertura ya creada, así que el
+     * trámite son dos pasos contra el portal. Ambos quedan en el historial.
+     */
+    public function renovar(Request $request, int $contratoId)
+    {
+        // Son dos trámites seguidos contra el portal, cada uno con su navegador.
+        $this->sinLimiteDeTiempo();
+
+        $contrato = $this->contrato($request, $contratoId);
+
+        $datos = $request->validate([
+            'fecha_inicio_cobertura' => 'required|date',
+        ]);
+
+        try {
+            $ciclo = ArlAfiliacionService::paraContrato($contrato)->renovar(
+                $contrato,
+                Carbon::parse($datos['fecha_inicio_cobertura']),
+                Auth::id()
+            );
+        } catch (Throwable $e) {
+            return response()->json(['ok' => false, 'mensaje' => $e->getMessage()], 422);
+        }
+
+        $afiliacion = $ciclo['afiliacion'];
+        $desde      = $afiliacion->fecha_inicio_cobertura->format('d/m/Y');
+
+        Bitacora::registrar(
+            'updated',
+            'Contrato',
+            $contrato->id,
+            'Renovación ARL Sura: '.($ciclo['anulacion'] ? 'cobertura anterior anulada y ' : '').
+                "nueva cobertura desde {$desde} (transacción {$afiliacion->codigo_transaccion})",
+            [
+                'arl_anulacion_id'  => $ciclo['anulacion']?->id,
+                'arl_afiliacion_id' => $afiliacion->id,
+            ],
+            (int) $contrato->aliado_id
+        );
+
+        return response()->json([
+            'ok'                 => true,
+            'mensaje'            => $ciclo['anulacion']
+                ? 'Cobertura anterior anulada y nueva afiliación creada en ARL Sura.'
+                : 'Nueva afiliación creada en ARL Sura.',
+            'anulo'              => (bool) $ciclo['anulacion'],
+            'codigo_transaccion' => $afiliacion->codigo_transaccion,
+            'fecha_arl'          => $afiliacion->fecha_inicio_cobertura->format('Y-m-d'),
+            'fecha_display'      => $desde,
+            'aviso'              => $afiliacion->mensaje_error,
         ]);
     }
 

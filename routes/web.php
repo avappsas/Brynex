@@ -876,6 +876,9 @@ Route::middleware('auth')->group(function () {
         Route::post('/{id}/afiliar', [$aa, 'afiliar'])->name('afiliar');
         // Anular NO tiene API en Sura: lo hace un navegador sobre el Struts.
         Route::post('/{id}/anular', [$aa, 'anular'])->name('anular');
+        // El ciclo mensual: anula la cobertura vigente y crea la del mes nuevo.
+        // Sura no deja mover la fecha de una cobertura ya creada.
+        Route::post('/{id}/renovar-sura', [$aa, 'renovar'])->name('renovar-sura');
         // Credencial del portal de esa empresa; al guardarla se descubre su póliza.
         Route::post('/{id}/credencial', [$aa, 'credencial'])->name('credencial');
 

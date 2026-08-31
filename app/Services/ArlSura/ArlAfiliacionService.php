@@ -218,13 +218,23 @@ class ArlAfiliacionService
      */
     public function anular(Contrato $contrato, ?int $usuarioId = null): ArlAfiliacion
     {
-        $vigente = ArlAfiliacion::vigenteDe($contrato->id)
-            ?? throw new RuntimeException('Este contrato no tiene una afiliación registrada que anular.');
+        $vigente = ArlAfiliacion::vigenteDe($contrato->id);
 
-        if (! $vigente->sePuedeAnular()) {
+        // Los contratos afiliados a mano antes de la integración no tienen
+        // historial en BryNex, pero su cobertura sí existe en Sura. La fecha de
+        // ARL del contrato alcanza para saber si sigue dentro de los 30 días.
+        $inicioCobertura = $vigente?->fecha_inicio_cobertura ?? $contrato->fecha_arl;
+
+        if (! $inicioCobertura) {
+            throw new RuntimeException('Este contrato no tiene una afiliación registrada que anular.');
+        }
+
+        $anulable = $vigente ? $vigente->sePuedeAnular() : $inicioCobertura->diffInDays(now(), false) <= 30;
+
+        if (! $anulable) {
             throw new RuntimeException(
                 'Ya pasaron los 30 días desde el inicio de la cobertura ('.
-                $vigente->fecha_inicio_cobertura->format('d/m/Y').'). Para cerrarla hay que retirar, no anular.'
+                $inicioCobertura->format('d/m/Y').'). Para cerrarla hay que retirar, no anular.'
             );
         }
 
@@ -238,8 +248,8 @@ class ArlAfiliacionService
             'cedula'                 => $contrato->cedula,
             'operacion'              => ArlAfiliacion::OP_ANULACION,
             'poliza'                 => $poliza,
-            'fecha_inicio_cobertura' => $vigente->fecha_inicio_cobertura,
-            'codigo_transaccion'     => $vigente->codigo_transaccion,
+            'fecha_inicio_cobertura' => $inicioCobertura,
+            'codigo_transaccion'     => $vigente?->codigo_transaccion,
             'usuario_id'             => $usuarioId,
         ]);
 
@@ -266,7 +276,7 @@ class ArlAfiliacionService
         ])->save();
 
         // La afiliación anulada deja de estar vigente.
-        $vigente->update(['estado' => ArlAfiliacion::ESTADO_ANULADA]);
+        $vigente?->update(['estado' => ArlAfiliacion::ESTADO_ANULADA]);
 
         // El radicado vuelve a quedar pendiente: la cobertura ya no existe, y
         // dejarlo en OK con un certificado que ya no vale sería peor que nada.
@@ -278,12 +288,55 @@ class ArlAfiliacionService
                 'ruta_pdf'           => null,
                 'fecha_confirmacion' => null,
                 'observacion'        => 'Afiliación anulada en ARL Sura el '.now()->format('d/m/Y H:i').
-                    ' (transacción '.$vigente->codigo_transaccion.').',
+                    ($vigente?->codigo_transaccion ? ' (transacción '.$vigente->codigo_transaccion.').' : '.'),
             ]);
 
         $contrato->update(['fecha_arl' => null]);
 
         return $registro;
+    }
+
+    // ─── Renovación ──────────────────────────────────────────────────
+
+    /**
+     * Renueva la cobertura: anula la vigente y crea una nueva desde la fecha
+     * indicada.
+     *
+     * Son dos pasos porque Sura no tiene forma de mover la fecha de una
+     * cobertura ya creada: su portal solo ofrece afiliar, retirar y novedades
+     * masivas por archivo. Se revisa antes que la nueva afiliación sea viable,
+     * porque anular y quedarse sin poder afiliar deja al trabajador sin ARL.
+     *
+     * @return array{anulacion: ?ArlAfiliacion, afiliacion: ArlAfiliacion}
+     */
+    public function renovar(Contrato $contrato, Carbon $nuevoInicio, ?int $usuarioId = null): array
+    {
+        if ($faltantes = $this->builder->problemas($contrato)) {
+            throw new RuntimeException(
+                'No se puede renovar porque al contrato le falta: '.implode(' · ', $faltantes)
+            );
+        }
+
+        $teniaCobertura = ArlAfiliacion::vigenteDe($contrato->id) || $contrato->fecha_arl;
+        $anulacion      = $teniaCobertura ? $this->anular($contrato, $usuarioId) : null;
+
+        try {
+            $afiliacion = $this->afiliar($contrato, $nuevoInicio, $usuarioId);
+        } catch (Throwable $e) {
+            // El punto sin retorno: la cobertura vieja ya no existe. Se avisa
+            // sin adornos para que alguien lo resuelva hoy mismo.
+            throw new RuntimeException(
+                $anulacion
+                    ? 'Se anuló la cobertura anterior pero la nueva no se pudo crear, así que el '
+                      .'trabajador quedó SIN ARL. Vuelve a intentarlo o afílialo en el portal. '
+                      .'Motivo: '.$e->getMessage()
+                    : $e->getMessage(),
+                0,
+                $e
+            );
+        }
+
+        return ['anulacion' => $anulacion, 'afiliacion' => $afiliacion];
     }
 
     // ─── Documentos ──────────────────────────────────────────────────
