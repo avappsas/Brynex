@@ -15,54 +15,85 @@ use Illuminate\Support\Facades\Log;
  * cambios de comportamiento; lo único que cambió es que el punto de entrada
  * dejó de ser privado.
  *
- * Nunca lanza: si el aliado no tiene credenciales de operador, o el operador
- * no responde, devuelve null y lo deja en el log. Las dos pantallas que lo
- * usan tienen que seguir funcionando con el registro oficial caído.
+ * Nunca lanza: si el aliado no tiene credenciales de operador, o ninguno de
+ * los operadores responde, devuelve null y lo deja en el log. Las dos
+ * pantallas que lo usan tienen que seguir funcionando con el registro oficial
+ * caído.
+ *
+ * Un operador caído tampoco alcanza para eso: la consulta recorre todos los
+ * operadores con credenciales hasta que uno conteste. Ver
+ * candidatosParaRuaf() para el orden.
  */
 class RegistroOficialService
 {
     /**
-     * Busca un operador (ARUS/Simple) con credenciales para consultar BDUA/RUAF.
+     * Operadores (ARUS/Simple) con credenciales para consultar BDUA/RUAF, en
+     * el orden en que hay que intentarlos.
      *
      * Consultar la afiliación de una cédula es una operación de solo lectura
      * sin autorización por aportante: cualquier cuenta de operador sirve para
-     * cualquier persona. Por eso, si el aliado activo no tiene credenciales
-     * propias, se cae a las del aliado BryNex — así la verificación funciona
-     * en todos los aliados aunque no hayan configurado su propia cuenta.
+     * cualquier persona. Eso es lo que permite encadenar varios intentos —y
+     * lo que permitía, antes, caer a las credenciales del aliado BryNex
+     * cuando el aliado activo no tiene cuenta propia—.
      *
      * Esto NO aplica a liquidar planillas (PlanillaApiController), que sí
      * exige la autorización real del aliado sobre ese aportante específico.
      *
-     * @return array{0: ?\App\Models\OperadorPlanilla, 1: ?\App\Models\OperadorCredencial}
+     * El orden es:
+     *   1. credencial propia del aliado, y dentro de eso
+     *      a. los operadores que el aliado tiene activos (por `orden`),
+     *      b. los que desactivó en su configuración;
+     *   2. lo mismo con la credencial del aliado de respaldo (BryNex).
+     *
+     * El punto 1b es deliberado. `aliado_operadores_planilla` dice por dónde
+     * paga el aliado sus planillas, no qué cuenta puede hacer una consulta de
+     * solo lectura; si no se mirara, el aliado 2 —que desactivó Simple el
+     * 2026-08-01— se quedaría sin ningún operador vivo cuando ARUS falla, que
+     * es exactamente el caso que dejó la consulta caída. Un operador global
+     * desactivado (`operadores_planilla.activo = 0`) sí se respeta: ese lo
+     * apaga BryNex, no el aliado.
+     *
+     * @return array<int, array{0: \App\Models\OperadorPlanilla, 1: \App\Models\OperadorCredencial}>
      */
-    private function credencialParaRuaf(int $aliadoId): array
+    private function candidatosParaRuaf(int $aliadoId): array
     {
-        $buscar = function (int $idParaOperadores, int $idParaCredencial) {
-            $operador = \App\Models\OperadorPlanilla::paraAliado($idParaOperadores)
-                ->whereIn('codigo', array_keys(\App\Services\SuaporteApiService::HOSTS))
-                ->get()
-                ->first(fn ($op) => \App\Models\OperadorCredencial::paraOperador($idParaCredencial, $op->id)->exists());
+        $codigos = array_keys(\App\Services\SuaporteApiService::HOSTS);
 
-            if (! $operador) {
-                return [null, null];
-            }
+        $preferidos = \App\Models\OperadorPlanilla::paraAliado($aliadoId)
+            ->whereIn('codigo', $codigos)
+            ->get();
 
-            return [$operador, \App\Models\OperadorCredencial::paraOperador($idParaCredencial, $operador->id)->first()];
-        };
+        $resto = \App\Models\OperadorPlanilla::query()
+            ->whereIn('codigo', $codigos)
+            ->where('activo', true)
+            ->where(function ($q) use ($aliadoId) {
+                $q->whereNull('aliado_id')->orWhere('aliado_id', $aliadoId);
+            })
+            ->whereNotIn('id', $preferidos->pluck('id')->all())
+            ->orderBy('orden')
+            ->get();
 
-        [$operador, $credencial] = $buscar($aliadoId, $aliadoId);
-        if ($operador && $credencial) {
-            return [$operador, $credencial];
-        }
+        $operadores = $preferidos->concat($resto);
 
+        $aliadosCredencial = [$aliadoId];
         $fallbackId = (int) config('services.suaporte.aliado_fallback_ruaf');
         if ($fallbackId && $fallbackId !== $aliadoId) {
-            // Los operadores se buscan con el aliado real (respeta si él los
-            // desactivó); solo la credencial cae al aliado de respaldo.
-            return $buscar($aliadoId, $fallbackId);
+            $aliadosCredencial[] = $fallbackId;
         }
 
-        return [null, null];
+        $candidatos = [];
+
+        foreach ($aliadosCredencial as $idCredencial) {
+            foreach ($operadores as $operador) {
+                $credencial = \App\Models\OperadorCredencial::paraOperador($idCredencial, $operador->id)->first();
+
+                if ($credencial) {
+                    $candidatos[] = [$operador, $credencial];
+                }
+            }
+        }
+
+        return $candidatos;
     }
 
     /**
@@ -135,32 +166,59 @@ class RegistroOficialService
      * La consulta real al operador, sin caché. Separada de
      * consultar() solo para que el manejo de la caché quede
      * legible; no llamar directamente.
+     *
+     * Recorre los candidatos de candidatosParaRuaf() y se queda con el primero
+     * que responda. Que un operador se caiga es normal —el 2026-08-31 ARUS
+     * dejó de publicar todo su árbol /auth y devolvía 404 hasta en el login—,
+     * y como cualquier cuenta sirve para cualquier cédula, no hay razón para
+     * devolver null teniendo otra cuenta viva.
+     *
+     * "No encontrado" NO es un fallo: si el operador responde bien y la
+     * persona no figura, esa es la respuesta y se devuelve tal cual. Solo se
+     * pasa al siguiente cuando la consulta misma falló.
      */
     private function consultarEnOperador(int $aliadoId, string $cedula, string $tipoDoc = 'CC'): ?array
     {
-        [$operador, $credencial] = $this->credencialParaRuaf($aliadoId);
+        $candidatos = $this->candidatosParaRuaf($aliadoId);
 
-        if (! $operador || ! $credencial) {
+        if (empty($candidatos)) {
             return null;
         }
 
-        $api = new \App\Services\SuaporteApiService([
-            'operador' => $operador->codigo,
-            'usuario' => $credencial->usuario,
-            'contrasena' => $credencial->contrasena,
-            'clave_secreta' => $credencial->clave_secreta,
-        ]);
+        $ultimo = count($candidatos) - 1;
+        $resultado = null;
+        $operador = null;
 
-        $resultado = $api->consultarAfiliacion($tipoDoc, $cedula);
+        foreach ($candidatos as $i => [$operador, $credencial]) {
+            $api = new \App\Services\SuaporteApiService([
+                'operador' => $operador->codigo,
+                'usuario' => $credencial->usuario,
+                'contrasena' => $credencial->contrasena,
+                'clave_secreta' => $credencial->clave_secreta,
+                // El timeout normal (120s) es para liquidar planillas. Aquí hay
+                // un asesor esperando frente al formulario y, encadenando
+                // intentos, un operador colgado se los comería todos: se acota
+                // mientras queden candidatos y se deja completo en el último.
+                'timeout' => $i < $ultimo ? 20 : null,
+            ]);
 
-        if (! $resultado['success']) {
+            $resultado = $api->consultarAfiliacion($tipoDoc, $cedula);
+
+            if ($resultado['success']) {
+                break;
+            }
+
             Log::warning('RUAF: el operador no respondió la consulta', [
                 'aliado_id' => $aliadoId,
                 'operador' => $operador->codigo,
+                'credencial_aliado_id' => $credencial->aliado_id,
                 'tipo_doc' => $tipoDoc,
                 'message' => $resultado['message'] ?? null,
+                'quedan_operadores' => $ultimo - $i,
             ]);
+        }
 
+        if (! $resultado['success']) {
             return null;
         }
 

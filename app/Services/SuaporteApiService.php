@@ -77,8 +77,9 @@ class SuaporteApiService
      * @param  array  $credenciales  usuario, contrasena, clave_secreta y
      *                               opcionalmente `operador` (código: ARUS,
      *                               SIMPLE…) o `host` para apuntar a otro
-     *                               dominio de la plataforma. Lo que se omita
-     *                               se toma de config/services.php.
+     *                               dominio de la plataforma, y `timeout` en
+     *                               segundos. Lo que se omita —o venga en
+     *                               null— se toma de config/services.php.
      */
     public function __construct(array $credenciales = [])
     {
@@ -93,7 +94,10 @@ class SuaporteApiService
             $this->apiUrl = rtrim(config('services.suaporte.api_url'), '/');
         }
 
-        $this->timeout = (int) config('services.suaporte.timeout', 120);
+        // El timeout por defecto (120s) está calibrado para liquidar planillas,
+        // que es lento. Quien tenga a alguien esperando —o encadene intentos
+        // contra varios operadores— puede acortarlo por credencial.
+        $this->timeout = (int) ($credenciales['timeout'] ?? config('services.suaporte.timeout', 120));
         $this->usuario = $credenciales['usuario'] ?? (string) config('services.suaporte.usuario');
         $this->contrasena = $credenciales['contrasena'] ?? (string) config('services.suaporte.contrasena');
         $this->claveSecreta = $credenciales['clave_secreta'] ?? (string) config('services.suaporte.clave_secreta');
