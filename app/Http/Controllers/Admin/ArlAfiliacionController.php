@@ -421,13 +421,29 @@ class ArlAfiliacionController extends Controller
         }
 
         try {
-            $servicio = ArlAfiliacionService::paraContrato($contrato);
-            $builder  = new ArlSuraPayloadBuilder(new ArlSuraApiService(
-                (int) $contrato->aliado_id,
-                (string) $contrato->razonSocial->arl_poliza
-            ));
+            $servicio  = ArlAfiliacionService::paraContrato($contrato);
+            $cobertura = $servicio->coberturaEnSura($contrato);
 
-            $docs = $servicio->archivarDocumentos($contrato, $builder->tipoAfiliado($contrato), Auth::id());
+            if (! $cobertura) {
+                return response()->json([
+                    'ok'      => false,
+                    'mensaje' => 'Este trabajador no tiene ninguna cobertura activa en el portal de Sura, '
+                                .'así que no hay certificado que descargar.',
+                ], 422);
+            }
+
+            // El tipo lo dice el portal, no la modalidad del contrato: en
+            // Gestión ARL la modalidad figura como independiente y los
+            // trabajadores están afiliados como dependientes. Pedir el
+            // certificado con el tipo equivocado devuelve «No se ha encontrado
+            // información», que no ayuda a nadie a entender qué pasó.
+            $tipoAfiliado = $cobertura['tipoAfiliado']
+                ?: (new ArlSuraPayloadBuilder(new ArlSuraApiService(
+                    (int) $contrato->aliado_id,
+                    (string) $contrato->razonSocial->arl_poliza
+                )))->tipoAfiliado($contrato);
+
+            $docs = $servicio->archivarDocumentos($contrato, $tipoAfiliado, Auth::id());
         } catch (Throwable $e) {
             return response()->json(['ok' => false, 'mensaje' => $e->getMessage()], 422);
         }
