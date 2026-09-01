@@ -612,12 +612,6 @@ function sortClass($col, $currSort, $currDir) {
                     @if($c->n_arl)
                         <span class="arl-nivel-badge" title="Nivel de Riesgo {{ $c->n_arl }}">{{ $c->n_arl }}</span>
                     @endif
-                    {{-- Solo tiene sentido con Sura: es la única ARL con API --}}
-                    @if(str_contains(mb_strtoupper($c->arl_efectiva_nombre ?? ''), 'SURA'))
-                        <button type="button" onclick="abrirAfiliarSura({{ $c->id }})"
-                                title="Afiliar en ARL Sura sin entrar al portal"
-                                style="border:none;background:#eff6ff;color:#1d4ed8;border-radius:5px;padding:0 .3rem;cursor:pointer;font-size:.72rem;line-height:1.5;">🚀</button>
-                    @endif
                 </span>
             @else
                 —
