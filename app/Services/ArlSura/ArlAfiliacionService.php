@@ -257,14 +257,16 @@ class ArlAfiliacionService
             'usuario_id'             => $usuarioId,
         ]);
 
-        // El tipo lo dice el portal, no la modalidad del contrato: es lo que
-        // decide en cuál de las dos pantallas de anulación está la cobertura.
-        $tipoAfiliado = 'D';
+        // El tipo decide en cuál de las dos pantallas de anulación está la
+        // cobertura, y lo dice el portal: es donde está la verdad, incluso si
+        // el contrato quedó mal marcado. Si no se puede consultar, se cae al
+        // plan del contrato, que es la intención declarada.
+        $tipoAfiliado = $this->builder->tipoAfiliado($contrato);
 
         try {
-            $tipoAfiliado = $this->coberturaEnSura($contrato)['tipoAfiliado'] ?? 'D';
+            $tipoAfiliado = $this->coberturaEnSura($contrato)['tipoAfiliado'] ?: $tipoAfiliado;
         } catch (Throwable $e) {
-            // Sin portal se sigue con dependiente, que es el caso habitual.
+            // Sin portal se sigue con lo que diga el plan.
         }
 
         $resultado = ArlSuraSesionService::anular(
