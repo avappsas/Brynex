@@ -64,6 +64,17 @@
     </a>
     @endif
 
+    {{-- Conciliación ARL --}}
+    <a href="{{ route('admin.informes.conciliacion_arl') }}" style="display:flex;align-items:center;gap:1.25rem;background:linear-gradient(135deg,#334155,#0f172a);border-radius:14px;padding:1.5rem 1.75rem;text-decoration:none;border:2px solid transparent;box-shadow:0 4px 20px rgba(15,23,42,.3);transition:all .18s;margin-top:1rem;"
+       onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 12px 32px rgba(15,23,42,.4)'"
+       onmouseout="this.style.transform='';this.style.boxShadow='0 4px 20px rgba(15,23,42,.3)'">
+        <div style="font-size:2.5rem;">🛡️</div>
+        <div>
+            <div style="font-size:1rem;font-weight:700;color:#fff;">Conciliación ARL Sura</div>
+            <div style="font-size:.82rem;color:rgba(255,255,255,.6);margin-top:.2rem;">Afiliados del portal contra contratos vigentes · Diferencias de nivel de riesgo</div>
+        </div>
+    </a>
+
     {{-- Conciliación de Bancos --}}
     <a href="{{ route('admin.informes.conciliacion_bancos') }}" style="display:flex;align-items:center;gap:1.25rem;background:linear-gradient(135deg,#0369a1,#075985);border-radius:14px;padding:1.5rem 1.75rem;text-decoration:none;border:2px solid transparent;box-shadow:0 4px 20px rgba(3,105,161,.3);transition:all .18s;margin-top:1rem;"
        onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 12px 32px rgba(3,105,161,.4)'"

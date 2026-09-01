@@ -611,6 +611,14 @@ Route::middleware('auth')->group(function () {
             Route::get('/tareas', [$ic, 'resumenTareas'])->name('tareas');
             Route::get('/conciliacion-bancos', [$ic, 'conciliacionBancos'])->name('conciliacion_bancos');
 
+            // Conciliación de afiliados contra ARL Sura. Cada empresa se
+            // consulta aparte: abrir las once de golpe serían once sesiones en
+            // el portal y varios minutos de espera.
+            $acc = \App\Http\Controllers\Admin\ArlConciliacionController::class;
+            Route::get('/conciliacion-arl', [$acc, 'index'])->name('conciliacion_arl');
+            Route::get('/conciliacion-arl/{nit}', [$acc, 'conciliar'])->name('conciliacion_arl.empresa');
+            Route::get('/conciliacion-arl/{nit}/riesgos', [$acc, 'riesgos'])->name('conciliacion_arl.riesgos');
+
             // El KPI de préstamos del mes también lo consume la pantalla de
             // Cobros, así que cuelga de `prestamos.ver` y no del financiero:
             // si no, a un `usuario` en Cobros le respondería 403.
