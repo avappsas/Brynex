@@ -1081,16 +1081,18 @@ const MF = (function () {
     /**
      * Calcula y muestra al usuario en qué período quedará la planilla
      * cuando selecciona 'Planilla + Afiliación' (modo ambos).
-     * - I Venc (id=10): planilla va al MES SIGUIENTE
-     * - I Act  (id=11): planilla va al MISMO MES
+     * - Independiente que cotiza vencido: planilla al MES SIGUIENTE
+     * - Quien cotiza el mes en curso:     planilla en el MISMO MES
      */
     function _mostrarAvisoPeriodoPlanilla() {
         const meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
         const mes   = parseInt(el('mf-mes')?.value  || new Date().getMonth() + 1);
         const anio  = parseInt(el('mf-anio')?.value || new Date().getFullYear());
 
-        // Detectar si es I Venc (tipo_modalidad_id=10) o I Act (tipo_modalidad_id=11)
-        const esIndVenc = (_cfg.tipoModalidadId == 10);
+        // El mes actual dejó de ser una modalidad aparte: un independiente que
+        // cotiza el mes en curso también es modalidad 10, así que la señal es el
+        // flag. Sin él, el aviso anunciaba la planilla un mes adelantada.
+        const esIndVenc = (_cfg.tipoModalidadId == 10) && ! _cfg.pagaMesActual;
 
         let mesPlan, anioPlan;
         if (esIndVenc) {
