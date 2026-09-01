@@ -340,7 +340,7 @@ body{display:flex;flex-direction:column}
             <button class="btn-accion btn-renovar" onclick="abrirRenovar({{ $ctx }})" title="Mover la cobertura del trabajador a la fecha del mes nuevo en ARL Sura">
                 📅 Renovar
             </button>
-            <button class="btn-accion btn-certificado" onclick="descargarCertificado(this, {{ $c->id }})" title="Bajar del portal el certificado y el carné al día">
+            <button class="btn-accion btn-certificado" onclick="descargarCertificado(this, {{ $ctx }})" title="Bajar del portal el certificado y el carné al día">
                 🧾
             </button>
             <button class="btn-accion btn-facturar" onclick="abrirFacturar({{ $ctx }})" title="Facturar afiliación ARL">
@@ -674,12 +674,21 @@ async function guardarCredencialRenovar() {
  * en que se mueve la cobertura sale como "POR INICIAR", y al llegar la fecha ya
  * aparece activo. Por eso el botón vive aparte de la renovación.
  */
-async function descargarCertificado(btn, contratoId) {
+async function descargarCertificado(btn, ctx) {
     const textoOriginal = btn.textContent;
     const parar = gaEsperar(btn, '');
 
     try {
-        const res = await gaPedirArchivo(`/admin/gestion-arl/${contratoId}/certificado`, 280);
+        const res = await gaPedirArchivo(`/admin/gestion-arl/${ctx.id}/certificado`, 280);
+
+        // Sin póliza no hay certificado que bajar, pero tampoco es un callejón
+        // sin salida: se pide la clave del portal ahí mismo y la póliza sale de
+        // ahí. El formulario ya vive en la ventana de renovación.
+        if (res.requiereCredencial) {
+            alert(res.error);
+            abrirRenovar(ctx);
+            return;
+        }
 
         if (res.error) { alert(res.error); return; }
 
@@ -705,7 +714,10 @@ async function gaPedirArchivo(url, limiteSeg) {
 
         if (!res.ok) {
             const d = await res.json().catch(() => ({}));
-            return { error: d.mensaje || 'No se pudo bajar el certificado del portal.' };
+            return {
+                error: d.mensaje || 'No se pudo bajar el certificado del portal.',
+                requiereCredencial: !!d.requiere_credencial,
+            };
         }
 
         const cd = res.headers.get('content-disposition') || '';

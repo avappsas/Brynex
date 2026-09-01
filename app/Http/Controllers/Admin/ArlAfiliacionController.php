@@ -410,7 +410,14 @@ class ArlAfiliacionController extends Controller
         $contrato = $this->contrato($request, $contratoId);
 
         if (! $contrato->razonSocial?->arl_poliza) {
-            return response()->json(['ok' => false, 'mensaje' => 'La empresa todavía no tiene póliza ARL registrada.'], 422);
+            // No es un error del certificado: falta entrar al portal una vez.
+            // La pantalla lo usa para pedir la clave en lugar de dar un aviso
+            // seco que deja al usuario sin saber qué hacer.
+            return response()->json([
+                'ok'                  => false,
+                'mensaje'             => 'Esta empresa todavía no tiene póliza ARL. Carga la clave del portal y se descubre sola.',
+                'requiere_credencial' => true,
+            ], 422);
         }
 
         try {
