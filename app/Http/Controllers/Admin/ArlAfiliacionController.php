@@ -11,6 +11,7 @@ use App\Models\Contrato;
 use App\Services\ArlSura\ArlAfiliacionService;
 use App\Services\ArlSura\ArlCentrosService;
 use App\Services\ArlSura\ArlDatosFaltantesService;
+use App\Services\ArlSura\ClaveSuraSincronizador;
 use App\Services\ArlSura\ArlSuraApiService;
 use App\Services\ArlSura\ArlSuraPayloadBuilder;
 use App\Services\ArlSura\ArlSuraSesionService;
@@ -259,6 +260,14 @@ class ArlAfiliacionController extends Controller
             $datos['tipo_documento'],
             trim($datos['usuario']),
             $datos['contrasena'],
+        );
+
+        // El llavero también queda al día: quien lo consulte a mano ve la misma
+        // clave que usa la afiliación automática.
+        ClaveSuraSincronizador::propagar(
+            trim($datos['usuario']),
+            $datos['contrasena'],
+            $datos['tipo_documento'],
         );
 
         $r = ArlSuraSesionService::descubrirPoliza($credencial, $nit);

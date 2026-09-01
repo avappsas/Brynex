@@ -323,7 +323,105 @@
                         </td>
                     </tr>
                 @else
+                    @php
+                        // Las claves de ARL Sura son del usuario, no de la empresa: la
+                        // misma persona entra al portal y administra varias razones
+                        // sociales. Se muestran agrupadas para que se vea de una que la
+                        // clave es una sola y se edite en un único sitio.
+                        $gruposSura = $claves
+                            ->filter(fn ($x) => strcasecmp((string) $x->tipo, 'ARL') === 0
+                                && stripos((string) $x->entidad, 'SURA') !== false
+                                && trim((string) $x->usuario) !== '')
+                            ->groupBy(fn ($x) => trim($x->usuario))
+                            ->filter(fn ($g) => $g->count() > 1);
+
+                        $idsAgrupados = $gruposSura->flatten()->pluck('id')->all();
+                    @endphp
+
+                    @foreach($gruposSura as $usuarioSura => $grupo)
+                    @php
+                        $primera   = $grupo->first();
+                        $sinPermG  = $primera->contrasena === '__oculta__';
+                        $maskedG   = $primera->contrasena && ! $sinPermG
+                            ? str_repeat('•', min(strlen($primera->contrasena), 8)) . ' 👁'
+                            : '—';
+                        // Si alguna fila trae otra clave, es que quedaron desfasadas.
+                        $distintas = $grupo->pluck('contrasena')->map(fn ($x) => trim((string) $x))->unique()->count() > 1;
+                    @endphp
+                    <tr style="border-bottom:1px solid #fde68a;background:#fffbeb;">
+                        <td>
+                            <span style="background:#fce7f3;color:#9d174d;padding:0.15rem 0.5rem;border-radius:999px;font-size:0.68rem;font-weight:700;">ARL</span>
+                        </td>
+                        <td style="font-weight:700;">{{ $primera->entidad }}</td>
+                        <td style="font-family:monospace;font-size:0.77rem;font-weight:700;">{{ $usuarioSura }}</td>
+                        <td>
+                            @if($sinPermG)
+                                <span style="color:#94a3b8;font-size:0.77rem;">🔒 guardada</span>
+                            @elseif($primera->contrasena)
+                                <span style="font-family:monospace;font-size:0.77rem;cursor:pointer;"
+                                      onclick="verPassGlobal(this, {{ $primera->id }}, '{{ base64_encode($primera->contrasena) }}')"
+                                      title="Click para revelar">{{ $maskedG }}</span>
+                            @else
+                                <span style="color:#cbd5e1;">—</span>
+                            @endif
+                        </td>
+                        <td colspan="4" style="font-size:0.73rem;color:#92400e;">
+                            <button type="button" onclick="alternarGrupoSura('{{ $usuarioSura }}', this)"
+                                    style="background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:0.2rem 0.6rem;
+                                           font-size:0.72rem;font-weight:700;color:#92400e;cursor:pointer;">
+                                ▸ {{ $grupo->count() }} razones sociales
+                            </button>
+                            @if($distintas)
+                                <span style="margin-left:.5rem;color:#b91c1c;font-weight:700;">⚠️ tienen claves distintas</span>
+                            @else
+                                <span style="margin-left:.5rem;">Una sola clave para todas: al cambiarla aquí se cambia en todas.</span>
+                            @endif
+                        </td>
+                        <td style="text-align:center;">
+                            <span style="background:#dcfce7;color:#16a34a;padding:0.12rem 0.45rem;border-radius:999px;font-size:0.65rem;font-weight:700;">ACTIVO</span>
+                        </td>
+                        <td style="text-align:center;white-space:nowrap;">
+                            <button onclick="abrirModalClaveGlobal({{ json_encode($primera) }})"
+                                    style="background:#fef3c7;border:1px solid #fde68a;border-radius:5px;padding:0.18rem 0.55rem;font-size:0.7rem;font-weight:600;cursor:pointer;color:#92400e;"
+                                    title="Editar la clave de este usuario (se aplica a sus {{ $grupo->count() }} razones sociales)">✏️</button>
+                        </td>
+                    </tr>
+
+                    {{-- Las razones sociales de ese usuario, ocultas hasta que se despliegan --}}
+                    @foreach($grupo as $hija)
+                    <tr class="grupo-sura-{{ preg_replace('/\D/', '', $usuarioSura) }}" style="display:none;background:#fefce8;border-bottom:1px solid #fef3c7;">
+                        <td></td>
+                        <td colspan="2" style="font-size:0.75rem;color:#78350f;padding-left:1.2rem;">
+                            ↳ {{ $hija->razonSocial->razon_social ?? ($hija->empresa->empresa ?? 'sin vínculo') }}
+                        </td>
+                        <td style="font-family:monospace;font-size:0.74rem;color:#78350f;">
+                            {{ $sinPermG ? '🔒' : (trim((string) $hija->contrasena) === trim((string) $primera->contrasena) ? 'misma clave' : '⚠️ distinta') }}
+                        </td>
+                        <td style="text-align:center;">
+                            @if($hija->link_acceso)
+                            <a href="{{ $hija->link_acceso }}" target="_blank"
+                               style="background:#eff6ff;color:#2563eb;padding:0.18rem 0.5rem;border-radius:5px;font-size:0.7rem;font-weight:600;border:1px solid #bfdbfe;text-decoration:none;">🔗 Abrir</a>
+                            @endif
+                        </td>
+                        <td style="font-size:0.73rem;color:#78350f;">{{ $hija->correo_entidad ?? '' }}</td>
+                        <td colspan="2" style="font-size:0.72rem;color:#92400e;">{{ $hija->observacion ?? '' }}</td>
+                        <td style="text-align:center;">
+                            @if($hija->activo)
+                                <span style="background:#dcfce7;color:#16a34a;padding:0.12rem 0.45rem;border-radius:999px;font-size:0.65rem;font-weight:700;">ACTIVO</span>
+                            @else
+                                <span style="background:#fee2e2;color:#dc2626;padding:0.12rem 0.45rem;border-radius:999px;font-size:0.65rem;font-weight:700;">INACTIVO</span>
+                            @endif
+                        </td>
+                        <td style="text-align:center;white-space:nowrap;">
+                            <button onclick="abrirModalClaveGlobal({{ json_encode($hija) }})" style="background:#fef3c7;border:1px solid #fde68a;border-radius:5px;padding:0.18rem 0.55rem;font-size:0.7rem;font-weight:600;cursor:pointer;color:#92400e;" title="Editar">✏️</button>
+                            <button onclick="eliminarClaveGlobal({{ $hija->id }})" style="background:#fee2e2;border:1px solid #fca5a5;border-radius:5px;padding:0.18rem 0.55rem;font-size:0.7rem;font-weight:600;cursor:pointer;color:#dc2626;" title="Eliminar">🗑</button>
+                        </td>
+                    </tr>
+                    @endforeach
+                    @endforeach
+
                     @foreach($claves as $c)
+                    @continue(in_array($c->id, $idsAgrupados))
                     @php
                         $colores = [
                             'Portal' => ['#eff6ff','#1d4ed8'], 'Correo' => ['#fef3c7','#92400e'],
@@ -527,6 +625,20 @@
 @push('scripts')
 <script>
 const CSRF_GLB = document.querySelector('meta[name="csrf-token"]')?.content;
+
+/**
+ * Despliega u oculta las razones sociales de un usuario del portal de Sura.
+ *
+ * Están agrupadas porque la clave es del usuario: mostrarlas sueltas invitaba a
+ * cambiarla en una sola y dejar las demás con la vieja.
+ */
+function alternarGrupoSura(usuario, boton) {
+    const filas = document.querySelectorAll('.grupo-sura-' + usuario.replace(/\D/g, ''));
+    const abierto = boton.textContent.trim().startsWith('▾');
+
+    filas.forEach(f => f.style.display = abierto ? 'none' : '');
+    boton.textContent = (abierto ? '▸ ' : '▾ ') + boton.textContent.trim().slice(2);
+}
 
 function verPassGlobal(el, id, b64) {
     var actual = el.dataset.visible === '1';

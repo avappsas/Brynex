@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ClaveAcceso;
+use App\Services\ArlSura\ClaveSuraSincronizador;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -140,10 +141,12 @@ class ClaveAccesoController extends Controller
 
         $clave = ClaveAcceso::create($data);
 
+        $extra = $this->propagarSiEsSura($clave);
+
         return response()->json([
             'success' => true,
             'clave'   => $clave,
-            'message' => 'Clave registrada correctamente.',
+            'message' => 'Clave registrada correctamente.'.$extra,
         ]);
     }
 
@@ -160,10 +163,15 @@ class ClaveAccesoController extends Controller
 
         $clave->update($data);
 
+        // La clave del portal de ARL Sura es del usuario, no de la empresa: se
+        // deja al día en las demás razones sociales que ese mismo usuario
+        // administra, y en la copia que usa la afiliación automática.
+        $extra = $this->propagarSiEsSura($clave);
+
         return response()->json([
             'success' => true,
             'clave'   => $clave->fresh(),
-            'message' => 'Clave actualizada correctamente.',
+            'message' => 'Clave actualizada correctamente.'.$extra,
         ]);
     }
 
@@ -184,6 +192,27 @@ class ClaveAccesoController extends Controller
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────
+
+    /**
+     * Si la entrada es del portal de ARL Sura, deja esa contraseña como la
+     * única de ese usuario. Devuelve el aviso para el mensaje de respuesta.
+     */
+    private function propagarSiEsSura(ClaveAcceso $clave): string
+    {
+        if (! ClaveSuraSincronizador::esDeSura($clave->tipo, $clave->entidad)) {
+            return '';
+        }
+
+        if (! $clave->usuario || ! $clave->contrasena) {
+            return '';
+        }
+
+        $r = ClaveSuraSincronizador::propagar($clave->usuario, trim((string) $clave->contrasena));
+
+        return $r['filas'] > 1
+            ? " Se actualizó también en las otras {$r['filas']} razones sociales del usuario {$clave->usuario}."
+            : '';
+    }
 
     private function validar(Request $request, ?int $id = null): array
     {
