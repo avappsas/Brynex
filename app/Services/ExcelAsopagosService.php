@@ -224,7 +224,9 @@ class ExcelAsopagosService
             8  => $esPlanillaY ? 0 : $c['subtipoCotizante'],                                  // Subtipo de cotizante
             9  => $c['esExtranjero'] ? 'X' : null,                                            // Extranjero no obligado a cotizar pensiones
             10 => null,                                                                       // Colombiano temporal en el exterior
-            11 => strtoupper(trim($p->tipo_p ?? '')) === 'I' ? 'I' : 'F',                     // Tipo de Salario
+            11 => $c['tipoSalarioAplica']                                                     // Tipo de Salario (blank en 23, 51 y 59: PILA lo prohíbe)
+                    ? (strtoupper(trim($p->tipo_p ?? '')) === 'I' ? 'I' : 'F')
+                    : null,
             12 => $c['ibcFull'],                                                              // Salario básico
             13 => $c['ibcProp'],                                                              // Base de Cotización
             14 => 0,                                                                          // Otros ingresos para el IBC de parafiscales

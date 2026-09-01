@@ -273,6 +273,8 @@ class ExcelMiPlanillaService
         $retVal = ($isPositive && $tipoAdmin !== 'RIESGOS') ? 'X' : '';
 
         // Horas laboradas
+        // Sin aporte a CCF no se reportan horas (error `eo.val.2.636`): el
+        // calculador ya devuelve 0 en los cotizantes 23 y 59.
         $horasVal = $isPositive ? ($c['horasLaboradas'] ?? 240) : 0;
 
         // Fechas
@@ -311,7 +313,9 @@ class ExcelMiPlanillaService
             25 => $subtipoCot,                                               // SUBTIPO COTIZANTE
             26 => $c['munCod'] ?? '001',                                     // CODIGO MUNICIPIO UBICACION LABORAL
             27 => $c['depCod'] ?? '76',                                      // CODIGO DPTO UBICACION LABORAL
-            28 => ($row->tipo_p ?? 'F') === 'I' ? 'I' : 'F',                 // TIPO DE SALARIO
+            28 => ($c['tipoSalarioAplica'] ?? true)                          // TIPO DE SALARIO (vacío en 23, 51 y 59: PILA lo prohíbe)
+                    ? (($row->tipo_p ?? 'F') === 'I' ? 'I' : 'F')
+                    : '',
             29 => $exonerado,                                                // EXONERADO PAGO DE PARAFISCALES
             30 => $ingVal,                                                   // ING
             31 => $retVal,                                                   // RET

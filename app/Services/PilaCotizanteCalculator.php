@@ -81,6 +81,8 @@ class PilaCotizanteCalculator
      *   ibcOtros: int,            // IBC parafiscales (SENA/ICBF)
      *   vSena: int,
      *   vIcbf: int,
+     *   tipoSalarioAplica: bool,  // false en 23, 51 y 59: PILA prohíbe marcarlo
+     *   horasLaboradas: int,      // 0 cuando no hay aporte a CCF (23 y modalidad 8)
      *   sinCaja: bool,            // true si codCcfPila='CCF68' (sin caja propia)
      *   ibcCcf: int,              // 100 si sin caja, ibcProp si tiene caja, 0 si K
      *   vCcf: int,                // 100 si sin caja, calculado si tiene, 0 si K
@@ -188,6 +190,9 @@ class PilaCotizanteCalculator
                 'esTiempoParcial'  => false,
                 'depCod'           => '94',
                 'munCod'           => '1',
+                // PILA prohíbe marcar el tipo de salario en el cotizante 23
+                // (error `eo.val.2.237` de Enlace).
+                'tipoSalarioAplica' => false,
                 // Las horas laboradas son el insumo del aporte a caja, y el
                 // estudiante K no aporta a CCF (días, IBC y código de caja van
                 // en cero). Reportarlas es el error `eo.val.2.636` de Enlace:
@@ -310,6 +315,8 @@ class PilaCotizanteCalculator
                 'vIcbf'            => 0,
                 'depCod'           => $depCod,
                 'munCod'           => $munCod,
+                // PILA prohíbe marcar el tipo de salario en el cotizante 51.
+                'tipoSalarioAplica' => false,
                 // Tipo 51: horas = dias_caja (días reales trabajados) × 8, NO num_dias
                 'horasLaboradas'   => $diasCajaTp * 8,
             ];
@@ -490,6 +497,10 @@ class PilaCotizanteCalculator
             'esTiempoParcial'  => false,
             'depCod'           => $depCod,
             'munCod'           => $munCod,
+            // PILA prohíbe marcar el tipo de salario en el cotizante 59
+            // (independiente con contrato de prestación de servicios), venga
+            // de la planilla Y o de la I: error `eo.val.2.237` de Enlace.
+            'tipoSalarioAplica' => $tipoCotizante !== 59,
             'horasLaboradas'   => $dias * 8,    // Normal: num_dias × 8
         ];
 
@@ -516,6 +527,15 @@ class PilaCotizanteCalculator
             $res['ibcOtros']         = 0;
             $res['vSena']            = 0;
             $res['vIcbf']            = 0;
+            // El tipo de cotizante se fuerza a 59 arriba, así que el tipo de
+            // salario tiene que quedar en blanco aunque la rama normal lo
+            // hubiera calculado como dependiente.
+            $res['tipoSalarioAplica'] = false;
+            // Las horas laboradas son el insumo del aporte a caja, y la
+            // planilla Y no aporta a CCF (diasCcf, ibcCcf y código en cero).
+            // Reportarlas es el error `eo.val.2.636`: "registra horas
+            // laboradas pero no realiza aportes a CCF".
+            $res['horasLaboradas']    = 0;
         }
 
         // ── Modalidad E-1: salud sin pensión, partida en dos planillas ──────

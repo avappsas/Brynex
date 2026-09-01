@@ -264,6 +264,13 @@ class PlanoPilaTxtService
             $tipoPlanilla = $tieneN ? 'N' : ($todosK ? 'K' : ($tieneY ? 'Y' : ($esRsIndependiente ? 'I' : 'E')));
         }
 
+        // El aportante 15 (Contratante) solo cabe si TODOS los cotizantes son
+        // contratistas de la planilla Y. Basta un registro de modalidad 8 para
+        // que el archivo se marque 'Y', y en esas tandas mixtas la mayoría son
+        // dependientes de un empleador (aportante 01).
+        $soloY = $planos->count() > 0 && $planos->every(fn ($p) => (int) $p->tipo_modalidad_id === 8);
+        $tipoAportante = ($tipoPlanilla === 'Y' && $soloY) ? '15' : '01';
+
         // El código de riesgos del registro tipo 1 sale de la razón social, y
         // la genérica de independientes no tiene ARL propia: la de cada
         // contratista viene en su plano. Sin esto Enlace reclama que el
@@ -301,7 +308,7 @@ class PlanoPilaTxtService
         }
 
         $lineas = [];
-        $lineas[] = $this->tipo1($rs, $nit, $periodo, count($planos), $codigoArlRs, (int) $valorNomina, $tipoPlanilla, $codigoOperador, $aportanteOverride, $planillaAsociada);
+        $lineas[] = $this->tipo1($rs, $nit, $periodo, count($planos), $codigoArlRs, (int) $valorNomina, $tipoPlanilla, $codigoOperador, $aportanteOverride, $planillaAsociada, $tipoAportante);
 
         // periodoLiq = mes vencido (para validar que ING/RET estén dentro del período)
         $periodoLiq = sprintf('%04d-%02d', $anioVencido, $mesVencido); // ej: '2026-04'
@@ -352,7 +359,7 @@ class PlanoPilaTxtService
      *                                                                         sin el número y la fecha en que se pagó, el operador no sabe
      *                                                                         sobre cuál aplicar la corrección. Se ignora en los demás tipos.
      */
-    private function tipo1(object $rs, string $nit, string $periodo, int $total, ?string $codigoArlRs, int $valorNomina, string $tipoPlanilla = 'E', string $codigoOperador = '88', ?array $aportanteOverride = null, ?array $planillaAsociada = null): string
+    private function tipo1(object $rs, string $nit, string $periodo, int $total, ?string $codigoArlRs, int $valorNomina, string $tipoPlanilla = 'E', string $codigoOperador = '88', ?array $aportanteOverride = null, ?array $planillaAsociada = null, string $tipoAportante = '01'): string
     {
         $anio = (int) substr($periodo, 0, 4);
         $mes = (int) substr($periodo, 4, 2);
@@ -413,7 +420,7 @@ class PlanoPilaTxtService
             .$this->A('', 10)                                     // 18 fecha_pago           A 10  pos 329-338
             .str_pad((string) $total, 5, '0', STR_PAD_LEFT)        // 19 total_empleados      N 5   pos 339-343
             .str_pad((string) $valorNomina, 12, '0', STR_PAD_LEFT) // 20 valor_total_nomina   N 12  pos 344-355
-            .'01'                                                  // 21 tipo_aportante       N 2   pos 356-357
+            .$this->N($tipoAportante, 2)                          // 21 tipo_aportante       N 2   pos 356-357 (01=empleador | 15=contratante)
             .$this->N($codigoOperador, 2);                        // 22 codigo_operador      N 2   pos 358-359
 
         if (strlen($linea) !== 359) {
@@ -448,10 +455,10 @@ class PlanoPilaTxtService
         $ibcProp = $c['ibcProp'];
         $dias = $c['dias'];
         // Tipo salario: blank para los tipos de cotizante a los que PILA le
-        // prohíbe marcar el campo — 51 (tiempo parcial) y 23 (estudiante K,
-        // Decreto 055/2015, que solo aporta a riesgos). Marcarlo en el 23 es
-        // el error `eo.val.2.237` de Enlace.
-        $esIntegral = ($c['esTiempoParcial'] || $c['esKMatriz'])
+        // prohíbe marcar el campo — 51 (tiempo parcial), 23 (estudiante K,
+        // Decreto 055/2015, que solo aporta a riesgos) y 59 (contratista con
+        // prestación de servicios). Marcarlo es el error `eo.val.2.237`.
+        $esIntegral = ! $c['tipoSalarioAplica']
             ? ' '
             : (strtoupper(trim($p->tipo_p ?? '')) === 'I' ? 'X' : 'F');
 

@@ -252,6 +252,10 @@ class ExcelAportesEnLineaService
         $todosK       = $planos->count() > 0 && $planos->every(fn($p) => (int)$p->tipo_modalidad_id === -1);
         $tieneY       = !$todosK && $planos->count() > 0 && $planos->contains(fn($p) => (int)$p->tipo_modalidad_id === 8);
         $tipoPlanilla = $todosK ? 'K' : ($tieneY ? 'Y' : 'E');
+        // El aportante 15 (Contratante) solo cabe si TODOS los cotizantes son
+        // contratistas de la planilla Y; en las tandas mixtas la mayoría son
+        // dependientes de un empleador (aportante 01).
+        $soloY        = $planos->count() > 0 && $planos->every(fn($p) => (int)$p->tipo_modalidad_id === 8);
 
         $periodoSS    = sprintf('%04d-%02d', $anioVencido, $mesVencido);
         // Para tipo Y: periodo salud = periodo vencido (igual que sistemas diferentes a salud)
@@ -278,7 +282,7 @@ class ExcelAportesEnLineaService
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Liquidaciones');
 
-        $this->buildEncabezado($sheet, $rs, $periodoSS, $periodoSalud, $tipoPlanilla, $nombreArl);
+        $this->buildEncabezado($sheet, $rs, $periodoSS, $periodoSalud, $tipoPlanilla, $nombreArl, $soloY);
         $this->buildGruposYHeaders($sheet);
         $this->buildDatosEmpleados($sheet, $planos);
 
@@ -289,7 +293,7 @@ class ExcelAportesEnLineaService
     // ─────────────────────────────────────────────────────────────────────
     // ETAPA 2: buildEncabezado — bloques filas 7-10 y 12-14
     // ─────────────────────────────────────────────────────────────────────
-    private function buildEncabezado($sheet, object $rs, string $periodoSS, string $periodoSalud, string $tipoPlanilla, ?string $nombreArl): void
+    private function buildEncabezado($sheet, object $rs, string $periodoSS, string $periodoSalud, string $tipoPlanilla, ?string $nombreArl, bool $soloY = false): void
     {
         // Altura de filas del encabezado
         foreach ([7,8,9,10,12,13,14] as $r) {
@@ -340,7 +344,10 @@ class ExcelAportesEnLineaService
         $sheet->setCellValue('F10', '');                          // clave planilla asociada
         $sheet->setCellValue('G10', $rs->codigo_sucursal ?? '');
         $sheet->setCellValue('H10', $rs->nombre_sucursal ?? '');
-        $sheet->setCellValue('I10', '');                          // I10/J10 vacíos según requerimiento
+        // Tipo de aportante: la planilla Y la presenta el contratante del
+        // independiente (15), no un empleador; en las demás va vacío como
+        // hasta ahora (error `eo.val.2.707` de Enlace).
+        $sheet->setCellValue('I10', ($tipoPlanilla === 'Y' && $soloY) ? '15' : '');
         $sheet->setCellValue('K10', $nombreArl ?? '');
         $this->estilo($sheet, 'A10:K10', self::CLR_WHITE, '1F3864', false, 'center');
 
@@ -488,8 +495,11 @@ class ExcelAportesEnLineaService
         $esIng    = $fechaIng ? 'Todos los sistemas (ARL, AFP, CCF, EPS)' : 'NO';
         $esRet    = $fechaRet ? 'Todos los sistemas (ARL, AFP, CCF, EPS)' : 'NO';
 
-        // Salario integral → SI/NO
-        $esIntegral = strtoupper(trim($p->tipo_p ?? '')) === 'I' ? 'SI' : 'NO';
+        // Salario integral → SI/NO. En los cotizantes a los que PILA le prohíbe
+        // marcar el campo (23, 51 y 59) va vacío, no 'NO' (error `eo.val.2.237`).
+        $esIntegral = $c['tipoSalarioAplica']
+            ? (strtoupper(trim($p->tipo_p ?? '')) === 'I' ? 'SI' : 'NO')
+            : null;
         // Salario variable: no manejado → NO
         $esVariable = 'NO';
 
@@ -518,10 +528,12 @@ class ExcelAportesEnLineaService
         // Horas laboradas:
         // - Tiempo parcial (tipo_modalidad -6,-7,-8,1,2,3): usa dias_caja del plan × 8
         // - Normal (tipo 0 y cualquier otro): usa num_dias del plano × 8
+        // - Sin aporte a CCF (cotizantes 23 y 59): 0, porque las horas son el
+        //   insumo del aporte a caja (error `eo.val.2.636` de Enlace).
         $diasParaHoras = $c['esTiempoParcial']
             ? (int)($p->dias_caja ?? 30)   // ej: tipo -6 → dias_caja=14 → 14×8=112
             : (int)($p->num_dias  ?? 30);  // ej: dependiente → 30×8=240
-        $horas = $diasParaHoras * 8;
+        $horas = ((int)$c['horasLaboradas'] === 0) ? 0 : $diasParaHoras * 8;
 
         $esPlanillaY = ((int)$p->tipo_modalidad_id === 8);
 

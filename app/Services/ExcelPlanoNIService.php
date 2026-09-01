@@ -317,6 +317,11 @@ class ExcelPlanoNIService
         $todosK          = !$tieneN && $planos->count() > 0 && $planos->every(fn($p) => (int)$p->tipo_modalidad_id === -1);
         $tieneY          = !$tieneN && !$todosK && $planos->count() > 0 && $planos->contains(fn($p) => (int)$p->tipo_modalidad_id === 8);
         $tipoPlanilla    = $tieneN ? 'N' : ($todosK ? 'K' : ($tieneY ? 'Y' : 'E'));
+        // El aportante 15 (Contratante) solo cabe si TODOS los cotizantes son
+        // contratistas de la planilla Y: basta un registro de modalidad 8 para
+        // marcar el archivo 'Y', y en esas tandas mixtas la mayoría son
+        // dependientes de un empleador (aportante 01).
+        $soloY           = $planos->count() > 0 && $planos->every(fn($p) => (int)$p->tipo_modalidad_id === 8);
         $totalCotizantes = $planos->count();
         $totalNomina     = $planos->sum('total_ss');
 
@@ -363,7 +368,9 @@ class ExcelPlanoNIService
             'fecha_pago'         => null,                          // vacío — planilla ordinaria
             'numero_cotizantes'  => $totalCotizantes,
             'valor_nomina'       => null,                          // vacío
-            'tipo_aportante'     => 1,
+            // 15 = Contratante: la planilla Y la presenta quien contrata al
+            // independiente, no un empleador (error `eo.val.2.707` de Enlace).
+            'tipo_aportante'     => ($tipoPlanilla === 'Y' && $soloY) ? 15 : 1,
             'codigo_operador'    => null,                          // vacío — auto-completa operador
             'version_formato'    => null,
         ]);
@@ -501,7 +508,7 @@ class ExcelPlanoNIService
             /* 38 */ $c['diasArl'],                                    // Días ARL (30 si K)
             /* 39 */ $c['diasCcf']     ?: null,                        // Días CCF
             /* 40 */ $c['ibcFull'],                                    // Salario básico
-            /* 41 */ $c['esTiempoParcial'] ? null : 'F',  // Tipo salario: blank para tipo 51 (PILA lo prohíbe)
+            /* 41 */ $c['tipoSalarioAplica'] ? 'F' : null, // Tipo salario: blank en 51, 23 y 59 (PILA lo prohíbe)
             /* 42 */ $c['tienePension'] ? ($c['ibcAfp'] ?: null) : 0,  // IBC AFP (0 si sin pensión)
             /* 43 */ $c['ibcEps']      ?: null,                        // IBC EPS
             /* 44 */ $c['ibcArl'],                                     // IBC ARL
