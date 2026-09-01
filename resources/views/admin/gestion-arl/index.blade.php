@@ -52,7 +52,7 @@ body{display:flex;flex-direction:column}
 /* ── Botones ── */
 .btn-accion{border:none;border-radius:7px;padding:.28rem .6rem;font-size:.68rem;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap;display:inline-flex;align-items:center;gap:.25rem}
 .btn-renovar {background:#0d9488;color:#fff}.btn-renovar:hover{background:#0f766e}
-.btn-certificado {background:#475569;color:#fff}.btn-certificado:hover{background:#334155}
+.btn-certificado {background:#b91c1c;color:#fff;font-weight:700}.btn-certificado:hover{background:#991b1b}
 .btn-facturar{background:#1e40af;color:#fff}.btn-facturar:hover{background:#1d4ed8}
 .btn-retirar {background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0}.btn-retirar:hover{background:#fee2e2;color:#b91c1c}
 .btn-contrato{background:#64748b;color:#fff;text-decoration:none}.btn-contrato:hover{background:#475569;color:#fff}
@@ -341,7 +341,7 @@ body{display:flex;flex-direction:column}
                 📅 Renovar
             </button>
             <button class="btn-accion btn-certificado" onclick="descargarCertificado(this, {{ $ctx }})" title="Bajar del portal el certificado y el carné al día">
-                🧾
+                📕 PDF
             </button>
             <button class="btn-accion btn-facturar" onclick="abrirFacturar({{ $ctx }})" title="Facturar afiliación ARL">
                 💳 Facturar
@@ -676,7 +676,7 @@ async function guardarCredencialRenovar() {
  */
 async function descargarCertificado(btn, ctx) {
     const textoOriginal = btn.textContent;
-    const parar = gaEsperar(btn, '');
+    const parar = gaEsperar(btn, 'Bajando...');
 
     try {
         const res = await gaPedirArchivo(`/admin/gestion-arl/${ctx.id}/certificado`, 280);
