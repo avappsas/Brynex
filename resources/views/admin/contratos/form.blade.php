@@ -499,8 +499,11 @@
               <label class="lb">Cédula Cotizante
                 <span style="font-weight:400;color:#64748b;font-size:0.6rem;margin-left:3px;">el cliente cotiza por sí mismo</span>
               </label>
+              {{-- La columna la dimensiona el selector de razón social, que
+                   necesita el ancho para nombres largos. Una cédula son diez
+                   dígitos: sin tope se estiraba a todo lo ancho del panel. --}}
               <input type="text" id="disp_arl_cedula" readonly
-                  style="{{ $I }}background:#f8fafc;color:#475569;font-family:monospace;cursor:not-allowed;"
+                  style="{{ $I }}max-width:190px;background:#f8fafc;color:#475569;font-family:monospace;cursor:not-allowed;"
                   value="{{ old('cedula', $cliente->cedula ?? $contrato->cedula ?? '') }}">
             </div>
           </div>
@@ -593,9 +596,13 @@
          y viaja en el campo oculto costo_afiliacion, que es el que sigue guardando la BD. --}}
     {{-- En Seguros solo quedan las dos casillas del seguro: administración y afiliación
          no se cobran, y dejarlas vacías empujaba el campo Seguro a una segunda fila. --}}
+    {{-- Y al escoger un plan de seguro aparece "Seguro $", que es el sexto campo:
+         con cinco columnas se caía solo a una segunda fila. --}}
     <div :style="esSeguros
             ? 'display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;'
-            : 'display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:0.5rem;'"
+            : (seguroId || !HAY_CATALOGO_SEGUROS || seguro > 0
+                ? 'display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1.25fr 0.85fr;gap:0.5rem;'
+                : 'display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:0.5rem;')"
          style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:0.5rem;">
       <div x-show="!esSeguros">
         <label class="lb">Admon Mensual $</label>
@@ -632,10 +639,16 @@
       <div>
         <label class="lb">Plan de seguro</label>
         <select name="seguro_id" id="sel_seguro" style="{{ $S }}" {!! $prot !!}
-            onchange="aplicarSeguroCatalogo(this)">
+            x-model="seguroId" onchange="aplicarSeguroCatalogo(this)">
           <option value="">-- Ninguno --</option>
           @foreach($segurosCatalogo as $sg)
+          {{-- data-nombre / data-full: en la lista se ve el precio para poder
+               escoger, pero al quedar seleccionado el campo muestra solo el
+               nombre — el valor ya está en la casilla de al lado y con los dos
+               juntos el texto no cabe. Ver etiquetaSeguroSeleccionado(). --}}
           <option value="{{ $sg->id }}" data-valor="{{ (int) $sg->valor }}"
+              data-nombre="{{ $sg->nombre }}"
+              data-full="{{ $sg->nombre }} · ${{ number_format($sg->valor, 0, ',', '.') }}"
               {{ (int) old('seguro_id', $contrato->seguro_id ?? 0) === (int) $sg->id ? 'selected' : '' }}>
             {{ $sg->nombre }} · ${{ number_format($sg->valor, 0, ',', '.') }}
           </option>
@@ -643,7 +656,12 @@
         </select>
       </div>
       @endif
-      <div>
+      {{-- El valor solo aparece cuando ya se escogió un plan de seguro: antes de
+           eso es una casilla en cero que no significa nada.
+           Se mantiene visible si el aliado no tiene catálogo (no hay plan que
+           escoger, el valor se escribe a mano) o si el contrato ya trae un
+           seguro cobrado, para no esconderle a nadie una plata que ya existe. --}}
+      <div x-show="seguroId || !HAY_CATALOGO_SEGUROS || seguro > 0">
         <label class="lb">Seguro $</label>
         <input type="text" inputmode="numeric" name="seguro" id="inp_seguro" class="campo-money"
             @input="recalcular"
@@ -2856,7 +2874,28 @@ function repartoLeer(el) {
  * que se le cobra a esa persona vive en el contrato y no en el catálogo. Dejar el
  * selector en "Ninguno" pone el valor en cero.
  */
+/**
+ * La opción escogida se queda solo con el nombre del plan; las demás recuperan
+ * su texto con precio para que la lista siga siendo útil al escoger.
+ *
+ * Sin esto el campo mostraba "Plan exequial 1 · $20.00…" cortado, repitiendo un
+ * valor que ya se ve completo en la casilla Seguro $ de al lado.
+ */
+function etiquetaSeguroSeleccionado() {
+    const sel = document.getElementById('sel_seguro');
+    if (!sel) return;
+
+    for (const op of sel.options) {
+        if (!op.dataset.full) continue;   // la opción "-- Ninguno --" no se toca
+        op.textContent = (op.selected && op.dataset.nombre) ? op.dataset.nombre : op.dataset.full;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', etiquetaSeguroSeleccionado);
+
 function aplicarSeguroCatalogo(sel) {
+    etiquetaSeguroSeleccionado();
+
     const inp = document.getElementById('inp_seguro');
     if (!inp) return;
 
@@ -2864,6 +2903,15 @@ function aplicarSeguroCatalogo(sel) {
     inp.value = numFmt(valor);
     inp.dataset.raw = valor;
     inp.dispatchEvent(new Event('input'));   // que la cotización de la derecha se entere
+
+    // El listener de .campo-money deja el campo en dígitos pelados mientras se
+    // teclea, y acaba de correr con el evento de arriba: el valor quedaría en
+    // "20000" y no en "20.000" como el resto de los campos de plata. Se
+    // reformatea después, salvo que el usuario lo tenga en foco escribiendo.
+    if (document.activeElement !== inp) {
+        inp.value = numFmt(valor);
+        inp.dataset.raw = valor;
+    }
 }
 
 /**
@@ -3045,6 +3093,9 @@ function cotizador() {
         ibc:             {{ $defIbc }},
         admon:           {{ $defAdmon }},
         seguro:          {{ $defSeguro }},
+        // Qué seguro del catálogo se le vendió. Gobierna si se muestra el campo
+        // del valor: sin plan escogido no hay monto que cobrar.
+        seguroId:        '{{ old('seguro_id', $contrato->seguro_id ?? '') }}',
         nivelArl:        {{ (int)old('n_arl', $contrato->n_arl ?? 1) }},
         pctCaja:         {{ (float)old('porcentaje_caja', $contrato->porcentaje_caja ?? 2) }},
         planId:          '{{ $esEdicion ? old('plan_id', $contrato->plan_id ?? '') : '' }}',
@@ -3526,6 +3577,12 @@ function cotizador() {
             const cedula  = document.querySelector('input[name=cedula]')?.value || '';
             // Leer salario del campo money (dataset.raw) o del Alpine state
             const salRaw  = parseInt(document.getElementById('inp_salario')?.dataset.raw || this.salario || 0);
+            // El campo del seguro dispara recalcular() pero no tiene x-model, así
+            // que su valor nunca llegaba al estado y la cotización lo mandaba en
+            // cero: el seguro no se sumaba al total. Se lee del DOM, igual que el
+            // salario, que ya resolvía lo mismo dos líneas arriba.
+            const segRaw  = parseInt(document.getElementById('inp_seguro')?.dataset.raw || this.seguro || 0);
+            if (segRaw !== this.seguro) this.seguro = segRaw;
             if (salRaw > 0 && salRaw !== this.salario) this.salario = salRaw;
             const ibcVal  = (this.esIndependiente && this.ibc > 0) ? this.ibc : (salRaw || this.salario);
             // UPC no depende de salario (el valor sale de la edad/zona del beneficiario).
