@@ -1707,10 +1707,12 @@ function mrValidarPeriodoConsecutivo() {
     let cargosRS = [];
 
     async function cargarCargos() {
-        const rsId = selRS ? selRS.value : '{{ $contrato->razon_social_id ?? '' }}';
+        // Sin razón social se piden igual: el catálogo común no depende de
+        // ella, y antes la lista salía vacía en todo contrato nuevo, que es
+        // justo cuando más sirve.
+        const rsId = (selRS ? selRS.value : '{{ $contrato->razon_social_id ?? '' }}') || 0;
         dataList.innerHTML = '';
         cargosRS = [];
-        if (!rsId) return;
 
         try {
             const r = await fetch(`/admin/razones-sociales/${rsId}/cargos`, {
@@ -1719,6 +1721,8 @@ function mrValidarPeriodoConsecutivo() {
             const d = await r.json();
             cargosRS = d.cargos || [];
             dataList.innerHTML = cargosRS
+                .slice()
+                .sort((a, b) => a.nivel_riesgo - b.nivel_riesgo || a.cargo.localeCompare(b.cargo))
                 .map(c => `<option value="${c.cargo}">riesgo ${c.nivel_riesgo}</option>`)
                 .join('');
         } catch (e) { /* sin catálogo se sigue escribiendo a mano */ }
