@@ -280,10 +280,15 @@
              pero sugiere los de la razón social. Al elegir uno del catálogo se
              ajusta solo el nivel de riesgo, que es de donde sale el centro de
              trabajo al afiliar en ARL Sura. --}}
-        <input type="text" name="cargo" id="inp_cargo" list="lista_cargos" autocomplete="off"
-               value="{{ old('cargo', $contrato->cargo ?? '') }}" style="{{ $I }}"
-               placeholder="Escribe o elige uno de la lista">
-        <datalist id="lista_cargos"></datalist>
+        <div style="position:relative">
+            <input type="text" name="cargo" id="inp_cargo" autocomplete="off" role="combobox"
+                   aria-expanded="false" aria-controls="lista_cargos"
+                   value="{{ old('cargo', $contrato->cargo ?? '') }}" style="{{ $I }}"
+                   placeholder="Escribe o elige uno de la lista">
+            <div id="lista_cargos" role="listbox" style="display:none;position:absolute;z-index:60;left:0;right:0;
+                 max-height:260px;overflow-y:auto;background:#fff;border:1px solid #cbd5e1;border-radius:8px;
+                 box-shadow:0 8px 24px rgba(15,23,42,.14);margin-top:2px;"></div>
+        </div>
         <span id="cargo_hint" style="display:none;font-size:.68rem;color:#1d4ed8;"></span>
       </div>
       {{-- Operador Planilla: visible SOLO cuando la RS es independiente, sin importar si hay ARL --}}
@@ -1699,37 +1704,81 @@ function mrValidarPeriodoConsecutivo() {
 // de trabajo al afiliar en ARL Sura. Escribir uno nuevo sigue permitido.
 (function () {
     const inpCargo = document.getElementById('inp_cargo');
-    const dataList = document.getElementById('lista_cargos');
+    const panel    = document.getElementById('lista_cargos');
     const hint     = document.getElementById('cargo_hint');
     const selRS    = document.getElementById('sel_rs');
-    if (!inpCargo || !dataList) return;
+    if (!inpCargo || !panel) return;
 
-    let cargosRS = [];
+    let cargos  = [];
+    let marcado = -1;   // opción resaltada con las flechas
 
     async function cargarCargos() {
         // Sin razón social se piden igual: el catálogo común no depende de
         // ella, y antes la lista salía vacía en todo contrato nuevo, que es
         // justo cuando más sirve.
         const rsId = (selRS ? selRS.value : '{{ $contrato->razon_social_id ?? '' }}') || 0;
-        dataList.innerHTML = '';
-        cargosRS = [];
+        cargos = [];
 
         try {
-            const r = await fetch(`/admin/razones-sociales/${rsId}/cargos`, {
-                headers: { 'Accept': 'application/json' },
-            });
-            const d = await r.json();
-            cargosRS = d.cargos || [];
-            dataList.innerHTML = cargosRS
-                .slice()
-                .sort((a, b) => a.nivel_riesgo - b.nivel_riesgo || a.cargo.localeCompare(b.cargo))
-                .map(c => `<option value="${c.cargo}">riesgo ${c.nivel_riesgo}</option>`)
-                .join('');
+            const r = await fetch(`/admin/razones-sociales/${rsId}/cargos`, { headers: { 'Accept': 'application/json' } });
+            cargos = ((await r.json()).cargos || [])
+                .sort((a, b) => a.nivel_riesgo - b.nivel_riesgo || a.cargo.localeCompare(b.cargo));
         } catch (e) { /* sin catálogo se sigue escribiendo a mano */ }
     }
 
+    const colorRiesgo = (n) => ['#64748b','#0d9488','#0891b2','#ca8a04','#ea580c','#b91c1c'][n] || '#64748b';
+
+    function pintar(filtro) {
+        const t = (filtro || '').trim().toUpperCase();
+        const vistos = t ? cargos.filter(c => c.cargo.toUpperCase().includes(t)) : cargos;
+        marcado = -1;
+
+        if (! vistos.length) {
+            panel.innerHTML = `<div style="padding:.5rem .6rem;font-size:.75rem;color:#94a3b8;">
+                Sin cargos que coincidan. Puedes escribir uno nuevo.</div>`;
+            return;
+        }
+
+        panel.innerHTML = vistos.map((c, i) => `
+            <div class="op-cargo" data-i="${i}" data-cargo="${c.cargo.replace(/"/g,'&quot;')}"
+                 style="display:flex;justify-content:space-between;gap:.5rem;padding:.4rem .6rem;
+                        font-size:.78rem;cursor:pointer;border-bottom:1px solid #f1f5f9;">
+                <span>${c.cargo}</span>
+                <span style="color:${colorRiesgo(c.nivel_riesgo)};font-weight:700;font-size:.7rem;white-space:nowrap;">
+                    riesgo ${c.nivel_riesgo}</span>
+            </div>`).join('');
+
+        panel.querySelectorAll('.op-cargo').forEach(el => {
+            el.addEventListener('mousedown', (ev) => {   // antes del blur, si no el clic se pierde
+                ev.preventDefault();
+                elegir(el.dataset.cargo);
+            });
+            el.addEventListener('mouseenter', () => resaltar(Number(el.dataset.i)));
+        });
+    }
+
+    function resaltar(i) {
+        const ops = panel.querySelectorAll('.op-cargo');
+        ops.forEach(o => o.style.background = '');
+        marcado = i;
+        if (ops[i]) {
+            ops[i].style.background = '#eff6ff';
+            ops[i].scrollIntoView({ block: 'nearest' });
+        }
+    }
+
+    function abrir()  { pintar(inpCargo.value); panel.style.display = 'block'; inpCargo.setAttribute('aria-expanded','true'); }
+    function cerrar() { panel.style.display = 'none'; inpCargo.setAttribute('aria-expanded','false'); }
+
+    function elegir(cargo) {
+        inpCargo.value = cargo;
+        cerrar();
+        ajustarRiesgo();
+        inpCargo.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
     function ajustarRiesgo() {
-        const elegido = cargosRS.find(c => c.cargo.toUpperCase() === inpCargo.value.trim().toUpperCase());
+        const elegido = cargos.find(c => c.cargo.toUpperCase() === inpCargo.value.trim().toUpperCase());
         if (!elegido) { hint.style.display = 'none'; return; }
 
         const selArl = document.querySelector('select[name="n_arl"]');
@@ -1745,10 +1794,20 @@ function mrValidarPeriodoConsecutivo() {
         hint.style.display = 'block';
     }
 
-    inpCargo.addEventListener('change', ajustarRiesgo);
-    inpCargo.addEventListener('input',  ajustarRiesgo);
-    if (selRS) selRS.addEventListener('change', cargarCargos);
+    inpCargo.addEventListener('focus', abrir);
+    inpCargo.addEventListener('click', abrir);
+    inpCargo.addEventListener('input', () => { abrir(); ajustarRiesgo(); });
+    inpCargo.addEventListener('blur',  () => setTimeout(cerrar, 120));
 
+    inpCargo.addEventListener('keydown', (ev) => {
+        const ops = panel.querySelectorAll('.op-cargo');
+        if (ev.key === 'ArrowDown')      { if (panel.style.display === 'none') abrir(); resaltar(Math.min(marcado + 1, ops.length - 1)); ev.preventDefault(); }
+        else if (ev.key === 'ArrowUp')   { resaltar(Math.max(marcado - 1, 0)); ev.preventDefault(); }
+        else if (ev.key === 'Enter')     { if (marcado >= 0 && ops[marcado]) { elegir(ops[marcado].dataset.cargo); ev.preventDefault(); } }
+        else if (ev.key === 'Escape')    { cerrar(); }
+    });
+
+    if (selRS) selRS.addEventListener('change', cargarCargos);
     document.addEventListener('DOMContentLoaded', cargarCargos);
     if (document.readyState !== 'loading') cargarCargos();
 })();
