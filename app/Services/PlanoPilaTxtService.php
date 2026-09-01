@@ -123,6 +123,12 @@ class PlanoPilaTxtService
         $tiposModal = $params['tipos_modalidad'] ?? [];
         $codigoOperador = $params['codigo_operador'] ?? '88';
         $ignorarMesVenc = $params['ignorar_mes_vencido'] ?? false;
+        // El contrato cotiza el mes en curso (`contratos.paga_mes_actual`): el
+        // período que se reporta en el encabezado es el mes de pago mismo, no el
+        // anterior. Va como parámetro propio y no colgado de
+        // `ignorar_mes_vencido`, que solo filtra qué planos entran al archivo y
+        // hoy únicamente lo usa el traslado de razón social.
+        $periodoMesActual = $params['periodo_mes_actual'] ?? false;
         // Liquidación puntual de UN cotizante (contratista independiente):
         // el aportante del registro tipo 1 pasa a ser la persona (CC), no la
         // razón social genérica "INDEPENDIENTE" que agrupa a todos.
@@ -141,7 +147,11 @@ class PlanoPilaTxtService
 
         // mesPago = mes de pago (ej: 5=Mayo)
         // mesVencido = mes que se liquida (ej: 4=Abril) — los dependientes tienen mes_plano = vencido
-        if ($ignorarMesVenc) {
+        // En mes actual el plano se guarda con el mes de pago, así que buscarlo
+        // por el mes anterior no lo encuentra: la selección se comporta igual
+        // que con `ignorar_mes_vencido`. El encabezado, en cambio, solo lo
+        // cambia `periodo_mes_actual` (el traslado sigue reportando como antes).
+        if ($ignorarMesVenc || $periodoMesActual) {
             $mesVencido = $mesPago;
             $anioVencido = $anioPago;
         } else {
@@ -270,8 +280,18 @@ class PlanoPilaTxtService
         // contratistas de la planilla Y. Basta un registro de modalidad 8 para
         // que el archivo se marque 'Y', y en esas tandas mixtas la mayoría son
         // dependientes de un empleador (aportante 01).
+        //
+        // La planilla I solo admite aportante 2 (independiente): con 01 Enlace
+        // devuelve eo.val.1.159 ("los tipos de aportantes válidos son: 2") y,
+        // en la liquidación puntual, eo.val.1.027 — porque BryNex mismo crea al
+        // contratista allá como tipoAportanteId 2 en
+        // SuaporteApiService::crearAportanteIndependiente y luego le mandaba 01.
         $soloY = $planos->count() > 0 && $planos->every(fn ($p) => (int) $p->tipo_modalidad_id === 8);
-        $tipoAportante = ($tipoPlanilla === 'Y' && $soloY) ? '15' : '01';
+        $tipoAportante = match (true) {
+            $tipoPlanilla === 'Y' && $soloY => '15',
+            $tipoPlanilla === 'I'           => '2',
+            default                         => '01',
+        };
 
         // El código de riesgos del registro tipo 1 sale de la razón social, y
         // la genérica de independientes no tiene ARL propia: la de cada
@@ -310,7 +330,7 @@ class PlanoPilaTxtService
         }
 
         $lineas = [];
-        $lineas[] = $this->tipo1($rs, $nit, $periodo, count($planos), $codigoArlRs, (int) $valorNomina, $tipoPlanilla, $codigoOperador, $aportanteOverride, $planillaAsociada, $tipoAportante);
+        $lineas[] = $this->tipo1($rs, $nit, $periodo, count($planos), $codigoArlRs, (int) $valorNomina, $tipoPlanilla, $codigoOperador, $aportanteOverride, $planillaAsociada, $tipoAportante, $periodoMesActual);
 
         // periodoLiq = mes vencido (para validar que ING/RET estén dentro del período)
         $periodoLiq = sprintf('%04d-%02d', $anioVencido, $mesVencido); // ej: '2026-04'
@@ -361,18 +381,25 @@ class PlanoPilaTxtService
      *                                                                         sin el número y la fecha en que se pagó, el operador no sabe
      *                                                                         sobre cuál aplicar la corrección. Se ignora en los demás tipos.
      */
-    private function tipo1(object $rs, string $nit, string $periodo, int $total, ?string $codigoArlRs, int $valorNomina, string $tipoPlanilla = 'E', string $codigoOperador = '88', ?array $aportanteOverride = null, ?array $planillaAsociada = null, string $tipoAportante = '01'): string
+    private function tipo1(object $rs, string $nit, string $periodo, int $total, ?string $codigoArlRs, int $valorNomina, string $tipoPlanilla = 'E', string $codigoOperador = '88', ?array $aportanteOverride = null, ?array $planillaAsociada = null, string $tipoAportante = '01', bool $periodoMesActual = false): string
     {
         $anio = (int) substr($periodo, 0, 4);
         $mes = (int) substr($periodo, 4, 2);
 
         // periodoNoSalud = mes vencido (un mes antes del pago) ej: 2026-04
         // periodoSalud   = mes de pago ej: 2026-05
-        $mesVenc = $mes > 1 ? $mes - 1 : 12;
-        $anioVenc = $mes > 1 ? $anio : $anio - 1;
+        //
+        // Salvo cuando el contrato cotiza el mes en curso: ahí el mes de pago y
+        // el mes cotizado son el mismo, y restarle uno reportaría un período que
+        // el cotizante no trabajó.
+        $mesVenc = $periodoMesActual ? $mes : ($mes > 1 ? $mes - 1 : 12);
+        $anioVenc = $periodoMesActual ? $anio : ($mes > 1 ? $anio : $anio - 1);
         $periodoNoSalud = sprintf('%04d-%02d', $anioVenc, $mesVenc);
-        // Para tipo Y: ambos periodos = mes vencido (sistemas diferentes a salud)
-        $periodoSalud = ($tipoPlanilla === 'Y')
+        // Para tipo Y: ambos periodos = mes vencido (sistemas diferentes a salud).
+        // Para tipo I: Enlace exige que los dos periodos sean iguales
+        // (eo.val.1.035, "los periodos de cotización y de servicio para salud
+        // deben ser iguales"), así que la salud también va al mes vencido.
+        $periodoSalud = in_array($tipoPlanilla, ['Y', 'I'], true)
             ? $periodoNoSalud
             : sprintf('%04d-%02d', $anio, $mes);
 

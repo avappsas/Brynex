@@ -599,8 +599,12 @@ class PlanillaApiController extends Controller
         // El período que espera construir() es "mes de pago"; el plano guarda
         // mes_plano/anio_plano ya sea como mes de pago (paga_mes_actual) o como
         // mes vencido (el resto) — mismo criterio que el resto del módulo.
-        $tipoModId = (int) $plano->tipo_modalidad_id;
-        if ($tipoModId === 11) {
+        // La señal es `paga_mes_actual`, no la modalidad: la 11 se jubiló y hoy
+        // el mes en curso es un campo del contrato que aplica a varias
+        // modalidades. Con el `=== 11` de antes, cualquier independiente de mes
+        // actual se liquidaba con el período corrido un mes.
+        $mesActual = (bool) $plano->paga_mes_actual;
+        if ($mesActual) {
             $mesPago = (int) $plano->mes_plano; $anioPago = (int) $plano->anio_plano;
         } else {
             $mesPago  = $plano->mes_plano == 12 ? 1 : (int) $plano->mes_plano + 1;
@@ -635,6 +639,9 @@ class PlanillaApiController extends Controller
                 'n_plano'         => (int) $plano->n_plano,
                 'plano_id'        => $plano->id,
                 'codigo_operador' => (string) $operador->codigo_ni,
+                // En mes actual el período cotizado es el mes de pago, no el
+                // anterior; sin esto el encabezado sale corrido un mes.
+                'periodo_mes_actual' => $mesActual,
             ]);
         } catch (\RuntimeException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
