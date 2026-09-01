@@ -28,7 +28,7 @@
                     <th style="padding:.6rem .8rem;text-align:center;">En Sura</th>
                     <th style="padding:.6rem .8rem;text-align:center;">Sobran<br><span style="font-weight:400;font-size:.68rem;color:#94a3b8;">sin contrato</span></th>
                     <th style="padding:.6rem .8rem;text-align:center;">Faltan<br><span style="font-weight:400;font-size:.68rem;color:#94a3b8;">sin cobertura</span></th>
-                    <th style="padding:.6rem .8rem;text-align:center;">Acciones</th>
+                    <th style="padding:.6rem .8rem;text-align:center;width:120px;">Acciones</th>
                 </tr>
             </thead>
             <tbody>
@@ -73,16 +73,24 @@ const CSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
 // El contador da señal de vida: entrar al portal y recorrer los afiliados de
 // una empresa tarda más de un minuto la primera vez.
-function esperando(btn, texto) {
+function esperando(btn, titulo) {
     const desde = Date.now();
-    const pintar = () => btn.textContent = `⏳ ${texto} ${Math.round((Date.now() - desde) / 1000)}s`;
-    btn.disabled = true; pintar();
+    // Solo los segundos: el texto largo ensanchaba el botón y la columna de
+    // acciones se salía de la tabla. Lo que está haciendo va en el title.
+    const pintar = () => btn.textContent = `⏳ ${Math.round((Date.now() - desde) / 1000)}s`;
+
+    btn.dataset.ancho = btn.dataset.ancho || btn.offsetWidth;
+    btn.style.minWidth = btn.dataset.ancho + 'px';
+    btn.title = titulo;
+    btn.disabled = true;
+    pintar();
+
     const reloj = setInterval(pintar, 1000);
-    return () => clearInterval(reloj);
+    return () => { clearInterval(reloj); btn.title = ''; };
 }
 
 async function conciliar(nit, btn) {
-    const parar = esperando(btn, 'Consultando el portal...');
+    const parar = esperando(btn, 'Consultando los afiliados en el portal de Sura');
     const fila  = document.getElementById('empresa-' + nit);
 
     let d;
@@ -155,7 +163,7 @@ function mostrarDetalle(nit, d) {
 }
 
 async function verRiesgos(nit, btn) {
-    const parar = esperando(btn, 'Comparando...');
+    const parar = esperando(btn, 'Revisando la cobertura de cada trabajador en el portal');
     const caja  = document.getElementById('riesgos-' + nit);
 
     let d;
