@@ -117,15 +117,27 @@ try {
   paso = 'paso 2: documento del trabajador';
   await esperar(800);
   await pagina.evaluate((tipo, doc) => {
-    const sel = [...document.querySelectorAll('select')].find(s => s.offsetParent !== null);
+    // Por nombre y no por posición: la pantalla de independientes trae un campo
+    // extra para el nombre del trabajador, y el último input visible es ese.
+    const sel = document.getElementsByName('tipoDocumento_1')[0]
+      ?? [...document.querySelectorAll('select')].find(s => s.offsetParent !== null);
     if (sel) sel.value = tipo;
-    const inputs = [...document.querySelectorAll('input[type="text"]')].filter(i => i.offsetParent !== null);
-    const campo = inputs[inputs.length - 1]; // el último visible es el del documento
-    if (campo) campo.value = doc;
+
+    const campo = document.getElementsByName('documento_1')[0]
+      ?? [...document.querySelectorAll('input[type="text"]')].filter(i => i.offsetParent !== null).pop();
+
+    if (campo) {
+      campo.value = doc;
+      // El portal busca el nombre al salir del campo, y sin ese paso la
+      // verificación no encuentra al trabajador.
+      campo.dispatchEvent(new Event('change', { bubbles: true }));
+      campo.dispatchEvent(new Event('blur', { bubbles: true }));
+    }
   }, tipoId, String(numDoc));
 
+  await esperar(2500); // deja que el portal traiga el nombre
   await pulsar('verificar');
-  await esperar(2200);
+  await esperar(2500);
 
   if (!await pagina.evaluate(() => /borrar registros/i.test(document.body.innerText))) {
     const texto = await pagina.evaluate(() => document.body.innerText.replace(/\s+/g, ' ').trim().slice(0, 200));
@@ -134,6 +146,15 @@ try {
 
   // ── Paso 3: borrar ──
   paso = 'paso 3: borrar registros';
+
+  // Cuando el trabajador tiene varias coberturas hay que marcarlas: la pantalla
+  // ofrece «Seleccionar todos» y sin marcar nada el borrado no hace nada.
+  await pagina.evaluate(() => {
+    document.querySelectorAll('input[type="checkbox"]').forEach((c) => {
+      if (! c.checked && c.offsetParent !== null) c.click();
+    });
+  });
+
   await pulsar('borrar registros');
   await esperar(2500);
 

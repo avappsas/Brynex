@@ -88,6 +88,14 @@ class ArlSuraPayloadBuilder
             $payload['tipoTeletrabajo'] = 'A';
         }
 
+        // El independiente lleva su propio bloque con los datos del contrato de
+        // prestación de servicios, y no lleva fecha de retiro programada: el
+        // portal la borra del envío al marcar «I».
+        if ($tipoAfiliado === 'I') {
+            $payload['datosIndependiente'] = $this->datosIndependiente($contrato, $inicioCobertura);
+            unset($payload['afiliado']['fechaRetiroProgramada']);
+        }
+
         return $payload;
     }
 
@@ -243,6 +251,34 @@ class ArlSuraPayloadBuilder
     }
 
     // ─── Bloques del payload ─────────────────────────────────────────
+
+    /**
+     * Datos del contrato de prestación de servicios del independiente.
+     *
+     * Sura los pide todos: sin este bloque el portal responde «Error al
+     * ingresar el trabajador dependiente: 025», que no dice nada de lo que
+     * falta.
+     *
+     * El tipo de contrato sale de un catálogo del portal —01 CIVIL, 02
+     * COMERCIAL, 03 ADMINISTRATIVO— y se usa CIVIL, que es el que corresponde a
+     * una prestación de servicios entre particulares.
+     *
+     * Los honorarios son el IBC del contrato: es lo que se está cotizando. Sin
+     * fecha de fin no hay un total distinto del mensual, así que van iguales.
+     */
+    private function datosIndependiente(Contrato $contrato, Carbon $inicioCobertura): array
+    {
+        $honorarios = (int) ($contrato->ibc ?: $contrato->salario);
+        $fin        = $contrato->fecha_retiro ?: null;
+
+        return [
+            'fechaInicialContrato' => ($contrato->fecha_ingreso ?: $inicioCobertura)->format('d/m/Y'),
+            'fechaFinalContrato'   => $fin?->format('d/m/Y'),
+            'tipoContrato'         => ['codigo' => '01', 'desTipoContrato' => 'CIVIL'],
+            'valorHonorarios'      => $honorarios,
+            'valorTotalHonorarios' => $honorarios,
+        ];
+    }
 
     private function afiliado(Contrato $contrato, $cliente, $rs): array
     {
