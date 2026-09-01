@@ -844,7 +844,12 @@ class FacturacionController extends Controller
             $facturasDup = $facturasPeriodo->get($contrato->id) ?: collect();
             $nombre = trim(($contrato->cliente?->primer_nombre ?? '').' '.($contrato->cliente?->primer_apellido ?? ''));
 
-            $esIndVenc = (int) $contrato->tipo_modalidad_id === 10;
+            // Independiente que cotiza VENCIDO: su planilla va en el mes siguiente
+            // al de la factura. Un independiente de mes actual también es
+            // modalidad 10, así que sin mirar el flag se le adelantaba el plano
+            // un mes (facturando septiembre, el plano salía en octubre).
+            $esIndVenc = (int) $contrato->tipo_modalidad_id === 10
+                && ! (bool) ($contrato->paga_mes_actual ?? false);
             $esIndAct = (bool) ($contrato->paga_mes_actual ?? false);
             $esMesIngreso = $contrato->fecha_ingreso
                 && (int) $contrato->fecha_ingreso->month === $mes
@@ -1393,7 +1398,8 @@ class FacturacionController extends Controller
 
                 // ─── Detectar modo "ambos" (afiliación + planilla) ────────
                 $indepModo = $validated['indep_modo'] ?? 'normal';
-                $esIndVenc = (int) ($contrato->tipo_modalidad_id) === 10;
+                $esIndVenc = (int) ($contrato->tipo_modalidad_id) === 10
+                    && ! (bool) ($contrato->paga_mes_actual ?? false);
                 $esIndActCheck = (bool) ($contrato->paga_mes_actual ?? false);
                 $esMesIngresoCheck = false;
                 if ($contrato->fecha_ingreso) {
