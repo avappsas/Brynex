@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ClaveAcceso;
-use App\Services\ArlSura\ClaveSuraSincronizador;
+use App\Services\ClavePortalSincronizador;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -141,7 +141,7 @@ class ClaveAccesoController extends Controller
 
         $clave = ClaveAcceso::create($data);
 
-        $extra = $this->propagarSiEsSura($clave);
+        $extra = $this->propagarClave($clave);
 
         return response()->json([
             'success' => true,
@@ -166,7 +166,7 @@ class ClaveAccesoController extends Controller
         // La clave del portal de ARL Sura es del usuario, no de la empresa: se
         // deja al día en las demás razones sociales que ese mismo usuario
         // administra, y en la copia que usa la afiliación automática.
-        $extra = $this->propagarSiEsSura($clave);
+        $extra = $this->propagarClave($clave);
 
         return response()->json([
             'success' => true,
@@ -194,24 +194,30 @@ class ClaveAccesoController extends Controller
     // ─── Helpers ──────────────────────────────────────────────────────
 
     /**
-     * Si la entrada es del portal de ARL Sura, deja esa contraseña como la
-     * única de ese usuario. Devuelve el aviso para el mensaje de respuesta.
+     * Deja esa contraseña como la única del grupo: las demás entradas del mismo
+     * usuario en el mismo portal quedan al día.
+     *
+     * Solo al guardar, que es cuando alguien afirma cuál es la clave buena.
+     * Devuelve el aviso para el mensaje de respuesta.
      */
-    private function propagarSiEsSura(ClaveAcceso $clave): string
+    private function propagarClave(ClaveAcceso $clave): string
     {
-        if (! ClaveSuraSincronizador::esDeSura($clave->tipo, $clave->entidad)) {
-            return '';
-        }
-
         if (! $clave->usuario || ! $clave->contrasena) {
             return '';
         }
 
-        $r = ClaveSuraSincronizador::propagar($clave->usuario, trim((string) $clave->contrasena));
+        $r = ClavePortalSincronizador::propagar($clave);
 
-        return $r['filas'] > 1
-            ? " Se actualizó también en las otras {$r['filas']} razones sociales del usuario {$clave->usuario}."
+        if ($r['filas'] <= 1) {
+            return '';
+        }
+
+        $otras = $r['filas'] - 1;
+        $donde = ClavePortalSincronizador::esSura($clave->entidad)
+            ? ' de Sura (ARL y EPS)'
             : '';
+
+        return " Se actualizó también en las otras {$otras} entradas{$donde} del usuario {$clave->usuario}.";
     }
 
     private function validar(Request $request, ?int $id = null): array

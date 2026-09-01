@@ -324,23 +324,30 @@
                     </tr>
                 @else
                     @php
-                        // Las claves de ARL Sura son del usuario, no de la empresa: la
-                        // misma persona entra al portal y administra varias razones
-                        // sociales. Se muestran agrupadas para que se vea de una que la
-                        // clave es una sola y se edite en un único sitio.
+                        // La clave es del usuario que entra al portal, no de la empresa:
+                        // la misma persona administra varias razones sociales con el
+                        // mismo login. Se muestran agrupadas para que se vea de una que
+                        // la clave es una sola y se edite en un único sitio.
+                        //
+                        // En Sura el grupo cruza ARL y EPS: es el mismo usuario para
+                        // ambos, y el NIT lo pregunta después de entrar.
+                        $sinc = \App\Services\ClavePortalSincronizador::class;
+
                         $gruposSura = $claves
-                            ->filter(fn ($x) => strcasecmp((string) $x->tipo, 'ARL') === 0
-                                && stripos((string) $x->entidad, 'SURA') !== false
-                                && trim((string) $x->usuario) !== '')
-                            ->groupBy(fn ($x) => trim($x->usuario))
+                            ->filter(fn ($x) => $sinc::grupoDe($x->tipo, $x->entidad, $x->usuario) !== null)
+                            ->groupBy(fn ($x) => $sinc::grupoDe($x->tipo, $x->entidad, $x->usuario))
                             ->filter(fn ($g) => $g->count() > 1);
 
                         $idsAgrupados = $gruposSura->flatten()->pluck('id')->all();
                     @endphp
 
-                    @foreach($gruposSura as $usuarioSura => $grupo)
+                    @foreach($gruposSura as $claveGrupo => $grupo)
                     @php
-                        $primera   = $grupo->first();
+                        $primera     = $grupo->first();
+                        $usuarioSura = trim((string) $primera->usuario);
+                        $esSura      = $sinc::esSura($primera->entidad);
+                        $tipos       = $grupo->pluck('tipo')->map(fn ($t) => strtoupper(trim((string) $t)))->unique();
+                        $colG        = $colores[$primera->tipo] ?? ['#f1f5f9','#475569'];
                         $sinPermG  = $primera->contrasena === '__oculta__';
                         $maskedG   = $primera->contrasena && ! $sinPermG
                             ? str_repeat('•', min(strlen($primera->contrasena), 8)) . ' 👁'
@@ -350,9 +357,12 @@
                     @endphp
                     <tr style="border-bottom:1px solid #fde68a;background:#fffbeb;">
                         <td>
-                            <span style="background:#fce7f3;color:#9d174d;padding:0.15rem 0.5rem;border-radius:999px;font-size:0.68rem;font-weight:700;">ARL</span>
+                            @foreach($tipos as $t)
+                                @php $ct = $colores[ucfirst(strtolower($t))] ?? ($colores[$t] ?? ['#f1f5f9','#475569']); @endphp
+                                <span style="background:{{ $ct[0] }};color:{{ $ct[1] }};padding:0.15rem 0.5rem;border-radius:999px;font-size:0.68rem;font-weight:700;">{{ $t }}</span>
+                            @endforeach
                         </td>
-                        <td style="font-weight:700;">{{ $primera->entidad }}</td>
+                        <td style="font-weight:700;">{{ $sinc::nombreGrupo($primera->tipo, $primera->entidad) }}</td>
                         <td style="font-family:monospace;font-size:0.77rem;font-weight:700;">{{ $usuarioSura }}</td>
                         <td>
                             @if($sinPermG)
@@ -366,15 +376,15 @@
                             @endif
                         </td>
                         <td colspan="4" style="font-size:0.73rem;color:#92400e;">
-                            <button type="button" onclick="alternarGrupoSura('{{ $usuarioSura }}', this)"
+                            <button type="button" onclick="alternarGrupoSura('{{ md5($claveGrupo) }}', this)"
                                     style="background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:0.2rem 0.6rem;
                                            font-size:0.72rem;font-weight:700;color:#92400e;cursor:pointer;">
                                 ▸ {{ $grupo->count() }} razones sociales
                             </button>
                             @if($distintas)
-                                <span style="margin-left:.5rem;color:#b91c1c;font-weight:700;">⚠️ tienen claves distintas</span>
+                                <span style="margin-left:.5rem;color:#b91c1c;font-weight:700;">⚠️ tienen claves distintas — al guardar aquí se unifican</span>
                             @else
-                                <span style="margin-left:.5rem;">Una sola clave para todas: al cambiarla aquí se cambia en todas.</span>
+                                <span style="margin-left:.5rem;">Una sola clave{{ $esSura ? ' para ARL y EPS' : '' }}: al cambiarla aquí se cambia en todas.</span>
                             @endif
                         </td>
                         <td style="text-align:center;">
@@ -393,6 +403,9 @@
                         <td></td>
                         <td colspan="2" style="font-size:0.75rem;color:#78350f;padding-left:1.2rem;">
                             ↳ {{ $hija->razonSocial->razon_social ?? ($hija->empresa->empresa ?? 'sin vínculo') }}
+                            @if($tipos->count() > 1)
+                                <span style="color:#92400e;font-weight:700;"> · {{ strtoupper($hija->tipo) }}</span>
+                            @endif
                         </td>
                         <td style="font-family:monospace;font-size:0.74rem;color:#78350f;">
                             {{ $sinPermG ? '🔒' : (trim((string) $hija->contrasena) === trim((string) $primera->contrasena) ? 'misma clave' : '⚠️ distinta') }}
@@ -627,13 +640,13 @@
 const CSRF_GLB = document.querySelector('meta[name="csrf-token"]')?.content;
 
 /**
- * Despliega u oculta las razones sociales de un usuario del portal de Sura.
+ * Despliega u oculta las entradas de un usuario en un portal.
  *
  * Están agrupadas porque la clave es del usuario: mostrarlas sueltas invitaba a
  * cambiarla en una sola y dejar las demás con la vieja.
  */
-function alternarGrupoSura(usuario, boton) {
-    const filas = document.querySelectorAll('.grupo-sura-' + usuario.replace(/\D/g, ''));
+function alternarGrupoSura(grupo, boton) {
+    const filas = document.querySelectorAll('.grupo-sura-' + grupo);
     const abierto = boton.textContent.trim().startsWith('▾');
 
     filas.forEach(f => f.style.display = abierto ? 'none' : '');
