@@ -78,10 +78,13 @@ class ArlSuraPayloadBuilder
             'poliza'               => $rs->arl_poliza,
         ];
 
-        // Modalidad y teletrabajo solo existen para dependientes: al marcar
-        // estudiante o independiente el formulario los oculta.
+        // La modalidad de trabajo va siempre: el formulario web la oculta para
+        // independientes y estudiantes, pero el API la exige igual («modalidad
+        // : may not be null»). El tipo de teletrabajo sí es solo del
+        // dependiente.
+        $payload['modalidad'] = 'PRESENCIAL';
+
         if ($tipoAfiliado === 'D') {
-            $payload['modalidad']       = 'PRESENCIAL';
             $payload['tipoTeletrabajo'] = 'A';
         }
 
