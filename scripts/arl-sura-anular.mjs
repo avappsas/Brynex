@@ -14,7 +14,10 @@
 import puppeteer from 'puppeteer-core';
 import { iniciarSesion, rutaChrome } from './arl-sura-sesion-comun.mjs';
 
-const URL_SELECCION = 'https://arpsura.suramericana.com/servicios-linea/borradoCobertura.seleccion.sl';
+// Sura tiene una pantalla por tipo de afiliado, y la de dependientes no
+// encuentra a un independiente.
+const URL_DEPENDIENTE   = 'https://arpsura.suramericana.com/servicios-linea/borradoCobertura.seleccion.sl';
+const URL_INDEPENDIENTE = 'https://arpsura.suramericana.com/servicios-linea/borradoCoberturaIndependiente.seleccion.sl';
 const esperar = (ms) => new Promise(r => setTimeout(r, ms));
 const salir = (d) => { console.log(JSON.stringify(d)); process.exit(d.ok ? 0 : 1); };
 
@@ -28,7 +31,8 @@ let entrada;
 try { entrada = JSON.parse(await leerStdin() || '{}'); }
 catch { salir({ ok: false, error: 'Entrada JSON inválida.' }); }
 
-const { usuario, contrasena, tipoId = 'C', numDoc } = entrada;
+const { usuario, contrasena, tipoId = 'C', numDoc, tipoAfiliado = 'D' } = entrada;
+const URL_SELECCION = tipoAfiliado === 'I' ? URL_INDEPENDIENTE : URL_DEPENDIENTE;
 if (!usuario || !contrasena || !numDoc) salir({ ok: false, error: 'Faltan credenciales o documento.' });
 
 const ejecutable = await (async () => {

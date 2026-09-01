@@ -30,7 +30,10 @@ class ArlSuraPayloadBuilder
     ];
 
     /** Modalidades de BryNex que ante Sura son un independiente. */
-    private const MODALIDADES_INDEPENDIENTE = [8, 10, 11, 13, 14, 15];
+    private const MODALIDADES_INDEPENDIENTE = [8, 10, 11, 13, 14];
+
+    /** El plan que marca al trabajador de Gestión ARL como independiente. */
+    private const PLAN_ARL_INDEPENDIENTE = 'SOLO_ARL_IND';
 
     /** La modalidad K: estudiante que solo cotiza a riesgos (Dec. 1072). */
     private const MODALIDAD_ESTUDIANTE = -1;
@@ -178,6 +181,20 @@ class ArlSuraPayloadBuilder
 
         if ($modalidad === self::MODALIDAD_ESTUDIANTE) {
             return 'E';
+        }
+
+        // En Gestión ARL hay de los dos tipos, así que no lo decide la
+        // modalidad: lo dice el plan del contrato. El independiente se afilia
+        // igual con la póliza y la credencial de la empresa —no tenemos usuario
+        // del portal de cada persona—, lo único que cambia es el cotizante.
+        if ($contrato->plan?->codigo === self::PLAN_ARL_INDEPENDIENTE) {
+            return 'I';
+        }
+
+        // Una razón social marcada como independiente ES el propio trabajador,
+        // que va por su cuenta.
+        if ($contrato->razonSocial?->es_independiente) {
+            return 'I';
         }
 
         return in_array($modalidad, self::MODALIDADES_INDEPENDIENTE, true) ? 'I' : 'D';

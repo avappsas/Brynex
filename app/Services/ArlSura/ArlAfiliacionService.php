@@ -257,11 +257,22 @@ class ArlAfiliacionService
             'usuario_id'             => $usuarioId,
         ]);
 
+        // El tipo lo dice el portal, no la modalidad del contrato: es lo que
+        // decide en cuál de las dos pantallas de anulación está la cobertura.
+        $tipoAfiliado = 'D';
+
+        try {
+            $tipoAfiliado = $this->coberturaEnSura($contrato)['tipoAfiliado'] ?? 'D';
+        } catch (Throwable $e) {
+            // Sin portal se sigue con dependiente, que es el caso habitual.
+        }
+
         $resultado = ArlSuraSesionService::anular(
             (int) $contrato->aliado_id,
             $poliza,
             ArlSuraPayloadBuilder::tipoDocumento($cliente->tipo_doc),
-            (string) $contrato->cedula
+            (string) $contrato->cedula,
+            $tipoAfiliado
         );
 
         if (! ($resultado['ok'] ?? false)) {

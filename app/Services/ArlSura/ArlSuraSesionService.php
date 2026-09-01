@@ -83,8 +83,13 @@ class ArlSuraSesionService
      *
      * @return array{ok:bool, mensaje?:string, error?:string}
      */
-    public static function anular(int $aliadoId, string $poliza, string $tipoId, string $numDoc): array
-    {
+    public static function anular(
+        int $aliadoId,
+        string $poliza,
+        string $tipoId,
+        string $numDoc,
+        string $tipoAfiliado = 'D',
+    ): array {
         // La de la empresa primero: cada empresa entra al portal con su propio
         // usuario, y la general del aliado no tiene por qué servir para todas.
         $credencial = self::credencialPara($aliadoId, $poliza)
@@ -100,6 +105,9 @@ class ArlSuraSesionService
             'nitEmpresa'    => self::nitDeLaPoliza($poliza),
             'tipoId'        => $tipoId,
             'numDoc'        => $numDoc,
+            // Cada tipo de afiliado tiene su pantalla: la de dependientes no
+            // encuentra a un independiente.
+            'tipoAfiliado'  => $tipoAfiliado,
         ], JSON_UNESCAPED_UNICODE);
 
         $resultado = Process::path(base_path())
