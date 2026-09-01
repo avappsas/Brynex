@@ -21,7 +21,7 @@ class Contrato extends BaseModel
         'plan_id', 'tipo_modalidad_id',
         'eps_id', 'pension_id', 'arl_id', 'n_arl', 'arl_modo', 'arl_nit_cotizante', 'caja_id',
         'cargo', 'fecha_ingreso', 'fecha_retiro', 'fecha_retiro_pendiente', 'retiro_pendiente_cobrar_admon', 'actividad_economica_id',
-        'salario', 'ibc', 'porcentaje_caja',
+        'salario', 'ibc', 'porcentaje_caja', 'dias_tp_afp', 'dias_tp_caja',
         'administracion', 'admon_asesor', 'costo_afiliacion', 'afiliacion_asesor', 'seguro', 'seguro_id',
         'asesor_id', 'encargado_id',
         'motivo_afiliacion_id', 'motivo_retiro_id',
@@ -46,6 +46,9 @@ class Contrato extends BaseModel
         'afiliacion_asesor' => 'decimal:2',
         'seguro' => 'decimal:2',
         'porcentaje_caja' => 'decimal:2',
+        // sqlsrv devuelve los enteros como string: sin el cast, un === int falla en silencio.
+        'dias_tp_afp' => 'integer',
+        'dias_tp_caja' => 'integer',
         'cobra_planilla_primer_mes' => 'boolean',
         'paga_mes_actual' => 'boolean',
     ];
@@ -156,13 +159,13 @@ class Contrato extends BaseModel
 
     /**
      * Modalidades que admiten cotizar el mes en curso: Independientes (10),
-     * ARL Tipo Y (8) y En el Exterior (14).
+     * ARL Tipo Y (8), En el Exterior (14) y Tiempo Parcial Independiente (18).
      *
      * En la Y y en el exterior es práctica del operador más que de la norma
      * —el Decreto 1273/2018 manda mes vencido para el contratista—, pero Enlace
      * liquida las dos con el período del mes de pago.
      */
-    const MODALIDADES_MES_ACTUAL = [8, 10, 14];
+    const MODALIDADES_MES_ACTUAL = [8, 10, 14, 18];
 
     /**
      * ¿El contrato cotiza el mes en curso en vez del vencido?
@@ -227,6 +230,34 @@ class Contrato extends BaseModel
         return $esDependienteTarget && $sinCaja;
     }
 
+    /**
+     * Días a cotizar por entidad en Tiempo Parcial: ['arl' => 30, 'afp' => X, 'caja' => Y].
+     *
+     * Manda el contrato y, si no dice nada, el catálogo. Así conviven los dos
+     * modelos: el Tiempo Parcial de dependientes, donde los días son la
+     * modalidad misma (TP(7), TP(7-14)…), y el Tiempo Parcial Independiente,
+     * donde son un campo del contrato porque cambian mes a mes.
+     *
+     * La caja cae en los días de AFP cuando no se dice otra cosa: pagar caja
+     * por más semanas que pensión es la excepción, no la regla.
+     */
+    public function diasTiempoParcial(): array
+    {
+        $mod = $this->tipoModalidad;
+
+        if (! $mod || ! $mod->esTiempoParcial()) {
+            return ['arl' => 30, 'afp' => 30, 'caja' => 30];
+        }
+
+        $afp = $this->dias_tp_afp ?? $mod->dias_afp ?? 30;
+
+        return [
+            'arl'  => 30,   // la ARL de tiempo parcial siempre se paga por el mes completo
+            'afp'  => (int) $afp,
+            'caja' => (int) ($this->dias_tp_caja ?? $mod->dias_caja ?? $afp),
+        ];
+    }
+
     // ── COTIZADOR ──
 
     /**
@@ -279,7 +310,7 @@ class Contrato extends BaseModel
             //   ARL  = SM_completo × tasaArl  (cotiza mes completo)
             //   AFP  = SM × factor_afp × pctPen  (factor = dias_afp/28 aprox)
             //   CAJA = SM × factor_caja × pctCaja (puede diferir de AFP)
-            $diasP = $mod->diasPorEntidad(); // ['arl'=>30, 'afp'=>7, 'caja'=>14, ...]
+            $diasP = $this->diasTiempoParcial(); // ['arl'=>30, 'afp'=>7, 'caja'=>14, ...]
             $factorMap = [7 => 0.25, 14 => 0.50, 21 => 0.75, 30 => 1.00];
             $factorAfp = $factorMap[$diasP['afp']] ?? 1.0;
             $factorCaja = $factorMap[$diasP['caja']] ?? 1.0;

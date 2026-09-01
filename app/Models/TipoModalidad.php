@@ -55,8 +55,15 @@ class TipoModalidad extends BaseModel
     /** No se le ofrecen a un cliente: "Todos" es un filtro y "Corrección" es operativa */
     const IDS_NO_CONTRATABLES = [-100, self::ID_CORRECCION];
 
-    /** IDs que corresponden a modalidades independientes (I Venc=10, UPC=13, En el Exterior=14) */
-    const IDS_INDEPENDIENTE = [10, 13, 14];
+    /**
+     * Tiempo Parcial Independiente: cotizante 76 de la Resolución 1529 de 2026.
+     * Pensión por semanas, ARL sobre el mínimo completo, caja voluntaria y sin
+     * salud. Los días NO están en el catálogo: son del contrato.
+     */
+    const ID_TP_INDEPENDIENTE = 18;
+
+    /** IDs que corresponden a modalidades independientes (I Venc=10, UPC=13, En el Exterior=14, TP Ind=18) */
+    const IDS_INDEPENDIENTE = [10, 13, 14, self::ID_TP_INDEPENDIENTE];
 
     /** UPC: afiliar a alguien fuera del núcleo familiar — no depende del salario */
     const ID_UPC = 13;
@@ -71,10 +78,10 @@ class TipoModalidad extends BaseModel
     const IDS_SIN_SEGURIDAD_SOCIAL = [self::ID_GESTION_ARL, self::ID_SEGUROS];
 
     /** IDs que requieren el campo "Modo ARL" */
-    const IDS_MODO_ARL = [10, -1];
+    const IDS_MODO_ARL = [10, -1, self::ID_TP_INDEPENDIENTE];
 
     /** IDs en que la ARL es libre (no bloqueada a la razon social) */
-    const IDS_ARL_LIBRE = [10, -1, 8];
+    const IDS_ARL_LIBRE = [10, -1, 8, self::ID_TP_INDEPENDIENTE];
 
     public function esIndependiente(): bool
     {
@@ -125,32 +132,49 @@ class TipoModalidad extends BaseModel
         return ['arl' => 30, 'afp' => 30, 'caja' => 30];
     }
 
+    /**
+     * ¿Los días de esta modalidad los pone el contrato en vez del catálogo?
+     *
+     * El Tiempo Parcial de dependientes nació como una modalidad por cada
+     * combinación de días — ocho en total — y por eso `dias_afp`/`dias_caja`
+     * viven en esta tabla. El Tiempo Parcial Independiente no repite eso: sus
+     * días son un dato del contrato y del mes, no del catálogo, así que aquí
+     * quedan en NULL.
+     */
+    public function diasEnElContrato(): bool
+    {
+        return $this->esTiempoParcial() && $this->dias_afp === null;
+    }
+
     /** Fracción del SMMLV según los días AFP del plan de Tiempo Parcial */
     const FACTOR_SALARIO_POR_DIAS = [7 => 0.25, 14 => 0.50, 21 => 0.75, 30 => 1.00];
 
     /**
      * Fracción del salario mínimo que corresponde a esta modalidad.
      * Tiempo completo → 1.0; Tiempo Parcial → 0.25 / 0.50 / 0.75 según días AFP.
+     *
+     * $diasAfp lo pasa el contrato cuando es él quien tiene los días
+     * (Tiempo Parcial Independiente); sin él se usan los del catálogo.
      */
-    public function factorSalario(): float
+    public function factorSalario(?int $diasAfp = null): float
     {
         if (! $this->esTiempoParcial()) {
             return 1.0;
         }
-        return self::FACTOR_SALARIO_POR_DIAS[$this->dias_afp] ?? 1.0;
+        return self::FACTOR_SALARIO_POR_DIAS[$diasAfp ?? $this->dias_afp] ?? 1.0;
     }
 
     /**
      * Salario mínimo legal que puede tener un contrato en esta modalidad.
      * UPC (13) no depende del salario: no tiene piso.
      */
-    public function salarioMinimoPermitido(): float
+    public function salarioMinimoPermitido(?int $diasAfp = null): float
     {
         // (int) obligatorio: el id no es IDENTITY y llega como string
         // Seguros no cotiza nada, así que tampoco tiene piso de salario.
         if (in_array((int) $this->id, [self::ID_UPC, self::ID_SEGUROS], true)) {
             return 0.0;
         }
-        return round(ConfiguracionBrynex::salarioMinimo() * $this->factorSalario());
+        return round(ConfiguracionBrynex::salarioMinimo() * $this->factorSalario($diasAfp));
     }
 }

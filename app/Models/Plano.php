@@ -44,6 +44,8 @@ class Plano extends BaseModel
         'tipo_p',                 // ID tipo modalidad (= tipo_modalidad_id, legacy smallint)
         'tipo_modalidad_id',      // ID de tipo_modalidad
         'paga_mes_actual',        // snapshot: el contrato pagaba el mes en curso
+        'dias_tp_afp',            // snapshot: días de pensión del mes en tiempo parcial
+        'dias_tp_caja',           // snapshot: días de caja del mes en tiempo parcial
         'usuario_id',
     ];
 
@@ -52,6 +54,9 @@ class Plano extends BaseModel
         'fecha_ret' => 'date',
         // sqlsrv devuelve los BIT como string: sin el cast, un === true falla en silencio.
         'paga_mes_actual' => 'boolean',
+        // y los enteros también llegan como string.
+        'dias_tp_afp' => 'integer',
+        'dias_tp_caja' => 'integer',
     ];
 
     /**
@@ -69,6 +74,17 @@ class Plano extends BaseModel
             if ($plano->paga_mes_actual === null && $plano->contrato_id) {
                 $plano->paga_mes_actual = (bool) Contrato::whereKey($plano->contrato_id)
                     ->value('paga_mes_actual');
+            }
+
+            // Mismo caso con los días de tiempo parcial: son del contrato y del
+            // mes. Si el plano nace sin ellos (retiro, traslado de razón social)
+            // se copian ahora, porque el mes que viene el contrato puede cotizar
+            // otras semanas y esta planilla ya no se puede recalcular.
+            if ($plano->dias_tp_afp === null && $plano->contrato_id) {
+                $dias = Contrato::whereKey($plano->contrato_id)
+                    ->first(['dias_tp_afp', 'dias_tp_caja']);
+                $plano->dias_tp_afp  = $dias?->dias_tp_afp;
+                $plano->dias_tp_caja = $plano->dias_tp_caja ?? $dias?->dias_tp_caja;
             }
         });
     }
@@ -343,6 +359,8 @@ class Plano extends BaseModel
             // Snapshot: si el contrato cambia después, el período que cubrió
             // este plano no se puede recalcular desde el contrato.
             'paga_mes_actual'   => $esIndepMesActual,
+            'dias_tp_afp'       => $contrato->dias_tp_afp,
+            'dias_tp_caja'      => $contrato->dias_tp_caja,
             'usuario_id'        => $factura->usuario_id,
         ]);
     }
@@ -362,7 +380,8 @@ class Plano extends BaseModel
     {
         if ($modal && $modal->esTiempoParcial()) {
             $sm      = (float) ConfiguracionBrynex::obtener('salario_minimo', 1423500);
-            $diasP   = $modal->diasPorEntidad();                     // ['afp'=>7|14|21|30, ...]
+            // Los días salen del contrato y, si no los tiene, de la modalidad.
+            $diasP   = $contrato->diasTiempoParcial();               // ['afp'=>7|14|21|30, ...]
             $diasAfp = (int)($diasP['afp'] ?? 30);
             // ceil(SM × dias_afp / 30) garantiza redondeo hacia arriba requerido por PILA
             return (int)ceil($sm * $diasAfp / 30);

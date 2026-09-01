@@ -240,6 +240,10 @@ class TarifaAsesorService
             $mod = clone $mod;
             $mod->dias_afp = self::DIAS_MINIMOS_TIEMPO_PARCIAL;
             $mod->dias_caja = self::DIAS_MINIMOS_TIEMPO_PARCIAL;
+            // En Tiempo Parcial Independiente los días son del contrato, así que
+            // recortar solo la modalidad dejaría el retiro cobrando el mes entero.
+            $contrato->dias_tp_afp = self::DIAS_MINIMOS_TIEMPO_PARCIAL;
+            $contrato->dias_tp_caja = self::DIAS_MINIMOS_TIEMPO_PARCIAL;
             $contrato->setRelation('tipoModalidad', $mod);
         }
 

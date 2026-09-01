@@ -136,10 +136,19 @@
          —la fila se apila—. Con objeto toca solo la propiedad que nombra. Las
          columnas también van en el style estático para que la fila ya esté
          armada antes de que Alpine arranque. --}}
+    {{-- Con Tiempo Parcial Independiente la fila llega a seis columnas (se suma
+         "Días TP"), y repartirla como si fueran cinco dejaba el nombre del plan
+         cortado. Los dos selectores nuevos son cortos y van a ancho fijo: lo que
+         necesita espacio es la razón social y el plan. --}}
     <div style="display:grid;gap:0.5rem;grid-template-columns:1.6fr 1.2fr 1.2fr 120px;"
-         :style="MODALIDADES_MES_ACTUAL.includes(parseInt(tipoModalidadId))
-             ? { gridTemplateColumns: '1.35fr 1fr 0.85fr 1.45fr 120px' }
-             : { gridTemplateColumns: '1.6fr 1.2fr 1.2fr 120px' }">
+         :style="{ gridTemplateColumns:
+             esTpDiasContrato && MODALIDADES_MES_ACTUAL.includes(parseInt(tipoModalidadId))
+                 ? '1.25fr 1.1fr 95px 115px 1.3fr 118px'
+             : esTpDiasContrato
+                 ? '1.45fr 1.2fr 95px 1.35fr 118px'
+             : MODALIDADES_MES_ACTUAL.includes(parseInt(tipoModalidadId))
+                 ? '1.35fr 1fr 0.85fr 1.45fr 120px'
+                 : '1.6fr 1.2fr 1.2fr 120px' }">
       <div>
         <label class="lb">Razon Social <span id="badge-rs-nit" style="font-weight:400;color:#64748b;font-size:0.63rem;background:#f1f5f9;padding:0.1rem 0.45rem;border-radius:6px;margin-left:4px;font-family:monospace;letter-spacing:0.02em;display:none;"></span></label>
         <div class="{{ $rsLock ? 'tip-lock' : '' }}" data-tip="{{ $tipLock }}">
@@ -187,6 +196,24 @@
             {{ $tm->observacion ?: $tm->tipo_modalidad }}
           </option>
           @endforeach
+        </select>
+      </div>
+      {{-- Semanas de tiempo parcial: solo en las modalidades donde los días son
+           del contrato (cotizante 76). En el TP de dependientes los días son la
+           modalidad misma y este selector no aparece.
+           Va aquí, pegado a Modalidad, porque es lo que define el IBC: elegirlo
+           después de escribir el salario haría que el salario se reescriba solo. --}}
+      <div x-show="esTpDiasContrato" id="div-dias-tp" style="display:none;">
+        <label class="lb">Días TP</label>
+        {{-- Etiqueta corta para que quepa: el rango real de cada bloque
+             (1 a 7, 8 a 14, 15 a 21, más de 21) va en el title. --}}
+        <select name="dias_tp_afp" x-model="diasTp" @change="onDiasTpChange" style="{{ $S }}"
+            title="Días trabajados en el mes → semanas que se cotizan a pensión:&#10;1 a 7 días = 1 semana&#10;8 a 14 días = 2 semanas&#10;15 a 21 días = 3 semanas&#10;más de 21 días = 4 semanas">
+          @php $diasTpSel = old('dias_tp_afp', $contrato->dias_tp_afp ?? 7); @endphp
+          <option value="7"  {{ $diasTpSel == 7  ? 'selected' : '' }}>7 días</option>
+          <option value="14" {{ $diasTpSel == 14 ? 'selected' : '' }}>14 días</option>
+          <option value="21" {{ $diasTpSel == 21 ? 'selected' : '' }}>21 días</option>
+          <option value="30" {{ $diasTpSel == 30 ? 'selected' : '' }}>30 días</option>
         </select>
       </div>
       {{-- Independientes, ARL Tipo Y y Exterior pueden cotizar el mes en curso
@@ -505,7 +532,11 @@
         @endif
         </div>
       </div>
-      <div x-show="esIndependiente" style="display:none;">
+      {{-- En Tiempo Parcial Independiente el IBC no se escribe: lo fija el bloque
+           de semanas (¼, ½, ¾ o un mínimo completo), así que el campo solo
+           mostraría un número que el usuario no puede cambiar. Se oculta con
+           x-show —no se quita del DOM— para que siga viajando en el submit. --}}
+      <div x-show="esIndependiente && !esTpDiasContrato" style="display:none;">
         <label class="lb">IBC <span style="color:#f59e0b;font-size:0.63rem;" x-text="ibcSugFmt ? 'sug:'+ibcSugFmt : ''"></span></label>
         {{-- type=text y no number: un <input type=number> no acepta los puntos de miles.
              El valor real vive en dataset.raw, y el submit de .campo-money limpia el formato. --}}
@@ -2012,6 +2043,15 @@ foreach ($tiposModalidad as $_tm) {
 }
 @endphp
 const MODALIDADES_TP = {!! json_encode($_modalidadesTPData) !!};
+// Modalidades de tiempo parcial cuyos días NO están en el catálogo: los elige el
+// contrato mes a mes (Tiempo Parcial Independiente, cotizante 76). En estas,
+// dias_afp/dias_caja/factor_salario de MODALIDADES_TP vienen en null y salen del
+// selector de semanas.
+const MODALIDADES_DIAS_CONTRATO = @json($modalidadesDiasContrato ?? [18]);
+// ¿El aliado tiene catálogo de seguros? Sin él no hay "Plan de seguro" que
+// escoger y el valor se escribe a mano, así que no se puede ocultar.
+const HAY_CATALOGO_SEGUROS = {{ ($segurosCatalogo ?? collect())->isNotEmpty() ? 'true' : 'false' }};
+const FACTOR_POR_DIAS_TP = { 7: 0.25, 14: 0.50, 21: 0.75, 30: 1.00 };
 const MODALIDAD_UPC  = 13; // Afiliar a alguien fuera del núcleo familiar: no depende de salario.
 // Modalidades que pueden cotizar el mes en curso (Independientes, ARL Tipo Y, Exterior).
 const MODALIDADES_MES_ACTUAL = @json($modalidadesMesActual ?? [8, 10, 14]);
@@ -2286,6 +2326,9 @@ function filtrarPlanes(modalidadId, evitarRecalcular = false) {
     const selRS      = document.getElementById('sel_rs');
     const esIndepRS  = selRS?.options[selRS.selectedIndex]?.dataset?.independiente === '1';
     const esIndepMod = MODALIDADES_INDEP.includes(modalidadIdInt);
+    // Tiempo Parcial Independiente: es TP e independiente a la vez, y los dos
+    // filtros de abajo fueron escritos suponiendo que eso no pasaba.
+    const esTpIndep  = MODALIDADES_DIAS_CONTRATO.includes(modalidadIdInt);
 
     let planActualPermitido = false;
     let planesAgregados     = [];
@@ -2306,7 +2349,14 @@ function filtrarPlanes(modalidadId, evitarRecalcular = false) {
         // ── Filtro Tiempo Parcial específico ──────────
         // Para Tiempo Parcial, solo se permiten planes que NO tengan EPS y que SÍ tengan ARL y CCF
         // (por ejemplo: ARL+AFP+CCF o ARL+CCF). Los planes como Solo ARL o Solo AFP quedan excluidos.
-        if (esTP && (el.dataset.eps === '1' || el.dataset.arl !== '1' || el.dataset.caja !== '1')) {
+        //
+        // Salvo en el Tiempo Parcial Independiente (cotizante 76), donde la caja
+        // es voluntaria por norma: ahí basta con que el plan no lleve EPS y sí
+        // lleve ARL. Sin esta excepción el plan "ARL + AFP" se caía del selector.
+        if (esTP && !esTpIndep && (el.dataset.eps === '1' || el.dataset.arl !== '1' || el.dataset.caja !== '1')) {
+            return;
+        }
+        if (esTpIndep && (el.dataset.eps === '1' || el.dataset.arl !== '1')) {
             return;
         }
 
@@ -2322,7 +2372,9 @@ function filtrarPlanes(modalidadId, evitarRecalcular = false) {
 
         // ── Filtro Independientes: NO pueden tener ARL+CCF ni ARL+AFP+CCF ──────────
         // Es decir, si no tienen EPS pero SÍ tienen Caja y ARL, se bloquea.
-        if (esIndepMod && el.dataset.eps !== '1' && el.dataset.arl === '1' && el.dataset.caja === '1') {
+        // El Tiempo Parcial Independiente queda por fuera: ARL+AFP+CCF sin EPS es
+        // justamente su plan completo (no cotiza salud y la caja es opcional).
+        if (esIndepMod && !esTpIndep && el.dataset.eps !== '1' && el.dataset.arl === '1' && el.dataset.caja === '1') {
             return;
         }
 
@@ -3002,6 +3054,10 @@ function cotizador() {
         MODALIDADES_MES_ACTUAL: @json($modalidadesMesActual ?? [8, 10, 14]),
         esIndependiente: false,
         esTiempoParcial: false,
+        // Tiempo parcial con los días en el contrato (cotizante 76): muestra el
+        // selector de semanas y con él se arman IBC, piso de salario y cotización.
+        esTpDiasContrato: false,
+        diasTp:          {{ (int) old('dias_tp_afp', $contrato->dias_tp_afp ?? 7) }},
         esUpc: false,
         // Solo seguro: sin entidades, sin salario y sin planilla. Lo único que se cobra
         // es el seguro, así que el panel de cotización no depende del salario.
@@ -3057,7 +3113,8 @@ function cotizador() {
             }
             this.planNombre      = document.querySelector(`#sel_plan option[value="${this.planId}"]`)?.textContent?.trim() || '';
             // Inicializar Tiempo Parcial al cargar
-            const tpData = MODALIDADES_TP[parseInt(this.tipoModalidadId)] || null;
+            this.esTpDiasContrato = MODALIDADES_DIAS_CONTRATO.includes(parseInt(this.tipoModalidadId));
+            const tpData = this.tpDataDe(this.tipoModalidadId);
             this.esTiempoParcial = !!tpData;
             if (tpData) {
                 this.diasArl  = tpData.dias_arl;
@@ -3123,8 +3180,49 @@ function cotizador() {
             const id = parseInt(this.tipoModalidadId || 0);
             // UPC y Seguros no cotizan sobre el salario, así que no tienen piso.
             if (id === MODALIDAD_UPC || id === MODALIDAD_SEGUROS) return 0;
-            const tp = MODALIDADES_TP[id];
+            const tp = this.tpDataDe(id);
             return Math.round(SALARIO_MINIMO * (tp?.factor_salario || 1));
+        },
+
+        /**
+         * Días y factor de salario de una modalidad de tiempo parcial. En las
+         * modalidades donde los días son del contrato (cotizante 76) el catálogo
+         * los trae en null y se completan con el selector de semanas.
+         */
+        tpDataDe(idModalidad) {
+            const id = parseInt(idModalidad || 0);
+            const tp = MODALIDADES_TP[id];
+            if (!tp) return null;
+            if (!MODALIDADES_DIAS_CONTRATO.includes(id)) return tp;
+
+            const dias = parseInt(this.diasTp) || 7;
+            return {
+                dias_arl:       30,   // la ARL del tiempo parcial siempre va por mes completo
+                dias_afp:       dias,
+                dias_caja:      dias,
+                factor_salario: FACTOR_POR_DIAS_TP[dias] || 1,
+            };
+        },
+
+        /** Cambió el bloque de semanas: se rehacen salario, IBC y cotización. */
+        onDiasTpChange() {
+            const tp = this.tpDataDe(this.tipoModalidadId);
+            if (!tp) return this.recalcular();
+
+            this.diasArl  = tp.dias_arl;
+            this.diasAfp  = tp.dias_afp;
+            this.diasCaja = tp.dias_caja;
+
+            const salarioTP = Math.round(SALARIO_MINIMO * (tp.factor_salario || 1));
+            this.salario    = salarioTP;
+            this.setIbc(salarioTP);
+            const inpSal = document.getElementById('inp_salario');
+            if (inpSal) {
+                inpSal.dataset.raw = salarioTP;
+                inpSal.value       = numFmt(salarioTP);
+            }
+
+            return this.recalcular();
         },
 
         /** Calcula el IBC sugerido (40% del salario) con piso en el minimo de la modalidad */
@@ -3289,7 +3387,8 @@ function cotizador() {
             this.mostrarModoArl  = MODALIDADES_MODO_ARL.includes(id) || rsEsIndepMC;
             this.pctCaja = this.esIndependiente ? 2 : 4;
             // Tiempo Parcial
-            const tpData = MODALIDADES_TP[id] || null;
+            this.esTpDiasContrato = MODALIDADES_DIAS_CONTRATO.includes(id);
+            const tpData = this.tpDataDe(id);
             this.esTiempoParcial = !!tpData;
             if (tpData) {
                 this.diasArl  = tpData.dias_arl;
@@ -3448,6 +3547,9 @@ function cotizador() {
                     admon_asesor:      parseInt(document.getElementById('inp_admon_asesor')?.dataset?.raw || document.getElementById('inp_admon_asesor')?.value?.replace(/\./g,'') || 0),
                     seguro:            this.seguro || 0,
                     porcentaje_caja:   this.pctCaja || 2,
+                    // Solo en las modalidades donde los días son del contrato:
+                    // en el resto los pone la modalidad y mandarlos los pisaría.
+                    dias_tp_afp:       this.esTpDiasContrato ? (parseInt(this.diasTp) || 7) : null,
                     // 0 días es un valor válido (afiliación pura, Gestión ARL): con
                     // `|| 30` se colaba el mes completo y el panel mostraba una
                     // seguridad social que esa factura no cobra.

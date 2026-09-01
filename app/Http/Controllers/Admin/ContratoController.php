@@ -1363,10 +1363,12 @@ class ContratoController extends Controller
         $nivelesArlPorModalidad = TarifaAsesorService::NIVELES_ARL_POR_MODALIDAD;
         $modalidadesModoArl = \App\Models\TipoModalidad::IDS_MODO_ARL;   // [10, -1]
 
-        // IDs de modalidades independientes (I Venc=10, En el Exterior=14, UPC=13)
-        // NOTA: Las modalidades TP NO son "independientes" a efectos del filtro de RS;
-        // se manejan por su propia lógica (es_tiempo_parcial=1 en la BD).
-        $modalidadesIndependientes = [10, 13, 14];
+        // IDs de modalidades independientes (I Venc=10, UPC=13, En el Exterior=14,
+        // Tiempo Parcial Independiente=18).
+        // NOTA: las modalidades TP de DEPENDIENTES no entran acá; se manejan por su
+        // propia lógica (es_tiempo_parcial=1 en la BD). La 18 sí, porque es la única
+        // de tiempo parcial que se le vende a un independiente (cotizante 76).
+        $modalidadesIndependientes = TipoModalidad::IDS_INDEPENDIENTE;
 
         // Modalidades que pueden cotizar el mes en curso en vez del vencido.
         // Es un atributo del contrato (`paga_mes_actual`), no una modalidad aparte:
@@ -1435,6 +1437,11 @@ class ContratoController extends Controller
             // Filtrado inteligente
             'planesPermitidos' => $planesPermitidos,
             'modalidadesIndependientes' => $modalidadesIndependientes,
+            // Modalidades donde los días de tiempo parcial los pone el contrato y
+            // no el catálogo: son las que muestran el selector de semanas.
+            'modalidadesDiasContrato' => TipoModalidad::where('es_tiempo_parcial', true)
+                ->whereNull('dias_afp')
+                ->pluck('id')->map(fn ($id) => (int) $id)->values()->toArray(),
             'modalidadesMesActual' => $modalidadesMesActual,
             'clienteExentoAfp' => $this->detectarExencionAfp($cliente),
             'clientePensionado' => (int) ($cliente?->pension_id ?? 0) === \App\Models\Pension::ID_PENSIONADO,
@@ -1781,6 +1788,8 @@ class ContratoController extends Controller
                 'salario' => $original->salario,
                 'ibc' => $original->ibc,
                 'porcentaje_caja' => $original->porcentaje_caja,
+                'dias_tp_afp' => $original->dias_tp_afp,
+                'dias_tp_caja' => $original->dias_tp_caja,
                 'administracion' => $original->administracion,
                 'admon_asesor' => $original->admon_asesor,
                 'costo_afiliacion' => $original->costo_afiliacion,
@@ -1925,6 +1934,10 @@ class ContratoController extends Controller
             'salario' => 'nullable|numeric|min:0',
             'ibc' => 'nullable|numeric|min:0',
             'porcentaje_caja' => 'nullable|numeric|min:0|max:100',
+            // Tiempo Parcial Independiente: solo los cuatro bloques de la tabla
+            // de cotizaciones mínimas semanales (1, 2, 3 o 4 semanas).
+            'dias_tp_afp' => 'nullable|integer|in:7,14,21,30',
+            'dias_tp_caja' => 'nullable|integer|in:7,14,21,30',
             'administracion' => 'nullable|numeric|min:0',
             'admon_asesor' => 'nullable|numeric|min:0',
             'costo_afiliacion' => 'nullable|numeric|min:0',
@@ -1947,6 +1960,28 @@ class ContratoController extends Controller
             'cobra_planilla_primer_mes' => 'boolean',
             'paga_mes_actual' => 'boolean',
         ]);
+
+        // Los días de tiempo parcial solo existen en las modalidades donde el
+        // catálogo no los trae. En cualquier otra se descartan, aunque el
+        // navegador los mande: en el TP de dependientes los días SON la
+        // modalidad, y dejarlos aquí los pisaría en silencio.
+        //
+        // Va antes de validarSalarioMinimo() porque el piso de salario de esas
+        // modalidades es la fracción del mínimo que corresponde a estos días.
+        $modalidadDias = isset($data['tipo_modalidad_id'])
+            ? TipoModalidad::find((int) $data['tipo_modalidad_id'])
+            : null;
+
+        if (! $modalidadDias || ! $modalidadDias->diasEnElContrato()) {
+            $data['dias_tp_afp'] = null;
+            $data['dias_tp_caja'] = null;
+        } else {
+            // La caja sigue los días de pensión salvo que se diga otra cosa.
+            // Las reglas `nullable` no crean la clave cuando el campo no se
+            // envía, y el formulario no manda dias_tp_caja: hay que default-earlo.
+            $data['dias_tp_afp'] = $data['dias_tp_afp'] ?? 7;
+            $data['dias_tp_caja'] = ($data['dias_tp_caja'] ?? null) ?: null;
+        }
 
         $this->validarSalarioMinimo($data);
         $this->validarNivelArl($data, $contrato);
@@ -2050,9 +2085,14 @@ class ContratoController extends Controller
             ? TipoModalidad::find($data['tipo_modalidad_id'])
             : null;
 
+        // En Tiempo Parcial Independiente la fracción sale de los días que trae
+        // el contrato, no del catálogo: sin pasárselos, la 18 exigiría el mínimo
+        // completo y no dejaría guardar un contrato de una o dos semanas.
+        $diasAfp = isset($data['dias_tp_afp']) ? (int) $data['dias_tp_afp'] : null;
+
         // Sin modalidad definida se exige el SMMLV completo.
         $minimo = $modalidad
-            ? $modalidad->salarioMinimoPermitido()
+            ? $modalidad->salarioMinimoPermitido($diasAfp)
             : ConfiguracionBrynex::salarioMinimo();
 
         if ($minimo <= 0) {

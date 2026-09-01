@@ -120,6 +120,15 @@ class CotizadorService
         if ($esTP) {
             // ── Tiempo Parcial: IBC diferente por entidad, sin EPS ─────────
             $diasP = $tipoModalidad->diasPorEntidad();
+
+            // Tiempo Parcial Independiente: los días no están en el catálogo,
+            // los elige el contrato mes a mes y llegan en la petición.
+            if ($tipoModalidad->diasEnElContrato()) {
+                $diasAfpReq  = (int) ($p['dias_tp_afp'] ?? 0);
+                $diasCajaReq = (int) ($p['dias_tp_caja'] ?? 0);
+                $diasP['afp']  = $diasAfpReq  ?: 7;
+                $diasP['caja'] = $diasCajaReq ?: $diasP['afp'];
+            }
             $factorMap = [7 => 0.25, 14 => 0.50, 21 => 0.75, 30 => 1.00];
             $factorAfp = $factorMap[$diasP['afp']] ?? 1.0;
             $factorCaja = $factorMap[$diasP['caja']] ?? 1.0;

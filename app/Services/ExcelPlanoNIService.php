@@ -229,6 +229,9 @@ class ExcelPlanoNIService
             ->leftJoin('cajas AS caj_t',     DB::raw('CAST(caj_t.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_caja'))
             ->leftJoin('arls AS arl_m', DB::raw('CAST(arl_m.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_arl'))
             ->leftJoin('tipo_modalidad AS tm', 'tm.id', '=', 'p.tipo_modalidad_id')
+            // Solo por la tarifa de caja del cotizante 76 (0,6% o 2%), que es
+            // una elección del contrato y no vive en el plano.
+            ->leftJoin('contratos AS ctr', 'ctr.id', '=', 'p.contrato_id')
             ->where('p.aliado_id',       $aliadoId)
             ->where('p.razon_social_id', $razonSocialId)
             ->where('p.n_plano',         $nPlano)
@@ -285,8 +288,11 @@ class ExcelPlanoNIService
                 // es_tiempo_parcial: flag en tipo_modalidad
                 // dias de cotización por subsistema: definidos en tipo_modalidad (ARL siempre 30)
                 DB::raw('tm.es_tiempo_parcial    AS es_tiempo_parcial'),
-                DB::raw('ISNULL(tm.dias_afp,  30) AS dias_afp'),
-                DB::raw('ISNULL(tm.dias_caja, 30) AS dias_caja'),
+                // Manda el snapshot del plano y, si no lo tiene (todo lo anterior
+                // al cotizante 76), los días fijos de la modalidad.
+                DB::raw('ISNULL(p.dias_tp_afp, ISNULL(tm.dias_afp, 30)) AS dias_afp'),
+                DB::raw('ISNULL(p.dias_tp_caja, ISNULL(p.dias_tp_afp, ISNULL(tm.dias_caja, 30))) AS dias_caja'),
+                'ctr.porcentaje_caja',
                 DB::raw('d.id                          AS cod_departamento'),
                 DB::raw('CAST(c.Municipio AS INT)       AS cod_municipio'),
             ]);

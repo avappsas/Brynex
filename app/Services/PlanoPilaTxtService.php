@@ -208,9 +208,11 @@ class PlanoPilaTxtService
                 DB::raw('d.id                    AS dep_id'),
                 DB::raw('CAST(c.Municipio AS INT) AS mun_id'),
                 // Tiempo parcial: flag y días por subsistema (ARL siempre 30)
+                // Manda el snapshot del plano y, si no lo tiene (todo lo anterior
+                // al cotizante 76), los días fijos de la modalidad.
                 DB::raw('tm.es_tiempo_parcial   AS es_tiempo_parcial'),
-                DB::raw('ISNULL(tm.dias_afp, 30) AS dias_afp'),
-                DB::raw('ISNULL(tm.dias_caja,30) AS dias_caja'),
+                DB::raw('ISNULL(p.dias_tp_afp, ISNULL(tm.dias_afp, 30)) AS dias_afp'),
+                DB::raw('ISNULL(p.dias_tp_caja, ISNULL(p.dias_tp_afp, ISNULL(tm.dias_caja, 30))) AS dias_caja'),
                 // Tarifa de caja del independiente: la marca de la razón social
                 // es constante para todo el archivo, el porcentaje es por contrato.
                 DB::raw(((int) ($rs->es_independiente ?? 0)).' AS rs_es_independiente'),

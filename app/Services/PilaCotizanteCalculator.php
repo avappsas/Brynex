@@ -28,6 +28,13 @@ class PilaCotizanteCalculator
     // ── tipo_modalidad_id especiales ────────────────────────────────────────
     private const TIPO_K_MATRIZ        = -1; // Planilla K: solo ARL, tipo cotizante 23
     private const TIPOS_INDEPENDIENTE  = [10, 11]; // tipo cotizante 2
+    /**
+     * Tiempo Parcial Independiente → tipo cotizante 76 (Resolución 1529 de 2026).
+     * La señal es la modalidad y no la razón social: hay planos de tiempo
+     * parcial de dependientes colgando de razones sociales marcadas como
+     * independientes, y esos siguen siendo 51.
+     */
+    private const TIPO_TP_INDEPENDIENTE = 18;
     public  const TIPO_E1              = -4; // E-1: salud sin pensión, en dos planillas (ver PilaCotizanteE1)
     // Tiempo parcial: detectado por tm.es_tiempo_parcial = 1, tipo_cot viene de la tabla
 
@@ -201,8 +208,13 @@ class PilaCotizanteCalculator
             ];
         }
 
-        // ── Tiempo parcial (tipo cotizante 51) ─────────────────────────────
+        // ── Tiempo parcial (tipo cotizante 51 dependiente / 76 independiente) ──
         if ($esTiempoParcial) {
+            // El 76 es el mismo cálculo del 51 con tres diferencias: el tipo de
+            // cotizante, la tarifa de caja (voluntaria al 0,6% o 2%, no el 4%
+            // obligatorio del dependiente) y que sin caja no se reporta nada.
+            $esTpIndependiente = ($tipoModalidad === self::TIPO_TP_INDEPENDIENTE);
+
             $diasArlTp  = 30;
 
             // En retiro (o ingreso tardío), num_dias puede ser menor que los días
@@ -251,8 +263,42 @@ class PilaCotizanteCalculator
                 $codCcfFin = ($cajaObj && !empty($cajaObj->codigo)) ? $cajaObj->codigo : $codCajRaw;
             }
             $sinCaja    = ($codCcfFin === 'CCF68');
-            $ibcCcfTp   = $sinCaja ? ($esIndependiente ? 0 : 100) : $ibcCajaTp;
-            $vCcfTp     = $sinCaja ? ($esIndependiente ? 0 : 100) : self::roundPila($ibcCajaTp * 0.04);
+
+            // Tarifa de caja: 4% obligatorio en el dependiente; en el 76 la
+            // afiliación es voluntaria y el trabajador elige 0,6% o 2%, que es
+            // lo que ya guarda contratos.porcentaje_caja.
+            $tarifaCcfTp = 0.04;
+            if ($esTpIndependiente) {
+                $pctCajaTp   = $p->porcentaje_caja ?? null;
+                $tarifaCcfTp = ($pctCajaTp !== null && (float) $pctCajaTp > 0)
+                    ? (float) $pctCajaTp / 100
+                    : 0.02;
+            }
+
+            // En el 76 la caja es voluntaria: la Resolución 1529 de 2026 lo dice
+            // sin ambigüedad — "Los aportes al Sistema de Subsidio Familiar para
+            // este tipo de cotizante son voluntarios, y podrá reportar la tarifa
+            // 0.6% o 2%".
+            //
+            // Lo que no es voluntario es reportar la BASE: con el IBC de caja en
+            // cero Enlace devuelve eo.val.2.050 y eo.val.2.326 ("debería ser
+            // <IBC de las semanas>"). Así que la base va siempre y lo que queda
+            // en cero cuando no se aporta es la cotización.
+            //
+            // OJO: hoy Enlace además exige el aporte (eo.val.2.066, "está
+            // obligado cotizar a Cajas de Compensación Familiar"), lo cual
+            // contradice la resolución. Es un error de su malla de validación,
+            // no de este cálculo: no replicarlo aquí.
+            $sinAporteCcf = $sinCaja && ($esIndependiente || $esTpIndependiente);
+
+            $ibcCcfTp = match (true) {
+                ! $sinCaja || $esTpIndependiente => $ibcCajaTp,
+                $esIndependiente                 => 0,
+                default                          => 100,
+            };
+            $vCcfTp = $sinCaja
+                ? ($sinAporteCcf ? 0 : 100)
+                : self::roundPila($ibcCajaTp * $tarifaCcfTp);
 
             $vArlTp = self::roundPila($ibcArlTp * $tasaArl);
             $vAfpTp = $tienePension ? self::roundPila($ibcAfpTp * 0.16) : 0;
@@ -273,14 +319,14 @@ class PilaCotizanteCalculator
             }
 
             return [
-                'tipoCotizante'    => 51,
+                'tipoCotizante'    => $esTpIndependiente ? 76 : 51,
                 'subtipoCotizante' => $subtipoCotizante, // 0 con AFP o extranjero; 3 exento edad; 4 sin AFP sin edad exenta
                 'tienePension'     => $tienePension,
                 'esKMatriz'        => false,
                 'esTiempoParcial'  => true,
-                'esIndependiente'  => false,
+                'esIndependiente'  => $esTpIndependiente,
                 'esExtranjero'     => $esExtranjero,
-                // Tipo 51 NO está exonerado de parafiscales (PILA Res. 2388)
+                // Ni el 51 ni el 76 están exonerados de parafiscales (PILA Res. 2388)
                 'exonerado'        => 'N',
                 'ibcFull'          => $ibcCajaTp, // Para tiempo parcial, el salario mensual reportado es la base de caja por semanas
                 'ibcProp'          => $ibcCajaTp,
@@ -304,7 +350,7 @@ class PilaCotizanteCalculator
                 'sinCaja'          => $sinCaja,
                 'tarifaAfpDecimal' => $tienePension ? 0.16 : 0.0,
                 'tarifaEpsStr'     => '0.00000',
-                'tarifaCcfStr'     => '0.04000',
+                'tarifaCcfStr'     => sprintf('%.5f', $sinAporteCcf ? 0.0 : $tarifaCcfTp),
                 'tarifaSenaStr'    => '0.00000',
                 'tarifaIcbfStr'    => '0.00000',
                 'tarifaArlStr'     => sprintf('%.5f', $tasaArl),
@@ -315,10 +361,12 @@ class PilaCotizanteCalculator
                 'vIcbf'            => 0,
                 'depCod'           => $depCod,
                 'munCod'           => $munCod,
-                // PILA prohíbe marcar el tipo de salario en el cotizante 51.
+                // PILA prohíbe marcar el tipo de salario en los cotizantes 51 y 76.
                 'tipoSalarioAplica' => false,
-                // Tipo 51: horas = dias_caja (días reales trabajados) × 8, NO num_dias
-                'horasLaboradas'   => $diasCajaTp * 8,
+                // Horas = dias_caja (días reales trabajados) × 8, NO num_dias.
+                // Sin aporte a CCF van en cero: reportar horas sin aportar es el
+                // eo.val.2.636 de Enlace, el mismo que rompía al estudiante K.
+                'horasLaboradas'   => $sinAporteCcf ? 0 : $diasCajaTp * 8,
             ];
         }
 
