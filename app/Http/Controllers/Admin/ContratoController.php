@@ -762,9 +762,15 @@ class ContratoController extends Controller
                     ->exists();
                 if ($tienePlanillaConDias) {
                     if (! Auth::user()->hasRole('superadmin')) {
+                        $motivo = 'No se puede aplicar retiro informativo porque el contrato ya tiene planillas pagadas con días cotizados.';
+
+                        if ($request->expectsJson()) {
+                            return response()->json(['ok' => false, 'mensaje' => $motivo], 422);
+                        }
+
                         return redirect()
                             ->route('admin.contratos.edit', [$id, 'back' => $request->input('back_url')])
-                            ->withErrors(['tipo_retiro' => 'No se puede aplicar retiro informativo porque el contrato ya tiene planillas pagadas con días cotizados.']);
+                            ->withErrors(['tipo_retiro' => $motivo]);
                     }
                     $retiroInfoForzado = true;
                 }
@@ -805,9 +811,15 @@ class ContratoController extends Controller
             $mesesNombres = [1 => 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
             $nombreMes = $mesesNombres[$mesEsperado] ?? '';
 
+            $motivo = "El retiro debe aplicarse exactamente en el periodo consecutivo: {$nombreMes} de {$anioEsperado}. No se permiten saltos de periodos sin planilla.";
+
+            if ($request->expectsJson()) {
+                return response()->json(['ok' => false, 'mensaje' => $motivo], 422);
+            }
+
             return redirect()
                 ->route('admin.contratos.edit', [$id, 'back' => $request->input('back_url')])
-                ->withErrors(['mes_plano' => "El retiro debe aplicarse exactamente en el periodo consecutivo: {$nombreMes} de {$anioEsperado}. No se permiten saltos de periodos sin planilla."]);
+                ->withErrors(['mes_plano' => $motivo]);
         }
 
         // ── Calcular SS del retiro real usando calcularCotizacion() del modelo ─
@@ -1083,6 +1095,10 @@ class ContratoController extends Controller
         $retiroParams = [$id, 'back' => $request->input('back_url')];
         if ($request->input('iframe')) {
             $retiroParams['iframe'] = '1';
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json(['ok' => true, 'mensaje' => 'Contrato retirado correctamente.']);
         }
 
         return redirect()

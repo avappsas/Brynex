@@ -882,6 +882,10 @@ Route::middleware('auth')->group(function () {
         // El certificado cambia de estado al llegar la fecha de cobertura, así
         // que se puede volver por el bueno sin repetir ningún trámite.
         Route::get('/{id}/certificado', [$aa, 'certificado'])->name('certificado');
+        // Cierra la cobertura en el portal para el retiro del módulo. Solo toca
+        // Sura: el contrato lo marca después el retiro de siempre.
+        Route::post('/{id}/anular-sura', [$aa, 'anularSura'])->name('anular-sura');
+        Route::get('/{id}/datos-retiro', [$aa, 'datosRetiro'])->name('datos-retiro');
         // Credencial del portal de esa empresa; al guardarla se descubre su póliza.
         Route::post('/{id}/credencial', [$aa, 'credencial'])->name('credencial');
 

@@ -18,6 +18,7 @@ use App\Services\ArlSura\ArlSuraSesionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
@@ -467,6 +468,154 @@ class ArlAfiliacionController extends Controller
 
         // Va al disco `local`: el certificado lleva cédula, cargo y salario.
         return Storage::disk('local')->download($soporte->ruta, $soporte->nombre_archivo);
+    }
+
+    /**
+     * Lo que el modal de retiro necesita saber antes de preguntar nada.
+     *
+     * El periodo del plano no se elige: el retiro tiene que caer exactamente en
+     * el mes consecutivo al último cotizado, y `ContratoController::retirar()`
+     * lo rechaza si no coincide. Se calcula con el mismo criterio para que el
+     * usuario no tenga que adivinarlo.
+     */
+    public function datosRetiro(Request $request, int $contratoId)
+    {
+        $contrato = $this->contrato($request, $contratoId);
+
+        $ultimoPlano = DB::table('planos')
+            ->where('contrato_id', $contrato->id)
+            ->where('num_dias', '>', 0)
+            ->whereNull('deleted_at')
+            ->orderByDesc('anio_plano')
+            ->orderByDesc('mes_plano')
+            ->first();
+
+        if ($ultimoPlano) {
+            $mes  = (int) $ultimoPlano->mes_plano + 1;
+            $anio = (int) $ultimoPlano->anio_plano;
+
+            if ($mes > 12) {
+                $mes = 1;
+                $anio++;
+            }
+        } elseif ($contrato->fecha_ingreso) {
+            $mes  = (int) $contrato->fecha_ingreso->month;
+            $anio = (int) $contrato->fecha_ingreso->year;
+        } else {
+            $mes  = (int) now()->month;
+            $anio = (int) now()->year;
+        }
+
+        $meses = [1 => 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+            'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+        return response()->json([
+            'mes_plano'   => $mes,
+            'anio_plano'  => $anio,
+            'periodo'     => ($meses[$mes] ?? '').' '.$anio,
+            'fecha_arl'   => $contrato->fecha_arl?->format('d/m/Y'),
+            'motivos'     => DB::table('motivos_retiro')->where('activo', true)
+                ->orderBy('nombre')->get(['id', 'nombre']),
+        ]);
+    }
+
+    /**
+     * Cierra la cobertura del trabajador en el portal, sin tocar el contrato.
+     *
+     * Primero intenta anular, que es lo que corresponde cuando la afiliación
+     * fue un error: borra la cobertura como si nunca hubiera existido. Sura
+     * solo lo permite dentro de los 30 días del inicio.
+     *
+     * Si ya pasó ese plazo NO retira por su cuenta: devuelve `puede_retirar` y
+     * espera a que alguien lo decida. Retirar deja constancia de que la persona
+     * estuvo afiliada, que no es lo mismo, y esa diferencia la elige el usuario.
+     */
+    public function anularSura(Request $request, int $contratoId)
+    {
+        // Son trámites contra el portal, con su navegador y su login.
+        $this->sinLimiteDeTiempo();
+
+        $contrato = $this->contrato($request, $contratoId);
+        $rs       = $contrato->razonSocial;
+
+        $credencial = ArlSuraSesionService::credencialPara(
+            (int) $contrato->aliado_id,
+            (string) ($rs?->arl_poliza ?? ''),
+            $rs?->nit
+        );
+
+        if (! $credencial || ! $rs?->arl_poliza) {
+            return response()->json([
+                'ok'                  => false,
+                'mensaje'             => 'Esta empresa todavía no tiene cargada la clave del portal de Sura.',
+                'requiere_credencial' => true,
+            ], 422);
+        }
+
+        $servicio  = ArlAfiliacionService::paraContrato($contrato);
+        $cobertura = $servicio->coberturaEnSura($contrato);
+
+        if (! $cobertura) {
+            return response()->json([
+                'ok'      => true,
+                'accion'  => 'ninguna',
+                'mensaje' => 'En Sura no hay cobertura activa para este trabajador, así que no había nada que anular.',
+            ]);
+        }
+
+        // Segunda pasada: el usuario ya vio que no se podía anular y aceptó
+        // retirar en su lugar.
+        if ($request->boolean('retirar')) {
+            try {
+                $retiro = $servicio->retirar($contrato, now(), Auth::id());
+            } catch (Throwable $e) {
+                return response()->json(['ok' => false, 'mensaje' => $e->getMessage()], 422);
+            }
+
+            Bitacora::registrar(
+                'updated',
+                'Contrato',
+                $contrato->id,
+                'Retiro en ARL Sura (la cobertura ya no se podía anular)',
+                ['arl_afiliacion_id' => $retiro->id],
+                (int) $contrato->aliado_id
+            );
+
+            return response()->json([
+                'ok'      => true,
+                'accion'  => 'retiro',
+                'mensaje' => 'Se retiró al trabajador en ARL Sura.',
+            ]);
+        }
+
+        try {
+            $anulacion = $servicio->anular($contrato, Auth::id());
+        } catch (Throwable $e) {
+            // El plazo vencido no es un error del sistema: es la otra rama del
+            // trámite, y quien decide es el usuario.
+            $fueraDePlazo = str_contains($e->getMessage(), 'los 30 días');
+
+            return response()->json([
+                'ok'            => false,
+                'mensaje'       => $e->getMessage(),
+                'puede_retirar' => $fueraDePlazo,
+            ], 422);
+        }
+
+        Bitacora::registrar(
+            'deleted',
+            'Contrato',
+            $contrato->id,
+            'Afiliación ARL Sura anulada desde el retiro de Gestión ARL',
+            ['arl_afiliacion_id' => $anulacion->id],
+            (int) $contrato->aliado_id
+        );
+
+        return response()->json([
+            'ok'      => true,
+            'accion'  => 'anulacion',
+            'mensaje' => 'Cobertura anulada en ARL Sura.',
+        ]);
     }
 
     /** Contrato del aliado activo. El filtro por aliado va en el primer query. */

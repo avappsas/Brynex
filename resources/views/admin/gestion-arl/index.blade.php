@@ -350,7 +350,7 @@ body{display:flex;flex-direction:column}
             <button class="btn-accion btn-facturar" onclick="abrirFacturar({{ $ctx }})" title="Facturar afiliación ARL">
                 💳 Facturar
             </button>
-            <button class="btn-accion btn-retirar" onclick="abrirRetirar({{ $ctx->id ?? $c->id }}, '{{ addslashes($nombre) }}')" title="Retiro informativo">
+            <button class="btn-accion btn-retirar" onclick="abrirRetirar({{ $ctx->id ?? $c->id }}, '{{ addslashes($nombre) }}')" title="Anular la cobertura en Sura y dejar el contrato retirado">
                 ❌
             </button>
         </td>
@@ -442,14 +442,69 @@ body{display:flex;flex-direction:column}
 </div>
 </div>
 
-{{-- ══ MODAL RETIRO (iframe contrato form) ══ --}}
+{{-- ══ MODAL RETIRO ══ --}}
 <div class="modal-bg" id="modalRetirar">
-<div class="modal-box wide" style="max-width:96vw;width:96vw;padding:0;overflow:hidden;">
-    <div style="background:#0f172a;color:#fff;padding:.75rem 1rem;display:flex;align-items:center;justify-content:space-between;">
-        <strong style="font-size:.9rem;">❌ Retiro Informativo — <span id="retirar-nombre"></span></strong>
-        <button class="modal-close" onclick="cerrarModal('modalRetirar')" style="color:#94a3b8;font-size:1.2rem;">✕</button>
+<div class="modal-box">
+    <div class="modal-title">
+        <span>❌ Retirar — <span id="retirar-nombre"></span></span>
+        <button class="modal-close" onclick="cerrarModal('modalRetirar')">✕</button>
     </div>
-    <iframe id="retirar-iframe" src="" style="width:100%;height:750px;border:none;"></iframe>
+
+    <div id="retirar-cargando" style="padding:1.5rem;text-align:center;color:#64748b;font-size:.82rem;">
+        ⏳ Revisando el contrato...
+    </div>
+
+    <div id="retirar-contenido" style="display:none;">
+        <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:.65rem .8rem;margin-bottom:.75rem;font-size:.75rem;color:#991b1b;line-height:1.55;">
+            El sistema va a <strong>anular la cobertura en el portal de Sura</strong> y dejar el contrato
+            <strong>retirado</strong>, con retiro informativo (0 días cotizados).<br>
+            <span style="color:#7f1d1d;">Si Sura ya no deja anularla, se te preguntará antes de hacer nada más.</span>
+        </div>
+
+        <div id="retirar-periodo" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:.5rem .75rem;margin-bottom:.75rem;font-size:.75rem;color:#166534;"></div>
+
+        {{-- Sin clave del portal no se puede tocar Sura: se pide aquí mismo --}}
+        <div id="retirar-credencial" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:.7rem .8rem;margin-bottom:.75rem;">
+            <div style="font-size:.75rem;color:#1e40af;margin-bottom:.5rem;line-height:1.5;">
+                Falta la clave del portal de Sura de esta empresa. Cárgala una vez y el retiro sigue.
+            </div>
+            <div style="display:grid;grid-template-columns:110px 1fr;gap:.5rem;margin-bottom:.5rem;">
+                <div>
+                    <label style="font-size:.7rem;color:#475569;">Tipo</label>
+                    <select id="retirar-cred-tipo" style="width:100%;padding:.35rem;border:1px solid #cbd5e1;border-radius:6px;font-size:.78rem;">
+                        <option value="C">Cédula</option>
+                        <option value="N">NIT</option>
+                        <option value="E">C. extranjería</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:.7rem;color:#475569;">Número de identificación</label>
+                    <input type="text" id="retirar-cred-usuario" autocomplete="off" style="width:100%;padding:.35rem;border:1px solid #cbd5e1;border-radius:6px;font-size:.78rem;">
+                </div>
+            </div>
+            <label style="font-size:.7rem;color:#475569;">Contraseña del portal</label>
+            <input type="password" id="retirar-cred-clave" autocomplete="new-password" style="width:100%;padding:.35rem;border:1px solid #cbd5e1;border-radius:6px;font-size:.78rem;margin-bottom:.5rem;">
+            <button class="btn-save" id="retirar-cred-btn" style="width:100%" onclick="guardarCredencialRetiro()">🔐 Guardar y buscar la póliza</button>
+            <div id="retirar-cred-nota" style="font-size:.68rem;color:#b45309;margin-top:.4rem;line-height:1.35"></div>
+        </div>
+
+        <div class="form-group">
+            <label>Motivo del retiro *</label>
+            <select id="retirar-motivo" required></select>
+        </div>
+
+        <div class="form-group">
+            <label>Observación</label>
+            <textarea id="retirar-observacion" rows="2" placeholder="Opcional: por qué se retira" style="width:100%;padding:.4rem;border:1px solid #cbd5e1;border-radius:6px;font-size:.8rem;font-family:inherit;"></textarea>
+        </div>
+
+        <input type="hidden" id="retirar-contrato-id">
+        <input type="hidden" id="retirar-mes-plano">
+        <input type="hidden" id="retirar-anio-plano">
+        <button class="btn-save" id="retirar-btn" style="background:#b91c1c" onclick="confirmarRetiro()">❌ Anular en Sura y retirar</button>
+    </div>
+
+    <div id="retirar-resultado" style="display:none;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:.75rem .9rem;font-size:.8rem;color:#166534;"></div>
 </div>
 </div>
 
@@ -806,12 +861,168 @@ function abrirFacturar(ctx) {
 }
 
 /* ── Modal Retiro Informativo ── */
-function abrirRetirar(id, nombre) {
+/* ── Retiro: anula en Sura y deja el contrato retirado ── */
+
+async function abrirRetirar(id, nombre) {
     document.getElementById('retirar-nombre').textContent = nombre;
-    // Abre el formulario de contrato con el modal de retiro pre-abierto, solo modo informativo
-    const url = `/admin/contratos/${id}/edit?iframe=1&abrir_retiro=informativo`;
-    document.getElementById('retirar-iframe').src = url;
+    document.getElementById('retirar-contrato-id').value  = id;
+    document.getElementById('retirar-cargando').style.display   = 'block';
+    document.getElementById('retirar-contenido').style.display  = 'none';
+    document.getElementById('retirar-resultado').style.display  = 'none';
+    document.getElementById('retirar-credencial').style.display = 'none';
+    document.getElementById('retirar-observacion').value = '';
     document.getElementById('modalRetirar').classList.add('open');
+
+    let d;
+    try {
+        const r = await fetch(`/admin/gestion-arl/${id}/datos-retiro`, { headers: { 'Accept': 'application/json' } });
+        d = await r.json();
+    } catch (e) {
+        document.getElementById('retirar-cargando').textContent = '⚠️ No se pudo revisar el contrato.';
+        return;
+    }
+
+    document.getElementById('retirar-cargando').style.display  = 'none';
+    document.getElementById('retirar-contenido').style.display = 'block';
+
+    // El periodo no se elige: el retiro tiene que caer en el mes consecutivo al
+    // último cotizado, y el contrato lo rechaza si no coincide.
+    document.getElementById('retirar-mes-plano').value  = d.mes_plano;
+    document.getElementById('retirar-anio-plano').value = d.anio_plano;
+    document.getElementById('retirar-periodo').innerHTML =
+        `Se registrará en el plano de <strong>${d.periodo}</strong>, con <strong>0 días</strong> cotizados.` +
+        (d.fecha_arl ? `<br>Cobertura ARL vigente desde <strong>${d.fecha_arl}</strong>.` : '');
+
+    document.getElementById('retirar-motivo').innerHTML =
+        '<option value="">-- Seleccione --</option>' +
+        (d.motivos || []).map(m => `<option value="${m.id}">${m.nombre}</option>`).join('');
+
+    const btn = document.getElementById('retirar-btn');
+    btn.disabled = false; btn.textContent = '❌ Anular en Sura y retirar';
+}
+
+async function confirmarRetiro() {
+    const id     = document.getElementById('retirar-contrato-id').value;
+    const motivo = document.getElementById('retirar-motivo').value;
+    if (!motivo) { alert('Selecciona el motivo del retiro.'); return; }
+
+    const btn   = document.getElementById('retirar-btn');
+    const parar = gaEsperar(btn, 'Anulando en Sura...');
+
+    try {
+        let r = await pedirAnulacionSura(id, false);
+
+        // Falta la clave del portal: se pide aquí y el usuario vuelve a darle.
+        if (r.requiere_credencial) {
+            document.getElementById('retirar-credencial').style.display = 'block';
+            document.getElementById('retirar-cred-usuario').focus();
+            alert(r.mensaje);
+            return;
+        }
+
+        // Fuera del plazo de anulación. La decisión es del usuario: retirar deja
+        // constancia de que la persona estuvo afiliada, anular la borraba.
+        if (!r.ok && r.puede_retirar) {
+            const seguir = confirm(
+                r.mensaje + '\n\n¿Quieres hacer el RETIRO en Sura en su lugar? ' +
+                'El retiro cierra la cobertura con fecha y deja constancia de que estuvo afiliado.'
+            );
+            if (!seguir) return;
+
+            r = await pedirAnulacionSura(id, true);
+        }
+
+        if (!r.ok) { alert(r.mensaje || 'No se pudo cerrar la cobertura en Sura.'); return; }
+
+        // Sura ya está resuelto: ahora el retiro de siempre, que es quien sabe
+        // de planillas, planos y facturas.
+        btn.textContent = '⏳ Marcando el retiro...';
+        const marcado = await marcarRetiroInformativo(id, motivo);
+
+        if (!marcado.ok) { alert(marcado.mensaje || 'La cobertura se cerró en Sura, pero el contrato no quedó retirado.'); return; }
+
+        document.getElementById('retirar-contenido').style.display = 'none';
+        const caja = document.getElementById('retirar-resultado');
+        caja.innerHTML = `✅ <strong>${marcado.mensaje}</strong><br>` +
+            `<span style="color:#475569;">${r.mensaje}</span>`;
+        caja.style.display = 'block';
+        setTimeout(() => location.reload(), 3000);
+    } finally {
+        parar();
+        btn.disabled = false;
+        if (btn.textContent.startsWith('⏳')) btn.textContent = '❌ Anular en Sura y retirar';
+    }
+}
+
+/** Cierra la cobertura en el portal. Con `retirar` en true hace retiro, no anulación. */
+async function pedirAnulacionSura(id, retirar) {
+    try {
+        return await gaPedir(`/admin/gestion-arl/${id}/anular-sura`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
+            body: JSON.stringify({ retirar }),
+        }, 290);
+    } catch (e) {
+        return { ok: false, mensaje: 'Se perdió la conexión con el servidor. Revisa en el portal cómo quedó la cobertura antes de reintentar.' };
+    }
+}
+
+/** Marca el contrato como retirado con el retiro de siempre, en modo informativo. */
+async function marcarRetiroInformativo(id, motivo) {
+    const hoy = new Date();
+    const fecha = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+
+    try {
+        return await gaPedir(`/admin/contratos/${id}/retirar`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
+            body: JSON.stringify({
+                motivo_retiro_id: motivo,
+                tipo_retiro: 'informativo',
+                fecha_retiro: fecha,
+                num_dias: 0,
+                mes_plano: document.getElementById('retirar-mes-plano').value,
+                anio_plano: document.getElementById('retirar-anio-plano').value,
+                observacion: document.getElementById('retirar-observacion').value || null,
+            }),
+        }, 120);
+    } catch (e) {
+        return { ok: false, mensaje: 'La cobertura se cerró en Sura, pero se perdió la conexión al marcar el contrato.' };
+    }
+}
+
+/** Carga la clave del portal sin salir del retiro. */
+async function guardarCredencialRetiro() {
+    const id      = document.getElementById('retirar-contrato-id').value;
+    const usuario = document.getElementById('retirar-cred-usuario').value.trim();
+    const clave   = document.getElementById('retirar-cred-clave').value;
+    if (!usuario || !clave) { alert('Ingresa el usuario y la contraseña del portal.'); return; }
+
+    const btn   = document.getElementById('retirar-cred-btn');
+    const nota  = document.getElementById('retirar-cred-nota');
+    const parar = gaEsperar(btn, 'Entrando al portal de Sura...');
+    nota.textContent = 'Abriendo el portal y leyendo la póliza. Suele tardar entre 1 y 2 minutos: no cierres esta ventana.';
+
+    let data;
+    try {
+        data = await gaPedir(`/admin/gestion-arl/${id}/credencial`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
+            body: JSON.stringify({
+                tipo_documento: document.getElementById('retirar-cred-tipo').value,
+                usuario, contrasena: clave,
+            }),
+        }, 240);
+    } catch (e) {
+        data = { ok: false, mensaje: 'Se perdió la conexión antes de terminar. Vuelve a intentarlo.' };
+    }
+
+    parar();
+    btn.disabled = false; btn.textContent = '🔐 Guardar y buscar la póliza';
+    nota.textContent = '';
+    alert(data.mensaje || (data.ok ? 'Credencial guardada.' : 'No se pudo guardar la credencial.'));
+
+    if (data.ok) document.getElementById('retirar-credencial').style.display = 'none';
 }
 
 /* ── Cerrar al click fuera ── */
