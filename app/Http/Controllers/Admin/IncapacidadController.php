@@ -337,8 +337,11 @@ class IncapacidadController extends Controller
         $opcionesColumna = $this->opcionesFiltroColumna($alidoId);
 
         // Empresas para el filtro: solo las que tienen algún cliente con
-        // incapacidad. Con joins y no con IN anidados sobre las cédulas, que
-        // en tareas resultó seis veces más lento.
+        // incapacidad visible en la tabla. Se repite la misma regla de estados
+        // finales de la consulta principal: si no, aparecen empresas cuyas
+        // incapacidades están todas cerradas y el filtro devuelve vacío.
+        // Con joins y no con IN anidados sobre las cédulas, que en tareas
+        // resultó seis veces más lento.
         $empresasDisponibles = DB::table('incapacidades as i')
             ->join('clientes as c', function ($j) use ($alidoId) {
                 $j->on('c.cedula', '=', 'i.cedula_usuario')->where('c.aliado_id', $alidoId);
@@ -347,6 +350,10 @@ class IncapacidadController extends Controller
             ->where('i.aliado_id', $alidoId)
             ->whereNull('i.deleted_at')
             ->where('e.aliado_id', $alidoId)
+            ->when(
+                ! $hayBusqueda && ! $request->boolean('con_cerradas') && ! $pidioEstadoFinal,
+                fn ($q) => $q->whereNotIn('i.estado', $estadosInactivosDefault)
+            )
             ->distinct()
             ->orderBy('e.empresa')
             ->get(['e.id', 'e.empresa']);

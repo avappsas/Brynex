@@ -160,7 +160,10 @@ class TareaController extends Controller
         $razonesSociales = DB::table('razones_sociales')->where('aliado_id', $alidoId)->where('estado', 'Activa')->orderBy('razon_social')->get(['id', 'razon_social']);
         $epsList = DB::table('eps')->orderBy('nombre')->get(['id', 'nombre']);
 
-        // Empresas para el filtro: solo las que tienen algún cliente con tarea.
+        // Empresas para el filtro: solo las que tienen algún cliente con tarea
+        // visible en la tabla. Se aplica la misma regla de cerradas que la
+        // consulta principal: si no, aparecen empresas cuya única tarea está
+        // cerrada y elegirlas deja la tabla vacía sin explicación.
         // Con joins y no con IN anidados: el IN sobre las cédulas de tareas
         // tardaba ~1.8 s contra los ~0.3 s de esta versión.
         $empresasDisponibles = DB::table('tareas as t')
@@ -171,6 +174,7 @@ class TareaController extends Controller
             ->where('t.aliado_id', $alidoId)
             ->whereNull('t.deleted_at')
             ->where('e.aliado_id', $alidoId)
+            ->when(! $mostrarCerradas, fn ($q) => $q->where('t.estado', '!=', 'cerrada'))
             ->distinct()
             ->orderBy('e.empresa')
             ->get(['e.id', 'e.empresa']);
