@@ -341,7 +341,11 @@ body{display:flex;flex-direction:column}
                 📅 Renovar
             </button>
             <button class="btn-accion btn-certificado" onclick="descargarCertificado(this, {{ $ctx }})" title="Bajar del portal el certificado y el carné al día">
-                📕 PDF
+                <svg width="13" height="15" viewBox="0 0 12 14" fill="none" style="vertical-align:-2px" aria-hidden="true">
+                    <path d="M1 1.5A.5.5 0 0 1 1.5 1H7l4 4v7.5a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5v-11Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+                    <path d="M7 1v4h4" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+                    <path d="M6 7.6v3.2m0 0L4.7 9.6M6 10.8l1.3-1.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
             </button>
             <button class="btn-accion btn-facturar" onclick="abrirFacturar({{ $ctx }})" title="Facturar afiliación ARL">
                 💳 Facturar
@@ -675,7 +679,7 @@ async function guardarCredencialRenovar() {
  * aparece activo. Por eso el botón vive aparte de la renovación.
  */
 async function descargarCertificado(btn, ctx) {
-    const textoOriginal = btn.textContent;
+    const contenidoOriginal = btn.innerHTML;
     const parar = gaEsperar(btn, 'Bajando...');
 
     try {
@@ -701,7 +705,7 @@ async function descargarCertificado(btn, ctx) {
         setTimeout(() => URL.revokeObjectURL(url), 4000);
     } finally {
         parar();
-        btn.disabled = false; btn.textContent = textoOriginal;
+        btn.disabled = false; btn.innerHTML = contenidoOriginal;
     }
 }
 
