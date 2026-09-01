@@ -168,9 +168,13 @@ class Tarea extends BaseModel
         return self::ESTADOS[$this->estado] ?? ucfirst($this->estado);
     }
 
+    /**
+     * La cédula se repite entre aliados: sin el aliado en la relación, un
+     * with('cliente') trae el cliente de cualquiera. Ver BelongsToDelAliado.
+     */
     public function cliente(): BelongsTo
     {
-        return $this->belongsTo(Cliente::class, 'cedula', 'cedula');
+        return $this->belongsToDelAliado(Cliente::class, 'cedula', 'cedula', 'cliente');
     }
 
     // ── Helpers del cliente ─────────────────────────────────────────────────
@@ -180,8 +184,18 @@ class Tarea extends BaseModel
             return $this->getRelation('cliente');
         }
 
+        // Atajo para no hidratar el modelo completo. Filtra por aliado igual que
+        // la relación: sin esto, la cédula sola traía el cliente de otro aliado
+        // por una ruta que ni siquiera pasa por cliente().
+        $aliadoId = $this->aliado_id ?? session('aliado_id_activo');
+
+        if (! $aliadoId) {
+            return null;
+        }
+
         return DB::table('clientes')
             ->where('cedula', $this->cedula)
+            ->where('aliado_id', $aliadoId)
             ->select('id', 'cedula', 'primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido', 'celular', 'correo')
             ->first();
     }

@@ -30,9 +30,13 @@ class ClaveAcceso extends BaseModel
 
     // ─── Relaciones ───────────────────────────────────────────────────
 
+    /**
+     * La cédula se repite entre aliados: sin el aliado en la relación, un
+     * with('cliente') trae el cliente de cualquiera. Ver BelongsToDelAliado.
+     */
     public function cliente()
     {
-        return $this->belongsTo(Cliente::class, 'cedula', 'cedula');
+        return $this->belongsToDelAliado(Cliente::class, 'cedula', 'cedula', 'cliente');
     }
 
     public function razonSocial()

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Relations\BelongsToDelAliado;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 
@@ -24,5 +25,26 @@ class BaseModel extends Model
     protected function asDate($value): ?Carbon
     {
         return $this->asDateTime($value)?->startOfDay();
+    }
+
+    /**
+     * belongsTo por una llave que se repite entre aliados (la cédula, típicamente):
+     * el aliado entra en la relación tanto en carga perezosa como en eager loading.
+     *
+     * Ver App\Models\Relations\BelongsToDelAliado y la regla de multi-tenancy sin
+     * global scope del CLAUDE.md.
+     */
+    protected function belongsToDelAliado(
+        string $related,
+        string $foreignKey,
+        string $ownerKey,
+        string $relation,
+        string $aliadoColumn = 'aliado_id'
+    ): BelongsToDelAliado {
+        $instance = $this->newRelatedInstance($related);
+
+        return new BelongsToDelAliado(
+            $instance->newQuery(), $this, $foreignKey, $ownerKey, $relation, $aliadoColumn
+        );
     }
 }

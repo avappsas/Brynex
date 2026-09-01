@@ -124,8 +124,7 @@ class FacturacionController extends Controller
                     });
             })
             ->with([
-                'cliente' => fn ($q) => $q->where('aliado_id', $aliadoId),
-                'tipoModalidad', 'razonSocial', 'eps', 'arl', 'pension', 'caja', 'asesor',
+                'cliente', 'tipoModalidad', 'razonSocial', 'eps', 'arl', 'pension', 'caja', 'asesor',
                 'plan',
             ])
             ->orderBy('cedula')
@@ -912,7 +911,7 @@ class FacturacionController extends Controller
 
         $contratos = Contrato::where('aliado_id', $aliadoId)
             ->whereIn('id', $validated['contratos'])
-            ->with(['tipoModalidad', 'cliente' => fn ($q) => $q->where('aliado_id', $aliadoId)])
+            ->with(['tipoModalidad', 'cliente'])
             ->get();
 
         $duplicados = $this->_detectarDuplicadosLote(

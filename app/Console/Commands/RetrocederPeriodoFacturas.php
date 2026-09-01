@@ -189,7 +189,7 @@ class RetrocederPeriodoFacturas extends Command
 
         $datosContrato = Contrato::where('aliado_id', $aliadoId)
             ->whereIn('id', $porContrato->keys())
-            ->with(['cliente' => fn ($q) => $q->where('aliado_id', $aliadoId)])
+            ->with('cliente')
             ->get()
             ->keyBy('id');
 

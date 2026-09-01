@@ -57,16 +57,18 @@ class Contrato extends BaseModel
         return $this->belongsTo(Aliado::class);
     }
 
+    /**
+     * El cliente del contrato, siempre del mismo aliado.
+     *
+     * La cédula sola no identifica a un cliente: la misma persona existe como
+     * cliente en varios aliados, con datos distintos. Por eso la relación es un
+     * BelongsToDelAliado y no un belongsTo con un where encima — ese where solo
+     * se aplicaba en carga perezosa y en `with('cliente')` traía el cliente de
+     * cualquier aliado.
+     */
     public function cliente(): BelongsTo
     {
-        $relation = $this->belongsTo(Cliente::class, 'cedula', 'cedula');
-
-        $aliadoId = $this->aliado_id ?? session('aliado_id_activo');
-        if ($aliadoId) {
-            $relation->where('clientes.aliado_id', $aliadoId);
-        }
-
-        return $relation;
+        return $this->belongsToDelAliado(Cliente::class, 'cedula', 'cedula', 'cliente');
     }
 
     public function razonSocial(): BelongsTo
