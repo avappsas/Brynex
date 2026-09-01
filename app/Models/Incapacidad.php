@@ -55,6 +55,11 @@ class Incapacidad extends BaseModel
         'observacion',
         'descripcion_cliente',
         'estado',
+        'motivo_anulacion',
+        'anulacion_observacion',
+        'estado_previo_anulacion',
+        'anulada_por',
+        'anulada_en',
         'token_subida',
         'created_by',
     ];
@@ -65,6 +70,7 @@ class Incapacidad extends BaseModel
         'fecha_recibido'           => 'date',
         'fecha_radicado'           => 'date',
         'fecha_pago'               => 'date',
+        'anulada_en'               => 'datetime',
         'prorroga'                 => 'boolean',
         'transcripcion_requerida'  => 'boolean',
         'transcripcion_completada' => 'boolean',
@@ -120,6 +126,11 @@ class Incapacidad extends BaseModel
         'pagada_razon_social'       => ['label' => '🏢 Pagada a Razón Social',       'color' => 'info'],
         'pagada_afiliado'           => ['label' => '🏦 Pagada al Afiliado',          'color' => 'success'],
         'cierre_exitoso'            => ['label' => '✅ Cierre Exitoso',              'color' => 'success'],
+        // ── Cierre administrativo ─────────────────────────────────────────────
+        // No es una respuesta de la entidad como 'negada'/'rechazado': es el
+        // aliado dando por muerto un caso que nunca entró a trámite. El porqué
+        // vive en `motivo_anulacion`, no en el estado.
+        'anulada'                   => ['label' => '⛔ Anulada',                      'color' => 'secondary'],
         // ── Legacy (no mostrar en selector) ──────────────────────────────────
         'pagada'                    => ['label' => '✅ Pagada (legacy)',              'color' => 'success', 'legacy' => true],
         // Ortografía vieja de 'pagada_afiliado' que dejó la migración del legacy.
@@ -130,6 +141,23 @@ class Incapacidad extends BaseModel
         'transcripcion'             => ['label' => '🏥 Transcripción (legacy)',      'color' => 'info',    'legacy' => true],
     ];
 
+
+    /**
+     * Motivos por los que una incapacidad se anula.
+     *
+     * Catálogo aparte y no estados sueltos: agregar un motivo aquí no obliga a
+     * tocar ESTADOS_FINALES, ESTADOS_SIN_PENDIENTE, el mapa de transiciones ni
+     * los informes. 'otro' obliga a escribir la observación (lo valida el
+     * controlador).
+     */
+    const MOTIVOS_ANULACION = [
+        'falta_documentacion' => '📄 El cliente nunca envió la documentación',
+        'creada_por_error'    => '⌨️ Se creó por error',
+        'duplicada'           => '👯 Duplicada / ya existe otra igual',
+        'cliente_desistio'    => '🙅 El cliente desistió del trámite',
+        'fuera_de_termino'    => '⏰ Fuera de término para radicar',
+        'otro'                => '📝 Otro (explicar)',
+    ];
 
     /**
      * Estados de pago del valor de la incapacidad.
@@ -216,6 +244,11 @@ class Incapacidad extends BaseModel
     public function creadoPor(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function anuladaPor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'anulada_por');
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -660,6 +693,20 @@ class Incapacidad extends BaseModel
     public function estadoColor(): string
     {
         return self::ESTADOS[$this->estado]['color'] ?? 'secondary';
+    }
+
+    public function estaAnulada(): bool
+    {
+        return $this->estado === 'anulada';
+    }
+
+    public function motivoAnulacionLabel(): ?string
+    {
+        if (! $this->motivo_anulacion) {
+            return null;
+        }
+
+        return self::MOTIVOS_ANULACION[$this->motivo_anulacion] ?? ucfirst($this->motivo_anulacion);
     }
 
     public function estadoPagoLabel(): string

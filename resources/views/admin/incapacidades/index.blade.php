@@ -140,6 +140,10 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
 .barra-top .kpi .num{font-size:1rem;font-weight:800;line-height:1;}
 .barra-top .kpi .lbl{font-size:.68rem;color:#64748b;margin:0;white-space:nowrap;}
 .barra-top .kpi-sep{display:inline-block;width:1px;height:12px;background:#cbd5e1;margin:0 .2rem;}
+/* Chip de Anuladas: es un enlace al filtro, no un contador muerto. */
+.kpi-link{text-decoration:none;cursor:pointer;transition:background .12s,border-color .12s;}
+.kpi-link:hover{background:#eef2f7;border-color:#94a3b8;}
+.kpi-link.activo{background:#e2e8f0;border-color:#64748b;}
 .barra-top-form{display:flex;align-items:center;gap:.4rem;margin:0;margin-left:auto;}
 .barra-top-form input,.barra-top-form select{border:1px solid #cbd5e1;border-radius:8px;padding:.35rem .6rem;font-size:.78rem;background:#fff;}
 .barra-top-form input{width:180px;}
@@ -202,6 +206,19 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
             <span class="num" style="color:#dc2626">{{ $totalNoPagadas }}</span>
             <span class="lbl">No pagadas</span>
         </div>
+        {{-- Anuladas: ocultas de la tabla por defecto (son estado final), pero
+             alcanzables de un clic. Sin este chip el usuario no tiene forma de
+             saber que existen ni de revisar si anuló algo por error. --}}
+        @if($totalAnuladas > 0)
+        <a class="kpi kpi-link {{ request('estado') === 'anulada' ? 'activo' : '' }}"
+           href="{{ request('estado') === 'anulada'
+                    ? request()->fullUrlWithQuery(['estado' => null, 'page' => null])
+                    : request()->fullUrlWithQuery(['estado' => 'anulada', 'page' => null]) }}"
+           title="{{ request('estado') === 'anulada' ? 'Quitar el filtro' : 'Ver las incapacidades anuladas' }}">
+            <span class="num" style="color:#64748b">{{ $totalAnuladas }}</span>
+            <span class="lbl">Anuladas</span>
+        </a>
+        @endif
     </div>
 
     <form id="filtro-form" method="GET" class="barra-top-form">
@@ -380,7 +397,7 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
                     @if($numPrr > 0)
                     <span class="badge badge-primary">+{{ $numPrr }} prórr.</span>
                     @php
-                        $estadosFinales = ['pagada','pagado_afiliado','pagada_afiliado','pagada_razon_social','cierre_exitoso','rechazado'];
+                        $estadosFinales = ['pagada','pagado_afiliado','pagada_afiliado','pagada_razon_social','cierre_exitoso','rechazado','anulada'];
                         $hayPendiente = $inc->prorrogas->whereNotIn('estado', $estadosFinales)->count() > 0;
                     @endphp
                     @if($hayPendiente)
@@ -495,6 +512,7 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
 <script>
 const TOKEN = document.querySelector('meta[name="csrf-token"]').content;
 let _detalleActual = null;   // respuesta del último /show, para el modal de unir
+let _editandoInc   = null;   // incapacidad abierta en el modal de editar
 const EPS_LIST   = @json($epsList->map(fn($e)=>['id'=>$e->id,'nombre'=>$e->nombre]));
 const ARL_LIST   = @json($arlList->map(fn($e)=>['id'=>$e->id,'nombre'=>$e->nombre_arl]));
 const AFP_LIST   = @json($pensionList->map(fn($e)=>['id'=>$e->id,'nombre'=>$e->razon_social]));
@@ -507,6 +525,7 @@ const TIPOS_INCAPACIDAD = @json(\App\Models\Incapacidad::TIPOS_INCAPACIDAD);
 const TIPOS_ENTIDAD     = @json(\App\Models\Incapacidad::TIPOS_ENTIDAD);
 const ESTADOS_INC       = @json(\App\Models\Incapacidad::ESTADOS);
 const ESTADOS_PAGO_INC  = @json(\App\Models\Incapacidad::ESTADOS_PAGO);
+const MOTIVOS_ANULACION = @json(\App\Models\Incapacidad::MOTIVOS_ANULACION);
 // Deshacer un estado borra plata (gasto, abono, consignación): el botón solo
 // existe para quien tenga el permiso. El backend lo vuelve a exigir igual.
 const PUEDE_REVERSAR    = @json(auth()->user()?->can('incapacidades.revertir_estado') ?? false);
@@ -549,7 +568,7 @@ function actualizarFilaIncapacidad(id) {
             const inc = data.incapacidad;
 
             // Determinar opacidad de fila según estado
-            const estadosPagados = ['pagada','pagado_afiliado','pagada_afiliado','pagada_razon_social','cierre_exitoso'];
+            const estadosPagados = ['pagada','pagado_afiliado','pagada_afiliado','pagada_razon_social','cierre_exitoso','anulada'];
             if (estadosPagados.includes(inc.estado)) {
                 row.style.opacity = '0.65';
             } else {
@@ -582,7 +601,8 @@ function actualizarFilaIncapacidad(id) {
                 pagada_razon_social:       {label: '🏢 Pagada a Razón Social',       color: 'info'},
                 pagada_afiliado:           {label: '🏦 Pagada al Afiliado',          color: 'success'},
                 pagado_afiliado:           {label: '🏦 Pagada al Afiliado (legacy)', color: 'success'},
-                cierre_exitoso:            {label: '✅ Cierre Exitoso',              color: 'success'}
+                cierre_exitoso:            {label: '✅ Cierre Exitoso',              color: 'success'},
+                anulada:                   {label: '⛔ Anulada',                      color: 'secondary'}
             };
             const cfg = configEstados[inc.estado] || {label: inc.estado, color: 'secondary'};
             const estTd = row.querySelector('.td-estado');
@@ -838,6 +858,8 @@ function abrirModalEditar(id){
             const esPrrroga = !!inc.incapacidad_padre_id;
             document.getElementById('modalCrearTitle').textContent =
                 esPrrroga ? `✏️ Editar Prórroga #${inc.numero_proroga}` : '✏️ Editar Incapacidad';
+            _editandoInc = inc;
+            _pintarVinculoFamilia(inc, data);
             document.getElementById('formCrear').action = `/admin/incapacidades/${id}`;
             document.getElementById('formMethod').value = 'PUT';
             document.getElementById('formId').value = id;
@@ -1093,7 +1115,7 @@ function verDetalle(id){
                 </tbody></table></div>`;
 
             // Valor esperado — solo lo pendiente (no pagado)
-            const _estadosPag = ['pagada','pagado_afiliado','pagada_afiliado','pagada_razon_social','cierre_exitoso'];
+            const _estadosPag = ['pagada','pagado_afiliado','pagada_afiliado','pagada_razon_social','cierre_exitoso','anulada'];
             let _valPending = 0;
             if (!_estadosPag.includes(inc.estado)) _valPending += Number(inc.valor_esperado||0);
             (inc.prorrogas||[]).forEach(p => { if (!_estadosPag.includes(p.estado)) _valPending += Number(p.valor_esperado||0); });
@@ -1175,13 +1197,29 @@ function verDetalle(id){
                         ${inc.prorroga?'<div><span style="font-size:.72rem;color:#2563eb;font-weight:700;background:#eff6ff;padding:.2rem .5rem;border-radius:6px;display:inline-block">✓ Doc. prórroga</span></div>':''}
                     </div>
                     ${inc.observacion?`<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:.6rem .85rem;font-size:.82rem;color:#92400e;margin-bottom:.6rem"><strong>📝 Observación:</strong> ${inc.observacion}</div>`:''}
+                    ${data.anulacion?`<div style="background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;padding:.6rem .85rem;font-size:.82rem;color:#334155;margin-bottom:.6rem">
+                        <strong>⛔ Anulada:</strong> ${data.anulacion.motivo_label}
+                        ${data.anulacion.observacion?`<div style="margin-top:.25rem">${data.anulacion.observacion}</div>`:''}
+                        <div style="font-size:.72rem;color:#64748b;margin-top:.3rem">
+                            Por ${data.anulacion.por||'—'} el ${data.anulacion.en||'—'}
+                            ${data.anulacion.estado_previo_label?` · antes estaba en ${data.anulacion.estado_previo_label}`:''}
+                        </div>
+                    </div>`:''}
                     <div style="display:flex;gap:.5rem;margin-top:1rem;flex-wrap:wrap;padding-top:.75rem;border-top:1px solid #f1f5f9">
+                        ${inc.estado === 'anulada' ? `
+                        <button class="btn btn-primary btn-sm" onclick="abrirModalReabrir(${inc.id})"
+                                title="Devolver la incapacidad al flujo, en el estado que tenía antes de anularla">↩️ Reabrir</button>
+                        <button class="btn btn-warning btn-sm" onclick="cerrarModal('modalDetalle'); abrirModalEditar(${inc.id})">✏️ Editar Incapacidad</button>
+                        ` : `
                         <button class="btn btn-primary btn-sm" onclick="registrarGestion(${inc.id})">📞 Nueva Gestión</button>
                         <button class="btn btn-warning btn-sm" onclick="cerrarModal('modalDetalle'); abrirModalEditar(${inc.id})">✏️ Editar Incapacidad</button>
                         <button class="btn btn-secondary btn-sm" onclick="cerrarModal('modalDetalle'); abrirModalProroga(${inc.id})">➕ Agregar Prórroga</button>
                         ${(!inc.incapacidad_padre_id && (inc.prorrogas||[]).length === 0)
                             ? `<button class="btn btn-secondary btn-sm" onclick="abrirModalUnir(${inc.id})"
                                        title="Si esta incapacidad quedó suelta y en realidad continúa otra">🔗 Unir a otra incapacidad</button>` : ''}
+                        <button class="btn btn-danger btn-sm" style="margin-left:auto" onclick="abrirModalAnular(${inc.id})"
+                                title="Cerrarla sin trámite: el cliente no envió papeles, se creó por error...">⛔ Anular</button>
+                        `}
                     </div>
                 </div>
 
@@ -1327,8 +1365,89 @@ function opcionGestion(valor, label){
 // ── Unir una incapacidad suelta a la familia de otra ─────────────────────────
 // Existe porque el aviso al crear solo previene de aquí en adelante: lo que ya
 // quedó partido no había forma de juntarlo sin tocar la BD a mano.
-function abrirModalUnir(incId){
-    const inc = _detalleActual?.incapacidad;
+// ── Vínculo familiar desde el modal de editar ───────────────────────────────
+// Una prórroga se puede sacar de su familia (desligar) o mover a otra (ligar).
+// Hace falta porque las familias se arman solas —el encadenamiento del legacy y
+// el aviso de "vecinas" al crear— y a veces pegan dos que no son continuas.
+
+function _pintarVinculoFamilia(inc, data){
+    const box = document.getElementById('vinculoFamiliaBox');
+    const txt = document.getElementById('vinculoFamiliaTexto');
+    const btnDes = document.getElementById('btnDesligarProrroga');
+    if(!box || !txt) return;
+
+    const esProrroga = !!inc.incapacidad_padre_id;
+    const tieneHijas = Number(data?.num_prorrogas || 0) > 0;
+
+    // Una original CON prórrogas no se mueve: habría que arrastrar la familia
+    // entera. Se desligan las hijas primero, como ya valida el servidor.
+    if(!esProrroga && tieneHijas){
+        txt.innerHTML = `Esta es la <strong>original</strong> y tiene
+            <strong>${data.num_prorrogas}</strong> prórroga(s) colgando.
+            Para reorganizar la familia, edita cada prórroga y desligala desde ahí.`;
+        if(btnDes) btnDes.style.display = 'none';
+        box.querySelector('button[onclick="ligarAOtraDesdeEditar()"]').style.display = 'none';
+        box.style.display = 'block';
+        return;
+    }
+
+    box.querySelector('button[onclick="ligarAOtraDesdeEditar()"]').style.display = '';
+
+    if(esProrroga){
+        txt.innerHTML = `Es la <strong>prórroga ${inc.numero_proroga}</strong> de la
+            incapacidad <strong>#${inc.incapacidad_padre_id}</strong>.
+            Si no son continuas, deslígala y quedará independiente.`;
+        if(btnDes) btnDes.style.display = '';
+    } else {
+        txt.innerHTML = `Es una incapacidad <strong>independiente</strong>.
+            Si en realidad continúa otra de la misma persona, ligala como prórroga.`;
+        if(btnDes) btnDes.style.display = 'none';
+    }
+
+    box.style.display = 'block';
+}
+
+function ligarAOtraDesdeEditar(){
+    if(!_editandoInc) return;
+    // El modal de unir se dibuja encima del de editar; al confirmar se recarga.
+    abrirModalUnir(_editandoInc.id, _editandoInc);
+}
+
+function desligarProrrogaActual(){
+    const inc = _editandoInc;
+    if(!inc || !inc.incapacidad_padre_id) return;
+
+    if(!confirm(`¿Desligar la prórroga ${inc.numero_proroga} de la incapacidad #${inc.incapacidad_padre_id}?\n\n`
+              + `Quedará como una incapacidad independiente y su valor esperado se recalcula `
+              + `(salvo que ya esté pagada).`)) return;
+
+    const btn = document.getElementById('btnDesligarProrroga');
+    if(btn){ btn.disabled = true; btn.textContent = 'Desligando...'; }
+
+    fetch(`/admin/incapacidades/${inc.id}/desligar-prorroga`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': TOKEN, 'Accept': 'application/json' },
+    })
+    .then(async r => ({ ok: r.ok, data: await r.json().catch(()=>({})) }))
+    .then(({ok, data}) => {
+        if(!ok || !data.ok){
+            alert(data.message || 'No se pudo desligar.');
+            if(btn){ btn.disabled = false; btn.textContent = '✂️ Desligar'; }
+            return;
+        }
+        alert(data.message);
+        location.reload();
+    })
+    .catch(e => {
+        alert('Error de red: ' + e.message);
+        if(btn){ btn.disabled = false; btn.textContent = '✂️ Desligar'; }
+    });
+}
+
+function abrirModalUnir(incId, incData){
+    // incData llega cuando se abre desde el modal de editar, donde
+    // _detalleActual puede ser de otra incapacidad (o no existir todavía).
+    const inc = incData || _detalleActual?.incapacidad;
     if(!inc) return;
 
     fetch(`/admin/incapacidades/api/vecinas?cedula=${encodeURIComponent(inc.cedula_usuario)}`
@@ -1370,6 +1489,9 @@ function pintarModalUnir(incId, inc, vecinas){
         <p style="font-size:.82rem;color:#475569;margin-bottom:.7rem">
             La incapacidad <strong>#${incId}</strong> (${inc.dias_incapacidad}d desde
             ${(inc.fecha_inicio||'').substring(0,10)}) pasará a ser prórroga de la que elijas.
+            ${inc.incapacidad_padre_id
+                ? `Hoy cuelga de la <strong>#${inc.incapacidad_padre_id}</strong>: se mueve de familia y esa queda renumerada.`
+                : ''}
             El valor esperado se recalcula, salvo que ya esté pagada.
         </p>
         ${filas}
@@ -1406,6 +1528,183 @@ function confirmarUnion(incId, padreId, etiqueta){
         location.reload();
     })
     .catch(e => alert('Error de red: ' + e.message));
+}
+
+// ── Anular / Reabrir ────────────────────────────────────────────────────────
+// Anular es el cierre administrativo de una incapacidad que nunca entró a
+// trámite. No pasa por el selector de estado de la gestión porque necesita un
+// motivo obligatorio y, si la incapacidad tiene prórrogas abiertas, decidir
+// qué hacer con ellas.
+
+function abrirModalAnular(incId){
+    const data = _detalleActual;
+    const inc  = data?.incapacidad;
+    if(!inc) return;
+
+    const pendientes = Number(data.prorrogas_anulables || 0);
+    const opciones = Object.entries(MOTIVOS_ANULACION)
+        .map(([k,v]) => `<option value="${k}">${v}</option>`).join('');
+
+    const html = `
+    <div class="modal-header">
+        <div><h3>⛔ Anular incapacidad #${incId}</h3></div>
+        <button class="btn-close-modal" onclick="cerrarModalAnular()">✕</button>
+    </div>
+    <div class="modal-body">
+        <p style="font-size:.82rem;color:#475569;margin-bottom:.8rem">
+            Sale del listado de activas y deja de contarse en <strong>Sin gestión</strong>
+            y en el valor por cobrar. Queda accesible desde el chip
+            <strong>Anuladas</strong> y se puede reabrir cuando quieras.
+        </p>
+
+        <label style="display:block;font-size:.72rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem">Motivo</label>
+        <select id="anularMotivo" onchange="_anularToggleObs()"
+                style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:.45rem .65rem;font-size:.83rem;background:#fff;margin-bottom:.7rem">
+            ${opciones}
+        </select>
+
+        <label style="display:block;font-size:.72rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem">
+            Observación <span id="anularObsReq" style="color:#dc2626;display:none">(obligatoria)</span>
+        </label>
+        <textarea id="anularObs" rows="3" maxlength="500" placeholder="Detalle de por qué se anula (opcional, salvo en 'Otro')"
+                  style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:.45rem .65rem;font-size:.83rem;resize:vertical"></textarea>
+
+        ${pendientes > 0 ? `
+        <label style="display:flex;align-items:flex-start;gap:.5rem;background:#fffbeb;border:1px solid #fde68a;
+                      border-radius:8px;padding:.6rem .75rem;margin-top:.8rem;font-size:.82rem;color:#92400e;cursor:pointer">
+            <input type="checkbox" id="anularProrrogas" checked style="margin-top:.15rem">
+            <span>Anular también sus <strong>${pendientes}</strong> prórroga(s) abierta(s).
+            Si lo dejas sin marcar, la original queda anulada y las prórrogas siguen activas por su cuenta.</span>
+        </label>` : ''}
+
+        <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem;padding-top:.8rem;border-top:1px solid #f1f5f9">
+            <button class="btn btn-secondary btn-sm" onclick="cerrarModalAnular()">Cancelar</button>
+            <button class="btn btn-danger btn-sm" id="btnConfirmarAnular" onclick="confirmarAnulacion(${incId})">⛔ Anular</button>
+        </div>
+    </div>`;
+
+    _pintarModalSimple('modalAnular', html, 520);
+}
+
+function _anularToggleObs(){
+    const esOtro = document.getElementById('anularMotivo')?.value === 'otro';
+    const req = document.getElementById('anularObsReq');
+    if(req) req.style.display = esOtro ? 'inline' : 'none';
+}
+
+function cerrarModalAnular(){ document.getElementById('modalAnular')?.classList.remove('open'); }
+
+function confirmarAnulacion(incId){
+    const motivo = document.getElementById('anularMotivo')?.value;
+    const obs    = (document.getElementById('anularObs')?.value || '').trim();
+    const prorr  = document.getElementById('anularProrrogas')?.checked || false;
+
+    if(motivo === 'otro' && !obs){
+        alert('Si el motivo es "Otro", explica en la observación por qué se anula.');
+        document.getElementById('anularObs')?.focus();
+        return;
+    }
+
+    const btn = document.getElementById('btnConfirmarAnular');
+    if(btn){ btn.disabled = true; btn.textContent = 'Anulando...'; }
+
+    fetch(`/admin/incapacidades/${incId}/anular`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': TOKEN, 'Accept': 'application/json' },
+        body: JSON.stringify({ motivo, observacion: obs, incluir_prorrogas: prorr }),
+    })
+    .then(async r => ({ ok: r.ok, data: await r.json().catch(()=>({})) }))
+    .then(({ok, data}) => {
+        if(!ok || !data.ok){
+            alert(data.message || 'No se pudo anular.');
+            if(btn){ btn.disabled = false; btn.textContent = '⛔ Anular'; }
+            return;
+        }
+        cerrarModalAnular();
+        location.reload();
+    })
+    .catch(e => {
+        alert('Error de red: ' + e.message);
+        if(btn){ btn.disabled = false; btn.textContent = '⛔ Anular'; }
+    });
+}
+
+function abrirModalReabrir(incId){
+    const data = _detalleActual;
+    const destino = data?.anulacion?.estado_previo_label || labelEstado('recibido');
+    const anuladas = Number(data?.prorrogas_anuladas || 0);
+
+    const html = `
+    <div class="modal-header">
+        <div><h3>↩️ Reabrir incapacidad #${incId}</h3></div>
+        <button class="btn-close-modal" onclick="cerrarModalReabrir()">✕</button>
+    </div>
+    <div class="modal-body">
+        <p style="font-size:.82rem;color:#475569;margin-bottom:.8rem">
+            Vuelve al flujo en <strong>${destino}</strong>, que es donde estaba antes de anularse.
+            La anulación no se borra: queda en el historial de gestiones junto con esta reapertura.
+        </p>
+        <label style="display:block;font-size:.72rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem">Motivo de la reapertura (opcional)</label>
+        <textarea id="reabrirObs" rows="3" maxlength="500" placeholder="Ej: el cliente por fin envió la epicrisis"
+                  style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:.45rem .65rem;font-size:.83rem;resize:vertical"></textarea>
+        ${anuladas > 0 ? `
+        <label style="display:flex;align-items:flex-start;gap:.5rem;background:#f8fafc;border:1px solid #e2e8f0;
+                      border-radius:8px;padding:.6rem .75rem;margin-top:.8rem;font-size:.82rem;color:#334155;cursor:pointer">
+            <input type="checkbox" id="reabrirProrrogas" checked style="margin-top:.15rem">
+            <span>Reabrir también sus <strong>${anuladas}</strong> prórroga(s) anulada(s).
+            Cada una vuelve al estado que tenía antes de anularse.</span>
+        </label>` : ''}
+        <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem;padding-top:.8rem;border-top:1px solid #f1f5f9">
+            <button class="btn btn-secondary btn-sm" onclick="cerrarModalReabrir()">Cancelar</button>
+            <button class="btn btn-primary btn-sm" id="btnConfirmarReabrir" onclick="confirmarReapertura(${incId})">↩️ Reabrir</button>
+        </div>
+    </div>`;
+
+    _pintarModalSimple('modalReabrir', html, 480);
+}
+
+function cerrarModalReabrir(){ document.getElementById('modalReabrir')?.classList.remove('open'); }
+
+function confirmarReapertura(incId){
+    const obs   = (document.getElementById('reabrirObs')?.value || '').trim();
+    const prorr = document.getElementById('reabrirProrrogas')?.checked || false;
+    const btn   = document.getElementById('btnConfirmarReabrir');
+    if(btn){ btn.disabled = true; btn.textContent = 'Reabriendo...'; }
+
+    fetch(`/admin/incapacidades/${incId}/reabrir`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': TOKEN, 'Accept': 'application/json' },
+        body: JSON.stringify({ observacion: obs, incluir_prorrogas: prorr }),
+    })
+    .then(async r => ({ ok: r.ok, data: await r.json().catch(()=>({})) }))
+    .then(({ok, data}) => {
+        if(!ok || !data.ok){
+            alert(data.message || 'No se pudo reabrir.');
+            if(btn){ btn.disabled = false; btn.textContent = '↩️ Reabrir'; }
+            return;
+        }
+        cerrarModalReabrir();
+        location.reload();
+    })
+    .catch(e => {
+        alert('Error de red: ' + e.message);
+        if(btn){ btn.disabled = false; btn.textContent = '↩️ Reabrir'; }
+    });
+}
+
+/** Crea (o reusa) un overlay de modal suelto, como hace pintarModalUnir. */
+function _pintarModalSimple(id, html, maxWidth){
+    let overlay = document.getElementById(id);
+    if(!overlay){
+        overlay = document.createElement('div');
+        overlay.id = id;
+        overlay.className = 'modal-overlay';
+        overlay.innerHTML = `<div class="modal" style="max-width:${maxWidth}px">${html}</div>`;
+        document.body.appendChild(overlay);
+    } else {
+        overlay.querySelector('.modal').innerHTML = html;
+    }
+    overlay.classList.add('open');
 }
 
 function switchTab(btn, tabId){
@@ -1670,6 +1969,9 @@ function _mostrarModalGestion(incId, familia, inc = {}) {
         // selector solo ofrece "mantener estado actual" y la incapacidad no cierra.
         'pagado_afiliado':             ['cierre_exitoso'],
         'cierre_exitoso':              [],
+        // Se sale con el botón Reabrir, que devuelve al estado previo y pide
+        // constancia; el selector no puede reconstruir a dónde volver.
+        'anulada':                     [],
         'rechazado':                   [],
         'pagada':                      [],
     };

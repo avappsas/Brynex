@@ -661,7 +661,11 @@ class InformeController extends Controller
 
         $kpis = [
             'total'    => (clone $base)->count(),
-            'activas'  => (clone $base)->whereNotIn('estado',['cerrado','rechazado','pagado_afiliado'])->count(),
+            // De la constante y no a mano: esta copia listaba un 'cerrado' que
+            // no existe en el catálogo y le faltaban cierre_exitoso, negada y
+            // las pagadas parciales, así que contaba como activas cosas ya
+            // cerradas. Ahora también deja fuera las anuladas.
+            'activas'  => (clone $base)->whereNotIn('estado', \App\Http\Controllers\Admin\IncapacidadController::ESTADOS_FINALES)->count(),
             'dias'     => (clone $base)->sum('dias_incapacidad'),
             'v_esperado'=> (clone $base)->sum('valor_esperado'),
         ];

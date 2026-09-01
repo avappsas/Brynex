@@ -180,6 +180,25 @@
             </div>
 
         </div>{{-- /grid --}}
+
+        {{-- Vínculo familiar: solo al EDITAR. Las familias se arman solas en
+             varios puntos (encadenamiento del legacy, aviso de "vecinas" al
+             crear) y a veces pegan dos incapacidades que no son continuas.
+             Desde aquí se corrige sin tener que borrar y volver a crear. --}}
+        <div id="vinculoFamiliaBox" style="display:none;margin-top:.9rem;padding-top:.8rem;border-top:1px solid #e2e8f0">
+            <div class="section-title">🔗 Vínculo con otra incapacidad</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;
+                        background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:.6rem .8rem">
+                <div id="vinculoFamiliaTexto" style="font-size:.82rem;color:#334155;flex:1 1 18rem;min-width:0"></div>
+                <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+                    <button type="button" id="btnDesligarProrroga" class="btn btn-warning btn-sm"
+                            style="display:none" onclick="desligarProrrogaActual()"
+                            title="Dejarla como incapacidad independiente">✂️ Desligar</button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="ligarAOtraDesdeEditar()"
+                            title="Engancharla como prórroga de otra incapacidad de la misma persona">🔗 Ligar a otra</button>
+                </div>
+            </div>
+        </div>
     </div>
     <div class="modal-footer">
         <button type="button" class="btn btn-secondary" onclick="cerrarModal('modalCrear')">Cancelar</button>

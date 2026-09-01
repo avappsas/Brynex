@@ -1001,6 +1001,14 @@ Route::middleware('auth')->group(function () {
         // quedaron separadas.
         Route::get('/api/vecinas', [$ic, 'vecinas'])->name('api.vecinas');
         Route::post('/{id}/unir-prorroga', [$ic, 'unirProrroga'])->name('unir.prorroga');
+        // Sacar una prórroga de su familia cuando quedaron encadenadas dos que
+        // no son continuas. `unir-prorroga` ahora también MUEVE de familia.
+        Route::post('/{id}/desligar-prorroga', [$ic, 'desligarProrroga'])->name('desligar.prorroga');
+        // Cierre administrativo de una incapacidad que nunca entró a trámite
+        // (el cliente no envió papeles, se creó por error...). Sin permiso
+        // aparte: es reversible y queda en el timeline y en bitácora.
+        Route::post('/{id}/anular', [$ic, 'anular'])->name('anular');
+        Route::post('/{id}/reabrir', [$ic, 'reabrir'])->name('reabrir');
         Route::get('/{id}/cuentas-rs', [$ic, 'cuentasRazonSocial'])->name('cuentas.rs');
         // Deshacer el último cambio de estado y los movimientos de plata que
         // generó. Permiso aparte: ningún rol lo trae de fábrica, lo hereda el

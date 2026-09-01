@@ -36,6 +36,7 @@ class IncapacidadController extends Controller
         'cierre_exitoso',
         'rechazado',
         'negada',
+        'anulada',                // cierre administrativo del aliado, ver anular()
     ];
 
     /**
@@ -62,6 +63,8 @@ class IncapacidadController extends Controller
         'pagada_afiliado',
         'pagada_razon_social',
         'cierre_exitoso',
+        // Una anulada nunca se va a cobrar: no puede seguir sumando al pendiente.
+        'anulada',
     ];
 
     /**
@@ -230,8 +233,12 @@ class IncapacidadController extends Controller
                 $query->orderBy('valor_esperado', $dir)->orderBy('incapacidades.id', 'desc');
             }
         } else {
+            // La lista se arma de la constante y no a mano: cuando se agregó
+            // 'anulada' esta copia se quedó atrás y las anuladas volvían a
+            // encabezar la tabla como si necesitaran gestión.
+            $finales = "'".implode("','", self::ESTADOS_FINALES)."'";
             $query->orderByRaw("
-                CASE WHEN estado IN ('pagada','pagado_afiliado','pagada_afiliado','pagada_razon_social','cierre_exitoso','rechazado','negada') THEN 99 ELSE 0 END ASC
+                CASE WHEN estado IN ($finales) THEN 99 ELSE 0 END ASC
             ")->orderByDesc('fecha_recibido');
         }
 
@@ -305,6 +312,9 @@ class IncapacidadController extends Controller
 
         $totalPagadas = $resumen->filter(fn ($v, $k) => in_array($k, self::ESTADOS_PAGADA_COMPLETA))->sum();
         $totalNoPagadas = $resumen->get('rechazado', 0);
+        // Chip aparte: no son "no pagadas" (nunca se radicaron) y no deben
+        // ensuciar ese contador, pero tienen que ser alcanzables de un clic.
+        $totalAnuladas = $resumen->get('anulada', 0);
 
         $sinGestion7dias = DB::table('incapacidades as i')
             ->where('i.aliado_id', $alidoId)
@@ -359,7 +369,7 @@ class IncapacidadController extends Controller
             ->get(['e.id', 'e.empresa']);
 
         return view('admin.incapacidades.index', compact(
-            'incapacidades', 'resumen', 'totalActivas', 'totalPagadas', 'totalNoPagadas',
+            'incapacidades', 'resumen', 'totalActivas', 'totalPagadas', 'totalNoPagadas', 'totalAnuladas',
             'sinGestion10dias', 'sinGestion7dias',
             'trabajadores', 'epsList', 'arlList', 'pensionList', 'razonesSociales',
             'smmlv', 'vista', 'busqueda', 'opcionesColumna', 'empresasDisponibles'
@@ -641,7 +651,7 @@ class IncapacidadController extends Controller
     public function show(int $id)
     {
         $inc = $this->incapacidadesDelAliado()->with([
-            'quienRecibe', 'creadoPor', 'razonSocial',
+            'quienRecibe', 'creadoPor', 'razonSocial', 'anuladaPor:id,nombre',
             'documentos.user',
             'abonos.bancoCuenta',
         ])->findOrFail($id);
@@ -841,6 +851,24 @@ class IncapacidadController extends Controller
             // Única gestión que se puede deshacer hoy (null si no hay). La regla
             // vive en el controlador para que la vista no la duplique.
             'gestion_reversable_id' => $this->gestionReversable($inc, $gestionesFamilia)?->id,
+            // Datos de la anulación para el aviso del detalle. El motivo crudo
+            // ya viaja en `incapacidad`; aquí va lo que hay que resolver en PHP.
+            'anulacion' => $inc->estaAnulada() ? [
+                'motivo_label' => $inc->motivoAnulacionLabel(),
+                'observacion' => $inc->anulacion_observacion,
+                'por' => $inc->anuladaPor?->nombre,
+                'en' => $inc->anulada_en?->format('d/m/Y H:i'),
+                'estado_previo_label' => Incapacidad::ESTADOS[$inc->estado_previo_anulacion]['label']
+                    ?? $inc->estado_previo_anulacion,
+            ] : null,
+            // Prórrogas abiertas que el modal de anulación ofrece arrastrar.
+            'prorrogas_anulables' => $inc->prorrogas
+                ->whereNotIn('estado', self::ESTADOS_FINALES)
+                ->count(),
+            // Las que el modal de reapertura ofrece devolver junto con la madre.
+            'prorrogas_anuladas' => $inc->prorrogas
+                ->where('estado', 'anulada')
+                ->count(),
             // Timeline completo de la familia + los miembros para los chips.
             'gestiones_familia' => $gestionesFamilia,
             'familia_miembros' => $miembrosFamilia,
@@ -1850,6 +1878,9 @@ class IncapacidadController extends Controller
         $incs = $this->incapacidadesDelAliado()
             ->where('cedula_usuario', $request->cedula)
             ->when($request->excluir_id, fn ($q) => $q->where('id', '!=', $request->excluir_id))
+            // Una anulada se dio por inexistente: no sirve ni como aviso de
+            // vecina al crear ni como destino al unir una prórroga.
+            ->where('estado', '!=', 'anulada')
             ->orderBy('fecha_inicio')
             ->get(['id', 'incapacidad_padre_id', 'numero_proroga', 'fecha_inicio', 'fecha_terminacion',
                 'dias_incapacidad', 'tipo_entidad', 'entidad_nombre', 'estado', 'estado_pago',
@@ -1914,10 +1945,15 @@ class IncapacidadController extends Controller
             ? $this->incapacidadDelAliado($destino->incapacidad_padre_id)
             : $destino;
 
+        // Padre anterior, si la están MOVIENDO de familia. Antes esto se
+        // rechazaba y había que desligar y volver a unir en dos pasos; ahora
+        // una prórroga mal encadenada se corrige de una.
+        $padreAnterior = $hija->incapacidad_padre_id ? (int) $hija->incapacidad_padre_id : null;
+
         $error = match (true) {
             $padre->id === $hija->id => 'No se puede unir una incapacidad consigo misma.',
             $hija->cedula_usuario !== $padre->cedula_usuario => 'Son de cédulas distintas.',
-            (bool) $hija->incapacidad_padre_id => 'Esta incapacidad ya es prórroga de la #'.$hija->incapacidad_padre_id.'.',
+            $padreAnterior === $padre->id => 'Ya es prórroga de la #'.$padre->id.'.',
             Incapacidad::where('incapacidad_padre_id', $hija->id)->exists() => 'Esta incapacidad ya tiene prórrogas colgando. Une primero las hijas, o elige la otra dirección.',
             default => null,
         };
@@ -1934,11 +1970,18 @@ class IncapacidadController extends Controller
         $numProrroga = Incapacidad::where('incapacidad_padre_id', $padre->id)->count() + 1;
         $valorAntes = (float) $hija->valor_esperado;
 
-        $hija->update([
-            'incapacidad_padre_id' => $padre->id,
-            'numero_proroga' => $numProrroga,
-            'prorroga' => true,
-        ]);
+        DB::transaction(function () use ($hija, $padre, $numProrroga, $padreAnterior) {
+            $hija->update([
+                'incapacidad_padre_id' => $padre->id,
+                'numero_proroga' => $numProrroga,
+                'prorroga' => true,
+            ]);
+
+            // Si venía de otra familia, esa queda con un hueco en la numeración.
+            if ($padreAnterior) {
+                $this->renumerarProrrogas($padreAnterior);
+            }
+        });
 
         $valorDespues = $yaPagada ? $valorAntes : (float) $hija->calcularValorEsperado(persistir: true);
 
@@ -1948,9 +1991,10 @@ class IncapacidadController extends Controller
             registroId: $hija->id,
             descripcion: "Incapacidad #{$hija->id} unida como prórroga {$numProrroga} de la #{$padre->id} "
                 ."(Cédula: {$hija->cedula_usuario})."
+                .($padreAnterior ? " Venía de la familia de la #{$padreAnterior}." : '')
                 .($yaPagada ? ' El valor esperado no se recalculó: ya estaba pagada.' : ''),
             detalle: [
-                'incapacidad_padre_id' => ['old' => null, 'new' => $padre->id],
+                'incapacidad_padre_id' => ['old' => $padreAnterior, 'new' => $padre->id],
                 'numero_proroga' => ['old' => 0, 'new' => $numProrroga],
                 'valor_esperado' => ['old' => $valorAntes, 'new' => $valorDespues],
                 'ya_pagada' => $yaPagada,
@@ -1969,6 +2013,102 @@ class IncapacidadController extends Controller
                         : '')),
             'padre_id' => $padre->id,
         ]);
+    }
+
+    /**
+     * Saca una prórroga de su familia y la deja como incapacidad independiente.
+     *
+     * La contraparte de unirProrroga(). Hace falta porque las familias se arman
+     * solas en varios puntos —el encadenamiento de la migración legacy, el aviso
+     * de "vecinas" al crear— y a veces pegan dos incapacidades que no son
+     * continuas: la #415 de una cédula tenía como prórroga una que empieza dos
+     * meses y medio después de que terminó la original. Juntas suman días de
+     * familia que no existen y arrastran el valor esperado y el semáforo.
+     *
+     * Las hermanas se renumeran: si se desliga la 2 de tres prórrogas, la 3
+     * pasa a ser 2 y no queda un hueco en la numeración del modal.
+     */
+    public function desligarProrroga(int $id)
+    {
+        $hija = $this->incapacidadDelAliado($id);
+        $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
+
+        if (! $hija->incapacidad_padre_id) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Esta incapacidad no es prórroga de ninguna otra.',
+            ], 422);
+        }
+
+        $padreId = (int) $hija->incapacidad_padre_id;
+        $numAntes = $hija->numero_proroga;
+
+        // Mismo criterio que al unir: lo ya pagado no se recalcula, porque
+        // mover el valor esperado de un cobro liquidado descuadra lo girado.
+        $yaPagada = in_array($hija->estado, self::ESTADOS_FINALES, true)
+            || $hija->estado_pago !== 'pendiente';
+        $valorAntes = (float) $hija->valor_esperado;
+
+        DB::transaction(function () use ($hija, $padreId) {
+            $hija->update([
+                'incapacidad_padre_id' => null,
+                'numero_proroga' => 0,
+                'prorroga' => false,
+            ]);
+
+            $this->renumerarProrrogas($padreId);
+        });
+
+        $valorDespues = $yaPagada ? $valorAntes : (float) $hija->calcularValorEsperado(persistir: true);
+
+        Bitacora::registrar(
+            accion: 'updated',
+            modelo: 'Incapacidad',
+            registroId: $hija->id,
+            descripcion: "Incapacidad #{$hija->id} desligada de la #{$padreId}: deja de ser prórroga {$numAntes} "
+                ."y queda independiente (Cédula: {$hija->cedula_usuario})."
+                .($yaPagada ? ' El valor esperado no se recalculó: ya estaba pagada.' : ''),
+            detalle: [
+                'incapacidad_padre_id' => ['old' => $padreId, 'new' => null],
+                'numero_proroga' => ['old' => $numAntes, 'new' => 0],
+                'valor_esperado' => ['old' => $valorAntes, 'new' => $valorDespues],
+                'ya_pagada' => $yaPagada,
+            ],
+            alidoId: $alidoId
+        );
+
+        return response()->json([
+            'ok' => true,
+            'message' => "Desligada de la #{$padreId}. Ahora es una incapacidad independiente."
+                .($yaPagada
+                    ? ' El valor esperado se dejó como estaba porque ya está pagada.'
+                    : ($valorAntes != $valorDespues
+                        ? ' Valor esperado: $'.number_format($valorAntes, 0, ',', '.')
+                          .' → $'.number_format($valorDespues, 0, ',', '.').'.'
+                        : '')),
+        ]);
+    }
+
+    /**
+     * Deja la numeración de las prórrogas de un padre en 1..N sin huecos.
+     *
+     * Se llama después de sacar una del medio (desligar, o mover a otra
+     * familia): si no, quedan una "1" y una "3" y el modal de la familia
+     * muestra una prórroga 2 que no existe.
+     */
+    private function renumerarProrrogas(int $padreId): void
+    {
+        $hermanas = Incapacidad::where('incapacidad_padre_id', $padreId)
+            ->orderBy('numero_proroga')
+            ->orderBy('id')
+            ->get();
+
+        foreach ($hermanas as $i => $hermana) {
+            $nuevo = $i + 1;
+            if ((int) $hermana->numero_proroga !== $nuevo) {
+                $hermana->update(['numero_proroga' => $nuevo]);
+            }
+        }
     }
 
     // ── CREAR PRÓRROGA ───────────────────────────────────────────────────────
@@ -2443,6 +2583,241 @@ class IncapacidadController extends Controller
     }
 
     // ── DESTROY (soft delete) ────────────────────────────────────────────────
+    // ── ANULAR / REABRIR ─────────────────────────────────────────────────────
+
+    /**
+     * Cierra administrativamente una incapacidad que nunca entró a trámite.
+     *
+     * No es lo mismo que 'negada' ni 'rechazado': esos son la respuesta de la
+     * entidad. Anular es el aliado dando por muerto un caso que no prosperó del
+     * lado de acá — el cliente nunca mandó los papeles, se creó por error,
+     * quedó duplicada. Sin esto la incapacidad se quedaba "activa" para
+     * siempre: engordaba el contador de Activas, el de Sin gestión +7d y el
+     * valor por cobrar, escondiendo las que sí necesitan gestión.
+     *
+     * Es reversible: `reabrir()` la devuelve al punto exacto del flujo donde
+     * estaba, y las dos operaciones dejan gestión en el timeline y bitácora.
+     */
+    public function anular(Request $request, int $id)
+    {
+        $request->validate([
+            'motivo' => 'required|string|in:'.implode(',', array_keys(Incapacidad::MOTIVOS_ANULACION)),
+            'observacion' => 'nullable|string|max:500',
+            'incluir_prorrogas' => 'nullable|boolean',
+        ]);
+
+        $inc = $this->incapacidadDelAliado($id);
+
+        if ($inc->estado === 'anulada') {
+            return response()->json(['ok' => false, 'message' => 'Esta incapacidad ya está anulada.'], 422);
+        }
+
+        // 'otro' sin explicación deja el registro igual de mudo que antes de
+        // anularlo: dentro de seis meses nadie sabe por qué se cerró.
+        if ($request->motivo === 'otro' && ! filled($request->observacion)) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Si el motivo es "Otro", explica en la observación por qué se anula.',
+            ], 422);
+        }
+
+        // Si la plata ya se movió, anular deja abonos y consignaciones colgando
+        // de un caso que dice no haber existido. Esos se cierran por el ciclo de
+        // pago o se deshacen con la reversión de estado, no por aquí.
+        if (in_array($inc->estado, self::ESTADOS_SIN_PENDIENTE, true)) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'No se puede anular una incapacidad que ya tiene pagos registrados. '
+                    .'Si el pago fue un error, deshaz primero el cambio de estado.',
+            ], 422);
+        }
+
+        if ($inc->abonos()->exists()) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Esta incapacidad tiene abonos registrados. Elimínalos antes de anularla.',
+            ], 422);
+        }
+
+        // Solo las prórrogas que siguen abiertas: una hija ya pagada no se
+        // arrastra al cierre administrativo de la madre.
+        $prorrogas = $request->boolean('incluir_prorrogas')
+            ? $inc->prorrogas()->whereNotIn('estado', self::ESTADOS_FINALES)->get()
+            : collect();
+
+        $motivoLabel = Incapacidad::MOTIVOS_ANULACION[$request->motivo];
+        $observacion = trim((string) $request->observacion) ?: null;
+        // Se captura antes del update: después, $inc->estado ya es 'anulada'.
+        $estadoPrevioPadre = $inc->estado;
+        // Colección nueva y no $prorrogas->prepend($inc): prepend muta el
+        // original, y el padre terminaría contándose como una prórroga más.
+        $aAnular = collect([$inc])->concat($prorrogas);
+
+        DB::transaction(function () use ($aAnular, $request, $motivoLabel, $observacion) {
+            foreach ($aAnular as $registro) {
+                $estadoAnterior = $registro->estado;
+
+                $registro->update([
+                    'estado' => 'anulada',
+                    'motivo_anulacion' => $request->motivo,
+                    'anulacion_observacion' => $observacion,
+                    'estado_previo_anulacion' => $estadoAnterior,
+                    'anulada_por' => Auth::id(),
+                    'anulada_en' => now(),
+                ]);
+
+                GestionIncapacidad::create([
+                    'incapacidad_id' => $registro->id,
+                    'user_id' => Auth::id(),
+                    'aplica_a_familia' => false,
+                    'tipo' => 'otro',
+                    'tramite' => 'Anulación — '.$motivoLabel,
+                    'respuesta' => $observacion,
+                    'estado_resultado' => 'anulada',
+                    'cambia_estado' => true,
+                    'estado_nuevo' => 'anulada',
+                    'estado_anterior' => $estadoAnterior,
+                    'created_at' => now(),
+                ]);
+            }
+        });
+
+        $ids = $prorrogas->pluck('id')->prepend($inc->id);
+
+        Bitacora::registrar(
+            accion: 'updated',
+            modelo: 'Incapacidad',
+            registroId: $inc->id,
+            descripcion: "Incapacidad #{$inc->id} anulada (Cédula: {$inc->cedula_usuario}): {$motivoLabel}."
+                .($prorrogas->count() ? " Arrastró {$prorrogas->count()} prórroga(s)." : ''),
+            detalle: [
+                'motivo' => $request->motivo,
+                'observacion' => $observacion,
+                'estado_previo' => $estadoPrevioPadre,
+                'incapacidades_anuladas' => $ids->all(),
+            ],
+            alidoId: $inc->aliado_id
+        );
+
+        return response()->json([
+            'ok' => true,
+            'message' => $prorrogas->count()
+                ? "Incapacidad anulada junto con {$prorrogas->count()} prórroga(s)."
+                : 'Incapacidad anulada.',
+        ]);
+    }
+
+    /**
+     * Deshace una anulación y devuelve la incapacidad al flujo.
+     *
+     * Vuelve a `estado_previo_anulacion` y no a 'recibido' a la fuerza: una que
+     * estaba radicada esperando respuesta de la EPS debe volver a 'radicada',
+     * no al principio. Los dos movimientos quedan en el timeline, así que la
+     * anulación equivocada no se borra: se ve que pasó y que se corrigió.
+     */
+    /**
+     * A dónde vuelve una incapacidad al reabrirse.
+     *
+     * Las anuladas antes de que existiera la columna, y cualquiera cuyo estado
+     * previo ya no esté en el catálogo, arrancan de nuevo en 'recibido'. Un
+     * estado final tampoco sirve de destino: reabriría en algo ya cerrado.
+     */
+    private function destinoReapertura(?string $estadoPrevio): string
+    {
+        if (! $estadoPrevio
+            || ! array_key_exists($estadoPrevio, Incapacidad::ESTADOS)
+            || in_array($estadoPrevio, self::ESTADOS_FINALES, true)) {
+            return 'recibido';
+        }
+
+        return $estadoPrevio;
+    }
+
+    public function reabrir(Request $request, int $id)
+    {
+        $request->validate([
+            'observacion' => 'nullable|string|max:500',
+            'incluir_prorrogas' => 'nullable|boolean',
+        ]);
+
+        $inc = $this->incapacidadDelAliado($id);
+
+        if ($inc->estado !== 'anulada') {
+            return response()->json(['ok' => false, 'message' => 'Esta incapacidad no está anulada.'], 422);
+        }
+
+        $destino = $this->destinoReapertura($inc->estado_previo_anulacion);
+
+        $motivoPrevio = $inc->motivoAnulacionLabel();
+        $observacion = trim((string) $request->observacion) ?: null;
+
+        // Contraparte de `incluir_prorrogas` en anular(): si la anulación
+        // arrastró a las hijas, reabrir solo a la madre las dejaría anuladas
+        // y sin forma de volver salvo entrando a cada una.
+        $prorrogas = $request->boolean('incluir_prorrogas')
+            ? $inc->prorrogas()->where('estado', 'anulada')->get()
+            : collect();
+
+        $aReabrir = collect([$inc])->concat($prorrogas);
+
+        $padreId = $inc->id;
+
+        DB::transaction(function () use ($aReabrir, $padreId, $destino, $observacion) {
+            foreach ($aReabrir as $registro) {
+                // Cada una vuelve a SU propio estado previo, no al del padre:
+                // la madre podía estar radicada y la prórroga apenas recibida.
+                // El del padre ya viene resuelto arriba, con su mismo respaldo.
+                $suyo = $registro->id === $padreId
+                    ? $destino
+                    : $this->destinoReapertura($registro->estado_previo_anulacion);
+
+                $registro->update([
+                    'estado' => $suyo,
+                    'motivo_anulacion' => null,
+                    'anulacion_observacion' => null,
+                    'estado_previo_anulacion' => null,
+                    'anulada_por' => null,
+                    'anulada_en' => null,
+                ]);
+
+                GestionIncapacidad::create([
+                    'incapacidad_id' => $registro->id,
+                    'user_id' => Auth::id(),
+                    'aplica_a_familia' => false,
+                    'tipo' => 'otro',
+                    'tramite' => 'Reapertura — se deshace la anulación',
+                    'respuesta' => $observacion,
+                    'estado_resultado' => $suyo,
+                    'cambia_estado' => true,
+                    'estado_nuevo' => $suyo,
+                    'estado_anterior' => 'anulada',
+                    'created_at' => now(),
+                ]);
+            }
+        });
+
+        Bitacora::registrar(
+            accion: 'updated',
+            modelo: 'Incapacidad',
+            registroId: $inc->id,
+            descripcion: "Incapacidad #{$inc->id} reabierta (Cédula: {$inc->cedula_usuario}): vuelve a "
+                .(Incapacidad::ESTADOS[$destino]['label'] ?? $destino).". Estaba anulada por: {$motivoPrevio}.",
+            detalle: [
+                'estado_destino' => $destino,
+                'motivo_anulacion_previo' => $motivoPrevio,
+                'observacion' => $observacion,
+                'prorrogas_reabiertas' => $prorrogas->pluck('id')->all(),
+            ],
+            alidoId: $inc->aliado_id
+        );
+
+        return response()->json([
+            'ok' => true,
+            'message' => 'Incapacidad reabierta en '.(Incapacidad::ESTADOS[$destino]['label'] ?? $destino).'.'
+                .($prorrogas->count() ? " Se reabrieron también {$prorrogas->count()} prórroga(s)." : ''),
+        ]);
+    }
+
     public function destroy(int $id)
     {
         $inc = $this->incapacidadDelAliado($id);
