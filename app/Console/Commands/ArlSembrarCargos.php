@@ -38,6 +38,41 @@ class ArlSembrarCargos extends Command
         ['AUXILIAR CONTABLE',             '4121', 1, false],
         ['SUPERVISOR DE VENTAS',          '1412', 1, false],
 
+        // ── Administrativos ──
+        ['AUXILIAR ADMINISTRATIVO',       '4123', 1, false],
+        ['ASISTENTE DE GERENCIA',         '4113', 1, false],
+        ['DIGITADOR',                     '4112', 1, false],
+        ['ARCHIVISTA',                    '4141', 1, false],
+        ['CAJERO',                        '4211', 1, false],
+        ['AUXILIAR DE INVENTARIOS',       '4131', 1, false],
+        ['AUXILIAR DE NOMINA',            '4122', 1, false],
+        ['CONTADOR',                      '2411', 1, false],
+        ['ANALISTA FINANCIERO',           '2413', 1, false],
+        ['ADMINISTRADOR DE EMPRESAS',     '2419', 1, false],
+        ['COORDINADOR ADMINISTRATIVO',    '1411', 1, false],
+        ['JEFE DE TALENTO HUMANO',        '1322', 1, false],
+        ['JEFE ADMINISTRATIVO Y FINANCIERO', '1321', 1, false],
+        ['GERENTE',                       '1211', 1, false],
+        ['DIRECTOR DE SUCURSAL',          '1212', 1, false],
+        ['JEFE DE SISTEMAS',              '1326', 1, false],
+
+        // ── Comerciales ──
+        ['JEFE COMERCIAL',                '1323', 1, false],
+        ['JEFE DE MERCADEO Y PUBLICIDAD', '1324', 1, false],
+        ['COORDINADOR DE MERCADEO',       '1413', 1, false],
+        ['AGENTE DE SEGUROS',             '3411', 1, false],
+        ['ASESOR INMOBILIARIO',           '3412', 1, false],
+        ['ASESOR DE VIAJES',              '3413', 1, false],
+        ['COMPRADOR',                     '3415', 1, false],
+        ['AUXILIAR DE COMPRAS',           '3421', 1, false],
+        ['AUXILIAR DE COMERCIO EXTERIOR', '3422', 1, false],
+        ['CORREDOR COMERCIAL',            '3429', 1, false],
+        ['ASESOR DE TELEVENTAS',          '5342', 1, false],
+        // Van a la calle a diario, así que rara vez son clase I.
+        ['VENDEDOR EN PUESTO DE MERCADO', '5330', 2, false],
+        ['VENDEDOR AMBULANTE',            '5341', 2, false],
+        ['IMPULSADOR / MERCADERISTA',     '5320', 2, false],
+
         // ── Confección ──
         ['OPERARIO DE MAQUINA DE COSER',  '8263', 2, true],
         ['CORTADOR / PATRONISTA',         '8267', 2, false],
