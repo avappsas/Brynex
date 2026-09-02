@@ -807,45 +807,6 @@ async function guardarFechaManual() {
     else { alert(data.message || data.mensaje || 'Error al guardar.'); }
 }
 
-function abrirRenovar(ctx) {
-    document.getElementById('renovar-nombre').textContent = ctx.nombre_completo || ctx.nombre;
-    document.getElementById('renovar-rs').textContent     = ctx.razon_social;
-    document.getElementById('renovar-contrato-id').value  = ctx.id;
-    // Sugerir el día siguiente a fecha_arl actual, o mañana si sin fecha
-    const base = ctx.fecha_arl
-        ? new Date(ctx.fecha_arl + 'T00:00:00')
-        : new Date();
-    const sugerida = new Date(base);
-    if (ctx.fecha_arl) sugerida.setDate(sugerida.getDate() + 29);
-    document.getElementById('renovar-fecha').value = sugerida.toISOString().split('T')[0];
-    document.getElementById('modalRenovar').classList.add('open');
-}
-
-async function guardarRenovacion() {
-    const id     = document.getElementById('renovar-contrato-id').value;
-    const fecha  = document.getElementById('renovar-fecha').value;
-    if (!fecha) { alert('Selecciona la fecha de afiliación ARL.'); return; }
-
-    const btn = document.querySelector('#modalRenovar .btn-save');
-    btn.disabled = true; btn.textContent = '⏳ Guardando...';
-
-    const res = await fetch(`/admin/gestion-arl/${id}/renovar`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
-        body: JSON.stringify({ fecha_arl: fecha }),
-    });
-    const data = await res.json();
-    btn.disabled = false; btn.textContent = '✅ Registrar Fecha ARL';
-
-    if (data.ok) {
-        cerrarModal('modalRenovar');
-        // Recargar página para actualizar semáforos
-        location.reload();
-    } else {
-        alert(data.message || 'Error al guardar.');
-    }
-}
-
 /* ── Modal Facturar (iframe hacia la vista de facturación individual o empresa) ── */
 function abrirFacturar(ctx) {
     let url;
