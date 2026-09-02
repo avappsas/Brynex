@@ -77,11 +77,12 @@
         </button>
         @endif
 
-        {{-- La conciliación vive en Informes y no como pestaña: es una revisión
-             periódica de todas las empresas, no un dato de esta ficha. Desde
-             aquí se llega directo a la fila de esta empresa. --}}
-        @if($rs->arl_poliza)
-        <a href="{{ route('admin.informes.conciliacion_arl') }}#empresa-{{ preg_replace('/\D/', '', (string) $rs->nit) }}"
+        {{-- La conciliación vive en BryNex y no como pestaña: cruza la póliza
+             contra los contratos de todos los aliados, no es un dato de esta
+             ficha. Desde aquí se llega directo a la fila de esta empresa —solo
+             para quien pueda abrir esa pantalla, que es de BryNex. --}}
+        @if($rs->arl_poliza && auth()->user()?->can('brynex_cierre.ver'))
+        <a href="{{ route('brynex.conciliacion_arl') }}#empresa-{{ preg_replace('/\D/', '', (string) $rs->nit) }}"
            class="btn-claves" style="text-decoration:none;display:inline-block;"
            title="Comparar los afiliados de esta póliza en ARL Sura contra los contratos vigentes de BryNex">
             🛡️ Conciliar ARL

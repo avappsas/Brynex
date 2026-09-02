@@ -6,7 +6,7 @@
 <div style="max-width:1180px;margin:0 auto;padding:1.25rem;">
 
     <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.35rem;">
-        <a href="{{ route('admin.informes.hub') }}" style="color:#64748b;text-decoration:none;font-size:.8rem;">← Informes</a>
+        <a href="{{ route('brynex.hub') }}" style="color:#64748b;text-decoration:none;font-size:.8rem;">← BryNex</a>
     </div>
     <h1 style="font-size:1.2rem;font-weight:700;color:#0d2550;margin:0 0 .2rem;">🛡️ Conciliación ARL Sura</h1>
     <p style="font-size:.8rem;color:#64748b;margin:0 0 1.1rem;">
@@ -95,7 +95,7 @@ async function conciliar(nit, btn) {
 
     let d;
     try {
-        const r = await fetch(`/admin/informes/conciliacion-arl/${nit}`, { headers: { 'Accept': 'application/json' } });
+        const r = await fetch(`/brynex/conciliacion-arl/${nit}`, { headers: { 'Accept': 'application/json' } });
         d = await r.json();
     } catch (e) {
         d = { ok: false, mensaje: 'Se perdió la conexión con el servidor.' };
@@ -168,7 +168,7 @@ async function verRiesgos(nit, btn) {
 
     let d;
     try {
-        const r = await fetch(`/admin/informes/conciliacion-arl/${nit}/riesgos`, { headers: { 'Accept': 'application/json' } });
+        const r = await fetch(`/brynex/conciliacion-arl/${nit}/riesgos`, { headers: { 'Accept': 'application/json' } });
         d = await r.json();
     } catch (e) {
         d = { ok: false, mensaje: 'Se perdió la conexión con el servidor.' };

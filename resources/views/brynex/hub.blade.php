@@ -149,6 +149,14 @@
                     </div>
                     <div class="hc-arrow" style="color:#4338ca">→</div>
                 </a>
+                <a href="{{ route('brynex.conciliacion_arl') }}" class="hub-card" style="border-color:#c7d2fe;background:#eef2ff">
+                    <div class="hc-icon">🛡️</div>
+                    <div class="hc-body">
+                        <div class="hc-name" style="color:#4338ca">Conciliación ARL Sura</div>
+                        <div class="hc-desc">Afiliados del portal de Sura contra los contratos vigentes de todos los aliados que comparten el NIT · Diferencias de nivel de riesgo</div>
+                    </div>
+                    <div class="hc-arrow" style="color:#4338ca">→</div>
+                </a>
             </div>
         </div>
         @endcan

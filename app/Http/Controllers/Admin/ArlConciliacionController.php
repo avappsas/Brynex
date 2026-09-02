@@ -62,7 +62,7 @@ class ArlConciliacionController extends Controller
             ->sortBy('razon_social')
             ->values();
 
-        return view('admin.informes.conciliacion_arl', compact('empresas'));
+        return view('brynex.conciliacion_arl', compact('empresas'));
     }
 
     /**
