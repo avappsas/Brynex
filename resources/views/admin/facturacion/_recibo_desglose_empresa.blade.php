@@ -54,6 +54,12 @@ $dDif = $dTotal - ($dSS + $dServicios);
 if ($dDif !== 0) { $dServicios += $dDif; }
 
 $sAnt      = (int)($saldoAnterior ?? 0);
+
+// Lo que el cliente queda debiendo (o a favor) DESPUÉS de este recibo: el
+// saldo que traía más el de estas filas. Mostrar solo el de las filas decía
+// "Al día" a quien pagaba el mes corriente pero arrastraba una deuda vieja,
+// y así nadie se la cobraba.
+$sProxTotal = $sAnt + $dSaldoProx;
 @endphp
 
 <div class="desglose-emp">
@@ -124,18 +130,27 @@ $sAnt      = (int)($saldoAnterior ?? 0);
                  TOTAL A PAGAR del recibo. --}}
             <div class="dg-row dg-sub"><span>Pagado (efvo + consig + antic.)</span><b>{{ $fmt($dPagado) }}</b></div>
 
-            {{-- Saldo próximo: lo que realmente queda para el mes siguiente --}}
-            @if($dSaldoProx > 0)
+            {{-- Saldo próximo: lo que realmente queda para el mes siguiente,
+                 arrastrando el saldo anterior. --}}
+            @if($sProxTotal > 0)
             <div class="dg-row dg-saldo dg-favor">
-                <span>Saldo próximo &mdash; A FAVOR</span><b>{{ $fmt($dSaldoProx) }}</b>
+                <span>Saldo próximo &mdash; A FAVOR</span><b>{{ $fmt($sProxTotal) }}</b>
             </div>
-            @elseif($dSaldoProx < 0)
+            @elseif($sProxTotal < 0)
             <div class="dg-row dg-saldo dg-debe">
-                <span>Saldo próximo &mdash; PENDIENTE</span><b>{{ $fmt(abs($dSaldoProx)) }}</b>
+                <span>Saldo próximo &mdash; PENDIENTE</span><b>{{ $fmt(abs($sProxTotal)) }}</b>
             </div>
             @else
             <div class="dg-row dg-saldo dg-cero">
                 <span>Saldo próximo</span><b>Al día</b>
+            </div>
+            @endif
+
+            {{-- Cuando la deuda no es de este recibo sino de atrás, decirlo:
+                 el TOTAL A PAGAR es solo el del período. --}}
+            @if($sProxTotal < 0 && $dSaldoProx >= 0)
+            <div class="dg-row" style="color:#b91c1c;font-size:.9em">
+                <span>↳ deuda de períodos anteriores, no incluida en el total</span><b></b>
             </div>
             @endif
         </div>
