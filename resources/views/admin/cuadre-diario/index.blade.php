@@ -269,11 +269,55 @@ $totalFacturas   = array_sum($canales['conteo']);
     </div>
     @endif
 
+    {{-- El 31 de mes casi todo el recaudo es del ciclo siguiente: plata que
+         entra hoy pero se gasta el mes entrante. Sin separarla, el día parece
+         una caja enorme que en realidad está comprometida. El card muestra en
+         grande la canasta que manda ese día: lo adelantado, o la cartera vieja
+         cuando no se cobró nada por adelantado. --}}
+    @php
+        $per = $resumen['periodos'];
+        $mandaAtraso = $per['proximo']['total'] <= 0 && $per['atrasado']['total'] > 0;
+        $foco = $mandaAtraso ? $per['atrasado'] : $per['proximo'];
+    @endphp
+    @if($per['proximo']['total'] > 0 || $per['atrasado']['total'] > 0)
+    <div class="cd-card" style="border-color:{{ $mandaAtraso ? '#fde68a' : '#bfdbfe' }}">
+        <div class="cd-card-title" style="color:{{ $mandaAtraso ? '#b45309' : '#1d4ed8' }}">
+            📅 {{ $mandaAtraso ? 'De períodos atrasados' : 'Del próximo período' }}
+        </div>
+        <div class="cd-card-val" style="color:{{ $mandaAtraso ? '#b45309' : '#1d4ed8' }}">{{ $fmt($foco['total']) }}</div>
+        <div style="font-size:.72rem;color:#64748b;margin-top:.3rem">
+            efectivo {{ $fmt($foco['efectivo']) }} · consignado {{ $fmt($foco['consignado']) }}<br>
+            {{ $foco['num'] }} {{ \Illuminate\Support\Str::plural('factura', $foco['num']) }}
+            @if(!$mandaAtraso && $per['etiqueta_proximo']) de {{ $per['etiqueta_proximo'] }} @endif
+            @if($mandaAtraso) de meses anteriores @endif
+            <div style="margin-top:.25rem;padding-top:.25rem;border-top:1px solid #e2e8f0">
+                del mes {{ $fmt($per['actual']['total']) }}
+                @if(!$mandaAtraso && $per['atrasado']['total'] > 0)
+                    · <span style="color:#b45309">atrasado {{ $fmt($per['atrasado']['total']) }}</span>
+                @endif
+                @if($mandaAtraso && $per['proximo']['total'] > 0)
+                    · próximo {{ $fmt($per['proximo']['total']) }}
+                @endif
+            </div>
+        </div>
+    </div>
+    @endif
+
     @if($resumen['total_prestado'] > 0)
     <div class="cd-card" style="border-color:#e9d5ff">
         <div class="cd-card-title" style="color:#6b21a8">⚠️ Prestado hoy</div>
         <div class="cd-card-val" style="color:#7c3aed">{{ $fmt($resumen['total_prestado']) }}</div>
-        <div style="font-size:.72rem;color:#64748b;margin-top:.3rem">Cartera por cobrar, no es ingreso</div>
+        <div style="font-size:.72rem;color:#64748b;margin-top:.3rem">
+            Cartera por cobrar, no es ingreso
+            {{-- La factura marcada pagada sin recibir plata es cartera igual que el préstamo. --}}
+            @if($resumen['num_sin_pago'] > 0)
+                <br><span style="color:#b45309">
+                    incluye {{ $resumen['num_sin_pago'] }}
+                    {{ \Illuminate\Support\Str::plural('factura', $resumen['num_sin_pago']) }}
+                    sin pago registrado ({{ $fmt($resumen['total_sin_pago']) }})
+                </span>
+            @endif
+        </div>
     </div>
     @endif
 </div>

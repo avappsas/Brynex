@@ -734,8 +734,14 @@ class CuadreDiarioController extends Controller
             ->whereNotIn('estado', [Anticipo::ESTADO_DEVUELTO])
             ->sum('valor');
 
-        // Informativo: lo que se prestó hoy no es ingreso, es cartera.
-        $totalPrestado = (int) $facturasDia->where('es_prestamo', true)->sum('total');
+        // Informativo: lo que se prestó hoy no es ingreso, es cartera. Junto al
+        // préstamo formal va la factura que se marcó pagada sin recibir un peso
+        // (ver facturasSinPago): también es plata por cobrar, y así el card
+        // cuadra con la columna 'prestado' de los canales.
+        $sinPago = $this->facturasSinPago($facturasDia);
+        $facturasSinPago = $facturasDia->filter(fn ($f) => isset($sinPago[$f->id]));
+        $totalPrestado = (int) $facturasDia->where('es_prestamo', true)->sum('total')
+                       + (int) $facturasSinPago->sum('total');
 
         $gastosEfectivo = (int) Gasto::where('aliado_id', $aliadoId)
             ->when($usuarioId, fn ($q) => $q->where('usuario_id', $usuarioId))
@@ -760,6 +766,9 @@ class CuadreDiarioController extends Controller
         // numero_factura: el valor se suma todo, pero se cuenta una sola vez.
         $numFacturas = $conValor->pluck('numero_factura')->unique()->count();
 
+        // Qué mes está cobrando la plata que entró hoy (ver recaudoPorPeriodo).
+        $periodos = $this->recaudoPorPeriodo($conValor, $fecha);
+
         $baseCaja  = $usuarioId === null
             ? CajaMenor::montoActivoTotal($aliadoId)
             : CajaMenor::montoActivo($aliadoId, $usuarioId);
@@ -773,11 +782,69 @@ class CuadreDiarioController extends Controller
             'cobros_cartera'     => $cobrosCartera,
             'anticipos_efectivo' => $anticiposEfectivo,
             'total_prestado'     => $totalPrestado,
+            'periodos'           => $periodos,
+            'num_prestamos'      => $facturasDia->where('es_prestamo', true)->count(),
+            'num_sin_pago'       => $facturasSinPago->count(),
+            'total_sin_pago'     => (int) $facturasSinPago->sum('total'),
             'gastos_efectivo'    => $gastosEfectivo,
             'consignado'         => $consignado,
             'recibido_efectivo'  => $recibido,
             'saldo_esperado'     => $baseCaja + $recibido - $gastosEfectivo,
         ];
+    }
+
+    /**
+     * Reparte el recaudo del día según el mes que cobra cada factura.
+     *
+     * `facturas.mes/anio` es el mes que se está cobrando, no el de servicio
+     * (ver la convención en Plano::periodoPlano). Comparado con el mes del
+     * cuadre, la plata del día cae en tres canastas:
+     *
+     *   atrasado → cartera vieja que se recupera hoy
+     *   del mes  → el ciclo corriente
+     *   próximo  → cobro adelantado: entra hoy pero se gasta el mes entrante
+     *
+     * Sin esta separación, un 31 de mes parece un día de caja enorme cuando en
+     * realidad casi todo es plata del ciclo siguiente que hay que guardar para
+     * pagar sus planillas.
+     */
+    private function recaudoPorPeriodo($facturas, string $fecha): array
+    {
+        $refCuadre = ((int) substr($fecha, 0, 4)) * 12 + (int) substr($fecha, 5, 2);
+
+        $vacio = ['total' => 0, 'efectivo' => 0, 'consignado' => 0, 'num' => 0];
+        $g = ['atrasado' => $vacio, 'actual' => $vacio, 'proximo' => $vacio];
+        $mesesProximo = [];
+
+        foreach ($facturas as $f) {
+            $ref = ((int) $f->anio) * 12 + (int) $f->mes;
+            if ($ref <= 0) continue;              // factura vieja sin período
+
+            $k = $ref < $refCuadre ? 'atrasado' : ($ref > $refCuadre ? 'proximo' : 'actual');
+
+            $g[$k]['total']      += (int) $f->total;
+            $g[$k]['efectivo']   += (int) $f->valor_efectivo;
+            $g[$k]['consignado'] += (int) $f->valor_consignado;
+            $g[$k]['num']++;
+
+            if ($k === 'proximo') {
+                $etq = sprintf('%04d-%02d', (int) $f->anio, (int) $f->mes);
+                $mesesProximo[$etq] = ($mesesProximo[$etq] ?? 0) + 1;
+            }
+        }
+
+        // Nombre del período que más pesa entre los adelantados, para el card.
+        arsort($mesesProximo);
+        $g['etiqueta_proximo'] = null;
+        if ($mesesProximo) {
+            $meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+                      'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+            [$anio, $mes] = explode('-', array_key_first($mesesProximo));
+            $g['etiqueta_proximo'] = $meses[(int) $mes - 1] . ' ' . $anio
+                . (count($mesesProximo) > 1 ? ' y otros' : '');
+        }
+
+        return $g;
     }
 
     /** Facturas que el usuario cobró ese día, con las columnas que usan el resumen y los canales. */
@@ -789,11 +856,60 @@ class CuadreDiarioController extends Controller
             ->get([
                 'id', 'tipo', 'estado', 'es_prestamo', 'forma_pago', 'total',
                 'valor_efectivo', 'valor_consignado', 'numero_factura', 'factura_retiro_origen_id',
+                'saldo_proximo', 'anticipo_aplicado', 'mes', 'anio',
                 'total_ss', 'v_eps', 'v_arl', 'v_afp', 'v_caja',
                 'admon', 'admin_asesor', 'seguro', 'afiliacion', 'mensajeria',
                 'otros', 'iva', 'retiro', 'mora', 'otros_admon',
                 'dist_admon', 'dist_asesor', 'dist_retiro', 'dist_utilidad', 'dist_encargado',
             ]);
+    }
+
+    /**
+     * Facturas del día que se marcaron pagadas pero no movieron un peso: ni
+     * efectivo, ni consignación, ni anticipo previo que las cubriera. El
+     * cliente quedó debiendo.
+     *
+     * Existen porque al facturar se declara una `forma_pago` aunque el valor
+     * no se registre. Para la caja no son recaudo — el card de efectivo ya las
+     * deja fuera al sumar `valor_efectivo` real — así que los canales tampoco
+     * deben contarlas como recaudo: van a la columna de cartera por cobrar.
+     *
+     * Se mira el LOTE, no la fila: en una factura de empresa el pago suele
+     * quedar cargado a una sola fila del mismo `numero_factura` y las demás
+     * aparecen en cero sin estar impagas. Solo cuenta como sin pago cuando el
+     * lote entero quedó en cero.
+     *
+     * @return array<int,true> ids de factura, para consultar con isset()
+     */
+    private function facturasSinPago($facturas): array
+    {
+        // Plata que recibió cada lote (numero_factura). El 0 es el retiro sin
+        // cobro: no agrupa nada, cada fila se mira sola.
+        $plataLote = [];
+        foreach ($facturas as $f) {
+            if ($f->es_prestamo) continue;
+            $llave = (int) $f->numero_factura !== 0 ? 'n' . $f->numero_factura : 'f' . $f->id;
+            $plataLote[$llave] = ($plataLote[$llave] ?? 0)
+                + (float) $f->valor_efectivo
+                + (float) $f->valor_consignado
+                + (float) $f->anticipo_aplicado;
+        }
+
+        $sinPago = [];
+        foreach ($facturas as $f) {
+            if ($f->es_prestamo || (float) $f->total <= 0) continue;
+
+            $llave = (int) $f->numero_factura !== 0 ? 'n' . $f->numero_factura : 'f' . $f->id;
+            if (($plataLote[$llave] ?? 0) >= 1) continue;   // el lote sí recibió plata
+
+            // saldo_proximo = pagado - total al facturar. Si no es negativo, la
+            // factura quedó cubierta y no hay deuda que llevar a cartera.
+            if ($f->saldo_proximo !== null && (float) $f->saldo_proximo >= 0) continue;
+
+            $sinPago[$f->id] = true;
+        }
+
+        return $sinPago;
     }
 
     /**
@@ -809,10 +925,15 @@ class CuadreDiarioController extends Controller
      * seguridad social liquidada) no reparte nada: esa plata nunca entró y no
      * es recaudo del día. Es el mismo criterio con el que el resumen deja los
      * papeles sin plata fuera del total facturado.
+     *
+     * `$sinPago` marca la factura que quedó debiendo (ver facturasSinPago):
+     * va entera a cartera, igual que un préstamo. Sin eso caía en el último
+     * caso — clasificar por la forma de pago declarada — y los canales
+     * contaban como efectivo una plata que nunca llegó a la caja.
      */
-    private function pesosPago(Factura $f): array
+    private function pesosPago(Factura $f, bool $sinPago = false): array
     {
-        if ($f->es_prestamo || $f->forma_pago === 'prestamo' || $f->estado === Factura::ESTADO_PRESTAMO) {
+        if ($f->es_prestamo || $f->forma_pago === 'prestamo' || $f->estado === Factura::ESTADO_PRESTAMO || $sinPago) {
             return ['efectivo' => 0.0, 'consignado' => 0.0, 'prestado' => 1.0];
         }
 
@@ -844,9 +965,10 @@ class CuadreDiarioController extends Controller
     {
         $sum = [];
         $conteo = ['planilla' => 0, 'afiliacion' => 0, 'otro' => 0, 'prestamo' => 0, 'retiro' => 0];
+        $sinPago = $this->facturasSinPago($facturas);
 
         foreach ($facturas as $f) {
-            $w = $this->pesosPago($f);
+            $w = $this->pesosPago($f, isset($sinPago[$f->id]));
 
             // Papel sin plata (planilla de omiso, corrección): no reparte nada
             // y tampoco cuenta como factura del día.
