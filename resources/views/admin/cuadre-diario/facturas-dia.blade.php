@@ -142,6 +142,11 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
     <div class="fd-card">
         <div class="lbl">Seg. social</div>
         <div class="val" style="color:#475569">{{ $fmt($totales['seg_social']) }}</div>
+        @if($hayParafiscales ?? false)
+        <div style="font-size:.66rem;color:#c2410c;margin-top:.15rem">
+            incluye {{ $fmt($totales['parafiscales']) }} de parafiscales
+        </div>
+        @endif
     </div>
     <div class="fd-card">
         <div class="lbl">Admón</div>
@@ -191,6 +196,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
             <th class="num">Admón empresa</th>
             <th class="num">Admón asesor</th>
             <th class="num">Seguro</th>
+            @if($hayParafiscales ?? false)<th class="num" style="color:#c2410c">Parafiscales</th>@endif
             <th class="num">Seg. social</th>
             <th class="num">IVA</th>
 
@@ -297,6 +303,9 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
             <td class="num">{{ $fmt($f->admon) }}</td>
             <td class="num">{{ $fmt($f->admin_asesor) }}</td>
             <td class="num">{{ $fmt($f->seguro) }}</td>
+            @if($hayParafiscales ?? false)
+            <td class="num" style="color:#c2410c">{{ $fmt($f->v_parafiscales) }}</td>
+            @endif
             <td class="num">{{ $fmt($f->total_ss) }}</td>
             <td class="num">{{ $fmt($f->iva) }}</td>
             @php
@@ -333,6 +342,9 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
             <td class="num">{{ $fmt($totales['admon']) }}</td>
             <td class="num">{{ $fmt($totales['asesor']) }}</td>
             <td class="num"></td>
+            @if($hayParafiscales ?? false)
+            <td class="num" style="color:#c2410c">{{ $fmt($totales['parafiscales']) }}</td>
+            @endif
             <td class="num">{{ $fmt($totales['seg_social']) }}</td>
             <td class="num">{{ $fmt($totales['iva']) }}</td>
             <td colspan="5"></td>

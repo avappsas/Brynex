@@ -857,7 +857,7 @@ class CuadreDiarioController extends Controller
                 'id', 'tipo', 'estado', 'es_prestamo', 'forma_pago', 'total',
                 'valor_efectivo', 'valor_consignado', 'numero_factura', 'factura_retiro_origen_id',
                 'saldo_proximo', 'anticipo_aplicado', 'mes', 'anio',
-                'total_ss', 'v_eps', 'v_arl', 'v_afp', 'v_caja',
+                'total_ss', 'v_eps', 'v_arl', 'v_afp', 'v_caja', 'v_parafiscales',
                 'admon', 'admin_asesor', 'seguro', 'afiliacion', 'mensajeria',
                 'otros', 'iva', 'retiro', 'mora', 'otros_admon',
                 'dist_admon', 'dist_asesor', 'dist_retiro', 'dist_utilidad', 'dist_encargado',
@@ -1010,7 +1010,13 @@ class CuadreDiarioController extends Controller
                 $add('iva',          $f->iva);
                 $add('otros_admon',  $f->otros_admon);
                 $add('retiro_campo', $f->retiro);
-                $add('admin_asesor', $f->admin_asesor);   // informativo: sale de admon
+                // La comisión del asesor se le cobra al cliente aparte de la
+                // administración: son dos columnas distintas del contrato y las
+                // dos entran en el total de la factura. Iba como renglón
+                // informativo fuera del total del canal, y por eso el canal 1
+                // quedaba corto justo por este valor cada vez que un contrato
+                // traía asesor.
+                $add('admin_asesor', $f->admin_asesor);
                 $add('otros_ss',     $f->otros);          // 'otros' pertenece al canal SS
             }
 
@@ -1018,6 +1024,9 @@ class CuadreDiarioController extends Controller
             $add('arl',  $f->v_arl);
             $add('afp',  $f->v_afp);
             $add('caja', $f->v_caja);
+            // SENA e ICBF del aportante no exonerado: es plata que se va a la
+            // planilla como los demás aportes, no ingreso del aliado.
+            $add('parafiscales', $f->v_parafiscales);
             $add('mora', $f->mora);
         }
 
@@ -1042,6 +1051,7 @@ class CuadreDiarioController extends Controller
         // ── Canal 1: Administración ──────────────────────────────────────
         $c1 = [
             $fila('Administración',   'admon',        '#3b82f6'),
+            $fila('Comisión asesor',  'admin_asesor', '#f59e0b'),
             $fila('Seguro',           'seguro',       '#0ea5e9'),
             $fila('Mensajería',       'mensajeria',   '#06b6d4'),
             $fila('IVA',              'iva',          '#8b5cf6'),
@@ -1075,6 +1085,11 @@ class CuadreDiarioController extends Controller
             $fila('ARL',      'arl',      '#14b8a6'),
             $fila('Pensión',  'afp',      '#2dd4bf'),
             $fila('Caja',     'caja',     '#5eead4'),
+            $fila('Parafiscales', 'parafiscales', '#f97316'),
+            // 'Otros SS' es el campo `otros` del modal ("Otros planilla"): lo que
+            // se le suma a la planilla y no es EPS, ARL, pensión ni caja. Va en
+            // este canal y no en administración porque no lo gana el aliado: se
+            // paga con el resto de los aportes.
             $fila('Otros SS', 'otros_ss', '#99f6e4'),
             // La mora al cliente no es ingreso del aliado: entra para cubrir lo que
             // la planilla cobra de mas por pagarse tarde. Va en este canal, que es
@@ -1094,7 +1109,6 @@ class CuadreDiarioController extends Controller
         return [
             'conteo'       => $conteo,
             'hay_prestado' => $hayPrestado,
-            'nota'         => $fila('Comisión asesor', 'admin_asesor', '#f59e0b'),
             'canales'      => [
                 [
                     'n' => 1, 'titulo' => '💼 Administración', 'gradiente' => '#1e3a8a,#2563eb',
@@ -1331,21 +1345,28 @@ class CuadreDiarioController extends Controller
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Facturas del día');
 
-        $headers = [
-            'No.', 'Factura', 'Tipo', 'Cédula', 'Nombres', 'Forma pago',
-            'Pago total', 'Efectivo', 'Consignado', 'Admón empresa', 'Admón asesor',
-            'Seguro', 'Seg. social', 'IVA',
-            'Empresa', 'Razón social', 'Modalidad', 'Banco', 'Facturó',
-        ];
+        // La columna de parafiscales solo existe los días que la necesitan, igual
+        // que en la pantalla: si se dejara fija, todos los exports arrastrarían
+        // una columna en ceros.
+        $conParaf = $datos['hayParafiscales'] ?? false;
+        $headers = array_merge(
+            ['No.', 'Factura', 'Tipo', 'Cédula', 'Nombres', 'Forma pago',
+             'Pago total', 'Efectivo', 'Consignado', 'Admón empresa', 'Admón asesor',
+             'Seguro'],
+            $conParaf ? ['Parafiscales'] : [],
+            ['Seg. social', 'IVA',
+             'Empresa', 'Razón social', 'Modalidad', 'Banco', 'Facturó'],
+        );
+        $ultimaCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(count($headers));
         $sheet->fromArray($headers, null, 'A1');
-        $sheet->getStyle('A1:S1')->applyFromArray([
+        $sheet->getStyle("A1:{$ultimaCol}1")->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => '1e40af']],
         ]);
 
         $row = 2;
         foreach ($facturas as $i => $f) {
-            $sheet->fromArray([
+            $sheet->fromArray(array_merge([
                 $i + 1,
                 $f->numero_factura,
                 self::TIPOS_FACTURA_DIA[$f->tipo_dia] ?? $f->tipo_dia,
@@ -1358,6 +1379,7 @@ class CuadreDiarioController extends Controller
                 (int) $f->admon,
                 (int) $f->admin_asesor,
                 (int) $f->seguro,
+            ], $conParaf ? [(int) $f->v_parafiscales] : [], [
                 (int) $f->total_ss,
                 (int) $f->iva,
                 $f->empresa?->empresa ?? 'INDIVIDUALES',
@@ -1367,13 +1389,16 @@ class CuadreDiarioController extends Controller
                 $f->usuario?->nombre ?? '—',
                 // strictNullComparison: sin esto fromArray compara con != y
                 // descarta los 0, dejando las celdas de valores en blanco.
-            ], null, "A{$row}", true);
+            ]), null, "A{$row}", true);
 
-            $sheet->getStyle("G{$row}:N{$row}")->getNumberFormat()->setFormatCode('$#,##0');
+            // Las columnas de plata van de "Pago total" (G) hasta IVA, que se
+            // corre un puesto cuando el día lleva parafiscales.
+            $colDinero = $conParaf ? 'O' : 'N';
+            $sheet->getStyle("G{$row}:{$colDinero}{$row}")->getNumberFormat()->setFormatCode('$#,##0');
             $row++;
         }
 
-        foreach (range('A', 'S') as $col) {
+        foreach (range('A', $ultimaCol) as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 
@@ -1522,6 +1547,9 @@ class CuadreDiarioController extends Controller
             'admon'      => (int) $facturas->sum('admon'),
             'asesor'     => (int) $facturas->sum('admin_asesor'),
             'seg_social' => (int) $facturas->sum('total_ss'),
+            // Va dentro de seg_social; se totaliza aparte solo para poder
+            // mostrarlo desglosado cuando el día trae algún aportante no exonerado.
+            'parafiscales' => (int) $facturas->sum('v_parafiscales'),
             'iva'        => (int) $facturas->sum('iva'),
             'pendiente'  => (int) $facturas->sum(fn($f) => min(0, (int)($f->saldo_proximo ?? 0))) * -1,
         ];
@@ -1549,6 +1577,10 @@ class CuadreDiarioController extends Controller
             'formas'     => self::FORMAS_PAGO_DIA,
             'sort'       => $sort,
             'dir'        => $dir,
+            // Casi ningún día tiene parafiscales: la columna solo se dibuja
+            // cuando alguna factura del día trae valor, para no cargar la tabla
+            // con un renglón en ceros.
+            'hayParafiscales' => $totales['parafiscales'] > 0,
         ] + $this->opcionesFacturasDia($aliadoId, $fecha);
     }
 

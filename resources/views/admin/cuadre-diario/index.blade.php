@@ -81,8 +81,6 @@ $totalFacturas   = array_sum($canales['conteo']);
 /* Sin préstamos en el día la columna sobra: se cae a 3 columnas */
 .cn-grid.sin-prestado .cn-pr{display:none}
 .cn-grid.sin-prestado .cn-row{grid-template-columns:minmax(0,1.5fr) 1fr 1fr}
-.cn-nota{opacity:.6;font-style:italic;border-top:1px dashed #e2e8f0;border-bottom:0;margin-top:.2rem}
-.cn-nota .cn-v{color:#f59e0b}
 .cn-card-foot{padding:.5rem .9rem;color:#fff}
 .cn-foot-l{font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.7)}
 .cn-foot-v{font-size:.82rem;font-weight:900;font-family:monospace;text-align:right;color:#fff;white-space:nowrap}
@@ -378,15 +376,6 @@ $val = fn($v) => abs($v) >= 1 ? $fmt(round($v)) : null;
             @empty
             <div style="padding:.9rem;text-align:center;color:#cbd5e1;font-size:.78rem">Sin movimiento en este canal</div>
             @endforelse
-
-            @if($cn['n'] === 1 && ($val($canales['nota']['efectivo']) || $val($canales['nota']['consignado']) || $val($canales['nota']['prestado'])))
-            <div class="cn-row cn-nota" title="Comisión ganada por asesores — sale de la administración, aún sin pagar">
-                <div class="cn-lbl">↳ {{ $canales['nota']['etiqueta'] }}</div>
-                <div class="cn-v">{{ $val($canales['nota']['efectivo'])   ?? '—' }}</div>
-                <div class="cn-v">{{ $val($canales['nota']['consignado']) ?? '—' }}</div>
-                <div class="cn-v cn-pr">{{ $val($canales['nota']['prestado']) ?? '—' }}</div>
-            </div>
-            @endif
         </div>
 
         <div class="cn-card-foot" style="background:linear-gradient(135deg,{{ $cn['gradiente'] }})">
