@@ -284,7 +284,7 @@
         @if(!empty($clientePensionado))
         <div id="aviso-plan-pensionado"
              style="display:none;margin-top:0.25rem;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:0.3rem 0.55rem;font-size:0.68rem;color:#b45309;font-weight:600;line-height:1.35;">
-          ⚠️ El plan del contrato traía AFP y el cliente es pensionado: revíselo.
+          {{-- El texto lo escribe actualizarAvisoPensionado() según el caso. --}}
         </div>
         @endif
         <div id="nota-plan-modalidad" style="display:none;font-size:.6rem;color:#94a3b8;margin-top:.15rem;">Seleccione primero la modalidad</div>
@@ -1759,118 +1759,6 @@ function mrValidarPeriodoConsecutivo() {
     return !esInvalido;
 }
 
-// ── Init: establecer defaults al cargar ──────────────────────────────────
-// ── Cargos de la razón social ────────────────────────────────────────
-// El catálogo vive en razon_social_cargos y cada cargo trae su nivel de riesgo.
-// Elegir uno de la lista ajusta el N.ARL solo, que es lo que determina el centro
-// de trabajo al afiliar en ARL Sura. Escribir uno nuevo sigue permitido.
-(function () {
-    const inpCargo = document.getElementById('inp_cargo');
-    const panel    = document.getElementById('lista_cargos');
-    const selRS    = document.getElementById('sel_rs');
-    if (!inpCargo || !panel) return;
-
-    let cargos  = [];
-    let marcado = -1;   // opción resaltada con las flechas
-
-    async function cargarCargos() {
-        // Sin razón social se piden igual: el catálogo común no depende de
-        // ella, y antes la lista salía vacía en todo contrato nuevo, que es
-        // justo cuando más sirve.
-        const rsId = (selRS ? selRS.value : '{{ $contrato->razon_social_id ?? '' }}') || 0;
-        cargos = [];
-
-        try {
-            const r = await fetch(`/admin/razones-sociales/${rsId}/cargos`, { headers: { 'Accept': 'application/json' } });
-            cargos = ((await r.json()).cargos || [])
-                .sort((a, b) => a.nivel_riesgo - b.nivel_riesgo || a.cargo.localeCompare(b.cargo));
-        } catch (e) { /* sin catálogo se sigue escribiendo a mano */ }
-    }
-
-    const colorRiesgo = (n) => ['#64748b','#0d9488','#0891b2','#ca8a04','#ea580c','#b91c1c'][n] || '#64748b';
-
-    function pintar(filtro) {
-        const t = (filtro || '').trim().toUpperCase();
-        const vistos = t ? cargos.filter(c => c.cargo.toUpperCase().includes(t)) : cargos;
-        marcado = -1;
-
-        if (! vistos.length) {
-            panel.innerHTML = `<div style="padding:.5rem .6rem;font-size:.75rem;color:#94a3b8;">
-                Sin cargos que coincidan. Puedes escribir uno nuevo.</div>`;
-            return;
-        }
-
-        panel.innerHTML = vistos.map((c, i) => `
-            <div class="op-cargo" data-i="${i}" data-cargo="${c.cargo.replace(/"/g,'&quot;')}"
-                 style="display:flex;justify-content:space-between;gap:.5rem;padding:.4rem .6rem;
-                        font-size:.78rem;cursor:pointer;border-bottom:1px solid #f1f5f9;">
-                <span>${c.cargo}</span>
-                <span style="color:${colorRiesgo(c.nivel_riesgo)};font-weight:700;font-size:.7rem;white-space:nowrap;">
-                    riesgo ${c.nivel_riesgo}</span>
-            </div>`).join('');
-
-        panel.querySelectorAll('.op-cargo').forEach(el => {
-            el.addEventListener('mousedown', (ev) => {   // antes del blur, si no el clic se pierde
-                ev.preventDefault();
-                elegir(el.dataset.cargo);
-            });
-            el.addEventListener('mouseenter', () => resaltar(Number(el.dataset.i)));
-        });
-    }
-
-    function resaltar(i) {
-        const ops = panel.querySelectorAll('.op-cargo');
-        ops.forEach(o => o.style.background = '');
-        marcado = i;
-        if (ops[i]) {
-            ops[i].style.background = '#eff6ff';
-            ops[i].scrollIntoView({ block: 'nearest' });
-        }
-    }
-
-    function abrir()  { pintar(inpCargo.value); panel.style.display = 'block'; inpCargo.setAttribute('aria-expanded','true'); }
-    function cerrar() { panel.style.display = 'none'; inpCargo.setAttribute('aria-expanded','false'); }
-
-    function elegir(cargo) {
-        inpCargo.value = cargo;
-        cerrar();
-        ajustarRiesgo();
-        inpCargo.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-
-    // Elegir un cargo del catálogo mueve el N.ARL al riesgo que le corresponde.
-    // No se anuncia en pantalla: el propio selector de riesgo ya muestra el cambio.
-    function ajustarRiesgo() {
-        const elegido = cargos.find(c => c.cargo.toUpperCase() === inpCargo.value.trim().toUpperCase());
-        if (!elegido) return;
-
-        const selArl = document.querySelector('select[name="n_arl"]');
-        if (selArl && String(selArl.value) !== String(elegido.nivel_riesgo)) {
-            selArl.value = String(elegido.nivel_riesgo);
-            // x-model de Alpine escucha estos eventos: sin dispararlos, el
-            // cálculo del contrato seguiría con el riesgo anterior.
-            selArl.dispatchEvent(new Event('input',  { bubbles: true }));
-            selArl.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-    }
-
-    inpCargo.addEventListener('focus', abrir);
-    inpCargo.addEventListener('click', abrir);
-    inpCargo.addEventListener('input', () => { abrir(); ajustarRiesgo(); });
-    inpCargo.addEventListener('blur',  () => setTimeout(cerrar, 120));
-
-    inpCargo.addEventListener('keydown', (ev) => {
-        const ops = panel.querySelectorAll('.op-cargo');
-        if (ev.key === 'ArrowDown')      { if (panel.style.display === 'none') abrir(); resaltar(Math.min(marcado + 1, ops.length - 1)); ev.preventDefault(); }
-        else if (ev.key === 'ArrowUp')   { resaltar(Math.max(marcado - 1, 0)); ev.preventDefault(); }
-        else if (ev.key === 'Enter')     { if (marcado >= 0 && ops[marcado]) { elegir(ops[marcado].dataset.cargo); ev.preventDefault(); } }
-        else if (ev.key === 'Escape')    { cerrar(); }
-    });
-
-    if (selRS) selRS.addEventListener('change', cargarCargos);
-    document.addEventListener('DOMContentLoaded', cargarCargos);
-    if (document.readyState !== 'loading') cargarCargos();
-})();
 
 document.addEventListener('DOMContentLoaded', function() { mrInitSelects(); });
 
@@ -2225,6 +2113,146 @@ function onArlModoChange(sel) {
     mostrarPanelArlSegunModo(sel.value);
 }
 
+// ── Cargos de la razón social ────────────────────────────────────────
+// Vive aquí, en el script que se renderiza siempre, y no junto al resto de la
+// fila: estaba dentro del bloque condicional del modal de retiro (que solo se
+// pinta en edición y con el contrato vigente), así que en un contrato nuevo
+// —o retirado— el catálogo
+// no existía y el campo se quedaba sin autocompletado y sin ajustar el N.ARL.
+// El catálogo vive en razon_social_cargos y cada cargo trae su nivel de riesgo.
+// Elegir uno de la lista ajusta el N.ARL solo, que es lo que determina el centro
+// de trabajo al afiliar en ARL Sura. Escribir uno nuevo sigue permitido.
+(function () {
+    const inpCargo = document.getElementById('inp_cargo');
+    const panel    = document.getElementById('lista_cargos');
+    const selRS    = document.getElementById('sel_rs');
+    if (!inpCargo || !panel) return;
+
+    let cargos  = [];
+    let marcado = -1;   // opción resaltada con las flechas
+
+    async function cargarCargos() {
+        // Sin razón social se piden igual: el catálogo común no depende de
+        // ella, y antes la lista salía vacía en todo contrato nuevo, que es
+        // justo cuando más sirve.
+        const rsId = (selRS ? selRS.value : '{{ $contrato->razon_social_id ?? '' }}') || 0;
+        cargos = [];
+
+        try {
+            const r = await fetch(`/admin/razones-sociales/${rsId}/cargos`, { headers: { 'Accept': 'application/json' } });
+            cargos = ((await r.json()).cargos || [])
+                .sort((a, b) => a.nivel_riesgo - b.nivel_riesgo || a.cargo.localeCompare(b.cargo));
+        } catch (e) { /* sin catálogo se sigue escribiendo a mano */ }
+    }
+
+    const colorRiesgo = (n) => ['#64748b','#0d9488','#0891b2','#ca8a04','#ea580c','#b91c1c'][n] || '#64748b';
+
+    function pintar(filtro) {
+        const t = (filtro || '').trim().toUpperCase();
+        const vistos = t ? cargos.filter(c => c.cargo.toUpperCase().includes(t)) : cargos;
+        marcado = -1;
+
+        if (! vistos.length) {
+            panel.innerHTML = `<div style="padding:.5rem .6rem;font-size:.75rem;color:#94a3b8;">
+                Sin cargos que coincidan. Puedes escribir uno nuevo.</div>`;
+            return;
+        }
+
+        panel.innerHTML = vistos.map((c, i) => `
+            <div class="op-cargo" data-i="${i}" data-cargo="${c.cargo.replace(/"/g,'&quot;')}"
+                 style="display:flex;justify-content:space-between;gap:.5rem;padding:.4rem .6rem;
+                        font-size:.78rem;cursor:pointer;border-bottom:1px solid #f1f5f9;">
+                <span>${c.cargo}</span>
+                <span style="color:${colorRiesgo(c.nivel_riesgo)};font-weight:700;font-size:.7rem;white-space:nowrap;">
+                    riesgo ${c.nivel_riesgo}</span>
+            </div>`).join('');
+
+        panel.querySelectorAll('.op-cargo').forEach(el => {
+            el.addEventListener('mousedown', (ev) => {   // antes del blur, si no el clic se pierde
+                ev.preventDefault();
+                elegir(el.dataset.cargo);
+            });
+            el.addEventListener('mouseenter', () => resaltar(Number(el.dataset.i)));
+        });
+    }
+
+    function resaltar(i) {
+        const ops = panel.querySelectorAll('.op-cargo');
+        ops.forEach(o => o.style.background = '');
+        marcado = i;
+        if (ops[i]) {
+            ops[i].style.background = '#eff6ff';
+            ops[i].scrollIntoView({ block: 'nearest' });
+        }
+    }
+
+    function abrir()  { pintar(inpCargo.value); panel.style.display = 'block'; inpCargo.setAttribute('aria-expanded','true'); }
+    function cerrar() { panel.style.display = 'none'; inpCargo.setAttribute('aria-expanded','false'); }
+
+    function elegir(cargo) {
+        inpCargo.value = cargo;
+        cerrar();
+        ajustarRiesgo();
+        inpCargo.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    // Elegir un cargo del catálogo mueve el N.ARL al riesgo que le corresponde.
+    // No se anuncia en pantalla: el propio selector de riesgo ya muestra el cambio.
+    function ajustarRiesgo() {
+        const elegido = cargos.find(c => c.cargo.toUpperCase() === inpCargo.value.trim().toUpperCase());
+        if (!elegido) return;
+
+        const selArl = document.querySelector('select[name="n_arl"]');
+        if (selArl && String(selArl.value) !== String(elegido.nivel_riesgo)) {
+            selArl.value = String(elegido.nivel_riesgo);
+            // x-model de Alpine escucha estos eventos: sin dispararlos, el
+            // cálculo del contrato seguiría con el riesgo anterior.
+            selArl.dispatchEvent(new Event('input',  { bubbles: true }));
+            selArl.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    }
+
+    inpCargo.addEventListener('focus', abrir);
+    inpCargo.addEventListener('click', abrir);
+    inpCargo.addEventListener('input', () => { abrir(); ajustarRiesgo(); });
+    inpCargo.addEventListener('blur',  () => setTimeout(cerrar, 120));
+
+    inpCargo.addEventListener('keydown', (ev) => {
+        const ops = panel.querySelectorAll('.op-cargo');
+        if (ev.key === 'ArrowDown')      { if (panel.style.display === 'none') abrir(); resaltar(Math.min(marcado + 1, ops.length - 1)); ev.preventDefault(); }
+        else if (ev.key === 'ArrowUp')   { resaltar(Math.max(marcado - 1, 0)); ev.preventDefault(); }
+        else if (ev.key === 'Enter')     { if (marcado >= 0 && ops[marcado]) { elegir(ops[marcado].dataset.cargo); ev.preventDefault(); } }
+        else if (ev.key === 'Escape')    { cerrar(); }
+    });
+
+    if (selRS) selRS.addEventListener('change', cargarCargos);
+    document.addEventListener('DOMContentLoaded', cargarCargos);
+    if (document.readyState !== 'loading') cargarCargos();
+})();
+
+/**
+ * Deja el NIT cotizante de la ARL en sincronía con el modo elegido cuando cambia
+ * la razón social del contrato: por razón social se cotiza bajo una RS (por
+ * defecto la del contrato) y como independiente bajo la cédula del cliente.
+ *
+ * Si el select de RS ARL ya tiene una elegida no se pisa: se puede estar
+ * cotizando la ARL bajo una RS distinta a la del contrato a propósito.
+ */
+function sincronizarNitCotizante(modo, rsIdContrato) {
+    const inpNit = document.getElementById('inp_arl_nit');
+    if (!inpNit) return;
+
+    if (modo === 'razon_social') {
+        const selRsArl = document.getElementById('sel_arl_rs_cotizante');
+        if (selRsArl && !selRsArl.value && rsIdContrato) selRsArl.value = rsIdContrato;
+        inpNit.value = selRsArl?.value || rsIdContrato || '';
+    } else if (modo === 'independiente') {
+        inpNit.value = document.querySelector('input[name="cedula"]')?.value || '';
+    }
+    // Sin modo elegido no se toca: lo que hay guardado sigue siendo lo bueno, y
+    // el backend lo vuelve a derivar al guardar si llega vacío.
+}
+
 /**
  * Se dispara cuando el usuario elige una RS en el select de RS ARL.
  * Guarda su ID (=NIT) en el campo oculto.
@@ -2379,12 +2407,19 @@ function actualizarAvisoPensionado() {
     if (!aviso) return;
     const selPlan = document.getElementById('sel_plan');
     const opt     = selPlan?.options[selPlan.selectedIndex];
-    // Dos casos: el plan elegido lleva AFP (solo pasa con rsLock, donde no se
-    // filtra), o el contrato venía con uno de AFP — ahí el aviso se queda puesto
-    // aunque el selector ya muestre otro, porque el plan cambió sin que nadie lo
-    // tocara y eso hay que verlo antes de guardar.
-    const planConAfp = opt?.dataset?.pen === '1';
-    aviso.style.display = (CLIENTE_PENSIONADO && (planConAfp || PLAN_BD_CON_AFP)) ? 'block' : 'none';
+    // El aviso solo tiene sentido mientras algo esté mal: o el plan elegido lleva
+    // AFP (pasa con rsLock, donde no se filtra), o el selector quedó vacío porque
+    // el plan del contrato la llevaba. Con un plan sin pensión ya elegido, sobra.
+    const planConAfp  = opt?.dataset?.pen === '1';
+    const vacioPorAfp = PLAN_BD_CON_AFP && !selPlan?.value;
+    if (!CLIENTE_PENSIONADO || (!planConAfp && !vacioPorAfp)) {
+        aviso.style.display = 'none';
+        return;
+    }
+    aviso.textContent = planConAfp
+        ? '⚠️ Este plan incluye AFP y el cliente es pensionado.'
+        : '⚠️ El plan que traía el contrato incluía AFP: elija uno sin pensión.';
+    aviso.style.display = 'block';
 }
 
 // ── Filtrado 2: Modalidad → Planes ───────────────────────────────
