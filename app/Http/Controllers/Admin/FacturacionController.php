@@ -181,9 +181,38 @@ class FacturacionController extends Controller
             ->map(fn ($v) => $empresaTieneIva)
             ->toArray();
 
+        // ── Contratos a los que les falta el mes anterior ──────────────────
+        // Quien estuvo activo el mes pasado y no tiene factura de ese período se
+        // le pasó a alguien: el listado del mes en curso no lo delataba por
+        // ningún lado, porque cada mes se mira solo. Se resuelve con una
+        // consulta, no una por fila.
+        $facturasMesAnterior = DB::table('facturas')
+            ->where('aliado_id', $aliadoId)
+            ->whereIn('contrato_id', $contratoIds)
+            ->where('mes', $mesAnterior)
+            ->where('anio', $anioAnterior)
+            // La factura 0 es el retiro pendiente de cobrar, no un cobro del mes.
+            ->where(fn ($q) => $q->whereNull('numero_factura')->orWhere('numero_factura', '!=', 0))
+            ->whereNull('deleted_at')
+            ->pluck('contrato_id')
+            ->flip();
+
+        $inicioMesAnterior = \Carbon\Carbon::create($anioAnterior, $mesAnterior, 1)->startOfDay();
+        $finMesAnterior = $inicioMesAnterior->copy()->endOfMonth();
+
         $hoy = now();
 
-        $contratos = $contratos->map(function ($c) use ($mes, $anio, $facturasExistentes, $facturasRetiro0, $saldosTotales, $saldosPrevios, $ivaClientes) {
+        $contratos = $contratos->map(function ($c) use ($mes, $anio, $facturasExistentes, $facturasRetiro0, $saldosTotales, $saldosPrevios, $ivaClientes, $facturasMesAnterior, $inicioMesAnterior, $finMesAnterior) {
+            // ¿Le correspondía factura el mes pasado y no la tiene? Solo cuenta si
+            // el contrato ya existía entonces y no se había retirado antes de que
+            // empezara el mes; un ingreso de este mes no debe nada de atrás.
+            $c->falta_mes_anterior = ! $facturasMesAnterior->has($c->id)
+                && $c->fecha_ingreso
+                && $c->fecha_ingreso->lte($finMesAnterior)
+                && (! $c->fecha_retiro || $c->fecha_retiro->gte($inicioMesAnterior))
+                // Gestión ARL y seguros no generan planilla mensual.
+                && ! in_array((int) $c->tipo_modalidad_id, [15, \App\Models\Contrato::MODALIDAD_SEGUROS], true);
+
             $diasCotizar = 30;
             $esIndActPrimerMes = false;
 

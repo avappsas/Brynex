@@ -4,6 +4,10 @@
 @php
 use App\Models\BancoCuenta;
 $meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+// Mes anterior al que se está viendo: lo usa el aviso de "sin facturar".
+$mesAnteriorNum   = $mes === 1 ? 12 : $mes - 1;
+$anioMesAnterior  = $mes === 1 ? $anio - 1 : $anio;
+$nombreMesAnterior = $meses[$mesAnteriorNum - 1];
 $fmt   = fn($v) => '$' . number_format($v ?? 0, 0, ',', '.');
 $aliadoId = session('aliado_id_activo');
 $r100 = fn($v) => (int)(ceil(($v ?? 0) / 100) * 100); // redondeo al centena superior
@@ -762,6 +766,16 @@ if ($esAfilDeRetirado && !$fact) {
         </span>
         @endif
         @else<span style="color:#94a3b8;font-size:.7rem">Sin factura</span>@endif
+
+        {{-- El mes pasado no se le facturó. Va debajo del estado del mes en curso
+             porque es otra cosa: aquí puede estar al día y arrastrar un mes sin
+             cobrar, que mirando un solo período no se ve por ningún lado. --}}
+        @if($c->falta_mes_anterior ?? false)
+            <div style="margin-top:.18rem;font-size:.58rem;font-weight:700;color:#b45309;letter-spacing:.01em;"
+                 title="No tiene factura de {{ $nombreMesAnterior }} {{ $anioMesAnterior }} — revisar si quedó sin cobrar">
+                ⚠ {{ $nombreMesAnterior }} sin facturar
+            </div>
+        @endif
     </td>
     <td class="td-np" style="text-align:center;font-size:.8rem">
         @php
