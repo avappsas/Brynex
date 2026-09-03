@@ -4702,6 +4702,15 @@ class FacturacionController extends Controller
                 'v_mora' => $vMora,
                 'v_total' => $vTot,
                 'estado' => $estado,
+                // Estado del CONTRATO, no del pago: en una cuenta de cobro todo está
+                // pendiente por definición, así que lo que informa es si la persona
+                // sigue vigente o ya se retiró.
+                'estado_contrato' => $esRetirado
+                    ? 'retirado'
+                    : ($c->fecha_retiro_pendiente ? 'retiro_pendiente' : 'vigente'),
+                'fecha_retiro' => $esRetirado
+                    ? $c->fecha_retiro
+                    : $c->fecha_retiro_pendiente,
                 'saldo_proximo' => (int) Factura::saldoClienteMesPrevio(
                     $aliadoId, $c->cedula, $mes, $anio, $c->id
                 )['a_favor'] - (int) Factura::saldoClienteMesPrevio(

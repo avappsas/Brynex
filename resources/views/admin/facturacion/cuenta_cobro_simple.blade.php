@@ -65,6 +65,7 @@ table.tbl-cc .num { text-align: right; font-family: monospace; }
 .est-pre      { background: #fef9c3; color: #854d0e; }
 .est-prestamo { background: #ede9fe; color: #6d28d9; }
 .est-abono    { background: #fef3c7; color: #92400e; }
+.est-retiro   { background: #fee2e2; color: #dc2626; }
 .est-sin      { background: #f1f5f9; color: #64748b; }
 
 /* Saldo info */
@@ -220,20 +221,32 @@ table.tbl-cc .num { text-align: right; font-family: monospace; }
             $spItem = (int)($item->saldo_proximo ?? 0);
             $itemAFavor    = $spItem > 0 ? $spItem : 0;
             $itemPendiente = $spItem < 0 ? abs($spItem) : 0;
-            $estadoClass = match($item->estado) {
-                'pagada'      => 'est-vigente',
-                'prestamo'    => 'est-prestamo',
-                'pre_factura' => 'est-pre',
-                'abono'       => 'est-abono',
-                default       => 'est-sin',
-            };
-            $estadoLabel = match($item->estado) {
-                'pagada'      => 'Vigente',
-                'prestamo'    => 'Préstamo',
-                'pre_factura' => 'Pre-Fac',
-                'abono'       => 'Abono',
-                default       => 'Pendiente',
-            };
+            // Sin factura del período manda el estado del CONTRATO: la cuenta de
+            // cobro entera está pendiente por definición, así que repetir
+            // "Pendiente" en cada fila no dice nada. Si ya hay factura, lo que
+            // informa es cómo quedó el pago.
+            if (($item->estado ?? 'sin_factura') === 'sin_factura') {
+                [$estadoClass, $estadoLabel] = match($item->estado_contrato ?? 'vigente') {
+                    'retirado'         => ['est-retiro', 'Retiro'],
+                    'retiro_pendiente' => ['est-abono',  'Retiro Pd.'],
+                    default            => ['est-vigente', 'Vigente'],
+                };
+            } else {
+                $estadoClass = match($item->estado) {
+                    'pagada'      => 'est-vigente',
+                    'prestamo'    => 'est-prestamo',
+                    'pre_factura' => 'est-pre',
+                    'abono'       => 'est-abono',
+                    default       => 'est-sin',
+                };
+                $estadoLabel = match($item->estado) {
+                    'pagada'      => 'Pagada',
+                    'prestamo'    => 'Préstamo',
+                    'pre_factura' => 'Pre-Fac',
+                    'abono'       => 'Abono',
+                    default       => 'Pendiente',
+                };
+            }
         @endphp
         <tr>
             <td style="text-align:center;color:#64748b;">{{ $no++ }}</td>
@@ -259,6 +272,9 @@ table.tbl-cc .num { text-align: right; font-family: monospace; }
             <td style="text-align:center;color:#64748b;white-space:nowrap;">
                 <div>{{ $item->fecha_ingreso ? $item->fecha_ingreso->format('d/m/Y') : '—' }}</div>
                 <div style="font-size:9.5px;color:#d97706;font-weight:700;margin-top:2px;">Plan: {{ $item->modalidad }}</div>
+                @if(($item->estado_contrato ?? 'vigente') !== 'vigente' && $item->fecha_retiro)
+                    <div style="font-size:9.5px;color:#dc2626;font-weight:700;margin-top:2px;">Retiro: {{ $item->fecha_retiro->format('d/m/Y') }}</div>
+                @endif
             </td>
             <td class="num" style="font-weight:700;">${{ number_format($item->v_total - (int)($item->v_iva ?? 0),0,',','.') }}</td>
             <td style="text-align:center;">
