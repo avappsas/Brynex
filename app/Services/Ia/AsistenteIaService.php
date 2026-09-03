@@ -174,7 +174,7 @@ class AsistenteIaService
      * mismo WhatsApp, así que sin esto la IA le cotizaría un plan a alguien que viene a
      * preguntar por comisiones.
      */
-    private static function esPiezaDeAsesores(\App\Models\Publicacion $pieza): bool
+    public static function esPiezaDeAsesores(\App\Models\Publicacion $pieza): bool
     {
         $texto = mb_strtolower(($pieza->tema ?? '') . ' ' . ($pieza->titulo ?? ''), 'UTF-8');
 

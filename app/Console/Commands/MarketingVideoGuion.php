@@ -37,6 +37,15 @@ class MarketingVideoGuion extends Command
      * las frases van en pantalla, no habladas — así el mensaje se lee aunque lo vean sin
      * sonido, que es como se ve la mayoría de los Reels.
      */
+    /**
+     * Número al que se derivan los asesores.
+     *
+     * Va en el COPY, no en el video: el cierre de marca es el mismo para todas las piezas y
+     * lleva el WhatsApp comercial. Meter otro número dentro del clip obligaría a mantener una
+     * variante del cierre solo para estas dos.
+     */
+    private const WHATSAPP_ASESORES = '311 776 2689';
+
     private const GUIONES = [
         'mejorar-cotizacion' => [
             'tema' => 'te mejoramos cualquier cotización que ya tengas, con verificación de tus pagos y asesoría sin costo',
@@ -171,7 +180,7 @@ class MarketingVideoGuion extends Command
                 .'(sin que subas archivos a ningún operador), cobros automáticos por WhatsApp e incapacidades. '
                 .'A tus clientes los sigues desde la aplicación, y no necesitas razones sociales propias.'."\n\n"
                 .'¿Prefieres dar el siguiente paso? También te ayudamos a crear tu propia empresa.'."\n\n"
-                .'📲 Escríbenos y cuéntanos cuántos clientes manejas hoy.',
+                .'📲 Escríbenos al '.self::WHATSAPP_ASESORES.' y cuéntanos cuántos clientes manejas hoy.',
         ],
         // El paso siguiente para el asesor que ya tiene volumen: dejar de ser intermediario y
         // tener su propia empresa. Es otro momento de la misma persona, por eso va en un video
@@ -207,18 +216,24 @@ class MarketingVideoGuion extends Command
             'frases' => [
                 '¿Ya manejas tu propia cartera?',
                 'Te montamos la plataforma',
-                'Todo desde el celular',
-                'Tu propia empresa',
+                'Con respaldo y verificable',
+                'Comunícate ya',
             ],
-            'narracion' => 'Si ya tienes tus propios clientes de seguridad social, el siguiente paso es tener tu '
-                .'propia empresa. Nosotros te ayudamos a montarla y te damos la plataforma de BRYNEX punto co: '
-                .'afiliaciones al instante, planillas pagadas por API sin subir archivos, cobros automáticos por '
-                .'WhatsApp e incapacidades. Y tus clientes los sigues desde la aplicación. '
-                .'Escríbenos y cuéntanos cuántos manejas hoy.',
-            'copy' => '¿Eres asesor de seguridad social y ya tienes tu propia cartera? Te ayudamos a montar tu propia '
-                .'empresa y te damos la plataforma de BRYNEX.co para manejarla: afiliaciones al instante, planillas '
-                .'pagadas por API sin subir archivos, cobros automáticos por WhatsApp e incapacidades, y una '
-                .'aplicación para seguir a tus clientes. 📲 Escríbenos y cuéntanos cuántos clientes manejas.',
+            // Mismo criterio que la pieza de comisiones: primero a quién le hablamos y qué gana,
+            // después el cómo. Ver la narración de 'asesores'.
+            'narracion' => 'En BRYGAR ayudamos a los asesores de seguridad social que ya tienen su propia cartera '
+                .'a montar su propia empresa. Te damos la plataforma y el respaldo para manejarla, con garantía y '
+                .'todo verificable. Y si prefieres trabajar con nosotros, te mejoramos tus condiciones actuales: '
+                .'ganas más por cada afiliación y más por la administración mensual. '
+                .'Escríbenos y te damos la información completa. Comunícate ya.',
+            'copy' => '¿Eres asesor de seguridad social y ya tienes tu propia cartera? Te ayudamos a montar tu '
+                .'propia empresa, con garantía, respaldo y todo verificable.'."\n\n"
+                .'Te damos la plataforma de BRYNEX.co para manejarla: afiliaciones al instante, planillas pagadas '
+                .'por API (sin subir archivos a ningún operador), cobros automáticos por WhatsApp e incapacidades, '
+                .'y una aplicación para seguir a tus clientes.'."\n\n"
+                .'¿Prefieres trabajar con nosotros? Te mejoramos tus condiciones: más por cada afiliación y más '
+                .'por la administración mensual.'."\n\n"
+                .'📲 Escríbenos al '.self::WHATSAPP_ASESORES.' y cuéntanos cuántos clientes manejas.',
         ],
     ];
 

@@ -218,67 +218,21 @@ class WhatsappWebhookService
             dispatch(new WhatsappDescargarMediaJob($mensaje->id, $config->aliado_id));
         }
 
-        // Reenvío al WhatsApp personal de Brayan García si el contacto es deudor de su préstamo
-        try {
-            $numeroPersonalBrayan = config('finanzas.whatsapp_personal_dueno');
+        // Avisos al WhatsApp personal del dueño. Hay dos conversaciones que él atiende
+        // directo y no desde el inbox: los deudores de sus préstamos personales y los
+        // asesores que responden a las piezas de reclutamiento.
+        $textoMensaje = ($dataMensaje['contenido'] ?? '') ?: '['.ucfirst($tipo).']';
+        $nombreContacto = $conversacion->nombre_contacto ?: $waFrom;
 
-            if ($numeroPersonalBrayan) {
-                $esPrestamoBrayan = \App\Services\Finanzas\TelefonosDeudores::esDeudor($waFrom);
-
-                if ($esPrestamoBrayan) {
-                    $nombreDeudor = $conversacion->nombre_contacto ?: $waFrom;
-                    $textoMensaje = $dataMensaje['contenido'] ?? '';
-                    if (empty($textoMensaje)) {
-                        $textoMensaje = '[' . ucfirst($tipo) . ']';
-                    }
-
-                    $mensajeReenvio = "🔔 *[Reenvío Préstamo]*\nDeudor: *{$nombreDeudor}* ({$waFrom})\nMensaje: \"{$textoMensaje}\"";
-
-                    // Buscar el aliado "brygar"
-                    $aliadoBrygar = \App\Models\Aliado::where('nombre', 'like', '%brygar%')->first();
-                    $configReenvio = $aliadoBrygar ? WhatsappConfig::paraAliado($aliadoBrygar->id) : $config;
-
-                    // Verificar si hay ventana de 24h activa con el número personal de Brayan
-                    $conversacionBrayan = \App\Models\WhatsappConversacion::where('aliado_id', $configReenvio->aliado_id)
-                        ->where('wa_contact_id', $numeroPersonalBrayan)
-                        ->first();
-
-                    $ventanaActivaConBrayan = $conversacionBrayan ? $conversacionBrayan->ventanaActiva() : false;
-
-                    if ($ventanaActivaConBrayan) {
-                        // Si la ventana está activa, enviar como texto libre para ahorrar costos
-                        $this->whatsappApi->enviarTexto($numeroPersonalBrayan, $mensajeReenvio, $configReenvio);
-                    } else {
-                        // Buscar si hay una plantilla de notificación aprobada para Brayan (para saltar restricción de 24h)
-                        // Buscamos con nombres alternativos por si acaso hubo problemas al registrarla en Meta
-                        $plantillaNotif = \App\Models\WhatsappPlantilla::delAliado($configReenvio->aliado_id)
-                            ->aprobadas()
-                            ->where(function ($q) {
-                                $q->where('nombre', 'notificacion_brynex')
-                                  ->orWhere('nombre', 'notificaciones_brynex')
-                                  ->orWhere('nombre', 'notificar_brynex')
-                                  ->orWhere('nombre', 'like', '%notificacion%brynex%')
-                                  ->orWhere('nombre', 'like', '%brynex%notificacion%');
-                            })
-                            ->first();
-
-                        if ($plantillaNotif) {
-                            $textoMensajeCorto = mb_substr($textoMensaje, 0, 1000);
-                            $this->whatsappApi->enviarTemplate(
-                                $numeroPersonalBrayan,
-                                $plantillaNotif,
-                                [$nombreDeudor, $textoMensajeCorto],
-                                $configReenvio
-                            );
-                        } else {
-                            // Fallback a texto libre si no existe la plantilla
-                            $this->whatsappApi->enviarTexto($numeroPersonalBrayan, $mensajeReenvio, $configReenvio);
-                        }
-                    }
-                }
-            }
-        } catch (\Exception $ex) {
-            Log::error("Error reenviando respuesta de préstamo a Brayan: " . $ex->getMessage());
+        if (\App\Services\Finanzas\TelefonosDeudores::esDeudor($waFrom)) {
+            app(\App\Services\ReenvioAlDuenoService::class)
+                ->enviar($waFrom, $nombreContacto, $textoMensaje, 'Reenvío Préstamo');
+        } elseif ($this->vieneDePiezaDeAsesores($conversacion)) {
+            // El asesor lo cierra él a mano: la IA solo toma el dato de cuántos clientes
+            // maneja y lo deriva. Sin este aviso, esa conversación se queda esperando a que
+            // alguien abra el panel.
+            app(\App\Services\ReenvioAlDuenoService::class)
+                ->enviar($waFrom, $nombreContacto, $textoMensaje, 'Asesor desde anuncio');
         }
 
         // Actualizar conversación
@@ -763,6 +717,22 @@ class WhatsappWebhookService
      *
      * `source_id` es el id del anuncio, que es justo lo que se guarda en meta_ad_id al crearlo.
      */
+    /**
+     * ¿Esta conversación llegó por una de las piezas que buscan asesores?
+     *
+     * La regla de qué es una pieza de asesores vive en el asistente, que es quien la usa para
+     * cambiar todo su guion. Aquí solo se consulta: duplicarla haría que un cambio en una
+     * moviera el guion pero no el aviso, o al revés.
+     */
+    private function vieneDePiezaDeAsesores(WhatsappConversacion $conversacion): bool
+    {
+        $pieza = $conversacion->origen_publicacion_id
+            ? \App\Models\Publicacion::find($conversacion->origen_publicacion_id)
+            : null;
+
+        return $pieza ? \App\Services\Ia\AsistenteIaService::esPiezaDeAsesores($pieza) : false;
+    }
+
     private function piezaDelReferral(array $msgData, int $alidoId): ?int
     {
         $ref = $msgData['referral'] ?? null;
