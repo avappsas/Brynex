@@ -55,12 +55,13 @@ class MarketingVideoGuion extends Command
                 . 'see a bright office out of focus. Natural light, handheld, shallow depth of field. Ambient '
                 . 'sounds only. No text on screen, nobody speaks.',
 
-                // 3. El respaldo. La verificación es el diferencial real y hay que VERLA: una
-                //    pantalla que confirma, y la cara de alivio de quien ya no duda.
-                'Vertical 9:16 cinematic shot. A Colombian woman advisor in her late 20s turns a computer '
-                . 'monitor toward the camera showing a clean confirmation screen with green checkmarks, '
-                . 'while a client nods with visible relief. Modern bright office, warm natural light, '
-                . 'medium shot. Ambient office sounds. No readable text on the screen, nobody speaks.',
+                // 3. El respaldo. Sin pantallas: pedirle a Veo "una pantalla con confirmaciones"
+                //    y a la vez "que no se lea texto" es contradictorio, y devolvió la escena
+                //    vacía. El alivio se actúa, no se muestra en un monitor.
+                'Vertical 9:16 cinematic shot. A Colombian woman advisor in her late 20s sits beside a client '
+                . 'at a desk in a bright modern office, both looking at a printed document she points to. '
+                . 'The client nods slowly and smiles with relief, then they shake hands. Warm natural light, '
+                . 'medium shot, shallow depth of field. Ambient office sounds. Nobody speaks.',
             ],
             'frases' => [
                 '¿Estás pagando de más?',
