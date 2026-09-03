@@ -19,10 +19,10 @@ use Throwable;
  *
  *  - **AFP y EPS**: el RUAF/BDUA del operador de planilla, que es la misma
  *    consulta que ya usa `CompletarRuafClientes`.
- *  - **Sexo y fecha de nacimiento**: Sura mismo, con
+ *  - **Sexo, fecha de nacimiento y cargo**: Sura mismo, con
  *    `afiliacion/consultarDependiente`. Los exige el formulario y el sexo lo
  *    valida contra el documento, así que no se pueden inventar; pero si la
- *    persona ya estuvo afiliada, el portal los sabe. Los dos salen de la misma
+ *    persona ya estuvo afiliada, el portal los sabe. Los tres salen de la misma
  *    respuesta, así que se consulta una sola vez.
  *
  * Lo que encuentra se guarda en BryNex: la próxima afiliación ya no lo consulta.
@@ -65,6 +65,12 @@ class ArlDatosFaltantesService
             $cliente->fecha_nacimiento = $fn;
             $cliente->save();
             $completado['fecha_nacimiento'] = 'ARL Sura';
+        }
+
+        if (! $this->sirve($contrato->cargo) && $cargo = $this->cargoDesdeSura($contrato, $cliente)) {
+            $contrato->cargo = $cargo;
+            $contrato->save();
+            $completado['cargo'] = 'ARL Sura';
         }
 
         return $completado;
@@ -157,6 +163,40 @@ class ArlDatosFaltantesService
         // Sura devuelve rellenos como 31/12/3000 en las fechas que no conoce, y
         // guardar eso sería peor que dejar el campo vacío: nadie lo revisaría.
         return $fecha->year >= 1900 && $fecha->isPast() ? $fecha : null;
+    }
+
+    /**
+     * El cargo con que Sura tiene registrado al trabajador.
+     *
+     * Es el dato que sustenta el nivel de riesgo, así que traerlo del portal
+     * vale más que dejarlo al cargo por defecto de la razón social: ese es el
+     * mismo para todos, y este es el de la persona.
+     */
+    private function cargoDesdeSura(Contrato $contrato, Cliente $cliente): ?string
+    {
+        $cargo = $this->sirve($this->deSura($contrato, $cliente)['dsCargo'] ?? null);
+
+        // Sura arrastra la misma basura que había aquí: quien afilió por el
+        // portal también escribió "X" cuando no sabía el oficio.
+        return $cargo ? mb_substr($cargo, 0, 100) : null;
+    }
+
+    /**
+     * Un cargo que de verdad dice algo.
+     *
+     * Descarta lo vacío y lo que es puro relleno —"X", "xxx"—, que es peor que
+     * nada: no está vacío, así que ninguna validación lo ve, pero es lo que
+     * queda registrado como la ocupación del trabajador en la ARL.
+     */
+    private function sirve(?string $cargo): ?string
+    {
+        $v = trim(preg_replace('/\s+/', ' ', (string) $cargo));
+
+        if ($v === '' || preg_match('/^[xX]+$/', $v)) {
+            return null;
+        }
+
+        return mb_strtoupper($v);
     }
 
     /**
