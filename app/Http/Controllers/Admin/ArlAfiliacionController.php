@@ -8,6 +8,7 @@ use App\Models\ArlCredencial;
 use App\Models\ArlCentroTrabajo;
 use App\Models\Bitacora;
 use App\Models\Contrato;
+use App\Models\DocumentoCliente;
 use App\Services\ArlSura\ArlAfiliacionService;
 use App\Services\ArlSura\ArlCentrosService;
 use App\Services\ArlSura\ArlDatosFaltantesService;
@@ -418,12 +419,16 @@ class ArlAfiliacionController extends Controller
     }
 
     /**
-     * Baja del portal el certificado y el carné de ese momento y los archiva.
+     * Entrega el certificado ARL: el archivado hoy, o uno nuevo del portal.
      *
      * Existe aparte de la renovación porque el certificado cambia solo con el
      * tiempo: el que se descarga el mismo día que se mueve la cobertura sale
      * como "POR INICIAR", y al llegar la fecha pasa a estar activo. Este botón
      * permite volver por el bueno sin repetir ningún trámite.
+     *
+     * Y como ese cambio ocurre a medianoche, dentro del mismo día el archivado
+     * y el del portal son el mismo papel: se reutiliza en vez de volver a
+     * bajarlo. El carné va en el mismo viaje, así que también queda al día.
      */
     public function certificado(Request $request, int $contratoId)
     {
@@ -431,6 +436,22 @@ class ArlAfiliacionController extends Controller
         $this->sinLimiteDeTiempo();
 
         $contrato = $this->contrato($request, $contratoId);
+
+        // El que se archivó hoy sirve tal cual: el certificado solo cambia al
+        // llegar la fecha de la cobertura —de "POR INICIAR" a activo— y eso
+        // pasa a medianoche. Renovar ya lo baja y lo archiva, así que sin esto
+        // el botón repetía un viaje al portal de unos 20 segundos justo cuando
+        // más se pide, que es al terminar la renovación.
+        $dehoy = DocumentoCliente::where('aliado_id', $contrato->aliado_id)
+            ->where('cc_cliente', $contrato->cedula)
+            ->where('tipo_documento', ArlAfiliacionService::DOC_SOPORTE)
+            ->whereDate('created_at', now()->toDateString())
+            ->latest('id')
+            ->first();
+
+        if ($dehoy && Storage::disk('local')->exists($dehoy->ruta)) {
+            return Storage::disk('local')->download($dehoy->ruta, $dehoy->nombre_archivo);
+        }
 
         if (! $contrato->razonSocial?->arl_poliza) {
             // No es un error del certificado: falta entrar al portal una vez.
