@@ -6,15 +6,17 @@ use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
 /**
- * Convierte capturas de pantalla en una escena de video.
+ * Convierte capturas de pantalla en una escena de video vertical.
  *
  * Existe porque Veo no sabe escribir texto legible: pedirle "una pantalla de software"
  * devuelve letras inventadas que cualquiera con experiencia detecta como falsas. Para
  * convencer a un asesor de que la plataforma es real hay que mostrarla de verdad.
  *
- * Cada captura entra con un zoom lento (efecto Ken Burns) y cruza con la siguiente. El
- * movimiento no es decoración: una imagen fija dentro de un video se siente como un error de
- * reproducción, y en Reels la gente desliza.
+ * Las capturas son apaisadas y el Reel es vertical. Encajarlas enteras dentro del cuadro
+ * las deja en una franja del alto de un dedo, ilegible en un teléfono; por eso se escalan a
+ * TODO el alto y se recorta una columna, revelando el resto con un paneo lento. Así el texto
+ * de la interfaz se lee y además hay movimiento, que es lo que evita que el espectador
+ * sienta que el video se congeló y deslice.
  */
 class ClipDeCapturas
 {
@@ -22,56 +24,70 @@ class ClipDeCapturas
 
     private const ALTO = 1280;
 
+    private const FPS = 30;
+
+    /** Cuánto dura el cruce entre una captura y la siguiente. */
+    private const CRUCE = 0.5;
+
     /**
-     * @param  string[]  $rutasImagenes  Capturas en el orden en que deben aparecer.
+     * @param  array<int, string|array{archivo: string, desde?: float, hasta?: float, zoom?: float}>  $capturas
+     *                                                                                                           Ruta de la imagen, o la ruta más el tramo del paneo (`desde`/`hasta`, fracción
+     *                                                                                                           del ancho sobrante), el `zoom` sobre el alto del cuadro y `arriba` (0 pega el
+     *                                                                                                           recorte al borde superior, 1 al inferior).
      * @return array{ok: bool, path: ?string, error: ?string}
      */
-    public static function generar(array $rutasImagenes, float $segundos, string $destinoAbsoluto): array
+    public static function generar(array $capturas, float $segundos, string $destinoAbsoluto): array
     {
-        $rutasImagenes = array_values(array_filter($rutasImagenes, 'is_file'));
-        if (empty($rutasImagenes)) {
+        $capturas = array_values(array_filter(array_map(
+            fn ($c) => is_array($c) ? $c : ['archivo' => $c],
+            $capturas
+        ), fn ($c) => is_file($c['archivo'])));
+
+        if (empty($capturas)) {
             return ['ok' => false, 'path' => null, 'error' => 'No se encontró ninguna captura en disco.'];
         }
 
-        $binario = config('services.ffmpeg.binario', 'ffmpeg');
-        $porImagen = $segundos / count($rutasImagenes);
-        $fps = 30;
-        $cuadros = max(2, (int) round($porImagen * $fps));
+        $n = count($capturas);
+        // Los cruces se comen tiempo: sin compensarlos el clip sale más corto que lo pedido y
+        // la narración se desalinea con las escenas siguientes.
+        $porImagen = ($segundos + ($n - 1) * self::CRUCE) / $n;
 
+        $binario = config('services.ffmpeg.binario', 'ffmpeg');
         $args = [$binario, '-y'];
-        foreach ($rutasImagenes as $ruta) {
-            $args[] = '-loop';
-            $args[] = '1';
-            $args[] = '-t';
-            $args[] = (string) round($porImagen, 3);
-            $args[] = '-i';
-            $args[] = $ruta;
+        foreach ($capturas as $c) {
+            array_push($args, '-loop', '1', '-t', (string) round($porImagen, 3), '-i', $c['archivo']);
         }
 
         $filtros = [];
-        foreach ($rutasImagenes as $i => $_) {
-            // Las capturas son apaisadas y el Reel es vertical: se ajustan al ancho y se
-            // centran sobre un fondo del color de marca en vez de recortarlas, que cortaría
-            // justo la parte que queremos que se vea.
-            $filtros[] = "[{$i}:v]scale=".self::ANCHO.':-2:force_original_aspect_ratio=decrease,'
-                .'pad='.self::ANCHO.':'.self::ALTO.':(ow-iw)/2:(oh-ih)/2:color=0x0f172a,'
-                ."zoompan=z='min(zoom+0.0008,1.12)':d={$cuadros}:s=".self::ANCHO.'x'.self::ALTO.":fps={$fps},"
-                .'setsar=1[v'.$i.']';
+        foreach ($capturas as $i => $c) {
+            $zoom = (float) ($c['zoom'] ?? 1.0);
+            $desde = (float) ($c['desde'] ?? 0.12);
+            $hasta = (float) ($c['hasta'] ?? 0.42);
+            $alto = (int) round(self::ALTO * $zoom);
+            // Los paneles tienen el contenido arriba y aire abajo: anclar el recorte al borde
+            // superior evita regalarle medio cuadro a fondo vacío.
+            $arriba = (float) ($c['arriba'] ?? 0.5);
+
+            // El recorte se mueve con `t`: de `desde` a `hasta` del ancho que sobra. Si la
+            // captura no sobresale (imagen angosta), max(...) deja el recorte quieto en 0 en
+            // vez de pedirle a FFmpeg una x negativa, que aborta el render.
+            $filtros[] = "[{$i}:v]scale=-2:{$alto},"
+                .'crop='.self::ANCHO.':'.self::ALTO
+                .":x='max(0,(in_w-out_w)*(".$desde.'+('.($hasta - $desde).")*min(t/{$porImagen},1)))':y=(in_h-out_h)*{$arriba},"
+                .'fps='.self::FPS.',setsar=1,format=yuv420p[v'.$i.']';
         }
 
-        if (count($rutasImagenes) === 1) {
+        if ($n === 1) {
             $filtros[] = '[v0]null[vout]';
         } else {
-            // Cruce suave entre capturas: el corte seco entre pantallas se siente a
-            // presentación de diapositivas, no a producto en movimiento.
             $prev = 'v0';
             $acumulado = $porImagen;
-            for ($i = 1; $i < count($rutasImagenes); $i++) {
-                $salida = $i === count($rutasImagenes) - 1 ? 'vout' : "x{$i}";
-                $offset = round(max(0.1, $acumulado - 0.4), 3);
-                $filtros[] = "[{$prev}][v{$i}]xfade=transition=fade:duration=0.4:offset={$offset}[{$salida}]";
+            for ($i = 1; $i < $n; $i++) {
+                $salida = $i === $n - 1 ? 'vout' : "x{$i}";
+                $offset = round(max(0.1, $acumulado - self::CRUCE), 3);
+                $filtros[] = "[{$prev}][v{$i}]xfade=transition=fade:duration=".self::CRUCE.":offset={$offset}[{$salida}]";
                 $prev = $salida;
-                $acumulado += $porImagen - 0.4;
+                $acumulado += $porImagen - self::CRUCE;
             }
         }
 
@@ -80,7 +96,7 @@ class ClipDeCapturas
             '-map', '[vout]',
             '-t', (string) round($segundos, 3),
             '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-crf', '20',
-            '-r', (string) $fps,
+            '-r', (string) self::FPS,
             $destinoAbsoluto,
         ]);
 

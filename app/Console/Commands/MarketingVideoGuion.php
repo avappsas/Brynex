@@ -10,7 +10,6 @@ use App\Models\RedSocialConfig;
 use App\Services\Publicidad\ClipDeCapturas;
 use App\Services\Publicidad\VeoVideoGenerator;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * Video largo con GUION FIJO, escena por escena.
@@ -139,7 +138,14 @@ class MarketingVideoGuion extends Command
                 .'Natural daylight, medium shot, shallow depth of field. Ambient sounds only. '
                 .'No text on screen, nobody speaks.',
             ],
-            'capturas' => ['02-inicio.png', '04-informes.png', '03-clientes.png'],
+            // El encuadre de cada captura: la barra de módulos y las tarjetas del panel son lo
+            // que convence, y quedan a la izquierda; el paneo las recorre en vez de dejar media
+            // pantalla quieta.
+            'capturas' => [
+                ['archivo' => '02-inicio.png', 'desde' => 0.0, 'hasta' => 0.35, 'zoom' => 1.35, 'arriba' => 0.05],
+                ['archivo' => '04-informes.png', 'desde' => 0.05, 'hasta' => 0.40, 'zoom' => 1.15, 'arriba' => 0.1],
+                ['archivo' => '05-tendencia.png', 'desde' => 0.05, 'hasta' => 0.40, 'zoom' => 1.2, 'arriba' => 0.55],
+            ],
             'frases' => [
                 '¿Ya tienes clientes propios?',
                 'Nosotros hacemos todo el trabajo',
@@ -172,7 +178,11 @@ class MarketingVideoGuion extends Command
                 .'relaxed, proud smile. Bright natural light, medium wide shot. Ambient sounds only. '
                 .'No text on screen, nobody speaks.',
             ],
-            'capturas' => ['01-login.png', '02-inicio.png', '05-tendencia.png'],
+            'capturas' => [
+                ['archivo' => '01-login.png', 'desde' => 0.5, 'hasta' => 0.5, 'zoom' => 1.15],
+                ['archivo' => '02-inicio.png', 'desde' => 0.0, 'hasta' => 0.35, 'zoom' => 1.35, 'arriba' => 0.05],
+                ['archivo' => '04-informes.png', 'desde' => 0.05, 'hasta' => 0.40, 'zoom' => 1.15, 'arriba' => 0.1],
+            ],
             'frases' => [
                 '¿Ya manejas tu propia cartera?',
                 'Te montamos la plataforma',
@@ -307,12 +317,16 @@ class MarketingVideoGuion extends Command
             return ['ok' => false, 'path' => null, 'error' => 'El guion no dice qué capturas usar.'];
         }
 
-        $base = Storage::disk('public')->path('publicidad/capturas');
+        // Van en `resources` y no en `storage/app/public` a propósito: storage no se sincroniza
+        // a producción, y el video se genera allá. En resources viajan con el mismo pull que el
+        // código, sin un scp aparte que alguien tenga que acordarse de hacer.
+        $base = base_path('resources/publicidad/capturas');
         $rutas = [];
         $faltan = [];
-        foreach ($nombres as $nombre) {
-            $ruta = $base.'/'.$nombre;
-            is_file($ruta) ? $rutas[] = $ruta : $faltan[] = $nombre;
+        foreach ($nombres as $entrada) {
+            $entrada = is_array($entrada) ? $entrada : ['archivo' => $entrada];
+            $entrada['archivo'] = $base.'/'.$entrada['archivo'];
+            is_file($entrada['archivo']) ? $rutas[] = $entrada : $faltan[] = basename($entrada['archivo']);
         }
 
         if ($faltan) {
