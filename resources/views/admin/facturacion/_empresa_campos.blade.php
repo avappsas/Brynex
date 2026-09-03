@@ -86,6 +86,25 @@
                 </div>
             </div>
 
+            {{-- Exoneración del art. 114-1 del ET. Casi todo empleador la tiene, por
+                 eso viene marcada. Se apaga para el aportante que no es contribuyente
+                 declarante de renta —un sindicato, una entidad del art. 23— y que por
+                 eso paga SENA e ICBF y la salud completa. --}}
+            <div class="form-full">
+                <label class="flb">Exonerado de parafiscales</label>
+                <label style="display:flex;gap:.5rem;align-items:center;font-size:.85rem;color:#334155;padding:.45rem 0;">
+                    <input type="checkbox" name="exonerado_parafiscales" value="1"
+                           @checked(old('exonerado_parafiscales', $empresa->exonerado_parafiscales ?? true))>
+                    <span>Exonerada de SENA e ICBF (art. 114-1 ET)</span>
+                </label>
+                <div style="font-size:.72rem;color:#94a3b8">
+                    Si lo apagas, sus planillas liquidan <strong>SENA 2% + ICBF 3%</strong> y la salud
+                    le va al <strong>12,5%</strong> en vez del 4%. Es el caso de los aportantes que no
+                    declaran renta —sindicatos, fondos de empleados, entidades del art. 23 del ET—
+                    y el de la persona natural con un solo trabajador.
+                </div>
+            </div>
+
             <div>
                 <label class="flb">IVA</label>
                 <div class="iva-group">

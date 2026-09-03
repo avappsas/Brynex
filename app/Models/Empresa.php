@@ -8,6 +8,7 @@ class Empresa extends BaseModel
 
     protected $casts = [
         'factura_electronica' => 'boolean',
+        'exonerado_parafiscales' => 'boolean',
     ];
 
     /**
@@ -23,6 +24,7 @@ class Empresa extends BaseModel
         'empresa',
         'nombre_legal',
         'factura_electronica',
+        'exonerado_parafiscales',
         'contacto',
         'contacto_celular',
         'telefono',

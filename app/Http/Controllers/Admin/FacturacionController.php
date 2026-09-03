@@ -4115,6 +4115,8 @@ class FacturacionController extends Controller
             'nombre_legal' => 'nullable|string|max:255',
             // Apagado, la factura sale a consumidor final.
             'factura_electronica' => 'nullable|boolean',
+            // Apagado, el aportante paga SENA e ICBF y la salud le va al 12,5%.
+            'exonerado_parafiscales' => 'nullable|boolean',
             'contacto' => 'nullable|string|max:255',
             'contacto_celular' => 'nullable|string|max:50',
             'telefono' => 'nullable|string|max:50',
@@ -4137,6 +4139,7 @@ class FacturacionController extends Controller
         // Una casilla sin marcar no llega en la petición: hay que traducirla a
         // un false explícito o el interruptor nunca se podría apagar.
         $datos['factura_electronica'] = ! empty($datos['factura_electronica']);
+        $datos['exonerado_parafiscales'] = ! empty($datos['exonerado_parafiscales']);
 
         // Una sociedad no tiene «nombre según el documento»: su razón social ya
         // es el nombre legal. Guardarlo dejaría un dato colgando si mañana

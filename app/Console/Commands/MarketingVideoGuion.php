@@ -78,6 +78,44 @@ class MarketingVideoGuion extends Command
                 . 'Además verificamos que tus aportes hayan quedado bien reportados — tú mismo lo compruebas. '
                 . 'Asesoría sin costo. 📲 Escríbenos.',
         ],
+        // Misma estructura que el anterior, con dos cambios pedidos: un oficio más cotidiano
+        // —un vendedor de tienda de barrio en vez de alguien de taller— y el diferencial de
+        // "mejoramos cualquier cotización" dicho también en voz alta, no solo en pantalla.
+        // Todas las escenas describen el audio como "Ambient sounds only": es la fórmula que
+        // pasó el filtro de Veo, mientras que "ambient office sounds" lo hizo fallar dos veces.
+        'mejorar-cotizacion-2' => [
+            'tema'   => 'te mejoramos cualquier cotización que ya tengas, con verificación de tus pagos y asesoría sin costo',
+            'titulo' => 'Mejoramos cualquier cotización — y verificamos que tus pagos estén al día',
+            'escenas' => [
+                'Vertical 9:16 cinematic shot. A Colombian man in his 40s, a small neighborhood shop owner in '
+                . 'a simple polo shirt, stands behind the counter of his corner store during a quiet moment, '
+                . 'looking at a quote on his phone with a doubtful frown. Shelves with products behind him. '
+                . 'Natural daylight, handheld camera, shallow depth of field. Ambient sounds only. '
+                . 'No text on screen, nobody speaks.',
+
+                'Vertical 9:16 cinematic shot. Close-up of the same Colombian shop owner typing a message on '
+                . 'his phone with both thumbs, then a warm smile as he sees a reply arrive. The store shelves '
+                . 'are out of focus behind him. Natural daylight, handheld, shallow depth of field. '
+                . 'Ambient sounds only. No text on screen, nobody speaks.',
+
+                'Vertical 9:16 cinematic shot. A Colombian woman advisor in her late 20s sits beside a client '
+                . 'at a desk in a bright modern office, both looking at a printed document she points to. '
+                . 'The client nods slowly and smiles with relief. Warm natural light, medium shot, '
+                . 'shallow depth of field. Ambient sounds only. No text on screen, nobody speaks.',
+            ],
+            'frases' => [
+                '¿Estás pagando de más?',
+                'Cuéntanos qué pagas hoy',
+                'Mejoramos cualquier cotización',
+            ],
+            'narracion' => 'Si ya tienes una cotización de seguridad social, cuéntanos cuánto estás pagando hoy: '
+                . 'te mejoramos cualquier cotización. Y algo que casi nadie hace: verificamos que tus aportes '
+                . 'hayan quedado bien reportados y que estés al día, para que sepas que tu plata sí llegó. '
+                . 'La asesoría no te cuesta nada.',
+            'copy' => 'Mejoramos cualquier cotización de seguridad social. Cuéntanos cuánto pagas hoy y te decimos '
+                . 'cómo quedarías. Además verificamos que tus aportes estén al día — tú mismo lo compruebas. '
+                . 'Asesoría sin costo. 📲 Escríbenos.',
+        ],
     ];
 
     public function handle(): int
