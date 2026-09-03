@@ -186,10 +186,12 @@ class MarketingVideoGuion extends Command
                 .'Medium close shot, shallow depth of field. Ambient sounds only. '
                 .'No text on screen, nobody speaks.',
 
-                'Vertical 9:16 cinematic shot. The same Colombian man, now in a shirt, standing confidently '
-                .'in the doorway of his own small office with two coworkers at desks behind him, arms '
-                .'relaxed, proud smile. Bright natural light, medium wide shot. Ambient sounds only. '
-                .'No text on screen, nobody speaks.',
+                // Reescrita: la version con "two coworkers at desks behind him" la filtro Veo tres
+                // veces seguidas. Una sola persona y un encuadre simple pasan sin problema.
+                'Vertical 9:16 cinematic shot. The same Colombian man, now wearing a shirt, stands in a '
+                .'bright modern office next to a large window with a city view, arms relaxed, calm '
+                .'confident smile. Natural daylight, medium shot, shallow depth of field. '
+                .'Ambient sounds only. No text on screen, nobody speaks.',
             ],
             'capturas' => [
                 ['archivo' => '01-login.png', 'desde' => 0.5, 'hasta' => 0.5, 'zoom' => 1.15],
