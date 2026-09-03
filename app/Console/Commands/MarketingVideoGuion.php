@@ -151,21 +151,28 @@ class MarketingVideoGuion extends Command
                 ['archivo' => '13-tendencia.png', 'modo' => 'ancho', 'zoom' => 1.1, 'arriba' => 0.5],
             ],
             'frases' => [
-                '¿Ya tienes clientes propios?',
-                'Planillas por API, sin subir nada',
-                'Tus clientes, desde el celular',
-                'Tú solo consigues clientes',
+                '¿Ya tienes clientes afiliados?',
+                'Más por cada afiliación',
+                'Más por administración mensual',
+                'Comunícate ya',
             ],
-            'narracion' => 'Si ya eres asesor y manejas clientes de seguridad social, te mejoramos tus comisiones. '
-                .'Nosotros hacemos todo: afiliaciones al instante, planillas pagadas por API sin que subas un solo '
-                .'archivo, cobros automáticos por WhatsApp e incapacidades. Y sigues a tus clientes desde la '
-                .'aplicación, con la plataforma de BRYNEX punto co. Tú solo consigues clientes nuevos. '
-                .'Escríbenos y cuéntanos cuántos manejas.',
-            'copy' => '¿Eres asesor de seguridad social y ya tienes tus propios clientes? Te mejoramos tus comisiones '
-                .'y hacemos todo el trabajo: afiliaciones al instante, planillas pagadas por API (sin subir archivos '
-                .'a ningún operador), cobros automáticos por WhatsApp e incapacidades. Sigues a tus clientes desde la '
-                .'aplicación y no necesitas razones sociales propias. Tú solo vendes. '
-                .'📲 Escríbenos y cuéntanos cuántos clientes manejas.',
+            // Dice QUÉ buscamos y CUÁNTO gana, no en qué le ayudamos. Es lo único que a un
+            // asesor con cartera le hace parar el dedo: lo operativo —API, WhatsApp, la app—
+            // se cuenta en el copy, donde ya está leyendo porque le interesó.
+            'narracion' => 'En BRYGAR buscamos asesores de seguridad social que ya tengan clientes afiliados. '
+                .'Si ya los tienes, te mejoramos tus condiciones actuales: ganas más por cada afiliación y más '
+                .'por la administración mensual. Con garantía, respaldo y todo verificable. '
+                .'Escríbenos y te damos la información completa, para que con los mismos clientes que ya manejas '
+                .'empieces a ganar mucho más. Y si quieres dar el siguiente paso, también te ayudamos a crear tu '
+                .'propia empresa. Comunícate ya.',
+            'copy' => 'En BRYGAR buscamos asesores de seguridad social que YA tengan clientes afiliados. '
+                .'Te mejoramos tus condiciones actuales: más por cada afiliación y más por la administración '
+                .'mensual, con garantía, respaldo y todo verificable.'."\n\n"
+                .'Y el trabajo operativo lo hacemos nosotros: afiliaciones al instante, planillas pagadas por API '
+                .'(sin que subas archivos a ningún operador), cobros automáticos por WhatsApp e incapacidades. '
+                .'A tus clientes los sigues desde la aplicación, y no necesitas razones sociales propias.'."\n\n"
+                .'¿Prefieres dar el siguiente paso? También te ayudamos a crear tu propia empresa.'."\n\n"
+                .'📲 Escríbenos y cuéntanos cuántos clientes manejas hoy.',
         ],
         // El paso siguiente para el asesor que ya tiene volumen: dejar de ser intermediario y
         // tener su propia empresa. Es otro momento de la misma persona, por eso va en un video
