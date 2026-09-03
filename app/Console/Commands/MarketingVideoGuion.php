@@ -160,11 +160,10 @@ class MarketingVideoGuion extends Command
             // asesor con cartera le hace parar el dedo: lo operativo —API, WhatsApp, la app—
             // se cuenta en el copy, donde ya está leyendo porque le interesó.
             'narracion' => 'En BRYGAR buscamos asesores de seguridad social que ya tengan clientes afiliados. '
-                .'Si ya los tienes, te mejoramos tus condiciones actuales: ganas más por cada afiliación y más '
-                .'por la administración mensual. Con garantía, respaldo y todo verificable. '
-                .'Escríbenos y te damos la información completa, para que con los mismos clientes que ya manejas '
-                .'empieces a ganar mucho más. Y si quieres dar el siguiente paso, también te ayudamos a crear tu '
-                .'propia empresa. Comunícate ya.',
+                .'Te mejoramos tus condiciones actuales: ganas más por cada afiliación y más por la administración '
+                .'mensual. Con garantía, respaldo y todo verificable. '
+                .'Escríbenos y te damos la información completa, para que con los clientes que ya manejas empieces '
+                .'a ganar mucho más. Y si quieres, también te ayudamos a crear tu propia empresa. Comunícate ya.',
             'copy' => 'En BRYGAR buscamos asesores de seguridad social que YA tengan clientes afiliados. '
                 .'Te mejoramos tus condiciones actuales: más por cada afiliación y más por la administración '
                 .'mensual, con garantía, respaldo y todo verificable.'."\n\n"
