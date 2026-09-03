@@ -7,6 +7,7 @@ use App\Models\Contrato;
 use App\Models\OperadorCredencial;
 use App\Models\OperadorPlanilla;
 use App\Services\SuaporteApiService;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -18,14 +19,19 @@ use Throwable;
  *
  *  - **AFP y EPS**: el RUAF/BDUA del operador de planilla, que es la misma
  *    consulta que ya usa `CompletarRuafClientes`.
- *  - **Sexo**: Sura mismo, con `afiliacion/consultarDependiente`. Lo exige el
- *    formulario y además lo valida contra el documento, así que no se puede
- *    inventar; pero si la persona ya estuvo afiliada, el portal lo sabe.
+ *  - **Sexo y fecha de nacimiento**: Sura mismo, con
+ *    `afiliacion/consultarDependiente`. Los exige el formulario y el sexo lo
+ *    valida contra el documento, así que no se pueden inventar; pero si la
+ *    persona ya estuvo afiliada, el portal los sabe. Los dos salen de la misma
+ *    respuesta, así que se consulta una sola vez.
  *
  * Lo que encuentra se guarda en BryNex: la próxima afiliación ya no lo consulta.
  */
 class ArlDatosFaltantesService
 {
+    /** @var array<string,array> Respuesta de Sura por contrato, para no repetirla. */
+    private array $consultados = [];
+
     /**
      * @return array<string,string> Lo que se completó, para poder contarlo.
      */
@@ -53,6 +59,12 @@ class ArlDatosFaltantesService
             $cliente->genero = $sexo;
             $cliente->save();
             $completado['sexo'] = 'ARL Sura';
+        }
+
+        if (! $cliente->fecha_nacimiento && $fn = $this->nacimientoDesdeSura($contrato, $cliente)) {
+            $cliente->fecha_nacimiento = $fn;
+            $cliente->save();
+            $completado['fecha_nacimiento'] = 'ARL Sura';
         }
 
         return $completado;
@@ -122,21 +134,58 @@ class ArlDatosFaltantesService
     /** El sexo que Sura tiene registrado para ese documento, si la persona ya existe allí. */
     private function sexoDesdeSura(Contrato $contrato, Cliente $cliente): ?string
     {
+        $sexo = strtoupper(trim((string) ($this->deSura($contrato, $cliente)['sexo'] ?? '')));
+
+        return in_array($sexo, ['M', 'F'], true) ? $sexo : null;
+    }
+
+    /** La fecha de nacimiento que Sura ya tiene. Llega como `ddmmYYYY`. */
+    private function nacimientoDesdeSura(Contrato $contrato, Cliente $cliente): ?Carbon
+    {
+        $crudo = preg_replace('/\D/', '', (string) ($this->deSura($contrato, $cliente)['feNacimiento'] ?? ''));
+
+        if (strlen($crudo) !== 8) {
+            return null;
+        }
+
         try {
-            $poliza = $contrato->razonSocial?->arl_poliza;
-
-            if (! $poliza) {
-                return null;
-            }
-
-            $api  = new ArlSuraApiService((int) $contrato->aliado_id, $poliza);
-            $dni  = ArlSuraPayloadBuilder::tipoDocumento($cliente->tipo_doc).$cliente->cedula;
-            $r    = $api->consultarDependiente($dni);
-            $sexo = strtoupper(trim((string) ($r['sexo'] ?? '')));
-
-            return in_array($sexo, ['M', 'F'], true) ? $sexo : null;
+            $fecha = Carbon::createFromFormat('dmY', $crudo)->startOfDay();
         } catch (Throwable) {
             return null;
         }
+
+        // Sura devuelve rellenos como 31/12/3000 en las fechas que no conoce, y
+        // guardar eso sería peor que dejar el campo vacío: nadie lo revisaría.
+        return $fecha->year >= 1900 && $fecha->isPast() ? $fecha : null;
+    }
+
+    /**
+     * Lo que Sura sabe del trabajador, consultado una sola vez.
+     *
+     * Sexo y fecha de nacimiento vienen en la misma respuesta y los dos suelen
+     * faltar juntos, así que sin la memoria serían dos viajes al portal —cada
+     * uno con su sesión— para leer el mismo JSON.
+     */
+    private function deSura(Contrato $contrato, Cliente $cliente): array
+    {
+        $llave = $contrato->id.'|'.$cliente->cedula;
+
+        if (array_key_exists($llave, $this->consultados)) {
+            return $this->consultados[$llave];
+        }
+
+        try {
+            $poliza = $contrato->razonSocial?->arl_poliza;
+
+            $this->consultados[$llave] = $poliza
+                ? (new ArlSuraApiService((int) $contrato->aliado_id, $poliza))->consultarDependiente(
+                    ArlSuraPayloadBuilder::tipoDocumento($cliente->tipo_doc).$cliente->cedula
+                )
+                : [];
+        } catch (Throwable) {
+            $this->consultados[$llave] = [];
+        }
+
+        return $this->consultados[$llave];
     }
 }
