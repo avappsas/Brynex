@@ -253,11 +253,11 @@
             {{ $rsLock ? 'disabled' : '' }}>
           <option value="">-- Plan --</option>
           @foreach($planes as $plan)
-          {{-- Cliente pensionado: los planes con AFP ni siquiera se pintan. La única
-               excepción es el que ya tiene guardado el contrato, para no borrárselo
-               de la pantalla a los contratos viejos (queda con el aviso de abajo). --}}
-          @continue(!empty($clientePensionado) && $plan->incluye_pension
-                    && $plan->id != old('plan_id', $contrato->plan_id ?? 0))
+          {{-- Cliente pensionado: los planes con AFP no se pintan, ni siquiera el que
+               trae guardado el contrato — para eso está el aviso de abajo. Con rsLock
+               sí se pintan: ahí el plan no se puede cambiar y quitarlo de la lista
+               solo lograría que se guardara vacío. --}}
+          @continue(!empty($clientePensionado) && !$rsLock && $plan->incluye_pension)
           <option value="{{ $plan->id }}"
               data-eps="{{ $plan->incluye_eps ? '1':'0' }}"
               data-arl="{{ $plan->incluye_arl ? '1':'0' }}"
@@ -284,7 +284,7 @@
         @if(!empty($clientePensionado))
         <div id="aviso-plan-pensionado"
              style="display:none;margin-top:0.25rem;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:0.3rem 0.55rem;font-size:0.68rem;color:#b45309;font-weight:600;line-height:1.35;">
-          ⚠️ El cliente está pensionado: este plan incluye AFP. Elija uno sin pensión.
+          ⚠️ El plan del contrato traía AFP y el cliente es pensionado: revíselo.
         </div>
         @endif
         <div id="nota-plan-modalidad" style="display:none;font-size:.6rem;color:#94a3b8;margin-top:.15rem;">Seleccione primero la modalidad</div>
@@ -330,7 +330,6 @@
                  max-height:260px;overflow-y:auto;background:#fff;border:1px solid #cbd5e1;border-radius:8px;
                  box-shadow:0 8px 24px rgba(15,23,42,.14);margin-top:2px;"></div>
         </div>
-        <span id="cargo_hint" style="display:none;font-size:.68rem;color:#1d4ed8;"></span>
       </div>
       {{-- Operador Planilla: visible SOLO cuando la RS es independiente, sin importar si hay ARL --}}
       <div id="panel-operador-planilla" style="display:none;">
@@ -1768,7 +1767,6 @@ function mrValidarPeriodoConsecutivo() {
 (function () {
     const inpCargo = document.getElementById('inp_cargo');
     const panel    = document.getElementById('lista_cargos');
-    const hint     = document.getElementById('cargo_hint');
     const selRS    = document.getElementById('sel_rs');
     if (!inpCargo || !panel) return;
 
@@ -1840,9 +1838,11 @@ function mrValidarPeriodoConsecutivo() {
         inpCargo.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
+    // Elegir un cargo del catálogo mueve el N.ARL al riesgo que le corresponde.
+    // No se anuncia en pantalla: el propio selector de riesgo ya muestra el cambio.
     function ajustarRiesgo() {
         const elegido = cargos.find(c => c.cargo.toUpperCase() === inpCargo.value.trim().toUpperCase());
-        if (!elegido) { hint.style.display = 'none'; return; }
+        if (!elegido) return;
 
         const selArl = document.querySelector('select[name="n_arl"]');
         if (selArl && String(selArl.value) !== String(elegido.nivel_riesgo)) {
@@ -1852,9 +1852,6 @@ function mrValidarPeriodoConsecutivo() {
             selArl.dispatchEvent(new Event('input',  { bubbles: true }));
             selArl.dispatchEvent(new Event('change', { bubbles: true }));
         }
-
-        hint.textContent = `Nivel de riesgo ${elegido.nivel_riesgo} según el catálogo de la razón social`;
-        hint.style.display = 'block';
     }
 
     inpCargo.addEventListener('focus', abrir);
@@ -2033,9 +2030,13 @@ const CLIENTE_EXENTO_AFP         = {{ ($clienteExentoAfp ?? false) ? 'true' : 'f
 // Por eso este caso no solo desactiva la regla de AFP obligatorio (como la edad
 // o el documento extranjero), sino que además saca del selector los planes con AFP.
 const CLIENTE_PENSIONADO         = {{ ($clientePensionado ?? false) ? 'true' : 'false' }};
-// Plan guardado en BD — siempre, con o sin rsLock. Se usa para no borrarle el
-// plan de la pantalla a un contrato viejo que quedó con AFP siendo pensionado.
-const PLAN_BD_ID                 = {{ ($esEdicion ?? false) ? (int) old('plan_id', $contrato->plan_id ?? 0) : 0 }};
+@php
+    $_planBd        = ($esEdicion ?? false) ? (int) old('plan_id', $contrato->plan_id ?? 0) : 0;
+    $_planBdConAfp  = $_planBd && optional($planes->firstWhere('id', $_planBd))->incluye_pension;
+@endphp
+// El plan que trae guardado el contrato lleva AFP: con el cliente ya pensionado
+// ese plan desaparece del selector, así que hay que avisar por qué quedó vacío.
+const PLAN_BD_CON_AFP            = {{ $_planBdConAfp ? 'true' : 'false' }};
 const CLIENTE_TIPO_DOC           = @json($clienteTipoDoc ?? null);
 const ES_EDICION                 = {{ ($esEdicion ?? false) ? 'true' : 'false' }};
 const RS_LOCK                    = {{ ($rsLock ?? false) ? 'true' : 'false' }};  // hay radicados → plan bloqueado
@@ -2378,7 +2379,12 @@ function actualizarAvisoPensionado() {
     if (!aviso) return;
     const selPlan = document.getElementById('sel_plan');
     const opt     = selPlan?.options[selPlan.selectedIndex];
-    aviso.style.display = (CLIENTE_PENSIONADO && opt?.dataset?.pen === '1') ? 'block' : 'none';
+    // Dos casos: el plan elegido lleva AFP (solo pasa con rsLock, donde no se
+    // filtra), o el contrato venía con uno de AFP — ahí el aviso se queda puesto
+    // aunque el selector ya muestre otro, porque el plan cambió sin que nadie lo
+    // tocara y eso hay que verlo antes de guardar.
+    const planConAfp = opt?.dataset?.pen === '1';
+    aviso.style.display = (CLIENTE_PENSIONADO && (planConAfp || PLAN_BD_CON_AFP)) ? 'block' : 'none';
 }
 
 // ── Filtrado 2: Modalidad → Planes ───────────────────────────────
@@ -2395,10 +2401,7 @@ function filtrarPlanes(modalidadId, evitarRecalcular = false) {
         // Sin modalidad: restaurar todas las opciones. Las de AFP igual se van si
         // el cliente ya está pensionado — la exclusión es del cliente, no de la
         // modalidad, así que no depende de haber elegido una.
-        _OPTS_PLAN.forEach(({ el, value }) => {
-            if (CLIENTE_PENSIONADO && el.dataset.pen === '1' && parseInt(value) !== PLAN_BD_ID) return;
-            selPlan.appendChild(el);
-        });
+        _OPTS_PLAN.forEach(({ el }) => selPlan.appendChild(el));
         // Reinsertar las options deja seleccionada la última: hay que devolver el
         // select al valor que traía (o a vacío), o el plan queda elegido a dedo
         // sin que nadie lo haya tocado.
@@ -2467,11 +2470,10 @@ function filtrarPlanes(modalidadId, evitarRecalcular = false) {
         if (aplicarAfpObligatorio && el.dataset.pen !== '1' && !exceptuarSoloArl) return;
 
         // ── Cliente pensionado: fuera los planes con AFP ────────────
-        // Un pensionado ya no cotiza a pensión, así que ofrecerle un plan con
-        // AFP es ofrecerle algo que no puede pagar. Se deja pasar únicamente el
-        // plan que YA está guardado en el contrato, para no vaciarle el selector
-        // a los contratos viejos: queda marcado y con aviso, pero visible.
-        if (CLIENTE_PENSIONADO && el.dataset.pen === '1' && planId !== PLAN_BD_ID) return;
+        // Un pensionado ya no cotiza a pensión, así que ofrecerle un plan con AFP
+        // es ofrecerle algo que no puede pagar. Con rsLock no se filtra: el plan
+        // está bloqueado por los radicados y sacarlo solo lo guardaría vacío.
+        if (CLIENTE_PENSIONADO && !RS_LOCK && el.dataset.pen === '1') return;
 
         // ── Filtro Independientes: NO pueden tener ARL+CCF ni ARL+AFP+CCF ──────────
         // Es decir, si no tienen EPS pero SÍ tienen Caja y ARL, se bloquea.
@@ -2681,15 +2683,17 @@ function bloquearEntidadesPorPlan(planId) {
     // ARL especial
     if (!d.arl) {
         aplicarEstadoEntidad(arlSel, false);
-        // Ocultar panel Modo ARL e inactivar nivel ARL cuando el plan no incluye ARL
+        // Sin ARL en el plan no hay aseguradora que escoger ni modo que mostrar,
+        // pero el NIVEL DE RIESGO se deja editable: al cliente le pueden estar
+        // pagando la ARL por otro lado y el nivel del cargo igual hay que saberlo.
         const panelModoArl = document.getElementById('panel-modo-arl');
         const selNivelArl  = document.querySelector('select[name=n_arl]');
         if (panelModoArl) panelModoArl.style.display = 'none';
         if (selNivelArl) {
-            selNivelArl.disabled = true;
-            selNivelArl.style.background = '#f1f5f9';
-            selNivelArl.style.opacity    = '0.5';
-            selNivelArl.style.cursor     = 'not-allowed';
+            selNivelArl.disabled = false;
+            selNivelArl.style.background = '';
+            selNivelArl.style.opacity    = '';
+            selNivelArl.style.cursor     = '';
         }
     } else {
         actualizarBloqueoArl();
