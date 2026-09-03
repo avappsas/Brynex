@@ -326,6 +326,11 @@ $tSS = $tEps + $tArl + $tPen + $tCaj + $tParaf;
             <span>Afiliación</span><strong>{{ $fmt($totAfil) }}</strong>
         </div>
         @endif
+        @if(($totOtros ?? 0) > 0)
+        <div class="fact-pago-row">
+            <span>Otros</span><strong>{{ $fmt($totOtros) }}</strong>
+        </div>
+        @endif
         @if(($totMora ?? 0) > 0)
         <div class="fact-pago-row" style="color:#92400e">
             <span>Mora</span><strong>{{ $fmt($totMora) }}</strong>

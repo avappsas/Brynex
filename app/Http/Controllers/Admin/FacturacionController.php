@@ -1243,7 +1243,10 @@ class FacturacionController extends Controller
                 $seguro = (int) ($c->seguro ?? 0);
                 $admon = ($esAfiliacion && ! $esIndActPrimerMes) ? 0 : intval($c->administracion ?? 0);
                 $adminAsesor = ($esAfiliacion && ! $esIndActPrimerMes) ? 0 : intval($c->admon_asesor ?? 0);
-                $otrosAdmon = intval($validated['otros_admon'] ?? 0);
+                // Los "otros" son del lote y se reparten después de conocer lo que
+                // cuesta cada contrato (ver _repartirProporcional): aquí la base va
+                // limpia, o la proporción se calcularía sobre sí misma.
+                $otrosAdmon = 0;
 
                 // Solo seguro: el mes vale el seguro y nada más.
                 if ($esSoloSeguro) {
@@ -1280,6 +1283,27 @@ class FacturacionController extends Controller
             }
             $totalesRealesPorContrato[$cId] = max(0, $total);
         }
+
+        // ─── "Otros" del lote: se reparten, no se repiten ──────────────────
+        // Los dos campos del modal ("Otros planilla" y "Otros admon") son un
+        // valor del lote entero — así los suma la pantalla al total bruto —,
+        // pero se guardaban completos en CADA factura. `otros` además nunca
+        // entraba en el total, así que el cobro se perdía y el pago sobrante
+        // caía a saldo a favor; `otros_admon` sí entraba, y se cobraba una vez
+        // por trabajador (un lote de 72 facturas cobró $2.260.800 de más).
+        // Se reparten en proporción al costo de cada contrato, igual que la
+        // consignación, el efectivo y el saldo a favor.
+        $otrosLote = (int) ($validated['otros'] ?? 0);
+        $otrosAdmonLote = (int) ($validated['otros_admon'] ?? 0);
+        $baseReparto = array_sum($totalesRealesPorContrato);
+        $otrosPorContrato = self::_repartirProporcional($otrosLote, $totalesRealesPorContrato, $baseReparto);
+        $otrosAdmonPorContrato = self::_repartirProporcional($otrosAdmonLote, $totalesRealesPorContrato, $baseReparto);
+        foreach ($totalesRealesPorContrato as $cId => $v) {
+            $totalesRealesPorContrato[$cId] = $v
+                + ($otrosPorContrato[$cId] ?? 0)
+                + ($otrosAdmonPorContrato[$cId] ?? 0);
+        }
+
         $granTotalReal = array_sum($totalesRealesPorContrato) ?: 1; // evitar división por 0
 
         // ─── numero_factura compartido para el lote masivo ─────────────────
@@ -1379,6 +1403,7 @@ class FacturacionController extends Controller
             $totalPagoConsig, $totalPagoEfectivo, $totalPagoPrestamo,
             $totalAnticipo, $anticiposSeleccionados,
             $consignacionesData, $totalesRealesPorContrato, $granTotalReal, $batchNumeroFactura,
+            $otrosPorContrato, $otrosAdmonPorContrato,
             &$efAcum, &$csAcum, &$prAcum, &$sfAcum, &$antAcum,
             $saldoEmpresaAplicar, &$contratosPendientes, $contratosCargados, $facturasDuplicadasLote,
             $manualSsPorContrato, $facturasRetiro0Lote, $incluirAdmonRetiroCorto,
@@ -1860,7 +1885,9 @@ class FacturacionController extends Controller
                     $admon = intval($contrato->administracion ?? 0);
                     $adminAsesor = intval($contrato->admon_asesor ?? 0);
                 }
-                $otrosAdmon = intval($validated['otros_admon'] ?? 0);
+                // Parte del lote que le toca a este contrato (ver el reparto arriba).
+                $otrosAdmon = (int) ($otrosAdmonPorContrato[$contratoId] ?? 0);
+                $otrosPlanilla = (int) ($otrosPorContrato[$contratoId] ?? 0);
 
                 // Solo seguro: el mes vale el seguro y nada más. Se fuerza aquí, después de
                 // los overrides manuales, para que ninguna casilla de la UI meta seguridad
@@ -1884,7 +1911,7 @@ class FacturacionController extends Controller
                 // total = BRUTO (SS + admon + seguro + IVA + afiliacion + otros).
                 // El anticipo (saldo_a_favor) y la deuda previa (saldo_pendiente) se guardan
                 // en columnas separadas y el sistema acumulativo de saldo_proximo los maneja.
-                $total = $totalSS + $admon + $adminAsesor + $otrosAdmon + $seguro + $afiliacion + $iva;
+                $total = $totalSS + $admon + $adminAsesor + $otrosAdmon + $otrosPlanilla + $seguro + $afiliacion + $iva;
 
                 // ─── Mora al cliente ────────────────────────────────────────
                 // La mora viene del modal (pre-calculada + editable por el usuario).
@@ -2045,7 +2072,7 @@ class FacturacionController extends Controller
                     'valor_consignado' => $vConsig,
                     'valor_efectivo' => $vEfectivo,
                     'valor_prestamo' => $vPrestamo,
-                    'otros' => (int) ($validated['otros'] ?? 0),
+                    'otros' => $otrosPlanilla,
                     'otros_admon' => $otrosAdmon,
                     'mensajeria' => (int) ($validated['mensajeria'] ?? 0),
                     'dias_cotizados' => $diasCotizar,
@@ -2526,8 +2553,11 @@ class FacturacionController extends Controller
 
         // ── Totales de cada registro ─────────────────────────────────────────────
         $totalAfil = $costoAfiliacion + $ivaAfil; // afiliación: costo + IVA (sin admon, sin SS)
+        // Los dos "otros" van a la planilla, no a la afiliación. Aquí no hay
+        // reparto que hacer: el par es de un solo contrato.
         $totalPlan = $totalSS + $admon + $adminAsesor + $seguro + $iva
-                   + (int) ($validated['otros_admon'] ?? 0);
+                   + (int) ($validated['otros_admon'] ?? 0)
+                   + (int) ($validated['otros'] ?? 0);
 
         $totalAmbos = max(1, $totalAfil + $totalPlan);
 
@@ -4108,6 +4138,46 @@ class FacturacionController extends Controller
      * Reglas de la ficha de empresa. Las comparten crear y editar: si viven en
      * cada método, se agrega un campo a uno y el otro lo descarta en silencio.
      */
+    /**
+     * Reparte un monto del lote entre sus contratos, en proporción a lo que
+     * cuesta cada uno.
+     *
+     * El residuo del redondeo va completo al último para que la suma de las
+     * partes sea EXACTAMENTE el monto: repartiendo peso a peso, el lote queda
+     * unos pesos por encima o por debajo de lo que mostró la pantalla y el
+     * pago del cliente deja de cuadrar. Es la misma regla que ya usan la
+     * consignación, el efectivo y el saldo a favor.
+     *
+     * @param  array<int|string,int>  $pesos  costo de cada contrato, por id
+     * @return array<int|string,int>  la parte de cada contrato, por id
+     */
+    private static function _repartirProporcional(int $monto, array $pesos, int $granTotal): array
+    {
+        $claves = array_keys($pesos);
+        $partes = array_fill_keys($claves, 0);
+
+        if ($monto === 0 || $claves === []) {
+            return $partes;
+        }
+
+        $n = count($claves);
+        $acum = 0;
+        foreach ($claves as $i => $k) {
+            if ($i === $n - 1) {
+                $partes[$k] = $monto - $acum;   // el último se lleva el residuo
+                break;
+            }
+            // Sin costos (todo en cero) no hay proporción que valga: se parte en partes iguales.
+            $parte = $granTotal > 0
+                ? (int) round($monto * $pesos[$k] / $granTotal)
+                : intdiv($monto, $n);
+            $partes[$k] = $parte;
+            $acum += $parte;
+        }
+
+        return $partes;
+    }
+
     private function reglasEmpresa(): array
     {
         return [

@@ -75,10 +75,14 @@ if ($esGrupo && !$empresaObj) {
 
 // Totales del grupo
 $totSS=$totAdmon=$totSeg=$totAfil=$totIva=$totTotal=$totPrest=$totMora=0;
+// "Otros planilla" y mensajería: cobros del lote que no son SS ni administración.
+// Sin esta línea el resumen suma menos que el TOTAL y el recibo no cuadra.
+$totOtros=0;
 $totEfect=$totConsig=$totBanco2=$totAnticipo=0;
 foreach ($filas as $f) {
     $totSS    += (int)($f->total_ss ?? 0);
-    $totAdmon += (int)($f->admon ?? 0) + (int)($f->admin_asesor ?? 0);
+    $totAdmon += (int)($f->admon ?? 0) + (int)($f->admin_asesor ?? 0) + (int)($f->otros_admon ?? 0);
+    $totOtros += (int)($f->otros ?? 0) + (int)($f->mensajeria ?? 0);
     $totSeg   += (int)($f->seguro ?? 0);
     $totAfil  += (int)($f->afiliacion ?? 0);
     $totIva   += (int)($f->iva ?? 0);
