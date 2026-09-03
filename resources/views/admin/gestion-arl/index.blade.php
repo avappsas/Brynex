@@ -421,6 +421,16 @@ body{display:flex;flex-direction:column}
         <input type="hidden" id="renovar-contrato-id">
         <button class="btn-save" id="renovar-btn" onclick="confirmarRenovacion()">🔄 Renovar la cobertura</button>
 
+        {{-- La cobertura del portal ya arranca en la fecha elegida: mover no
+             haría nada. Lo que falta es poner esa fecha en BryNex, así que el
+             aviso trae el botón que lo hace. --}}
+        <div id="renovar-sin-cambio" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:.7rem .8rem;margin-top:.75rem;font-size:.76rem;color:#1e40af;line-height:1.5;">
+            <div id="renovar-sin-cambio-texto" style="margin-bottom:.55rem;"></div>
+            <button class="btn-accion btn-renovar" style="width:100%" onclick="registrarFechaDelPortal()">
+                📅 Registrar esa fecha en BryNex
+            </button>
+        </div>
+
         {{-- Salida para las empresas cuya credencial del portal todavía no está
              cargada: sin ella no se puede tocar Sura, pero el semáforo sí se
              puede poner al día a mano, como se hacía antes. --}}
@@ -438,7 +448,18 @@ body{display:flex;flex-direction:column}
         </div>
     </div>
 
-    <div id="renovar-resultado" style="display:none;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:.75rem .9rem;font-size:.8rem;color:#166534;"></div>
+    <div id="renovar-resultado" style="display:none;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:.75rem .9rem;font-size:.8rem;color:#166534;">
+        <div id="renovar-resultado-texto"></div>
+        <button class="btn-accion btn-certificado" id="renovar-cert-btn" style="width:100%;margin-top:.7rem;"
+                onclick="descargarCertificado(this, renovarCtx)">
+            <svg width="13" height="15" viewBox="0 0 12 14" fill="none" style="vertical-align:-2px" aria-hidden="true">
+                <path d="M1 1.5A.5.5 0 0 1 1.5 1H7l4 4v7.5a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5v-11Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+                <path d="M7 1v4h4" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+                <path d="M6 7.6v3.2m0 0L4.7 9.6M6 10.8l1.3-1.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Descargar certificado y carné
+        </button>
+    </div>
 </div>
 </div>
 
@@ -528,10 +549,20 @@ function cerrarModal(id) {
     document.getElementById(id).classList.remove('open');
     const iframe = document.querySelector(`#${id} iframe`);
     if (iframe) iframe.src = '';
+
+    // La renovación ya no recarga sola —así la fila no se mueve mientras se
+    // baja el certificado—, así que la lista se pone al día al cerrar.
+    if (id === 'modalRenovar' && renovarPendienteRecargar) {
+        renovarPendienteRecargar = false;
+        location.reload();
+    }
 }
 
 /* ── Modal Renovar: el ciclo mensual contra ARL Sura ── */
 let renovarCtx = null;
+let renovarPrecheck = null;
+let renovarPendienteRecargar = false;
+let renovarBotonNormal = null;
 
 // Los trámites abren un navegador dentro del servidor y tardan un buen rato:
 // sin un contador a la vista el botón parece congelado.
@@ -574,8 +605,10 @@ async function abrirRenovar(ctx) {
         return;
     }
 
+    renovarPrecheck = data;
     document.getElementById('renovar-cargando').style.display  = 'none';
     document.getElementById('renovar-contenido').style.display = 'block';
+    document.getElementById('renovar-sin-cambio').style.display = 'none';
 
     const r = data.resumen || {};
     const linea = (etiqueta, valor) => valor
@@ -632,13 +665,71 @@ async function abrirRenovar(ctx) {
 
     document.getElementById('renovar-fecha').value = data.fecha_sugerida || '';
 
+    // El estado que le corresponde al botón por el contrato en sí. Se guarda
+    // porque el aviso de trámite nulo lo bloquea y, si el usuario cambia el
+    // día, hay que devolverlo a esto y no a "habilitado" a secas: puede seguir
+    // bloqueado por falta de datos o de credencial.
+    renovarBotonNormal = {
+        disabled: bloquea,
+        texto: falta.length ? '🚫 Completa los datos primero'
+             : cred         ? '🔒 Falta la contraseña del portal'
+             : (cob && !cob.se_puede_anular) ? '⛔ Fuera del plazo para anular'
+             : '🔄 Renovar la cobertura',
+    };
+
     const btn = document.getElementById('renovar-btn');
-    btn.disabled     = bloquea;
-    btn.style.opacity = bloquea ? '.5' : '1';
-    btn.textContent  = falta.length ? '🚫 Completa los datos primero'
-                     : cred         ? '🔒 Falta la contraseña del portal'
-                     : (cob && !cob.se_puede_anular) ? '⛔ Fuera del plazo para anular'
-                     : '🔄 Renovar la cobertura';
+    btn.disabled      = renovarBotonNormal.disabled;
+    btn.style.opacity = renovarBotonNormal.disabled ? '.5' : '1';
+    btn.textContent   = renovarBotonNormal.texto;
+
+    // Se revisa al abrir y cada vez que se cambie el día: es la fecha elegida,
+    // no la propuesta, la que decide si el trámite haría algo.
+    revisarSiSobraElTramite();
+    document.getElementById('renovar-fecha').onchange = revisarSiSobraElTramite;
+}
+
+/**
+ * Avisa cuando la cobertura del portal ya arranca en la fecha elegida.
+ *
+ * Mover una cobertura al mismo día no cambia nada y Sura devuelve la pantalla
+ * sin confirmar, así que el trámite parece fallar. Le pasa a todo el que ya se
+ * renovó por el portal y quedó desactualizado en BryNex, que es justo lo que se
+ * viene a arreglar aquí: por eso el aviso trae el botón que registra la fecha.
+ */
+function revisarSiSobraElTramite() {
+    const caja  = document.getElementById('renovar-sin-cambio');
+    const cob   = renovarPrecheck?.cobertura_actual;
+    const fecha = document.getElementById('renovar-fecha').value;
+    const btn   = document.getElementById('renovar-btn');
+
+    // `desde` viene como d/m/Y y el input como Y-m-d.
+    const [d, m, a] = (cob?.desde || '').split('/');
+    const sobra = cob && fecha && `${a}-${m}-${d}` === fecha;
+
+    caja.style.display = sobra ? 'block' : 'none';
+
+    if (!sobra) {
+        // Vuelve a como estaba, que no siempre es "habilitado".
+        btn.disabled      = renovarBotonNormal?.disabled ?? false;
+        btn.style.opacity = btn.disabled ? '.5' : '1';
+        btn.textContent   = renovarBotonNormal?.texto ?? '🔄 Renovar la cobertura';
+        return;
+    }
+
+    document.getElementById('renovar-sin-cambio-texto').innerHTML =
+        `En el portal la cobertura <strong>ya arranca el ${cob.desde}</strong>, así que no hay nada que mover. ` +
+        `Lo que falta es registrar esa fecha en BryNex.`;
+    btn.disabled = true;
+    btn.style.opacity = '.5';
+    btn.textContent = '✓ La cobertura ya arranca ese día';
+}
+
+/** Registra en BryNex la fecha que el portal ya tiene, sin tocar Sura. */
+function registrarFechaDelPortal() {
+    const texto = document.getElementById('renovar-sin-cambio-texto').textContent;
+    const visto = texto.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    if (!visto) return;
+    guardarFechaManual(`${visto[3]}-${visto[2]}-${visto[1]}`);
 }
 
 async function confirmarRenovacion() {
@@ -667,14 +758,29 @@ async function confirmarRenovacion() {
     if (data.ok) {
         document.getElementById('renovar-contenido').style.display = 'none';
         const caja = document.getElementById('renovar-resultado');
-        caja.innerHTML = `✅ <strong>${data.mensaje}</strong><br>` +
+        document.getElementById('renovar-resultado-texto').innerHTML = `✅ <strong>${data.mensaje}</strong><br>` +
             `Cobertura desde <strong>${data.fecha_display}</strong>` +
             (data.codigo_transaccion ? ` · transacción <strong>${data.codigo_transaccion}</strong>` : '') + `<br>` +
             `<span style="color:#475569;">El certificado y el carné al día quedaron archivados en los documentos del cliente, ` +
             `y la fecha ARL del contrato ya está actualizada.</span>` +
             (data.aviso ? `<br><span style="color:#b45309;">⚠️ ${data.aviso}</span>` : '');
         caja.style.display = 'block';
-        setTimeout(() => location.reload(), 3500);
+
+        // Sin recarga automática: al renovar, la fila cambia de sitio en la
+        // lista —está ordenada por semáforo— y encontrar a la persona otra vez
+        // para bajarle el certificado costaba más que el trámite. Se baja aquí
+        // mismo, y la lista se refresca cuando se cierre la ventana.
+        renovarPendienteRecargar = true;
+        document.getElementById('renovar-cert-btn').click();
+    } else if (data.sin_cambio) {
+        // La cobertura ya arrancaba ese día. No es un fallo: se ofrece lo que
+        // de verdad falta, que es poner la fecha del portal en BryNex.
+        document.getElementById('renovar-sin-cambio-texto').innerHTML =
+            `En el portal la cobertura <strong>ya arranca el ${data.fecha_display}</strong>, así que no hubo nada que mover. ` +
+            `Lo que falta es registrar esa fecha en BryNex.`;
+        document.getElementById('renovar-sin-cambio').style.display = 'block';
+        btn.disabled = true; btn.style.opacity = '.5';
+        btn.textContent = '✓ La cobertura ya arranca ese día';
     } else {
         btn.disabled = false; btn.textContent = '🔄 Reintentar';
         alert(data.mensaje || 'No se pudo renovar.');
@@ -755,7 +861,7 @@ async function descargarCertificado(btn, ctx) {
         // llega en la respuesta y se guarda desde aquí.
         const url = URL.createObjectURL(res.blob);
         const a = document.createElement('a');
-        a.href = url; a.download = res.nombre || `certificado_arl_${contratoId}.pdf`;
+        a.href = url; a.download = res.nombre || `certificado_arl_${ctx.id}.pdf`;
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 4000);
     } finally {
@@ -790,9 +896,9 @@ async function gaPedirArchivo(url, limiteSeg) {
 }
 
 /** Respaldo: mueve el semáforo sin tocar la ARL, para trámites hechos por fuera. */
-async function guardarFechaManual() {
+async function guardarFechaManual(fechaDada) {
     const id    = document.getElementById('renovar-contrato-id').value;
-    const fecha = document.getElementById('renovar-fecha').value;
+    const fecha = fechaDada || document.getElementById('renovar-fecha').value;
     if (!fecha) { alert('Selecciona la fecha de afiliación ARL.'); return; }
     if (!confirm('Esto NO toca la ARL: solo registra la fecha en BryNex. ¿Seguir?')) return;
 

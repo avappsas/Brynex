@@ -349,15 +349,12 @@ class ArlAfiliacionService
     // ─── Renovación ──────────────────────────────────────────────────
 
     /**
-     * Renueva la cobertura: anula la vigente y crea una nueva desde la fecha
-     * indicada.
+     * Renueva la cobertura moviendo su inicio a la fecha indicada.
      *
-     * Son dos pasos porque Sura no tiene forma de mover la fecha de una
-     * cobertura ya creada: su portal solo ofrece afiliar, retirar y novedades
-     * masivas por archivo. Se revisa antes que la nueva afiliación sea viable,
-     * porque anular y quedarse sin poder afiliar deja al trabajador sin ARL.
+     * Tres desenlaces: se movió la que había, no había ninguna y se afilió, o
+     * la que hay ya arranca ese día y no hay nada que hacer.
      *
-     * @return array{anulacion: ?ArlAfiliacion, afiliacion: ArlAfiliacion}
+     * @return array{modificacion: ?ArlAfiliacion, afiliacion: ?ArlAfiliacion, sin_cambio: ?Carbon}
      */
     public function renovar(Contrato $contrato, Carbon $nuevoInicio, ?int $usuarioId = null): array
     {
@@ -377,6 +374,23 @@ class ArlAfiliacionService
             return [
                 'modificacion' => null,
                 'afiliacion'   => $this->afiliar($contrato, $nuevoInicio, $usuarioId),
+                'sin_cambio'   => null,
+            ];
+        }
+
+        // Si ya arranca ese día, mover la cobertura a la misma fecha no cambia
+        // nada: Sura devuelve la pantalla sin confirmar y el trámite parece
+        // haber fallado cuando en realidad no había nada que hacer. Pasa cada
+        // vez que alguien renueva por el portal y BryNex se queda atrás.
+        $inicioActual = ! empty($cobertura['fechaInicioCobertura'])
+            ? Carbon::createFromFormat('d/m/Y', $cobertura['fechaInicioCobertura'])->startOfDay()
+            : null;
+
+        if ($inicioActual && $inicioActual->isSameDay($nuevoInicio)) {
+            return [
+                'modificacion' => null,
+                'afiliacion'   => null,
+                'sin_cambio'   => $inicioActual,
             ];
         }
 
@@ -387,6 +401,7 @@ class ArlAfiliacionService
         return [
             'modificacion' => $this->moverCobertura($contrato, $cobertura, $nuevoInicio, $usuarioId),
             'afiliacion'   => null,
+            'sin_cambio'   => null,
         ];
     }
 

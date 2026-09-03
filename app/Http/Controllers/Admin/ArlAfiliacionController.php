@@ -369,6 +369,22 @@ class ArlAfiliacionController extends Controller
             return response()->json(['ok' => false, 'mensaje' => $e->getMessage()], 422);
         }
 
+        // La cobertura del portal ya arrancaba ese día: no se tocó nada. No es
+        // un error, así que en vez de un fallo se responde qué fecha tiene el
+        // portal, para que la pantalla ofrezca registrarla en BryNex y se acabe
+        // el desfase que motivó el intento.
+        if ($ciclo['sin_cambio']) {
+            return response()->json([
+                'ok'            => false,
+                'sin_cambio'    => true,
+                'fecha_arl'     => $ciclo['sin_cambio']->format('Y-m-d'),
+                'fecha_display' => $ciclo['sin_cambio']->format('d/m/Y'),
+                'mensaje'       => 'En el portal la cobertura ya arranca el '
+                    .$ciclo['sin_cambio']->format('d/m/Y').', así que no hay nada que mover. '
+                    .'Lo que falta es registrar esa fecha en BryNex.',
+            ]);
+        }
+
         // O se movió la cobertura que ya existía, o no había ninguna y se afilió.
         $movimiento = $ciclo['modificacion'] ?: $ciclo['afiliacion'];
         $desde      = $movimiento->fecha_inicio_cobertura->format('d/m/Y');
