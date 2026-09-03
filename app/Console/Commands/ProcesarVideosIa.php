@@ -27,6 +27,9 @@ use Illuminate\Support\Str;
  */
 class ProcesarVideosIa extends Command
 {
+    /** Cuántas veces se vuelve a pedir una escena que Veo filtró antes de darla por perdida. */
+    private const MAX_REINTENTOS_ESCENA = 3;
+
     protected $signature = 'videos:procesar';
 
     protected $description = 'Avanza la generación de videos IA (Veo) pendientes: consulta estado, aplica overlay y marca listos';
@@ -100,6 +103,33 @@ class ProcesarVideosIa extends Command
             $estado = VeoVideoGenerator::consultarEstado($iaConfig->gemini_api_key, $escena['operation_name']);
 
             if (!$estado['ok']) {
+                // El filtro de audio de Veo es INTERMITENTE: el mismo prompt pasa en un
+                // intento y falla en el siguiente, y Google avisa que no cobra los filtrados.
+                // Antes eso mataba el video entero y había que reencolar la escena a mano,
+                // perdiendo las que ya estaban listas. Se reintenta solo.
+                $reintentos = (int) ($escena['reintentos'] ?? 0);
+                $esFiltro = str_contains((string) $estado['error'], 'issue with the audio')
+                    || str_contains((string) $estado['error'], 'safety filters');
+
+                if ($esFiltro && $reintentos < self::MAX_REINTENTOS_ESCENA) {
+                    $nuevo = VeoVideoGenerator::iniciar(
+                        $iaConfig->gemini_api_key,
+                        $escena['prompt'],
+                        $video->modelo,
+                        '9:16',
+                        '720p',
+                        8
+                    );
+
+                    if ($nuevo['ok']) {
+                        $escenas[$i]['operation_name'] = $nuevo['operationName'];
+                        $escenas[$i]['reintentos'] = $reintentos + 1;
+                        $escenas[$i]['estado'] = 'generando';
+                        $this->line("Video #{$video->id}: escena " . ($i + 1) . ' filtrada por Veo, reintento ' . ($reintentos + 1) . '.');
+                        continue;
+                    }
+                }
+
                 $escenas[$i]['estado'] = 'error';
                 $escenas[$i]['error'] = $estado['error'];
                 $huboError = true;

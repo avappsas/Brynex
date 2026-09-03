@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Services\UpcAdicionalService;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 
 class Contrato extends BaseModel
 {
@@ -230,6 +231,61 @@ class Contrato extends BaseModel
         return $esDependienteTarget && $sinCaja;
     }
 
+    /** Caché por empresa de la marca de exoneración, para no repetir la consulta por contrato. */
+    private static array $cacheExoneracion = [];
+
+    /**
+     * ¿El aportante de este contrato paga SENA e ICBF?
+     *
+     * Casi todo empleador está exonerado (art. 114-1 ET) y por eso la salud a su
+     * cargo es del 4% y no liquida parafiscales — es lo que el sistema asumía para
+     * todos. No lo están los aportantes que no declaran renta (sindicatos y demás
+     * entidades del art. 23 del ET) ni la persona natural con un solo trabajador:
+     * ahí la salud va al 12,5% y encima se pagan SENA e ICBF. La marca vive en la
+     * empresa, que es quien tiene el NIT del aportante — la razón social del
+     * contrato suele ser una genérica compartida por muchos clientes.
+     *
+     * Solo aplica a las modalidades de dependiente puro: el tiempo parcial (51) y
+     * el independiente (59, 76) nunca llevan parafiscales, sin importar quién sea
+     * el aportante.
+     */
+    public function pagaParafiscales(): bool
+    {
+        if (! in_array((int) $this->tipo_modalidad_id, self::IDS_SIN_CCF, true)) {
+            return false;
+        }
+
+        $empresaId = (int) ($this->empresaAportanteId() ?? 0);
+        if ($empresaId <= 0) {
+            return false;   // sin empresa no hay a quién preguntarle: se calcula como siempre
+        }
+
+        $clave = $this->aliado_id.':'.$empresaId;
+        if (! array_key_exists($clave, self::$cacheExoneracion)) {
+            self::$cacheExoneracion[$clave] = (bool) DB::table('empresas')
+                ->where('id', $empresaId)
+                ->where('aliado_id', $this->aliado_id)
+                ->value('exonerado_parafiscales');
+        }
+
+        return ! self::$cacheExoneracion[$clave];
+    }
+
+    /** La empresa a la que pertenece el cliente: el vínculo vive en `clientes.cod_empresa`. */
+    private function empresaAportanteId(): ?int
+    {
+        if ($this->relationLoaded('cliente') && $this->cliente) {
+            return $this->cliente->cod_empresa ? (int) $this->cliente->cod_empresa : null;
+        }
+
+        $id = DB::table('clientes')
+            ->where('aliado_id', $this->aliado_id)
+            ->where('cedula', $this->cedula)
+            ->value('cod_empresa');
+
+        return $id ? (int) $id : null;
+    }
+
     /**
      * Días a cotizar por entidad en Tiempo Parcial: ['arl' => 30, 'afp' => X, 'caja' => Y].
      *
@@ -299,6 +355,15 @@ class Contrato extends BaseModel
             $pctPen = ConfiguracionBrynex::pctPensionDependiente();
             $pctCaja = ConfiguracionBrynex::pctCajaDependiente();
         }
+
+        // Aportante no exonerado (ver pagaParafiscales): la salud deja de ser el
+        // 4% del empleador exonerado y pasa al 12,5% completo, y se suman SENA e
+        // ICBF. La caja no cambia: el dependiente ya cotiza al 4%.
+        $pagaParafiscales = $this->pagaParafiscales();
+        if ($pagaParafiscales) {
+            $pctEps = ConfiguracionBrynex::pctSaludNoExonerado();
+        }
+        $pctParaf = $pagaParafiscales ? ConfiguracionBrynex::pctParafiscales() : 0.0;
 
         $pctArl = ArlTarifa::porcentajePara($nivelArl, $alidoId);
         $plan = $this->plan;
