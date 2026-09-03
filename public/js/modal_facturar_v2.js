@@ -665,12 +665,14 @@ const MF = (function () {
         if (_modo === 'masivo') {
             // Sumar todos los contratos seleccionados
             let eps = 0, arl = 0, afp = 0, caja = 0, admon = 0, seg = 0, iva = 0, afil = 0, mora = 0;
+            let paraf = 0;   // SENA + ICBF del aportante no exonerado
             let maxArlNivel = 0;
             _selContratos.forEach(c => {
                 eps += c.eps || 0;
                 arl += c.arl || 0;
                 afp += c.afp || 0;
                 caja += c.caja || 0;
+                paraf += c.paraf || 0;
                 admon += c.admon || 0;
                 seg += c.seg || 0;
                 iva += c.iva || 0;
@@ -678,12 +680,15 @@ const MF = (function () {
                 mora += c.mora || 0;         // mora acumulada de todos los contratos seleccionados
                 if ((c.arl_nivel || 0) > maxArlNivel) maxArlNivel = c.arl_nivel;
             });
-            const ss = eps + arl + afp + caja;
+            const ss = eps + arl + afp + caja + paraf;
 
             setText('mf-v-eps', fmt(ceil(eps)));
             setText('mf-v-arl', fmt(ceil(arl)));
             setText('mf-v-afp', fmt(ceil(afp)));
             setText('mf-v-caja', fmt(ceil(caja)));
+            setText('mf-v-paraf', fmt(ceil(paraf)));
+            const rowParaf = el('mf-row-paraf');
+            if (rowParaf) rowParaf.style.display = paraf > 0 ? '' : 'none';
             setText('mf-v-ss', fmt(ceil(ss)));
             setText('mf-v-admon', fmt(ceil(admon)));
             setText('mf-v-seg', fmt(ceil(seg)));
@@ -1316,6 +1321,7 @@ const MF = (function () {
             const arl  = parse(el('mf-v-arl')?.textContent);
             const afp  = parse(el('mf-v-afp')?.textContent);
             const caja = parse(el('mf-v-caja')?.textContent);
+            const paraf = parse(el('mf-v-paraf')?.textContent);
             let admon  = parse(el('mf-v-admon')?.textContent);
 
             // Si hay retiros facturables, recalcular admon dinámicamente según checkbox (modo masivo)
@@ -1343,7 +1349,7 @@ const MF = (function () {
             const otrosA = parse(el('mf-otros-admon')?.value);
             const mora   = parse(el('mf-mora')?.value);   // mora editable por usuario
             const afilVal = parse(el('mf-v-afil')?.textContent);
-            const ss = eps + arl + afp + caja;
+            const ss = eps + arl + afp + caja + paraf;
 
             setText('mf-v-ss', fmt(ss));
 

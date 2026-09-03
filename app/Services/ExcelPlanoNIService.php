@@ -219,6 +219,12 @@ class ExcelPlanoNIService
                 $join->on('cl.cedula', '=', 'p.no_identifi')
                      ->where('cl.aliado_id', '=', $aliadoId);
             })
+            // La exoneración de SENA e ICBF es del aportante, y su NIT lo tiene
+            // la empresa del cliente — ver PilaCotizanteCalculator.
+            ->leftJoin('empresas AS emp', function ($join) use ($aliadoId) {
+                $join->on('emp.id', '=', 'cl.cod_empresa')
+                     ->where('emp.aliado_id', '=', $aliadoId);
+            })
             // ── ciudades/departamentos con TOP 1 para evitar duplicar si hay
             //    múltiples registros con el mismo id_ciudad_t o departamento id
             ->leftJoin('ciudades AS c',      'c.id_ciudad_t', '=', 'cl.municipio_id')
@@ -293,6 +299,7 @@ class ExcelPlanoNIService
                 DB::raw('ISNULL(p.dias_tp_afp, ISNULL(tm.dias_afp, 30)) AS dias_afp'),
                 DB::raw('ISNULL(p.dias_tp_caja, ISNULL(p.dias_tp_afp, ISNULL(tm.dias_caja, 30))) AS dias_caja'),
                 'ctr.porcentaje_caja',
+                DB::raw('emp.exonerado_parafiscales AS exonerado_parafiscales'),
                 DB::raw('d.id                          AS cod_departamento'),
                 DB::raw('CAST(c.Municipio AS INT)       AS cod_municipio'),
             ]);

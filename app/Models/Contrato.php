@@ -363,7 +363,11 @@ class Contrato extends BaseModel
         if ($pagaParafiscales) {
             $pctEps = ConfiguracionBrynex::pctSaludNoExonerado();
         }
-        $pctParaf = $pagaParafiscales ? ConfiguracionBrynex::pctParafiscales() : 0.0;
+        // SENA e ICBF son dos aportes distintos en la planilla y cada uno se
+        // redondea por su lado. Liquidarlos juntos al 5% da hasta $100 de menos
+        // que el operador (sobre un mínimo: 35.100 + 52.600 = 87.700, no 87.600).
+        $pctSena = $pagaParafiscales ? ConfiguracionBrynex::pctSena() : 0.0;
+        $pctIcbf = $pagaParafiscales ? ConfiguracionBrynex::pctIcbf() : 0.0;
 
         $pctArl = ArlTarifa::porcentajePara($nivelArl, $alidoId);
         $plan = $this->plan;
@@ -391,6 +395,7 @@ class Contrato extends BaseModel
             $arl = ($plan && $plan->incluye_arl) ? $r($ibcArl * $pctArl / 100) : 0;
             $pen = ($plan && $plan->incluye_pension) ? $r($ibcAfp * $pctPen / 100) : 0;
             $caja = ($plan && $plan->incluye_caja) ? $r($ibcCaja * $pctCaja / 100) : 0;
+            $parafiscales = 0;
         } elseif ((int) $this->tipo_modalidad_id === self::MODALIDAD_UPC) {
             // ── UPC adicional: EPS no es % de IBC, es la tarifa fija por edad/
             //    sexo/zona del beneficiario (Resolución 2764/2025). Siempre es
@@ -407,6 +412,7 @@ class Contrato extends BaseModel
             $arl = 0;
             $pen = 0;
             $caja = 0;
+            $parafiscales = 0;
 
             if ($dias < 30) {
                 $eps = (int) (ceil($eps * $dias / 30 / 100) * 100);
@@ -418,6 +424,8 @@ class Contrato extends BaseModel
             $arl = ($plan && $plan->incluye_arl) ? $r($ibc * $pctArl / 100) : 0;
             $pen = ($plan && $plan->incluye_pension) ? $r($ibc * $pctPen / 100) : 0;
             $caja = ($plan && $plan->incluye_caja) ? $r($ibc * $pctCaja / 100) : 0;
+            // SENA e ICBF se liquidan sobre el IBC completo, tenga el plan caja o no.
+            $parafiscales = $pagaParafiscales ? $r($ibc * $pctSena / 100) + $r($ibc * $pctIcbf / 100) : 0;
 
             if ($dias < 30) {
                 // Mes parcial: se prorratea el IBC y se redondea UNA sola vez,
@@ -433,6 +441,7 @@ class Contrato extends BaseModel
                 $arl = ($plan && $plan->incluye_arl) ? $r($ibcProp * $pctArl / 100) : 0;
                 $pen = ($plan && $plan->incluye_pension) ? $r($ibcProp * $pctPen / 100) : 0;
                 $caja = ($plan && $plan->incluye_caja) ? $r($ibcProp * $pctCaja / 100) : 0;
+                $parafiscales = $pagaParafiscales ? $r($ibcProp * $pctSena / 100) + $r($ibcProp * $pctIcbf / 100) : 0;
             }
 
             // ── Cargo sin-CCF: dependiente E o Ingreso-Retiro sin caja ─────
@@ -443,7 +452,7 @@ class Contrato extends BaseModel
             }
         }
 
-        $ss = $eps + $arl + $pen + $caja;
+        $ss = $eps + $arl + $pen + $caja + $parafiscales;
 
         $seguro = (float) ($this->seguro ?? 0);
         $admon = (float) ($this->administracion ?? 0);
@@ -462,7 +471,7 @@ class Contrato extends BaseModel
 
         $total = $ss + $seguro + $admon + $iva;
 
-        return compact('ibc', 'eps', 'arl', 'pen', 'caja', 'ss', 'seguro', 'admon', 'iva', 'total');
+        return compact('ibc', 'eps', 'arl', 'pen', 'caja', 'parafiscales', 'ss', 'seguro', 'admon', 'iva', 'total');
     }
 
     /**

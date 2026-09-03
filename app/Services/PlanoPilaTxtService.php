@@ -191,6 +191,14 @@ class PlanoPilaTxtService
             // Solo por la tarifa de caja del independiente, que se pacta por
             // contrato (2% o 0,6%) — ver PilaCotizanteCalculator.
             ->leftJoin('contratos AS ctr', 'ctr.id', '=', 'p.contrato_id')
+            // La exoneración de SENA e ICBF es del aportante, y quien tiene su
+            // NIT es la empresa del cliente: la razón social del contrato suele
+            // ser una genérica ("RAZON SOCIAL", "INDEPENDIENTE") compartida por
+            // cientos de clientes, así que ahí no se puede marcar.
+            ->leftJoin('empresas AS emp', function ($join) use ($aliadoId) {
+                $join->on('emp.id', '=', 'cl.cod_empresa')
+                    ->where('emp.aliado_id', '=', $aliadoId);
+            })
             ->where('p.aliado_id', $aliadoId)
             ->where('p.razon_social_id', $razonSocialId)
             ->where('p.n_plano', $nPlano)
@@ -227,6 +235,7 @@ class PlanoPilaTxtService
                 // es constante para todo el archivo, el porcentaje es por contrato.
                 DB::raw(((int) ($rs->es_independiente ?? 0)).' AS rs_es_independiente'),
                 'ctr.porcentaje_caja',
+                DB::raw('emp.exonerado_parafiscales AS exonerado_parafiscales'),
             ]);
 
         if (! empty($tiposModal)) {

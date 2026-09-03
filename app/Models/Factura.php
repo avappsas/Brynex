@@ -19,7 +19,7 @@ class Factura extends BaseModel
         'estado','es_prestamo','forma_pago',
         'valor_consignado','valor_efectivo','valor_prestamo',
         'dias_cotizados',
-        'v_eps','v_arl','v_afp','v_caja','total_ss',
+        'v_eps','v_arl','v_afp','v_caja','v_parafiscales','total_ss',
         'admon','admin_asesor','otros_admon','seguro','afiliacion','mensajeria','otros','mora','iva','total',
         'saldo_proximo',
         // ── Anticipo: pagos previos aplicados a esta factura ──────

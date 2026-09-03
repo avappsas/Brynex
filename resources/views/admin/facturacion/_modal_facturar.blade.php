@@ -641,6 +641,12 @@
                     <span class="mf-detail-lbl">Caja Comp.</span>
                     <span id="mf-v-caja" class="mf-detail-val">$0</span>
                 </div>
+                {{-- Parafiscales: solo el aportante no exonerado del art. 114-1 los
+                     paga, así que la fila la muestra el JS cuando hay valor. --}}
+                <div class="mf-detail-row" id="mf-row-paraf" style="display:none">
+                    <span class="mf-detail-lbl">Parafiscales</span>
+                    <span id="mf-v-paraf" class="mf-detail-val">$0</span>
+                </div>
                 {{-- SS Total --}}
                 <hr class="mf-divider">
                 <div class="mf-detail-row mf-ss-total">

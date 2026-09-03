@@ -167,6 +167,20 @@ class AsistenteIaService
      *
      * @return IaToolInterface[]
      */
+    /**
+     * ¿La pieza es de reclutamiento de asesores?
+     *
+     * Se mira el tema, que es lo que describe la pieza. Un asesor y un cliente llegan por el
+     * mismo WhatsApp, así que sin esto la IA le cotizaría un plan a alguien que viene a
+     * preguntar por comisiones.
+     */
+    private static function esPiezaDeAsesores(\App\Models\Publicacion $pieza): bool
+    {
+        $texto = mb_strtolower(($pieza->tema ?? '') . ' ' . ($pieza->titulo ?? ''), 'UTF-8');
+
+        return str_contains($texto, 'asesor') && (str_contains($texto, 'comision') || str_contains($texto, 'trabaj'));
+    }
+
     private function construirToolsWhatsapp(array $credenciales): array
     {
         $tools = [
@@ -558,8 +572,32 @@ class AsistenteIaService
         // Lead que llegó de una pieza de publicidad (el "ref: P##" del anuncio). Se antepone a
         // todo lo demás cuando es prospecto: por este contacto se pagó, llega tibio y se enfría
         // en minutos. Un "¡Hola! 😊" y nada más es plata tirada.
+        // Reclutamiento de asesores: es otra conversación completa. Quien escribe no quiere
+        // afiliarse — ya vende seguridad social y está evaluando con quién trabajar. Tratarlo
+        // como cliente ("¿qué cobertura necesitas?") lo pierde en el primer mensaje.
         $contextoPieza = '';
-        if ($piezaOrigen && !$esCliente && !$empresa) {
+        if ($piezaOrigen && self::esPiezaDeAsesores($piezaOrigen)) {
+            $contextoPieza = <<<ASESOR
+
+            ## ⚠️ Este contacto llegó por un anuncio para ASESORES (pieza #{$piezaOrigen->id})
+
+            NO es alguien que quiera afiliarse: es un asesor que ya vende seguridad social y tiene
+            su propia cartera. Está viendo si le conviene trabajar con nosotros.
+
+            - NO le cotices, NO le preguntes qué cobertura necesita, NO le mandes la tabla de planes.
+              Nada de eso aplica: él ya sabe cómo funciona el negocio.
+            - Salúdalo reconociendo a qué vino y PREGÚNTALE CUÁNTOS CLIENTES MANEJA HOY. Es el dato
+              que define la conversación y lo que hay que llevarse de este primer contacto.
+            - Lo que ofrecemos, en corto: mejores comisiones, nosotros hacemos el trámite y el
+              papeleo, no tiene que poner razones sociales propias, y todo sale en tiempo récord.
+              Él se dedica solo a lo comercial.
+            - En cuanto tengas el número de clientes —o si insiste en hablar de condiciones o
+              comisiones concretas— PÁSALO al 3117762689: ahí se cierra directamente. Dilo con esas
+              palabras, dale el número completo y explícale que ahí lo atienden para su caso.
+            - NUNCA inventes porcentajes de comisión ni condiciones. Ese acuerdo lo hace una persona.
+
+            ASESOR;
+        } elseif ($piezaOrigen && !$esCliente && !$empresa) {
             $tema = $piezaOrigen->tema ?: $piezaOrigen->titulo;
             $contextoPieza = <<<PIEZA
 

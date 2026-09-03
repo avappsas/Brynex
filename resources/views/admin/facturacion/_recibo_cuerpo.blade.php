@@ -152,8 +152,13 @@ if ($esTramiteG) {
         ['ARL',            $uArl,                               (int)($fU->v_arl ?? 0),  '#15803d'],
         ['Pensión',        $fU->contrato?->pension?->razon_social ?? '—', (int)($fU->v_afp ?? 0),  '#7c3aed'],
         ['Caja de compensación', $fU->contrato?->caja?->nombre ?? $fU->contrato?->caja?->razon_social ?? 'Ninguna', (int)($fU->v_caja ?? 0), '#0369a1'],
-        ['Días cotizados', $fU->dias_cotizados ?? 30, null,                     '#0f172a'],
     ];
+    // Solo el aportante no exonerado del art. 114-1 los paga: en los demás
+    // recibos la línea no existe en vez de salir en cero.
+    if ((int)($fU->v_parafiscales ?? 0) > 0) {
+        $uEntidades[] = ['Parafiscales', 'SENA + ICBF', (int)$fU->v_parafiscales, '#c2410c'];
+    }
+    $uEntidades[] = ['Días cotizados', $fU->dias_cotizados ?? 30, null, '#0f172a'];
 }
 @endphp
 <div style="padding:.45rem .85rem .1rem">
@@ -180,6 +185,11 @@ if ($esTramiteG) {
     <b>${{ number_format($totTotal,0,',','.') }}</b>
 </div>
 @else
+@php
+// La columna de parafiscales solo aparece cuando el aportante no está exonerado:
+// en los demás recibos sería una columna en cero gastando ancho de hoja.
+$hayParaf = $filas->sum(fn ($x) => (int) ($x->v_parafiscales ?? 0)) > 0;
+@endphp
 <div style="padding:0 .85rem">
 <table class="fact-table" style="font-size:.72rem;table-layout:auto;width:100%">
 <thead>
@@ -194,11 +204,12 @@ if ($esTramiteG) {
     <th style="width:11%">ARL</th>
     <th style="width:13%">Pensión</th>
     <th style="width:11%">Caja</th>
+    @if($hayParaf)<th style="width:11%">Parafiscales</th>@endif
     <th class="right" style="width:88px;white-space:nowrap">TOTAL</th>
 </tr>
 </thead>
 <tbody>
-@php $tEps=$tArl=$tPen=$tCaj=$tAdm=$tIva=$tOtros=0; @endphp
+@php $tEps=$tArl=$tPen=$tCaj=$tAdm=$tIva=$tOtros=$tParaf=0; @endphp
 @foreach($filas as $idx => $f)
 @php
 $cli  = $f->contrato?->cliente;
@@ -223,6 +234,8 @@ $vAdmG  = (int)($f->admon  ?? 0) + (int)($f->admin_asesor ?? 0);
 $vIvaG  = (int)($f->iva    ?? 0);
 $vOtrG  = (int)($f->mensajeria ?? 0) + (int)($f->otros ?? 0);
 $diasG  = $f->dias_cotizados ?? 30;
+$vParafG = (int)($f->v_parafiscales ?? 0);
+$tParaf += $vParafG;
 $tEps += $vEpsG; $tArl += $vArlG; $tPen += $vPenG; $tCaj += $vCajG; $tAdm += $vAdmG;
 $tIva += $vIvaG; $tOtros += $vOtrG;
 @endphp
@@ -261,18 +274,24 @@ $tIva += $vIvaG; $tOtros += $vOtrG;
         {{ $enCajG !== '—' ? $enCajG : 'Ninguna' }}
         <div class="g-val">{{ $vCajG > 0 ? $fmt($vCajG) : '' }}</div>
     </td>
+    @if($hayParaf)
+    <td class="entidad" style="font-size:.72rem;color:#c2410c">
+        SENA + ICBF
+        <div class="g-val">{{ $vParafG > 0 ? $fmt($vParafG) : '' }}</div>
+    </td>
+    @endif
     <td class="right" style="font-weight:800;color:#0f172a">${{ number_format($f->total,0,',','.') }}</td>
 </tr>
 @endforeach
 </tbody>
 @php
-$tSS = $tEps + $tArl + $tPen + $tCaj;
+$tSS = $tEps + $tArl + $tPen + $tCaj + $tParaf;
 @endphp
 <tfoot>
 {{-- Fila: TOTAL FACTURA (siempre visible) --}}
 <tr style="background:#0f172a">
     {{-- colspan según si se dibujaron las 3 columnas de identificación --}}
-    <td colspan="{{ $unaPersona ? 5 : 8 }}" style="font-size:.78rem;font-weight:800;color:#93c5fd;letter-spacing:.07em;padding:.7rem .55rem">
+    <td colspan="{{ ($unaPersona ? 5 : 8) + ($hayParaf ? 1 : 0) }}" style="font-size:.78rem;font-weight:800;color:#93c5fd;letter-spacing:.07em;padding:.7rem .55rem">
         TOTAL @unless($unaPersona)&mdash; {{ $filas->count() }} trabajadores @endunless
     </td>
     <td class="right" style="font-size:1.3rem;font-weight:900;color:#fbbf24;font-family:monospace;white-space:nowrap;padding:.7rem .55rem">${{ number_format($totTotal,0,',','.') }}</td>

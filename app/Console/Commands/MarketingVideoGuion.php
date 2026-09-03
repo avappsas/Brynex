@@ -116,6 +116,41 @@ class MarketingVideoGuion extends Command
                 . 'cómo quedarías. Además verificamos que tus aportes estén al día — tú mismo lo compruebas. '
                 . 'Asesoría sin costo. 📲 Escríbenos.',
         ],
+        // Reclutamiento de ASESORES: otro público y otra promesa. No le vendemos seguridad
+        // social a nadie — le hablamos a quien YA la vende y tiene cartera propia, y le
+        // ofrecemos quitarle el papeleo. Por eso ninguna escena muestra clientes ni planes.
+        'asesores' => [
+            'tema'   => 'reclutamiento de asesores que ya venden seguridad social: mejores comisiones y nosotros hacemos el trabajo operativo',
+            'titulo' => '¿Eres asesor y ya tienes clientes? Te mejoramos tus comisiones',
+            'escenas' => [
+                'Vertical 9:16 cinematic shot. A Colombian man in his 30s in a casual shirt sits at a small '
+                . 'desk at home surrounded by stacks of paper folders and forms, rubbing his eyes with '
+                . 'tiredness, overwhelmed by paperwork. Warm lamp light, handheld camera, shallow depth of '
+                . 'field. Ambient sounds only. No text on screen, nobody speaks.',
+
+                'Vertical 9:16 cinematic shot. The same Colombian man now relaxed, leaning back with a coffee '
+                . 'while looking at a laptop screen with a satisfied smile, the desk completely clear of '
+                . 'papers. Bright natural morning light, medium shot, shallow depth of field. '
+                . 'Ambient sounds only. No text on screen, nobody speaks.',
+
+                'Vertical 9:16 cinematic shot. The same Colombian man shakes hands with a client across a '
+                . 'table in a bright cafe, both smiling confidently, a phone on the table between them. '
+                . 'Natural daylight, medium shot, shallow depth of field. Ambient sounds only. '
+                . 'No text on screen, nobody speaks.',
+            ],
+            'frases' => [
+                '¿Ya tienes clientes propios?',
+                'Nosotros hacemos el papeleo',
+                'Tú solo vendes',
+            ],
+            'narracion' => 'Si eres asesor y ya manejas clientes de seguridad social, te mejoramos tus comisiones. '
+                . 'Nosotros hacemos todo el trabajo operativo: los trámites, el papeleo, las planillas. '
+                . 'No necesitas razones sociales propias y todo sale en tiempo récord. '
+                . 'Tú te enfocas en lo comercial, que es lo tuyo. Escríbenos y cuéntanos cuántos clientes manejas.',
+            'copy' => '¿Eres asesor de seguridad social y ya tienes tus propios clientes? Te mejoramos tus comisiones. '
+                . 'Nosotros hacemos los trámites, el papeleo y las planillas — sin que pongas razones sociales '
+                . 'propias y en tiempo récord. Tú te enfocas en vender. 📲 Escríbenos y cuéntanos cuántos clientes manejas.',
+        ],
     ];
 
     public function handle(): int

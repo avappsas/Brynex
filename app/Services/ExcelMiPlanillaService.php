@@ -42,6 +42,11 @@ class ExcelMiPlanillaService
                 $join->on('cl.cedula', '=', 'p.no_identifi')
                      ->where('cl.aliado_id', '=', $aliadoId);
             })
+            // Exoneración de SENA e ICBF: vive en la empresa del cliente.
+            ->leftJoin('empresas AS emp', function ($join) use ($aliadoId) {
+                $join->on('emp.id', '=', 'cl.cod_empresa')
+                     ->where('emp.aliado_id', '=', $aliadoId);
+            })
             ->leftJoin('pensiones AS afp_t', DB::raw('CAST(afp_t.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_afp'))
             ->leftJoin('eps AS eps_t', DB::raw('CAST(eps_t.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_eps'))
             ->leftJoin('cajas AS caj_t', DB::raw('CAST(caj_t.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_caja'))
@@ -66,6 +71,7 @@ class ExcelMiPlanillaService
                 DB::raw('caj_t.codigo AS codigo_caj'), DB::raw("COALESCE(caj_t.razon_social, caj_t.nombre, '') AS nombre_caj_t"),
                 DB::raw('arl_m.codigo AS codigo_arl_pila'), DB::raw('arl_m.nombre_arl AS nombre_arl_t'),
                 'tm.es_tiempo_parcial',
+                DB::raw('emp.exonerado_parafiscales AS exonerado_parafiscales'),
             ])
             ->get();
 

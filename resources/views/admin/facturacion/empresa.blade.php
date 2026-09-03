@@ -149,6 +149,15 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
                         · 👤 {{ $empresa->asesor ? $empresa->asesor->nombre : $empresa->contacto }}
                     </span>
                 @endif
+                {{-- Sin la exoneración del 114-1 la planilla cambia de precio: la salud
+                     sube al 12,5% y se suman SENA e ICBF. Es el dato que explica por qué
+                     esta empresa cotiza más caro que las demás, así que va a la vista. --}}
+                @unless($empresa->exonerado_parafiscales ?? true)
+                    <span style="font-size:.72rem;font-weight:700;padding:.18rem .5rem;border-radius:999px;background:#7c2d12;color:#fed7aa;letter-spacing:.02em;"
+                          title="No exonerada del art. 114-1 ET: sus planillas liquidan SENA 2% + ICBF 3% y la salud al 12,5%.">
+                        PARAFISCALES
+                    </span>
+                @endunless
             </div>
             <div class="fac-h-meta">
                 @if($empresa->nit)<span>NIT: {{ $empresa->nit }}</span>@endif
@@ -523,6 +532,12 @@ if (!$fact) {
     $vSS = $r100($fact->total_ss);
     $vTot = (int)$fact->total;
 }
+// SENA e ICBF del aportante no exonerado. Ya van dentro de $vSS y del total; se
+// sacan aparte solo para poder cuadrar la fila contra la planilla del operador,
+// donde son dos aportes con su propia tarifa.
+$vParaf = $fact
+    ? (int)($fact->v_parafiscales ?? 0)
+    : ($vSS > 0 ? (int)($cotiz['parafiscales'] ?? 0) : 0);
 // Mora: solo mostrar si el contrato NO está pagado aún
 // - Con factura pendiente → usar mora guardada en la factura
 // - Sin factura → usar mora estimada del batch pre-calculado
@@ -562,7 +577,7 @@ if ($esRetirado && $esAfil && !$fact) {
     data-contrato="{{ $c->id }}"
     data-dias="{{ $dias }}"
     data-veps="{{ $vEps }}" data-varl="{{ $vArl }}"
-    data-vpen="{{ $vPen }}" data-vcaja="{{ $vCaja }}"
+    data-vpen="{{ $vPen }}" data-vcaja="{{ $vCaja }}" data-vparaf="{{ $vParaf }}"
     data-vadmon="{{ $vAdm }}" data-viva="{{ $vIva }}"
     data-vtot="{{ $vTot }}"
     data-seguro="{{ (int)($c->seguro??0) }}"
@@ -651,6 +666,12 @@ if ($esRetirado && $esAfil && !$fact) {
     <td class="num-col col-iva celda-iva" @if(!$mostrarIva) style="display:none" @endif>{{ $vIva>0?'$'.number_format($vIva,0,',','.'):'—' }}</td>
     <td class="num-col celda-tot" style="font-weight:700;color:{{ $yaP?'#16a34a':'#0f172a' }}">
         ${{ number_format($vTot,0,',','.') }}
+        @if($vParaf > 0)
+            <div style="font-weight:600;font-size:.62rem;color:#c2410c;margin-top:.1rem;"
+                 title="SENA 2% + ICBF 3% — incluidos en el total (aportante no exonerado)">
+                +${{ number_format($vParaf,0,',','.') }} paraf.
+            </div>
+        @endif
     </td>
     {{-- Mora: real si ya facturada, estimada si no. La columna solo existe si alguien tiene mora --}}
     @if($hayMora)
@@ -1627,6 +1648,7 @@ function _buildContratosSelec() {
             arl:       parseInt(r.dataset.varl   || 0),
             afp:       parseInt(r.dataset.vpen   || 0),
             caja:      parseInt(r.dataset.vcaja  || 0),
+            paraf:     parseInt(r.dataset.vparaf || 0),
             admon:     parseInt(r.dataset.vadmon || 0),  // ya fue actualizado por actualizarAdmonRetiro()
             seg:       parseInt(r.dataset.seguro || 0),
             iva:       parseInt(r.dataset.viva   || 0),

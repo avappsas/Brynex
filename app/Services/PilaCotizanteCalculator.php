@@ -397,7 +397,16 @@ class PilaCotizanteCalculator
         // ── Exonerado SENA/ICBF ────────────────────────────────────────────────
         // Dependientes → S (empresa paga 4% EPS, exonerado de SENA/ICBF)
         // Independientes/K/TP → N
-        $exonerado = (!$esIndep && !$esKMatriz && !$esTiempoParcial && !$esIndependiente) ? 'S' : 'N';
+        //
+        // Salvo que el aportante no tenga derecho a la exoneración del art. 114-1
+        // del ET: un sindicato o cualquier entidad del art. 23, que al no ser
+        // contribuyente de renta paga la salud al 12,5% y encima SENA e ICBF. Lo
+        // dice la ficha de la empresa (`empresas.exonerado_parafiscales`), que la
+        // inyecta PlanoPilaTxtService; sin el dato se asume exonerado, que es como
+        // se venía liquidando.
+        $aportanteNoExonerado = ($p->exonerado_parafiscales ?? null) !== null
+            && ! (bool) $p->exonerado_parafiscales;
+        $exonerado = (!$esIndep && !$esKMatriz && !$esTiempoParcial && !$esIndependiente && !$aportanteNoExonerado) ? 'S' : 'N';
 
         // SENA e ICBF son aportes del empleador. El independiente cotiza por su
         // cuenta y no los paga nunca: no es que esté exonerado (ahí sigue en N,

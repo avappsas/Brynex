@@ -68,6 +68,31 @@ class ConfiguracionBrynex extends BaseModel
         return (float) static::obtener('pct_caja_dependiente', 4.00);
     }
 
+    /**
+     * Salud del dependiente cuyo aportante NO está exonerado (art. 114-1 ET):
+     * el empleador no se ahorra el 8,5%, así que el aporte es el 12,5% completo.
+     */
+    public static function pctSaludNoExonerado(): float
+    {
+        return (float) static::obtener('pct_salud_no_exonerado', 12.50);
+    }
+
+    /** SENA (2%) + ICBF (3%) sobre el IBC, solo para el aportante no exonerado. */
+    public static function pctParafiscales(): float
+    {
+        return static::pctSena() + static::pctIcbf();
+    }
+
+    public static function pctSena(): float
+    {
+        return (float) static::obtener('pct_sena', 2.00);
+    }
+
+    public static function pctIcbf(): float
+    {
+        return (float) static::obtener('pct_icbf', 3.00);
+    }
+
     public static function pctSaludIndependiente(): float
     {
         return (float) static::obtener('pct_salud_independiente', 12.50);

@@ -1165,7 +1165,7 @@ class FacturacionController extends Controller
 
             if ($esArl && ! $esMesIng) {
                 $diasCotizar = 0;
-                $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0];
+                $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0, 'parafiscales' => 0];
                 $afiliacion = 0;
                 $seguro = 0;
                 $admon = 0;
@@ -1194,7 +1194,7 @@ class FacturacionController extends Controller
                 $tieneIva = \App\Services\IvaService::aplicaContrato($c);
 
                 if ($esAfiliacion && ! $esIndActPrimerMes) {
-                    $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0];
+                    $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0, 'parafiscales' => 0];
                 } else {
                     $cotiz = $c->calcularCotizacion($diasCotizar, $tieneIva);
                     $calcSS = [
@@ -1202,6 +1202,7 @@ class FacturacionController extends Controller
                         'arl' => (int) ($cotiz['arl'] ?? 0),
                         'afp' => (int) ($cotiz['pen'] ?? 0),
                         'caja' => (int) ($cotiz['caja'] ?? 0),
+                        'parafiscales' => (int) ($cotiz['parafiscales'] ?? 0),
                     ];
                 }
 
@@ -1246,13 +1247,13 @@ class FacturacionController extends Controller
 
                 // Solo seguro: el mes vale el seguro y nada más.
                 if ($esSoloSeguro) {
-                    $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0];
+                    $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0, 'parafiscales' => 0];
                     $admon = 0;
                     $adminAsesor = 0;
                     $afiliacion = 0;
                 }
 
-                $totalSS = $calcSS['eps'] + $calcSS['arl'] + $calcSS['afp'] + $calcSS['caja'];
+                $totalSS = $calcSS['eps'] + $calcSS['arl'] + $calcSS['afp'] + $calcSS['caja'] + ($calcSS['parafiscales'] ?? 0);
                 // IVA sobre administración + costo de afiliación (ver IvaService)
                 $iva = \App\Services\IvaService::deFactura($tieneIva, $admon, $adminAsesor, $afiliacion);
 
@@ -1782,7 +1783,7 @@ class FacturacionController extends Controller
                 $tieneIva = \App\Services\IvaService::aplicaContrato($contrato);
 
                 if ($esAfiliacion && ! $esIndActPrimerMes) {
-                    $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0];
+                    $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0, 'parafiscales' => 0];
                 } else {
                     $cotizacion = $contrato->calcularCotizacion($diasCotizar, $tieneIva);
                     $calcSS = [
@@ -1790,6 +1791,7 @@ class FacturacionController extends Controller
                         'arl' => (int) ($cotizacion['arl'] ?? 0),
                         'afp' => (int) ($cotizacion['pen'] ?? 0),
                         'caja' => (int) ($cotizacion['caja'] ?? 0),
+                        'parafiscales' => (int) ($cotizacion['parafiscales'] ?? 0),
                     ];
                 }
 
@@ -1864,14 +1866,14 @@ class FacturacionController extends Controller
                 // los overrides manuales, para que ninguna casilla de la UI meta seguridad
                 // social en una factura que no cotiza nada.
                 if ($contrato->esSoloSeguro()) {
-                    $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0];
+                    $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0, 'parafiscales' => 0];
                     $admon = 0;
                     $adminAsesor = 0;
                     $afiliacion = 0;
                     $diasCotizar = 0;
                 }
 
-                $totalSS = $calcSS['eps'] + $calcSS['arl'] + $calcSS['afp'] + $calcSS['caja'];
+                $totalSS = $calcSS['eps'] + $calcSS['arl'] + $calcSS['afp'] + $calcSS['caja'] + ($calcSS['parafiscales'] ?? 0);
 
                 // IVA sobre administración + costo de afiliación (ver IvaService).
                 // En afiliación pura la admon es 0, así que grava solo la afiliación;
@@ -2051,6 +2053,7 @@ class FacturacionController extends Controller
                     'v_arl' => $calcSS['arl'],
                     'v_afp' => $calcSS['afp'],
                     'v_caja' => $calcSS['caja'],
+                    'v_parafiscales' => $calcSS['parafiscales'] ?? 0,
                     'total_ss' => $totalSS,
                     'admon' => $admon,
                     'admin_asesor' => $adminAsesor,
@@ -2480,6 +2483,7 @@ class FacturacionController extends Controller
             'arl' => (int) ($cotiz['arl'] ?? 0),
             'afp' => (int) ($cotiz['pen'] ?? 0),
             'caja' => (int) ($cotiz['caja'] ?? 0),
+            'parafiscales' => (int) ($cotiz['parafiscales'] ?? 0),
         ];
 
         // Override manual de SS (modo individual, 1 contrato)
@@ -2513,7 +2517,7 @@ class FacturacionController extends Controller
             }
         }
 
-        $totalSS = $calcSS['eps'] + $calcSS['arl'] + $calcSS['afp'] + $calcSS['caja'];
+        $totalSS = $calcSS['eps'] + $calcSS['arl'] + $calcSS['afp'] + $calcSS['caja'] + ($calcSS['parafiscales'] ?? 0);
 
         // IVA: cada registro del par lleva el suyo — la planilla sobre la admon,
         // la afiliación sobre el costo de afiliación (ver IvaService).
@@ -2710,6 +2714,7 @@ class FacturacionController extends Controller
             'v_arl' => $calcSS['arl'],
             'v_afp' => $calcSS['afp'],
             'v_caja' => $calcSS['caja'],
+            'v_parafiscales' => $calcSS['parafiscales'] ?? 0,
             'total_ss' => $totalSS,
             'admon' => $admon,
             'admin_asesor' => $adminAsesor,

@@ -37,6 +37,7 @@ class CobroContratoService
                 'arl'        => 0,
                 'afp'        => 0,
                 'caja'       => 0,
+                'parafiscales' => 0,
                 'ss'         => 0,
                 'admon'      => 0,
                 'seguro'     => $seguro,
@@ -75,7 +76,7 @@ class CobroContratoService
 
         if ($esArl && !$esMesIngreso) {
             $diasCotizar = 0;
-            $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0, 'ss' => 0];
+            $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0, 'parafiscales' => 0, 'ss' => 0];
             $afiliacion  = 0;
             $seguro      = 0;
             $admon       = 0;
@@ -94,7 +95,7 @@ class CobroContratoService
 
             // Calcular SS
             if ($esAfiliacion && !$esIndActPrimerMes) {
-                $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0, 'ss' => 0];
+                $calcSS = ['eps' => 0, 'arl' => 0, 'afp' => 0, 'caja' => 0, 'parafiscales' => 0, 'ss' => 0];
             } else {
                 $cotizacion = $contrato->calcularCotizacion($diasCotizar);
                 $calcSS = [
@@ -102,6 +103,7 @@ class CobroContratoService
                     'arl'  => (int) ($cotizacion['arl']  ?? 0),
                     'afp'  => (int) ($cotizacion['pen']  ?? 0),
                     'caja' => (int) ($cotizacion['caja'] ?? 0),
+                    'parafiscales' => (int) ($cotizacion['parafiscales'] ?? 0),
                     'ss'   => (int) ($cotizacion['ss']   ?? 0),
                 ];
             }
@@ -147,6 +149,7 @@ class CobroContratoService
             'arl'        => $calcSS['arl'],
             'afp'        => $calcSS['afp'],
             'caja'       => $calcSS['caja'],
+            'parafiscales' => $calcSS['parafiscales'],
             'ss'         => $calcSS['ss'],
             'admon'      => $admon + $admonAsesor,
             'seguro'     => $seguro,

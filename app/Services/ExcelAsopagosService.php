@@ -98,6 +98,12 @@ class ExcelAsopagosService
                 $join->on('cl.cedula', '=', 'p.no_identifi')
                      ->where('cl.aliado_id', '=', $aliadoId);
             })
+            // La exoneración de SENA e ICBF es del aportante, y su NIT lo tiene
+            // la empresa del cliente — ver PilaCotizanteCalculator.
+            ->leftJoin('empresas AS emp', function ($join) use ($aliadoId) {
+                $join->on('emp.id', '=', 'cl.cod_empresa')
+                     ->where('emp.aliado_id', '=', $aliadoId);
+            })
             ->leftJoin('ciudades AS c',      'c.id_ciudad_t', '=', 'cl.municipio_id')
             ->leftJoin('departamentos AS d', 'd.id',          '=', 'cl.departamento_id')
             ->leftJoin('pensiones AS afp_t', DB::raw('CAST(afp_t.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_afp'))
@@ -141,6 +147,7 @@ class ExcelAsopagosService
                 DB::raw('ISNULL(p.dias_tp_afp, ISNULL(tm.dias_afp, 30)) AS dias_afp'),
                 DB::raw('ISNULL(p.dias_tp_caja, ISNULL(p.dias_tp_afp, ISNULL(tm.dias_caja, 30))) AS dias_caja'),
                 'ctr.porcentaje_caja',
+                DB::raw('emp.exonerado_parafiscales AS exonerado_parafiscales'),
             ]);
 
         if (!empty($tiposModal)) {
