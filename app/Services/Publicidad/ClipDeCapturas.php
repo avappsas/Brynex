@@ -76,9 +76,12 @@ class ClipDeCapturas
                 // Recortarla para llenar el cuadro cortaria justo lo que se quiere mostrar.
                 $fondo = $c['fondo'] ?? '0xeef2f7';
                 $anchoEscalado = (int) round(self::ANCHO * $zoom);
+                // El lienzo se pide como el MAYOR entre el cuadro y la imagen ya escalada:
+                // `pad` se niega a achicar, y con zoom la imagen sale más ancha que el cuadro.
+                // Lo que sobre lo quita el `crop` de después.
                 $filtros[] = "[{$i}:v]scale={$anchoEscalado}:-2,"
-                    .'pad='.self::ANCHO.':'.self::ALTO.":(ow-iw)/2:(oh-ih)*{$arriba}:color={$fondo},"
-                    .'crop='.self::ANCHO.':'.self::ALTO.','
+                    .'pad=\'max(iw\\,'.self::ANCHO.")':'max(ih\\,".self::ALTO.")':(ow-iw)/2:(oh-ih)*{$arriba}:color={$fondo},"
+                    .'crop='.self::ANCHO.':'.self::ALTO.':(in_w-out_w)/2:(in_h-out_h)/2,'
                     .'fps='.self::FPS.',setsar=1,format=yuv420p[v'.$i.']';
 
                 continue;
