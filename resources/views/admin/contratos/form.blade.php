@@ -197,6 +197,7 @@
           </option>
           @endforeach
         </select>
+        <div id="nota-modalidad-rs" style="display:none;font-size:.6rem;color:#94a3b8;margin-top:.15rem;">Seleccione primero la razón social</div>
       </div>
       {{-- Semanas de tiempo parcial: solo en las modalidades donde los días son
            del contrato (cotizante 76). En el TP de dependientes los días son la
@@ -242,7 +243,7 @@
           <span id="badge-exento-afp" x-show="!esSeguros"
               title="{{ $motivoExencion }}"
               style="background:#ede9fe;color:#7c3aed;font-size:.6rem;font-weight:700;padding:.12rem .45rem;border-radius:20px;margin-left:.4rem;cursor:help;letter-spacing:.02em;">
-            📌 Puede omitir AFP
+            {{ !empty($clientePensionado) ? '🚫 Pensionado: sin AFP' : '📌 Puede omitir AFP' }}
           </span>
           @endif
         </label>
@@ -252,6 +253,11 @@
             {{ $rsLock ? 'disabled' : '' }}>
           <option value="">-- Plan --</option>
           @foreach($planes as $plan)
+          {{-- Cliente pensionado: los planes con AFP ni siquiera se pintan. La única
+               excepción es el que ya tiene guardado el contrato, para no borrárselo
+               de la pantalla a los contratos viejos (queda con el aviso de abajo). --}}
+          @continue(!empty($clientePensionado) && $plan->incluye_pension
+                    && $plan->id != old('plan_id', $contrato->plan_id ?? 0))
           <option value="{{ $plan->id }}"
               data-eps="{{ $plan->incluye_eps ? '1':'0' }}"
               data-arl="{{ $plan->incluye_arl ? '1':'0' }}"
@@ -271,6 +277,14 @@
         <div id="aviso-plan-incompatible"
              style="display:none;margin-top:0.25rem;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:0.3rem 0.55rem;font-size:0.68rem;color:#dc2626;font-weight:600;line-height:1.35;">
           ⚠️ La modalidad elegida no incluye el plan actual. Cambie la modalidad a una compatible o contacte al administrador.
+        </div>
+        @endif
+        {{-- Cliente pensionado cuyo contrato quedó con un plan de AFP: la opción
+             sigue en la lista para no perderla, pero se avisa que hay que cambiarla. --}}
+        @if(!empty($clientePensionado))
+        <div id="aviso-plan-pensionado"
+             style="display:none;margin-top:0.25rem;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:0.3rem 0.55rem;font-size:0.68rem;color:#b45309;font-weight:600;line-height:1.35;">
+          ⚠️ El cliente está pensionado: este plan incluye AFP. Elija uno sin pensión.
         </div>
         @endif
         <div id="nota-plan-modalidad" style="display:none;font-size:.6rem;color:#94a3b8;margin-top:.15rem;">Seleccione primero la modalidad</div>
@@ -2015,6 +2029,13 @@ const MODALIDADES_INDEP          = @json($modalidadesIndependientes ?? [10, 13, 
 const MODALIDAD_SEGUROS          = {{ \App\Models\Contrato::MODALIDAD_SEGUROS }};
 const MODALIDADES_SIN_FILTRO_RS  = [MODALIDAD_SEGUROS];
 const CLIENTE_EXENTO_AFP         = {{ ($clienteExentoAfp ?? false) ? 'true' : 'false' }};
+// Ya pensionado: no es que PUEDA omitir la AFP, es que no debe cotizarla.
+// Por eso este caso no solo desactiva la regla de AFP obligatorio (como la edad
+// o el documento extranjero), sino que además saca del selector los planes con AFP.
+const CLIENTE_PENSIONADO         = {{ ($clientePensionado ?? false) ? 'true' : 'false' }};
+// Plan guardado en BD — siempre, con o sin rsLock. Se usa para no borrarle el
+// plan de la pantalla a un contrato viejo que quedó con AFP siendo pensionado.
+const PLAN_BD_ID                 = {{ ($esEdicion ?? false) ? (int) old('plan_id', $contrato->plan_id ?? 0) : 0 }};
 const CLIENTE_TIPO_DOC           = @json($clienteTipoDoc ?? null);
 const ES_EDICION                 = {{ ($esEdicion ?? false) ? 'true' : 'false' }};
 const RS_LOCK                    = {{ ($rsLock ?? false) ? 'true' : 'false' }};  // hay radicados → plan bloqueado
@@ -2270,6 +2291,40 @@ function _initOptsStore() {
     }
 }
 
+/**
+ * Encadena los tres selectores: la Razón Social habilita la Modalidad, y la
+ * Modalidad habilita el Plan. Sin la anterior no se puede tocar la siguiente,
+ * porque cada una decide qué opciones tiene sentido mostrar en la que sigue —
+ * elegir el plan primero era escoger de una lista que después se filtraba sola.
+ *
+ * Un campo que YA trae valor nunca se bloquea: hay contratos viejos guardados sin
+ * razón social o sin modalidad, y un select deshabilitado no se envía al guardar,
+ * así que bloquearlos les borraría el dato.
+ */
+function aplicarDependenciasSelects() {
+    const selRS   = document.getElementById('sel_rs');
+    const selMod  = document.getElementById('sel_modalidad');
+    const selPlan = document.getElementById('sel_plan');
+    if (!selMod || !selPlan) return;
+
+    const bloquearMod  = !selRS?.value  && !selMod.value;
+    const bloquearPlan = !selMod.value  && !selPlan.value;
+
+    bloquearSelectDependiente(selMod, bloquearMod);
+    // Con rsLock el plan ya viene deshabilitado del servidor y con su hidden
+    // detrás: no se toca desde aquí.
+    if (!RS_LOCK) bloquearSelectDependiente(selPlan, bloquearPlan);
+
+    const notaMod = document.getElementById('nota-modalidad-rs');
+    if (notaMod) notaMod.style.display = bloquearMod ? 'block' : 'none';
+}
+
+function bloquearSelectDependiente(sel, bloquear) {
+    sel.disabled           = bloquear;
+    sel.style.background   = bloquear ? '#f1f5f9' : '#fff';
+    sel.style.cursor       = bloquear ? 'not-allowed' : '';
+}
+
 // ── Filtrado 1: RS → Modalidades ─────────────────────────────────
 function filtrarModalidades(soloIndependiente, evitarRecalcular = false) {
     const selMod = document.getElementById('sel_modalidad');
@@ -2313,6 +2368,19 @@ function filtrarModalidades(soloIndependiente, evitarRecalcular = false) {
     if (divNota) divNota.style.display = (!selMod.value ? 'block' : 'none');
 }
 
+/**
+ * Muestra el aviso mientras el plan elegido siga llevando AFP y el cliente esté
+ * pensionado. Se llama desde filtrarPlanes (cambio de modalidad) y desde
+ * onPlanChange: el aviso tiene que irse en cuanto se elija un plan sin pensión.
+ */
+function actualizarAvisoPensionado() {
+    const aviso = document.getElementById('aviso-plan-pensionado');
+    if (!aviso) return;
+    const selPlan = document.getElementById('sel_plan');
+    const opt     = selPlan?.options[selPlan.selectedIndex];
+    aviso.style.display = (CLIENTE_PENSIONADO && opt?.dataset?.pen === '1') ? 'block' : 'none';
+}
+
 // ── Filtrado 2: Modalidad → Planes ───────────────────────────────
 function filtrarPlanes(modalidadId, evitarRecalcular = false) {
     const selPlan = document.getElementById('sel_plan');
@@ -2324,9 +2392,19 @@ function filtrarPlanes(modalidadId, evitarRecalcular = false) {
     while (selPlan.options.length > 0) selPlan.remove(0);
 
     if (!modalidadId) {
-        // Sin modalidad: restaurar todas las opciones
-        _OPTS_PLAN.forEach(({ el }) => selPlan.appendChild(el));
+        // Sin modalidad: restaurar todas las opciones. Las de AFP igual se van si
+        // el cliente ya está pensionado — la exclusión es del cliente, no de la
+        // modalidad, así que no depende de haber elegido una.
+        _OPTS_PLAN.forEach(({ el, value }) => {
+            if (CLIENTE_PENSIONADO && el.dataset.pen === '1' && parseInt(value) !== PLAN_BD_ID) return;
+            selPlan.appendChild(el);
+        });
+        // Reinsertar las options deja seleccionada la última: hay que devolver el
+        // select al valor que traía (o a vacío), o el plan queda elegido a dedo
+        // sin que nadie lo haya tocado.
+        selPlan.value = valorActual ? String(valorActual) : '';
         if (divNota)    divNota.style.display    = 'block';
+        aplicarDependenciasSelects();
         return;
     }
 
@@ -2348,8 +2426,8 @@ function filtrarPlanes(modalidadId, evitarRecalcular = false) {
     // filtros de abajo fueron escritos suponiendo que eso no pasaba.
     const esTpIndep  = MODALIDADES_DIAS_CONTRATO.includes(modalidadIdInt);
 
-    let planActualPermitido = false;
-    let planesAgregados     = [];
+    let planActualPermitido  = false;
+    let planesAgregados      = [];
 
     _OPTS_PLAN.forEach(({ el, value, text }) => {
         if (!value) { selPlan.appendChild(el); return; }  // opción vacía siempre
@@ -2387,6 +2465,13 @@ function filtrarPlanes(modalidadId, evitarRecalcular = false) {
             && el.dataset.caja !== '1';
         const exceptuarSoloArl = esSoloArlPlan && (esIndepRS || esIndepMod);
         if (aplicarAfpObligatorio && el.dataset.pen !== '1' && !exceptuarSoloArl) return;
+
+        // ── Cliente pensionado: fuera los planes con AFP ────────────
+        // Un pensionado ya no cotiza a pensión, así que ofrecerle un plan con
+        // AFP es ofrecerle algo que no puede pagar. Se deja pasar únicamente el
+        // plan que YA está guardado en el contrato, para no vaciarle el selector
+        // a los contratos viejos: queda marcado y con aviso, pero visible.
+        if (CLIENTE_PENSIONADO && el.dataset.pen === '1' && planId !== PLAN_BD_ID) return;
 
         // ── Filtro Independientes: NO pueden tener ARL+CCF ni ARL+AFP+CCF ──────────
         // Es decir, si no tienen EPS pero SÍ tienen Caja y ARL, se bloquea.
@@ -2436,6 +2521,9 @@ function filtrarPlanes(modalidadId, evitarRecalcular = false) {
         if (selPlan.value) bloquearEntidadesPorPlan(selPlan.value);
     }
 
+    // ── Aviso: pensionado con el plan de AFP heredado del contrato ───
+    actualizarAvisoPensionado();
+
     // ── Feedback visual inmediato cuando hay rsLock ──────────────────
     if (RS_LOCK) {
         const aviso      = document.getElementById('aviso-plan-incompatible');
@@ -2461,6 +2549,8 @@ function filtrarPlanes(modalidadId, evitarRecalcular = false) {
             if (hiddenPlan) hiddenPlan.value = String(planesAgregados[0]);
         }
     }
+
+    aplicarDependenciasSelects();
 }
 
 function actualizarBloqueoArl(evitarRecalcular = false) {
@@ -3073,6 +3163,9 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('nota-plan-modalidad').style.display = 'block';
     }
 
+    // Modalidad y Plan arrancan bloqueados mientras no exista lo anterior
+    aplicarDependenciasSelects();
+
     // ── Inicializar paneles Modo ARL (modo edición: restaurar estado) ─
     const modoArlSel = document.getElementById('sel_arl_modo');
     if (modoArlSel?.value) {
@@ -3492,6 +3585,7 @@ function cotizador() {
         onPlanChange(e) {
             this.planNombre = e.target.options[e.target.selectedIndex]?.textContent?.trim() || '';
             bloquearEntidadesPorPlan(this.planId);
+            actualizarAvisoPensionado();
             this.refrescarTarifas();
         },
 
