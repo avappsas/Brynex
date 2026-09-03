@@ -272,9 +272,6 @@ table.tbl-cc .num { text-align: right; font-family: monospace; }
             <td style="text-align:center;color:#64748b;white-space:nowrap;">
                 <div>{{ $item->fecha_ingreso ? $item->fecha_ingreso->format('d/m/Y') : '—' }}</div>
                 <div style="font-size:9.5px;color:#d97706;font-weight:700;margin-top:2px;">Plan: {{ $item->modalidad }}</div>
-                @if(($item->estado_contrato ?? 'vigente') !== 'vigente' && $item->fecha_retiro)
-                    <div style="font-size:9.5px;color:#dc2626;font-weight:700;margin-top:2px;">Retiro: {{ $item->fecha_retiro->format('d/m/Y') }}</div>
-                @endif
             </td>
             <td class="num" style="font-weight:700;">${{ number_format($item->v_total - (int)($item->v_iva ?? 0),0,',','.') }}</td>
             <td style="text-align:center;">

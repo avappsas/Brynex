@@ -257,9 +257,6 @@ table.tbl-det tfoot .num { color: #34d399; }
             <td style="text-align:center;color:#64748b;white-space:nowrap;">
                 <div>{{ $item->fecha_ingreso ? $item->fecha_ingreso->format('d/m/Y') : '—' }}</div>
                 <div style="font-size:8px;color:#d97706;font-weight:700;margin-top:2px;">Plan: {{ $item->modalidad }}</div>
-                @if(($item->estado_contrato ?? 'vigente') !== 'vigente' && $item->fecha_retiro)
-                    <div style="font-size:8px;color:#dc2626;font-weight:700;margin-top:2px;">Retiro: {{ $item->fecha_retiro->format('d/m/Y') }}</div>
-                @endif
             </td>
             <td style="text-align:center;font-weight:700;color:{{ $item->dias < 30 ? '#d97706' : '#0f172a' }}">
                 {{ $item->es_afil ? '—' : $item->dias }}
