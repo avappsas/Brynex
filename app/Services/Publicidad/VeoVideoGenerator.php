@@ -97,7 +97,15 @@ class VeoVideoGenerator
 
         $uri = $resp->json('response.generateVideoResponse.generatedSamples.0.video.uri');
         if (!$uri) {
-            return ['ok' => false, 'done' => true, 'videoUri' => null, 'error' => 'Veo terminó pero no devolvió un video utilizable.'];
+            // Cuando Veo filtra el contenido devuelve el motivo en `raiMediaFilteredReasons` y
+            // el código lo tiraba: se perdían ciclos adivinando qué había molestado, cuando
+            // Veo lo estaba diciendo. El motivo suele ser preciso ("un problema con el audio")
+            // y además aclara si hubo cobro.
+            $motivos = (array) $resp->json('response.generateVideoResponse.raiMediaFilteredReasons');
+            $detalle = $motivos ? ' Veo dijo: ' . implode(' | ', $motivos) : '';
+
+            return ['ok' => false, 'done' => true, 'videoUri' => null,
+                'error' => 'Veo terminó pero no devolvió un video utilizable.' . $detalle];
         }
 
         return ['ok' => true, 'done' => true, 'videoUri' => $uri, 'error' => null];
