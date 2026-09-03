@@ -219,8 +219,13 @@ class ProcesarVideosIa extends Command
      */
     private function narrar(PublicidadVideoIa $video): ?string
     {
+        // Guion hablado propio cuando lo hay (videos largos con guion): las frases en pantalla
+        // tienen que ser cortas para leerse, y tres de cuatro palabras dejan casi mudo un
+        // video de 30 segundos. Para los del piloto —8s— las frases siguen siendo el guion.
+        $narracionPropia = $video->autopilot_payload['narracion'] ?? null;
+
         $frases = array_values(array_filter($video->frases_texto ?? []));
-        if (empty($frases)) {
+        if (!$narracionPropia && empty($frases)) {
             return null;
         }
 
@@ -232,7 +237,7 @@ class ProcesarVideosIa extends Command
 
         // Cada frase termina en punto para que el TTS respire entre una y otra en vez de
         // leerlas de corrido como una sola oración.
-        $guion = implode(' ', array_map(
+        $guion = $narracionPropia ?: implode(' ', array_map(
             fn (string $f) => rtrim(trim($f), '.') . '.',
             $frases
         ));
