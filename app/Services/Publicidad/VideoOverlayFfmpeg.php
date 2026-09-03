@@ -24,7 +24,7 @@ class VideoOverlayFfmpeg
     private const FUENTE = 'resources/fonts/Poppins-Bold.ttf';
 
     /**
-     * @param string[] $frases 2-3 frases cortas para el texto animado en pantalla.
+     * @param  string[]  $frases  2-3 frases cortas para el texto animado en pantalla.
      * @return array{ok: bool, videoPath: ?string, posterPath: ?string, error: ?string}
      */
     /**
@@ -48,7 +48,7 @@ class VideoOverlayFfmpeg
         $ffprobe = config('services.ffmpeg.ffprobe', 'ffprobe');
 
         $dimensiones = self::obtenerDimensiones($ffprobe, $rutaVideoBruto);
-        if (!$dimensiones) {
+        if (! $dimensiones) {
             return ['ok' => false, 'videoPath' => null, 'posterPath' => null, 'error' => 'No se pudo leer el video generado por Veo (ffprobe).'];
         }
         [$ancho, $alto, $duracion] = $dimensiones;
@@ -99,7 +99,7 @@ class VideoOverlayFfmpeg
             $filtrosCapas[] = "{$mapaOverlay}[logo]overlay=0:0:enable='gte(t,{$inicioLogo})'[vout]";
             $mapaOverlay = '[vout]';
             $entradaIdx++;
-        } elseif (!empty($frases)) {
+        } elseif (! empty($frases)) {
             // Sin logo pero con texto: renombrar la última salida del encadenado a [vout].
             $filtrosCapas[] = "{$mapaOverlay}null[vout]";
             $mapaOverlay = '[vout]';
@@ -126,7 +126,7 @@ class VideoOverlayFfmpeg
             // junto y la narradora se vuelve a hundir. Así queda al mismo nivel siempre,
             // tenga el clip el fondo que tenga.
             $filtrosCapas[] = "[{$idxVoz}:a]adelay=500|500,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,"
-                . 'loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000[voz]';
+                .'loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000[voz]';
 
             if ($tieneAudio) {
                 $filtrosCapas[] = '[0:a]volume=0.32,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[amb]';
@@ -136,13 +136,13 @@ class VideoOverlayFfmpeg
                 $filtrosCapas[] = '[voz]anull[mez]';
             }
 
-            $filtrosCapas[] = '[mez]' . self::NORMALIZACION . '[aout]';
+            $filtrosCapas[] = '[mez]'.self::NORMALIZACION.'[aout]';
             $mapaAudio = '[aout]';
         } elseif ($tieneAudio) {
             // También sin narración: el clip de Veo trae el volumen que le da la gana y el
             // cierre está normalizado a -16 LUFS, así que sin esto se oye un salto al pasar
             // de una parte a la otra.
-            $filtrosCapas[] = '[0:a]' . self::NORMALIZACION . '[aout]';
+            $filtrosCapas[] = '[0:a]'.self::NORMALIZACION.'[aout]';
             $mapaAudio = '[aout]';
         }
 
@@ -160,15 +160,17 @@ class VideoOverlayFfmpeg
         $resultado = Process::timeout(300)->run($args);
 
         foreach ($rutasTemp as $ruta) {
-            if (is_file($ruta)) @unlink($ruta);
+            if (is_file($ruta)) {
+                @unlink($ruta);
+            }
         }
 
-        if (!$resultado->successful()) {
-            return ['ok' => false, 'videoPath' => null, 'posterPath' => null, 'error' => 'FFmpeg falló al componer el video: ' . mb_substr($resultado->errorOutput(), -500)];
+        if (! $resultado->successful()) {
+            return ['ok' => false, 'videoPath' => null, 'posterPath' => null, 'error' => 'FFmpeg falló al componer el video: '.mb_substr($resultado->errorOutput(), -500)];
         }
 
         $poster = Process::timeout(30)->run([$binario, '-y', '-i', $destinoVideoAbsoluto, '-vframes', '1', '-q:v', '3', $destinoPosterAbsoluto]);
-        if (!$poster->successful() || !is_file($destinoPosterAbsoluto)) {
+        if (! $poster->successful() || ! is_file($destinoPosterAbsoluto)) {
             return ['ok' => true, 'videoPath' => $destinoVideoAbsoluto, 'posterPath' => null, 'error' => null];
         }
 
@@ -182,28 +184,76 @@ class VideoOverlayFfmpeg
      * Re-codifica en vez de copiar el stream, para no depender de que los clips de entrada
      * compartan exactamente los mismos parámetros de códec.
      *
-     * @param string[] $rutasClipsAbsolutas En el orden en que deben quedar unidos.
+     * @param  string[]  $rutasClipsAbsolutas  En el orden en que deben quedar unidos.
      * @return array{ok: bool, error: ?string}
      */
     public static function concatenar(array $rutasClipsAbsolutas, string $destinoAbsoluto): array
     {
         $binario = config('services.ffmpeg.binario', 'ffmpeg');
+        $ffprobe = config('services.ffmpeg.ffprobe', 'ffprobe');
 
-        $listaTemp = sys_get_temp_dir() . '/' . Str::random(20) . '_lista_concat.txt';
-        $lineas = array_map(fn (string $ruta) => "file '" . str_replace("'", "'\\''", $ruta) . "'", $rutasClipsAbsolutas);
-        file_put_contents($listaTemp, implode("\n", $lineas));
+        if (count($rutasClipsAbsolutas) === 1) {
+            return copy($rutasClipsAbsolutas[0], $destinoAbsoluto)
+                ? ['ok' => true, 'error' => null]
+                : ['ok' => false, 'error' => 'No se pudo copiar el único clip.'];
+        }
 
-        $resultado = Process::timeout(180)->run([
-            $binario, '-y', '-f', 'concat', '-safe', '0', '-i', $listaTemp,
-            '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-crf', '20',
-            '-c:a', 'aac', '-b:a', '128k',
-            $destinoAbsoluto,
-        ]);
+        $dim = self::obtenerDimensiones($ffprobe, $rutasClipsAbsolutas[0]);
+        if (! $dim) {
+            return ['ok' => false, 'error' => 'No se pudieron leer las dimensiones del primer clip.'];
+        }
+        [$ancho, $alto] = $dim;
 
-        @unlink($listaTemp);
+        // Se usa el FILTRO concat, no el demuxer `-f concat`. El demuxer exige que todos los
+        // clips traigan exactamente los mismos streams: al encontrar uno sin pista de audio
+        // —el de capturas de pantalla, que es imagen pura— se detiene ahí y devuelve EXIT 0
+        // con solo lo que alcanzó a escribir. Así se perdieron tres escenas de un video de
+        // cuatro sin un solo mensaje de error.
+        $entradas = [];
+        $filtros = [];
+        $etiquetas = '';
+        $idx = 0;
 
-        if (!$resultado->successful()) {
-            return ['ok' => false, 'error' => 'FFmpeg falló al unir los clips: ' . mb_substr($resultado->errorOutput(), -500)];
+        foreach ($rutasClipsAbsolutas as $i => $ruta) {
+            $idxVideo = $idx++;
+            array_push($entradas, '-i', $ruta);
+
+            $filtros[] = "[{$idxVideo}:v]fps=30,scale={$ancho}:{$alto},setsar=1,format=yuv420p,settb=AVTB[v{$i}]";
+
+            if (self::tieneAudio($ffprobe, $ruta)) {
+                $idxAudio = $idxVideo;
+            } else {
+                // Silencio de la misma duración: el filtro concat necesita una pista de audio
+                // en cada entrada, y sin ella no se puede pedir a=1.
+                $d = self::obtenerDimensiones($ffprobe, $ruta);
+                $idxAudio = $idx++;
+                // El `-f lavfi` va pegado a ESTA entrada: puesto al principio se aplicaría a
+                // todas y ffmpeg intentaría leer los mp4 como filtros.
+                array_push($entradas, '-f', 'lavfi', '-i',
+                    'anullsrc=channel_layout=stereo:sample_rate=48000:d='.round($d[2] ?? 8, 3));
+            }
+
+            $filtros[] = "[{$idxAudio}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[a{$i}]";
+            $etiquetas .= "[v{$i}][a{$i}]";
+        }
+
+        $n = count($rutasClipsAbsolutas);
+        $filtros[] = $etiquetas."concat=n={$n}:v=1:a=1[v][a]";
+
+        $resultado = Process::timeout(300)->run(array_merge(
+            [$binario, '-y'],
+            $entradas,
+            [
+                '-filter_complex', implode(';', $filtros),
+                '-map', '[v]', '-map', '[a]',
+                '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-crf', '20',
+                '-c:a', 'aac', '-b:a', '128k',
+                $destinoAbsoluto,
+            ]
+        ));
+
+        if (! $resultado->successful()) {
+            return ['ok' => false, 'error' => 'FFmpeg falló al unir los clips: '.mb_substr($resultado->errorOutput(), -500)];
         }
 
         return ['ok' => true, 'error' => null];
@@ -229,18 +279,18 @@ class VideoOverlayFfmpeg
         string $destinoAbsoluto,
         float $transicion = 0.5
     ): array {
-        $binario  = config('services.ffmpeg.binario', 'ffmpeg');
-        $ffprobe  = config('services.ffmpeg.ffprobe', 'ffprobe');
+        $binario = config('services.ffmpeg.binario', 'ffmpeg');
+        $ffprobe = config('services.ffmpeg.ffprobe', 'ffprobe');
 
         $dim = self::obtenerDimensiones($ffprobe, $rutaContenido);
-        if (!$dim) {
+        if (! $dim) {
             return ['ok' => false, 'error' => 'No se pudo leer la duración del video de contenido.'];
         }
         [$ancho, $alto, $duracion] = $dim;
 
         // El cruce arranca antes de que termine el contenido; si la pieza fuera más corta
         // que la transición, se recorta para no pedirle a xfade un offset negativo.
-        $cruce  = min($transicion, max(0.2, $duracion - 0.2));
+        $cruce = min($transicion, max(0.2, $duracion - 0.2));
         $offset = round(max(0, $duracion - $cruce), 3);
 
         $filtro = implode(';', [
@@ -263,8 +313,8 @@ class VideoOverlayFfmpeg
             $destinoAbsoluto,
         ]);
 
-        if (!$resultado->successful()) {
-            return ['ok' => false, 'error' => 'FFmpeg falló al pegar el cierre: ' . mb_substr($resultado->errorOutput(), -500)];
+        if (! $resultado->successful()) {
+            return ['ok' => false, 'error' => 'FFmpeg falló al pegar el cierre: '.mb_substr($resultado->errorOutput(), -500)];
         }
 
         return ['ok' => true, 'error' => null];
@@ -280,7 +330,7 @@ class VideoOverlayFfmpeg
             $rutaVideo,
         ]);
 
-        if (!$resultado->successful()) {
+        if (! $resultado->successful()) {
             return null;
         }
 
@@ -291,13 +341,13 @@ class VideoOverlayFfmpeg
         foreach ($lineas as $linea) {
             if (str_contains($linea, ',') && preg_match('/^(\d+),(\d+)$/', $linea, $m)) {
                 $ancho = (int) $m[1];
-                $alto  = (int) $m[2];
+                $alto = (int) $m[2];
             } elseif (is_numeric($linea)) {
                 $duracion = (float) $linea;
             }
         }
 
-        if (!$ancho || !$alto || !$duracion) {
+        if (! $ancho || ! $alto || ! $duracion) {
             return null;
         }
 
@@ -315,7 +365,7 @@ class VideoOverlayFfmpeg
     {
         $factor = 2;
         $anchoG = $ancho * $factor;
-        $altoG  = $alto * $factor;
+        $altoG = $alto * $factor;
 
         $lienzo = imagecreatetruecolor($anchoG, $altoG);
         imagealphablending($lienzo, false);
@@ -324,9 +374,9 @@ class VideoOverlayFfmpeg
         imagealphablending($lienzo, true);
 
         $rutaFuente = base_path(self::FUENTE);
-        $tamFuente  = max(22, (int) round($altoG * 0.034));
-        $anchoUtil  = (int) round($anchoG * 0.78);
-        $lineas     = self::envolver($frase, $anchoUtil, $tamFuente, $rutaFuente);
+        $tamFuente = max(22, (int) round($altoG * 0.034));
+        $anchoUtil = (int) round($anchoG * 0.78);
+        $lineas = self::envolver($frase, $anchoUtil, $tamFuente, $rutaFuente);
         $alturaLinea = (int) round($tamFuente * 1.3);
 
         // Ancho real de la pastilla = el de la línea más larga.
@@ -340,9 +390,9 @@ class VideoOverlayFfmpeg
         // fórmula anterior los ignoraba. Dejaba 24 px de aire arriba y 8 abajo, y el texto se
         // veía pegado al borde aunque técnicamente cupiera.
         $cajaPrimera = imagettfbbox($tamFuente, 0, $rutaFuente, $lineas[0]);
-        $cajaUltima  = imagettfbbox($tamFuente, 0, $rutaFuente, $lineas[count($lineas) - 1]);
+        $cajaUltima = imagettfbbox($tamFuente, 0, $rutaFuente, $lineas[count($lineas) - 1]);
         $subePrimera = abs($cajaPrimera[7]);           // cuánto sube la primera línea
-        $bajaUltima  = max(0, $cajaUltima[1]);          // cuánto baja la última
+        $bajaUltima = max(0, $cajaUltima[1]);          // cuánto baja la última
 
         $padX = (int) round($tamFuente * 0.95);
         $padY = (int) round($tamFuente * 0.50);
@@ -412,7 +462,7 @@ class VideoOverlayFfmpeg
         imagecopyresampled($final, $lienzo, 0, 0, 0, 0, $ancho, $alto, $anchoG, $altoG);
         imagedestroy($lienzo);
 
-        $rutaTemp = sys_get_temp_dir() . '/' . Str::random(20) . '_texto_video.png';
+        $rutaTemp = sys_get_temp_dir().'/'.Str::random(20).'_texto_video.png';
         imagepng($final, $rutaTemp);
         imagedestroy($final);
 
@@ -490,8 +540,9 @@ class VideoOverlayFfmpeg
     {
         $hex = ltrim($hex, '#');
         if (strlen($hex) === 3) {
-            $hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+            $hex = $hex[0].$hex[0].$hex[1].$hex[1].$hex[2].$hex[2];
         }
+
         return [hexdec(substr($hex, 0, 2)), hexdec(substr($hex, 2, 2)), hexdec(substr($hex, 4, 2))];
     }
 
@@ -503,7 +554,7 @@ class VideoOverlayFfmpeg
         $actual = '';
 
         foreach ($palabras as $palabra) {
-            $prueba = $actual === '' ? $palabra : $actual . ' ' . $palabra;
+            $prueba = $actual === '' ? $palabra : $actual.' '.$palabra;
             $caja = imagettfbbox($tamFuente, 0, $rutaFuente, $prueba);
             $ancho = $caja[2] - $caja[0];
 
