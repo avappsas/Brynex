@@ -133,31 +133,39 @@ class MarketingVideoGuion extends Command
                 // pantalla falsa lo pierde. Ver ClipDeCapturas.
                 'CAPTURAS',
 
+                'Vertical 9:16 cinematic shot. The same Colombian man walks outdoors on a city street '
+                .'looking down at his phone with a calm, satisfied expression, one hand in his pocket. '
+                .'Late afternoon golden light, medium shot, shallow depth of field. Ambient street sounds '
+                .'only. No text on screen, nobody speaks.',
+
                 'Vertical 9:16 cinematic shot. The same Colombian man shakes hands with a client across a '
                 .'table in a bright cafe, both smiling confidently, a phone on the table between them. '
                 .'Natural daylight, medium shot, shallow depth of field. Ambient sounds only. '
                 .'No text on screen, nobody speaks.',
             ],
-            // El encuadre de cada captura: la barra de módulos y las tarjetas del panel son lo
-            // que convence, y quedan a la izquierda; el paneo las recorre en vez de dejar media
-            // pantalla quieta.
+            // Capturas tomadas con el navegador a 800px de ancho: la plataforma se acomoda
+            // vertical sola y entran enteras, sin panear sobre una pantalla apaisada.
             'capturas' => [
-                ['archivo' => '02-inicio.png', 'desde' => 0.0, 'hasta' => 0.35, 'zoom' => 1.35, 'arriba' => 0.05],
-                ['archivo' => '04-informes.png', 'desde' => 0.05, 'hasta' => 0.40, 'zoom' => 1.15, 'arriba' => 0.1],
-                ['archivo' => '05-tendencia.png', 'desde' => 0.05, 'hasta' => 0.40, 'zoom' => 1.2, 'arriba' => 0.55],
+                ['archivo' => '11-modulos.png', 'modo' => 'ancho', 'zoom' => 1.1, 'arriba' => 0.25],
+                ['archivo' => '12-cobros.png', 'modo' => 'ancho', 'zoom' => 1.1, 'arriba' => 0.3],
+                ['archivo' => '13-tendencia.png', 'modo' => 'ancho', 'zoom' => 1.1, 'arriba' => 0.5],
             ],
             'frases' => [
                 '¿Ya tienes clientes propios?',
-                'Nosotros hacemos todo el trabajo',
+                'Planillas por API, sin subir nada',
+                'Tus clientes, desde el celular',
                 'Tú solo consigues clientes',
             ],
-            'narracion' => 'Si eres asesor y ya manejas clientes de seguridad social, te mejoramos tus comisiones. '
-                .'Nosotros nos encargamos de todo: afiliaciones, cobros automáticos, incapacidades y planillas, '
-                .'con la plataforma de BRYNEX punto co. No necesitas razones sociales propias y todo sale en '
-                .'tiempo récord. Tú solo consigues clientes nuevos. Escríbenos y cuéntanos cuántos manejas.',
-            'copy' => '¿Eres asesor de seguridad social y ya tienes tus propios clientes? Te mejoramos tus comisiones. '
-                .'Nosotros hacemos los trámites, el papeleo y las planillas — sin que pongas razones sociales '
-                .'propias y en tiempo récord. Tú te enfocas en vender. 📲 Escríbenos y cuéntanos cuántos clientes manejas.',
+            'narracion' => 'Si ya eres asesor y manejas clientes de seguridad social, te mejoramos tus comisiones. '
+                .'Nosotros hacemos todo: afiliaciones al instante, planillas pagadas por API sin que subas un solo '
+                .'archivo, cobros automáticos por WhatsApp e incapacidades. Y sigues a tus clientes desde la '
+                .'aplicación, con la plataforma de BRYNEX punto co. Tú solo consigues clientes nuevos. '
+                .'Escríbenos y cuéntanos cuántos manejas.',
+            'copy' => '¿Eres asesor de seguridad social y ya tienes tus propios clientes? Te mejoramos tus comisiones '
+                .'y hacemos todo el trabajo: afiliaciones al instante, planillas pagadas por API (sin subir archivos '
+                .'a ningún operador), cobros automáticos por WhatsApp e incapacidades. Sigues a tus clientes desde la '
+                .'aplicación y no necesitas razones sociales propias. Tú solo vendes. '
+                .'📲 Escríbenos y cuéntanos cuántos clientes manejas.',
         ],
         // El paso siguiente para el asesor que ya tiene volumen: dejar de ser intermediario y
         // tener su propia empresa. Es otro momento de la misma persona, por eso va en un video
@@ -173,6 +181,11 @@ class MarketingVideoGuion extends Command
 
                 'CAPTURAS',
 
+                'Vertical 9:16 cinematic shot. The same Colombian man sits on a sofa at home holding his '
+                .'phone with both hands, scrolling calmly with a slight smile, evening lamp light behind him. '
+                .'Medium close shot, shallow depth of field. Ambient sounds only. '
+                .'No text on screen, nobody speaks.',
+
                 'Vertical 9:16 cinematic shot. The same Colombian man, now in a shirt, standing confidently '
                 .'in the doorway of his own small office with two coworkers at desks behind him, arms '
                 .'relaxed, proud smile. Bright natural light, medium wide shot. Ambient sounds only. '
@@ -180,21 +193,24 @@ class MarketingVideoGuion extends Command
             ],
             'capturas' => [
                 ['archivo' => '01-login.png', 'desde' => 0.5, 'hasta' => 0.5, 'zoom' => 1.15],
-                ['archivo' => '02-inicio.png', 'desde' => 0.0, 'hasta' => 0.35, 'zoom' => 1.35, 'arriba' => 0.05],
-                ['archivo' => '04-informes.png', 'desde' => 0.05, 'hasta' => 0.40, 'zoom' => 1.15, 'arriba' => 0.1],
+                ['archivo' => '11-modulos.png', 'modo' => 'ancho', 'zoom' => 1.1, 'arriba' => 0.25],
+                ['archivo' => '13-tendencia.png', 'modo' => 'ancho', 'zoom' => 1.1, 'arriba' => 0.5],
             ],
             'frases' => [
                 '¿Ya manejas tu propia cartera?',
                 'Te montamos la plataforma',
+                'Todo desde el celular',
                 'Tu propia empresa',
             ],
             'narracion' => 'Si ya tienes tus propios clientes de seguridad social, el siguiente paso es tener tu '
-                .'propia empresa. Nosotros te ayudamos a montarla y te damos la plataforma de BRYNEX punto co '
-                .'para que la manejes: afiliaciones, cobros automáticos, incapacidades y planillas, todo en un '
-                .'solo lugar. Escríbenos y cuéntanos cuántos clientes manejas hoy.',
+                .'propia empresa. Nosotros te ayudamos a montarla y te damos la plataforma de BRYNEX punto co: '
+                .'afiliaciones al instante, planillas pagadas por API sin subir archivos, cobros automáticos por '
+                .'WhatsApp e incapacidades. Y tus clientes los sigues desde la aplicación. '
+                .'Escríbenos y cuéntanos cuántos manejas hoy.',
             'copy' => '¿Eres asesor de seguridad social y ya tienes tu propia cartera? Te ayudamos a montar tu propia '
-                .'empresa, con la plataforma de BRYNEX.co para manejarla: afiliaciones, cobros automáticos, '
-                .'incapacidades y planillas. 📲 Escríbenos y cuéntanos cuántos clientes manejas.',
+                .'empresa y te damos la plataforma de BRYNEX.co para manejarla: afiliaciones al instante, planillas '
+                .'pagadas por API sin subir archivos, cobros automáticos por WhatsApp e incapacidades, y una '
+                .'aplicación para seguir a tus clientes. 📲 Escríbenos y cuéntanos cuántos clientes manejas.',
         ],
     ];
 

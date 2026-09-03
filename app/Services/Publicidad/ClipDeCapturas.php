@@ -30,10 +30,11 @@ class ClipDeCapturas
     private const CRUCE = 0.5;
 
     /**
-     * @param  array<int, string|array{archivo: string, desde?: float, hasta?: float, zoom?: float}>  $capturas
-     *                                                                                                           Ruta de la imagen, o la ruta más el tramo del paneo (`desde`/`hasta`, fracción
-     *                                                                                                           del ancho sobrante), el `zoom` sobre el alto del cuadro y `arriba` (0 pega el
-     *                                                                                                           recorte al borde superior, 1 al inferior).
+     * @param  array<int, string|array{archivo: string, modo?: string, desde?: float, hasta?: float, zoom?: float, arriba?: float, fondo?: string}>  $capturas
+     *                                                                                                                                                          Ruta de la imagen, o la ruta con su encuadre. `modo` 'alto' (el de una captura
+     *                                                                                                                                                          apaisada) la escala hasta llenar el cuadro y pasea el recorte de `desde` a
+     *                                                                                                                                                          `hasta` del ancho sobrante; `modo` 'ancho' (una captura ya vertical) la encaja
+     *                                                                                                                                                          entera y rellena lo que sobra con `fondo`. `zoom` y `arriba` valen en los dos.
      * @return array{ok: bool, path: ?string, error: ?string}
      */
     public static function generar(array $capturas, float $segundos, string $destinoAbsoluto): array
@@ -67,6 +68,21 @@ class ClipDeCapturas
             // Los paneles tienen el contenido arriba y aire abajo: anclar el recorte al borde
             // superior evita regalarle medio cuadro a fondo vacío.
             $arriba = (float) ($c['arriba'] ?? 0.5);
+
+            if (($c['modo'] ?? 'alto') === 'ancho') {
+                // Captura tomada ya en vertical: cabe a lo ancho tal cual. Se escala por el
+                // ANCHO —que es un downscale, o sea nitidez— y lo que sobra arriba y abajo se
+                // rellena con el gris de la app, que es como se ve la pantalla de verdad.
+                // Recortarla para llenar el cuadro cortaria justo lo que se quiere mostrar.
+                $fondo = $c['fondo'] ?? '0xeef2f7';
+                $anchoEscalado = (int) round(self::ANCHO * $zoom);
+                $filtros[] = "[{$i}:v]scale={$anchoEscalado}:-2,"
+                    .'pad='.self::ANCHO.':'.self::ALTO.":(ow-iw)/2:(oh-ih)*{$arriba}:color={$fondo},"
+                    .'crop='.self::ANCHO.':'.self::ALTO.','
+                    .'fps='.self::FPS.',setsar=1,format=yuv420p[v'.$i.']';
+
+                continue;
+            }
 
             // El recorte se mueve con `t`: de `desde` a `hasta` del ancho que sobra. Si la
             // captura no sobresale (imagen angosta), max(...) deja el recorte quieto en 0 en
