@@ -102,8 +102,28 @@ class PautaConfig extends BaseModel
         return static::firstOrCreate(['aliado_id' => $aliadoId], ['activo' => false]);
     }
 
-    /** Cuánto se ha comprometido/gastado este mes calendario en piezas de este aliado (borrador+activa+pausada+finalizada). */
+    /**
+     * Cuánto lleva gastado la pauta este mes.
+     *
+     * El número bueno lo tiene Meta y es el mismo que sale en facturación. Antes se sumaba
+     * aquí la columna `pauta_gasto_total_cop` de las piezas activadas dentro del mes, y eso
+     * estaba mal por partida doble: esa columna es el gasto de TODA LA VIDA de la pieza, y el
+     * filtro dejaba fuera las piezas activadas en meses anteriores que siguen gastando. El
+     * 3-sep-2026 daba $102 cuando en dos días iban $11.870 — un tope mensual que no frenaba.
+     *
+     * Si Meta no responde se cae a la cuenta local, que subestima: es lo que había antes y
+     * sirve para no quedarse sin número, pero por eso quien decide pausar debe tratarla como
+     * un piso, no como la verdad.
+     */
     public function gastadoEsteMes(): float
+    {
+        $deMeta = \App\Services\RedesSociales\MetaAdsService::gastoDelMes($this);
+
+        return $deMeta ?? $this->gastadoEsteMesLocal();
+    }
+
+    /** Suma local, solo como respaldo: subestima cuando una pieza vieja sigue gastando. */
+    private function gastadoEsteMesLocal(): float
     {
         return (float) Publicacion::where('aliado_id', $this->aliado_id)
             ->whereNotNull('pauta_estado')

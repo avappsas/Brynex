@@ -6,6 +6,7 @@ use App\Models\Publicacion;
 use App\Models\PautaConfig;
 use App\Models\RedSocialConfig;
 use App\Models\WhatsappConfig;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -921,5 +922,55 @@ class MetaAdsService
     {
         $mensaje = $resp->json('error.error_user_msg') ?? $resp->json('error.message');
         return $mensaje ? "Meta respondió: {$mensaje}" : "Meta respondió con error HTTP {$resp->status()}.";
+    }
+
+    /**
+     * Lo que Meta dice que se lleva gastado en el mes en curso, en toda la cuenta.
+     *
+     * Se le pregunta a Meta en vez de sumarlo aquí porque la columna `pauta_gasto_total_cop`
+     * de cada pieza es su gasto DE TODA LA VIDA, no el del mes: sumarla daba dos errores a la
+     * vez —dejaba fuera las piezas activadas en meses anteriores que siguen gastando, y de las
+     * que sí contaba metía también lo gastado antes—. El 3-sep-2026 el sistema creía llevar
+     * $102 del mes cuando en los dos primeros días iban $11.870, y el tope de $600.000 no
+     * habría frenado nada.
+     *
+     * El mes lo cuenta Meta en la zona horaria DE LA CUENTA (la de Brygar está en
+     * America/Los_Angeles), así que el corte no coincide exactamente con la medianoche
+     * colombiana. Para un guardarraíl de tope mensual esa diferencia de horas es irrelevante.
+     *
+     * @return float|null null si no se pudo consultar; quien llama decide qué hacer con eso.
+     */
+    public static function gastoDelMes(PautaConfig $config): ?float
+    {
+        if (! $config->ad_account_id || ! $config->access_token_ads) {
+            return null;
+        }
+
+        // Se cachea corto: esto lo consulta el cron de sincronización y el informe, y la API
+        // de Meta admite una llamada cada 30 segundos.
+        return Cache::remember(
+            "pauta_gasto_mes_{$config->aliado_id}",
+            now()->addMinutes(15),
+            function () use ($config) {
+                $cuenta = 'act_' . ltrim($config->ad_account_id, 'act_');
+
+                $resp = Http::get(self::BASE_URL . "/{$cuenta}/insights", [
+                    'access_token' => $config->access_token_ads,
+                    'fields'       => 'spend',
+                    'level'        => 'account',
+                    'time_range'   => json_encode([
+                        'since' => now()->startOfMonth()->toDateString(),
+                        'until' => now()->toDateString(),
+                    ]),
+                ]);
+
+                if (! $resp->successful() || $resp->json('error')) {
+                    return null;
+                }
+
+                // Sin gasto en el mes Meta devuelve `data` vacío, que no es un error: son cero.
+                return (float) ($resp->json('data.0.spend') ?? 0);
+            }
+        );
     }
 }
