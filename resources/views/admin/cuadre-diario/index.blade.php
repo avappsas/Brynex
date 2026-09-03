@@ -30,6 +30,15 @@ $totalFacturas   = array_sum($canales['conteo']);
 .cd-card.gastos{border-color:#fecaca}
 .cd-card.gastos .cd-card-val{color:#dc2626}
 .cd-card.saldo{border-color:#bfdbfe;background:#f8fbff}
+/* Segunda fila: lo que NO se arquea. Cards más bajos para que la fila de
+   arriba —la plata de verdad— siga mandando visualmente. */
+.cd-cards-info{display:grid;grid-template-columns:repeat(auto-fit,minmax(172px,1fr));gap:.6rem;margin-bottom:1.1rem}
+.cd-cards-info .cd-card{padding:.7rem .9rem}
+.cd-cards-info .cd-card-val{font-size:1.15rem}
+.cd-info-hdr{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;margin:0 0 .4rem}
+/* Renglones de la ecuación de caja: base + recibido − gastos */
+.cd-eq{display:flex;justify-content:space-between;align-items:baseline;gap:.5rem;font-size:.73rem;color:#64748b;margin-top:.2rem}
+.cd-eq b{font-variant-numeric:tabular-nums}
 .cd-card.saldo .cd-card-val{color:#1d4ed8}
 .cd-card-click{cursor:pointer;transition:box-shadow .15s,transform .15s}
 .cd-card-click:hover{box-shadow:0 6px 18px rgba(3,105,161,.16);transform:translateY(-2px)}
@@ -205,39 +214,38 @@ $totalFacturas   = array_sum($canales['conteo']);
 @endif
 
 {{-- ═══════════ 1. Resumen de la caja del día ═══════════ --}}
+{{-- Arriba, la plata que se arquea; abajo, lo informativo. Antes iba todo en
+     una sola fila y con siete cards no cabía nada. El efectivo recibido y los
+     gastos dejaron de ser cards propios: son los renglones de la cuenta que
+     da el efectivo en caja (base + recibido − gastos), y juntos se leen mejor
+     que separados en tres tarjetas. --}}
 <div class="cd-cards">
     {{-- Lo facturado va primero: es el bruto del que sale todo lo demás. --}}
     <div class="cd-card facturado">
         <div class="cd-card-title">🧾 Total facturado</div>
         <div class="cd-card-val">{{ $fmt($resumen['total_facturado']) }}</div>
         <div style="font-size:.72rem;color:#64748b;margin-top:.3rem">
-            Sin retiros ni facturas en cero
-        </div>
-    </div>
-
-    <div class="cd-card efectivo">
-        <div class="cd-card-title">💵 Recibido en efectivo</div>
-        <div class="cd-card-val">{{ $fmt($resumen['recibido_efectivo']) }}</div>
-        <div style="font-size:.72rem;color:#64748b;margin-top:.3rem">
-            Facturas + cartera + anticipos
-        </div>
-    </div>
-
-    <div class="cd-card gastos">
-        <div class="cd-card-title">📤 Gastos en efectivo</div>
-        <div class="cd-card-val">-{{ $fmt($resumen['gastos_efectivo']) }}</div>
-        <div style="font-size:.72rem;color:#64748b;margin-top:.3rem">
-            {{ $gastos->count() }} {{ \Illuminate\Support\Str::plural('registro', $gastos->count()) }}
+            {{ $resumen['num_facturas'] }} {{ \Illuminate\Support\Str::plural('factura', $resumen['num_facturas']) }},
+            sin retiros ni facturas en cero
         </div>
     </div>
 
     <div class="cd-card saldo">
         <div class="cd-card-title">✅ Efectivo en caja</div>
         <div class="cd-card-val">{{ $fmt($resumen['saldo_esperado']) }}</div>
-        <div style="font-size:.72rem;color:#64748b;margin-top:.3rem"
-             title="Una factura de empresa cubre varios empleados y cuenta una sola vez">
-            {{ $resumen['num_facturas'] }} {{ \Illuminate\Support\Str::plural('factura', $resumen['num_facturas']) }}
-            · base caja menor {{ $fmt($resumen['base_caja']) }}
+        <div style="margin-top:.45rem;padding-top:.4rem;border-top:1px solid #dbeafe">
+            <div class="cd-eq" title="Facturas cobradas en efectivo + cartera recuperada + anticipos">
+                <span>💵 Recibido</span>
+                <b style="color:#15803d">{{ $fmt($resumen['recibido_efectivo']) }}</b>
+            </div>
+            <div class="cd-eq" title="Gastos pagados del efectivo del día">
+                <span>📤 Gastos <span style="color:#94a3b8">({{ $gastos->count() }})</span></span>
+                <b style="color:{{ $resumen['gastos_efectivo'] > 0 ? '#dc2626' : '#94a3b8' }}">−{{ $fmt($resumen['gastos_efectivo']) }}</b>
+            </div>
+            <div class="cd-eq" title="Base de caja menor con la que arrancó el día">
+                <span>🪙 Base caja</span>
+                <b>{{ $fmt($resumen['base_caja']) }}</b>
+            </div>
         </div>
     </div>
 
@@ -252,53 +260,34 @@ $totalFacturas   = array_sum($canales['conteo']);
                 class="no-print" style="color:#2563eb;font-weight:600"> · ver detalle →</span>
         </div>
     </div>
+</div>
 
-    @if($resumen['cobros_cartera'] > 0)
-    <div class="cd-card" style="border-color:#d1fae5">
-        <div class="cd-card-title" style="color:#065f46">📋 Cobros de cartera</div>
-        <div class="cd-card-val" style="color:#065f46">{{ $fmt($resumen['cobros_cartera']) }}</div>
-        <div style="font-size:.72rem;color:#64748b;margin-top:.3rem">Préstamos recuperados</div>
-    </div>
-    @endif
+@php
+    // El 31 de mes casi todo el recaudo es del ciclo siguiente: plata que entra
+    // hoy pero se gasta el mes entrante. El card muestra en grande la canasta
+    // que manda ese día: lo adelantado, o la cartera vieja cuando no se cobró
+    // nada por adelantado.
+    $per = $resumen['periodos'];
+    $mandaAtraso = $per['proximo']['total'] <= 0 && $per['atrasado']['total'] > 0;
+    $foco = $mandaAtraso ? $per['atrasado'] : $per['proximo'];
+    $hayPeriodo = $per['proximo']['total'] > 0 || $per['atrasado']['total'] > 0;
+@endphp
 
-    @if($resumen['anticipos_efectivo'] > 0)
-    <div class="cd-card" style="border-color:#fde68a">
-        <div class="cd-card-title" style="color:#78350f">💰 Anticipos recibidos</div>
-        <div class="cd-card-val" style="color:#78350f">{{ $fmt($resumen['anticipos_efectivo']) }}</div>
-        <div style="font-size:.72rem;color:#64748b;margin-top:.3rem">Efectivo/Nequi, aún sin facturar</div>
-    </div>
-    @endif
-
-    {{-- El 31 de mes casi todo el recaudo es del ciclo siguiente: plata que
-         entra hoy pero se gasta el mes entrante. Sin separarla, el día parece
-         una caja enorme que en realidad está comprometida. El card muestra en
-         grande la canasta que manda ese día: lo adelantado, o la cartera vieja
-         cuando no se cobró nada por adelantado. --}}
-    @php
-        $per = $resumen['periodos'];
-        $mandaAtraso = $per['proximo']['total'] <= 0 && $per['atrasado']['total'] > 0;
-        $foco = $mandaAtraso ? $per['atrasado'] : $per['proximo'];
-    @endphp
-    @if($per['proximo']['total'] > 0 || $per['atrasado']['total'] > 0)
+@if($hayPeriodo || $resumen['total_prestado'] > 0 || $resumen['cobros_cartera'] > 0 || $resumen['anticipos_efectivo'] > 0)
+<div class="cd-info-hdr">Además, para tener en cuenta</div>
+<div class="cd-cards-info">
+    @if($hayPeriodo)
     <div class="cd-card" style="border-color:{{ $mandaAtraso ? '#fde68a' : '#bfdbfe' }}">
         <div class="cd-card-title" style="color:{{ $mandaAtraso ? '#b45309' : '#1d4ed8' }}">
             📅 {{ $mandaAtraso ? 'De períodos atrasados' : 'Del próximo período' }}
         </div>
         <div class="cd-card-val" style="color:{{ $mandaAtraso ? '#b45309' : '#1d4ed8' }}">{{ $fmt($foco['total']) }}</div>
-        <div style="font-size:.72rem;color:#64748b;margin-top:.3rem">
-            efectivo {{ $fmt($foco['efectivo']) }} · consignado {{ $fmt($foco['consignado']) }}<br>
+        <div style="font-size:.72rem;color:#64748b;margin-top:.25rem">
             {{ $foco['num'] }} {{ \Illuminate\Support\Str::plural('factura', $foco['num']) }}
             @if(!$mandaAtraso && $per['etiqueta_proximo']) de {{ $per['etiqueta_proximo'] }} @endif
             @if($mandaAtraso) de meses anteriores @endif
-            <div style="margin-top:.25rem;padding-top:.25rem;border-top:1px solid #e2e8f0">
-                del mes {{ $fmt($per['actual']['total']) }}
-                @if(!$mandaAtraso && $per['atrasado']['total'] > 0)
-                    · <span style="color:#b45309">atrasado {{ $fmt($per['atrasado']['total']) }}</span>
-                @endif
-                @if($mandaAtraso && $per['proximo']['total'] > 0)
-                    · próximo {{ $fmt($per['proximo']['total']) }}
-                @endif
-            </div>
+            · efectivo {{ $fmt($foco['efectivo']) }}<br>
+            <span style="color:#94a3b8">del mes {{ $fmt($per['actual']['total']) }}</span>
         </div>
     </div>
     @endif
@@ -307,20 +296,37 @@ $totalFacturas   = array_sum($canales['conteo']);
     <div class="cd-card" style="border-color:#e9d5ff">
         <div class="cd-card-title" style="color:#6b21a8">⚠️ Prestado hoy</div>
         <div class="cd-card-val" style="color:#7c3aed">{{ $fmt($resumen['total_prestado']) }}</div>
-        <div style="font-size:.72rem;color:#64748b;margin-top:.3rem">
+        <div style="font-size:.72rem;color:#64748b;margin-top:.25rem">
             Cartera por cobrar, no es ingreso
             {{-- La factura marcada pagada sin recibir plata es cartera igual que el préstamo. --}}
             @if($resumen['num_sin_pago'] > 0)
                 <br><span style="color:#b45309">
                     incluye {{ $resumen['num_sin_pago'] }}
                     {{ \Illuminate\Support\Str::plural('factura', $resumen['num_sin_pago']) }}
-                    sin pago registrado ({{ $fmt($resumen['total_sin_pago']) }})
+                    sin pago ({{ $fmt($resumen['total_sin_pago']) }})
                 </span>
             @endif
         </div>
     </div>
     @endif
+
+    @if($resumen['cobros_cartera'] > 0)
+    <div class="cd-card" style="border-color:#d1fae5">
+        <div class="cd-card-title" style="color:#065f46">📋 Cobros de cartera</div>
+        <div class="cd-card-val" style="color:#065f46">{{ $fmt($resumen['cobros_cartera']) }}</div>
+        <div style="font-size:.72rem;color:#64748b;margin-top:.25rem">Préstamos recuperados</div>
+    </div>
+    @endif
+
+    @if($resumen['anticipos_efectivo'] > 0)
+    <div class="cd-card" style="border-color:#fde68a">
+        <div class="cd-card-title" style="color:#78350f">💰 Anticipos recibidos</div>
+        <div class="cd-card-val" style="color:#78350f">{{ $fmt($resumen['anticipos_efectivo']) }}</div>
+        <div style="font-size:.72rem;color:#64748b;margin-top:.25rem">Efectivo/Nequi, aún sin facturar</div>
+    </div>
+    @endif
 </div>
+@endif
 
 {{-- ═══════════ 2. Los 3 canales del día ═══════════ --}}
 @php
