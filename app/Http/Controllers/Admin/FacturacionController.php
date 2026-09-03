@@ -877,8 +877,12 @@ class FacturacionController extends Controller
                 continue;
             }
 
-            // Retiro facturable: no bloquea, se procesa en su propio flujo
-            if ($contrato->estado === 'retirado' && $facturasRetiro0->has($contrato->id)) {
+            // Retiro facturable: no bloquea, se procesa en su propio flujo.
+            // Salvo en el mes de ingreso, donde el cobro es la afiliación y sí
+            // aplica el anti-duplicado normal del período.
+            if ($contrato->estado === 'retirado'
+                && $facturasRetiro0->has($contrato->id)
+                && ! $this->_esAfiliacionDelMesDeIngreso($contrato, $mes, $anio)) {
                 continue;
             }
 
@@ -1550,7 +1554,10 @@ class FacturacionController extends Controller
                 // EXCEPCIÓN: contratos retirados con factura 0 pendiente no se bloquean aquí
                 // — se procesan en el bloque de retiro facturable de más abajo.
                 $tieneRetiroFacturable = $contrato->estado === 'retirado'
-                    && $facturasRetiro0Lote->has($contrato->id);
+                    && $facturasRetiro0Lote->has($contrato->id)
+                    // En su mes de ingreso lo que se cobra es la afiliación: la factura 0
+                    // del retiro se conserva para el período que le corresponde.
+                    && ! $this->_esAfiliacionDelMesDeIngreso($contrato, $mes, $anio);
 
                 // ── FLUJO ESPECIAL: Retiro facturable (contrato retirado con factura 0) ──────────
                 // El usuario seleccionó un contrato retirado desde la vista empresa.
@@ -3400,6 +3407,35 @@ class FacturacionController extends Controller
      *
      * @return array|null null si todo OK; ['mes','anio','mensaje'] si hay gap.
      */
+    /**
+     * ¿En este período el contrato cobra afiliación pura (su mes de ingreso)?
+     *
+     * Sirve para no confundir dos cobros distintos de la misma persona: quien
+     * ingresó y se retiró dentro del mismo mes debe pagar la AFILIACIÓN en el
+     * mes de ingreso, y su seguridad social proporcional va aparte en la
+     * factura de retiro (numero_factura=0), normalmente del mes siguiente.
+     * Sin esta distinción el flujo de retiro facturable se comía la selección
+     * y la afiliación quedaba sin cobrar.
+     */
+    private function _esAfiliacionDelMesDeIngreso(Contrato $contrato, int $mes, int $anio): bool
+    {
+        if (! $contrato->fecha_ingreso) {
+            return false;
+        }
+        // Quien cotiza el mes en curso cobra afiliación y planilla juntas: ese caso
+        // sí es el flujo normal, no una afiliación pura.
+        if ((bool) ($contrato->paga_mes_actual ?? false)) {
+            return false;
+        }
+        // Solo seguro: se cobra la mensualidad todos los meses, nunca afiliación.
+        if ($contrato->esSoloSeguro()) {
+            return false;
+        }
+
+        return (int) $contrato->fecha_ingreso->month === $mes
+            && (int) $contrato->fecha_ingreso->year === $anio;
+    }
+
     private function verificarOrdenFacturacion(int $aliadoId, Contrato $contrato, int $mes, int $anio): ?array
     {
         // Convertir a entero YYYYMM para comparación simple
@@ -4576,8 +4612,10 @@ class FacturacionController extends Controller
                 $vTot = (int) $fact->total - (int) (($fact->mora ?? 0) - $vMora);
                 $estado = $fact->estado;
                 $diasCotizar = (int) $fact->dias_cotizados;
-            } elseif ($esRetirado && $factRetiro0) {
-                // Retiro pendiente de facturar: usar valores de la factura temporal
+            } elseif ($esRetirado && $factRetiro0 && ! $esAfil) {
+                // Retiro pendiente de facturar: usar valores de la factura temporal.
+                // En el mes de ingreso manda la afiliación (más abajo): el retiro
+                // de quien entró y salió el mismo mes se cobra en su propio período.
                 $vEps = $r100($factRetiro0->v_eps);
                 $vArl = $r100($factRetiro0->v_arl);
                 $vAFP = $r100($factRetiro0->v_afp);
@@ -4591,7 +4629,7 @@ class FacturacionController extends Controller
                 $vIva = \App\Services\IvaService::calcular($vAdm, (bool) ($ivaClientes[$c->cedula] ?? false));
                 $vTot = $r100($factRetiro0->total_ss) + $vAdm + $vIva;
                 $estado = 'sin_factura';
-            } elseif ($esRetirado) {
+            } elseif ($esRetirado && ! $esAfil) {
                 $vEps = $vArl = $vAFP = $vCaja = $vIva = $vAdm = 0;
                 $vTot = 0;
                 $estado = 'sin_factura';

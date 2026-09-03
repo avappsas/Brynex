@@ -556,8 +556,13 @@ $totEps+=$vEps;$totArl+=$vArl;$totCaja+=$vCaja;$totPen+=$vPen;
 $totAdmon+=$vAdm;$totIva+=$vIva;$totTotal+=$vTot;$totMora+=$vMora;
 
 $lblEstado = 'Sin factura';
-if ($esRetirado && $esAfil && !$fact) {
+// Retirado que ingresó este mismo mes: lo que se cobra es la afiliación, no el retiro.
+// El retiro (SS proporcional) se cobra aparte con la factura 0, en el mes que corresponda.
+$esAfilDeRetirado = $esRetirado && $esAfil;
+if ($esAfilDeRetirado && !$fact) {
     $lblEstado = 'AFIL. PEND.';
+} elseif ($esAfilDeRetirado && $fact && (int)$fact->numero_factura !== 0) {
+    $lblEstado = $estadoLabel($fact->estado);
 } elseif ($esRetirado) {
     $lblEstado = 'RETIRO';
 } elseif ($tieneRetiroPendiente) {
@@ -708,11 +713,18 @@ if ($esRetirado && $esAfil && !$fact) {
         $totProxPendiente= ($totProxPendiente ?? 0) + $c->saldo_proximo_pendiente;
     @endphp
     <td style="text-align:center">
-        @if($esRetirado && $esAfil && !$fact)
+        @if($esAfilDeRetirado && !$fact)
             {{-- Retirado que ingresó este mes: afiliación pendiente de cobro --}}
             <span style="display:inline-block;padding:.16rem .5rem;border-radius:20px;font-size:.63rem;font-weight:800;background:#ede9fe;color:#6d28d9;"
                   title="Ingresó este mes — afiliación pendiente de facturar">
                 AFIL. PEND.
+            </span>
+        @elseif($esAfilDeRetirado && $fact && (int)$fact->numero_factura !== 0)
+            {{-- Afiliación del mes de ingreso ya facturada, aunque después se retirara --}}
+            @php $coloresAfil = $estadoBg($fact->estado); @endphp
+            <span style="display:inline-block;padding:.16rem .5rem;border-radius:20px;font-size:.63rem;font-weight:700;background:{{ $coloresAfil[0] }};color:{{ $coloresAfil[1] }}"
+                  title="Afiliación del mes de ingreso — el retiro se cobra aparte">
+                {{ $estadoLabel($fact->estado) }}
             </span>
         @elseif($esRetirado)
             @php
@@ -773,6 +785,13 @@ if ($esRetirado && $esAfil && !$fact) {
         @if($fact && (int)$fact->numero_factura !== 0)
             <button onclick="abrirRecibo('{{ route('admin.facturacion.recibo',$fact->id) }}?modal=1')"
                class="btn-sm" style="background:#eff6ff;color:#1d4ed8;" title="Ver recibo">🖨</button>
+        @elseif($esAfilDeRetirado && !$fact)
+            {{-- Afiliación pendiente de un retirado: se cobra igual que la de cualquiera
+                 que ingresó este mes. El retiro va por su propia factura 0. --}}
+            <input type="checkbox" class="chk-row" value="{{ $c->id }}"
+                   onchange="onCheckChange()"
+                   style="width:1.1rem;height:1.1rem;cursor:pointer;accent-color:#6d28d9;"
+                   title="Seleccionar para facturar la afiliación ({{ '$'.number_format($vTot,0,',','.') }})">
         @elseif($tieneRetiroFacturable ?? false)
             {{-- Retiro facturable: mostrar checkbox igual que un activo sin factura --}}
             <input type="checkbox" class="chk-row" value="{{ $c->id }}"
