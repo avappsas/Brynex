@@ -178,7 +178,19 @@ class AsistenteIaService
     {
         $texto = mb_strtolower(($pieza->tema ?? '') . ' ' . ($pieza->titulo ?? ''), 'UTF-8');
 
-        return str_contains($texto, 'asesor') && (str_contains($texto, 'comision') || str_contains($texto, 'trabaj'));
+        if (!str_contains($texto, 'asesor')) {
+            return false;
+        }
+
+        // Dos anuncios distintos apuntan al mismo perfil: el de comisiones y el de "te ayudamos a
+        // montar tu propia empresa". Ambos traen asesores con cartera, no gente queriendo afiliarse.
+        foreach (['comision', 'trabaj', 'cartera', 'propia empresa', 'empresa propia'] as $senal) {
+            if (str_contains($texto, $senal)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function construirToolsWhatsapp(array $credenciales): array
@@ -588,9 +600,13 @@ class AsistenteIaService
               Nada de eso aplica: él ya sabe cómo funciona el negocio.
             - Salúdalo reconociendo a qué vino y PREGÚNTALE CUÁNTOS CLIENTES MANEJA HOY. Es el dato
               que define la conversación y lo que hay que llevarse de este primer contacto.
-            - Lo que ofrecemos, en corto: mejores comisiones, nosotros hacemos el trámite y el
-              papeleo, no tiene que poner razones sociales propias, y todo sale en tiempo récord.
-              Él se dedica solo a lo comercial.
+            - Lo que ofrecemos, en corto: mejores comisiones y que NOSOTROS NOS ENCARGAMOS DE TODO
+              —afiliaciones, cobros automáticos, incapacidades, planillas— con la plataforma de
+              BRYNEX.co. No tiene que poner razones sociales propias, no hace papeleo y todo sale en
+              tiempo récord. Él solo consigue clientes nuevos; lo operativo corre por nuestra cuenta.
+            - Y si YA TIENE SUFICIENTES CLIENTES y quiere independizarse, también lo ayudamos a montar
+              SU PROPIA EMPRESA y le damos la plataforma para manejarla. Menciónalo solo si él abre esa
+              puerta o si el número de clientes que dice es alto; no arranques por ahí.
             - En cuanto tengas el número de clientes —o si insiste en hablar de condiciones o
               comisiones concretas— PÁSALO al 3117762689: ahí se cierra directamente. Dilo con esas
               palabras, dale el número completo y explícale que ahí lo atienden para su caso.
