@@ -415,7 +415,7 @@ body{display:flex;flex-direction:column}
         <div class="form-group" id="renovar-fecha-group">
             <label>Fecha de inicio de la cobertura nueva *</label>
             <input type="date" id="renovar-fecha" required>
-            <span style="font-size:.7rem;color:#94a3b8;">Se propone el día en que se vence la cobertura actual; si ya venció, mañana.</span>
+            <span style="font-size:.7rem;color:#94a3b8;">Se propone mañana, lo más pronto que cubre Sura: la cobertura se mueve a esa fecha, así que una posterior lo deja descubierto mientras tanto.</span>
         </div>
 
         <input type="hidden" id="renovar-contrato-id">

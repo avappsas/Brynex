@@ -113,7 +113,7 @@ class ArlAfiliacionController extends Controller
                 'centro'       => $centro ? $centro->codigo_centro.' — '.$centro->nombre_centro : null,
                 'tasa'         => $centro?->tasa,
             ],
-            'fecha_sugerida' => $this->fechaSugerida($contrato),
+            'fecha_sugerida' => $this->fechaSugerida(),
             // Lo que la renovación va a anular. Se mira también `fecha_arl`
             // porque los contratos afiliados a mano antes de la integración no
             // tienen historial en BryNex, pero su cobertura sí existe en Sura.
@@ -127,19 +127,23 @@ class ArlAfiliacionController extends Controller
     }
 
     /**
-     * Fecha que se propone para la cobertura nueva.
+     * Fecha que se propone para la cobertura nueva: siempre mañana.
      *
-     * El semáforo de Gestión ARL dura 29 días, así que lo natural es empezar
-     * justo cuando la cobertura vigente se acaba. Si esa fecha ya pasó —el
-     * contrato venía vencido— no tiene sentido proponer un día del pasado:
-     * se cae a mañana, que es lo más pronto que Sura cubre.
+     * Antes se proponía el día del vencimiento (`fecha_arl` + 29), pensando en
+     * empalmar una cobertura con la siguiente. Pero renovar no agrega un
+     * período: MUEVE el inicio de la cobertura que ya existe. Proponer una
+     * fecha futura la corre hacia adelante y deja al trabajador descubierto
+     * desde hoy hasta ese día —a CRISTIAN PAJA, que arranca el 12/08, moverlo
+     * al 10/09 lo dejaba sin ARL 8 días—. Mañana es lo más pronto que Sura
+     * cubre, así que es lo que menos hueco deja.
+     *
+     * De paso se cae el desfase de la cuenta vieja: salía de la `fecha_arl` de
+     * BryNex mientras el aviso del modal muestra la del portal, y no siempre
+     * coinciden (Cristian: 11/08 aquí, 12/08 allá).
      */
-    private function fechaSugerida(Contrato $contrato): string
+    private function fechaSugerida(): string
     {
-        $manana  = now()->addDay()->startOfDay();
-        $proxima = $contrato->fecha_arl?->copy()->addDays(29);
-
-        return ($proxima && $proxima->greaterThan($manana) ? $proxima : $manana)->toDateString();
+        return now()->addDay()->startOfDay()->toDateString();
     }
 
     /**
