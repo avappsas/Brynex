@@ -454,15 +454,19 @@
         @if($puedeCertificadoArl)
         {{-- Pegado al nivel de riesgo porque el certificado es justo lo que lo
              acredita: dice con qué clase y qué tasa quedó afiliada la persona. --}}
+        {{-- Solo el ícono: la columna del nivel es angosta y cualquier rótulo
+             se desborda. El contador de segundos aparece dentro mientras baja,
+             que es cuando de verdad hace falta texto. --}}
         <button type="button" id="btn-cert-arl" onclick="descargarCertificadoArl(this)"
             title="Bajar del portal de Sura el certificado de afiliación y el carné al día"
-            style="margin-top:0.3rem;width:100%;display:flex;align-items:center;justify-content:center;gap:0.35rem;padding:0.35rem;background:#b91c1c;border:none;border-radius:7px;color:#fff;font-size:0.72rem;font-weight:700;cursor:pointer;">
+            style="margin-top:0.3rem;width:100%;display:flex;align-items:center;justify-content:center;gap:0.3rem;padding:0.32rem;background:#fef2f2;border:1px solid #fecaca;border-radius:7px;color:#dc2626;font-size:0.68rem;font-weight:700;cursor:pointer;transition:background .15s;"
+            onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='#fef2f2'">
           <svg width="13" height="15" viewBox="0 0 12 14" fill="none" style="flex:none" aria-hidden="true">
             <path d="M1 1.5A.5.5 0 0 1 1.5 1H7l4 4v7.5a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5v-11Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
             <path d="M7 1v4h4" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
             <path d="M6 7.6v3.2m0 0L4.7 9.6M6 10.8l1.3-1.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
-          <span id="btn-cert-arl-txt">Certificado</span>
+          <span id="btn-cert-arl-txt"></span>
         </button>
         @endif
       </div>
@@ -1930,12 +1934,11 @@ select:disabled { background:#f1f5f9;color:#1e293b;cursor:not-allowed;opacity:1;
  * congelado.
  */
 async function descargarCertificadoArl(btn) {
-    const texto  = document.getElementById('btn-cert-arl-txt');
-    const rotulo = texto.textContent;
-    const desde  = Date.now();
+    const texto = document.getElementById('btn-cert-arl-txt');
+    const desde = Date.now();
 
     btn.disabled = true;
-    const pintar = () => texto.textContent = `Bajando… ${Math.round((Date.now() - desde) / 1000)}s`;
+    const pintar = () => texto.textContent = `${Math.round((Date.now() - desde) / 1000)}s`;
     pintar();
     const reloj = setInterval(pintar, 1000);
 
@@ -1973,7 +1976,7 @@ async function descargarCertificadoArl(btn) {
     } finally {
         clearTimeout(alarma);
         clearInterval(reloj);
-        texto.textContent = rotulo;
+        texto.textContent = '';
         btn.disabled = false;
     }
 }
