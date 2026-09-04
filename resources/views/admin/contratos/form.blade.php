@@ -454,14 +454,20 @@
         @if($puedeCertificadoArl)
         {{-- Pegado al nivel de riesgo porque el certificado es justo lo que lo
              acredita: dice con qué clase y qué tasa quedó afiliada la persona. --}}
-        {{-- Solo el ícono: la columna del nivel es angosta y cualquier rótulo
-             se desborda. El contador de segundos aparece dentro mientras baja,
-             que es cuando de verdad hace falta texto. --}}
+        {{-- Solo el ícono: la columna del nivel es angosta y cualquier rótulo se
+             desborda. El contador de segundos aparece dentro mientras baja, que
+             es cuando de verdad hace falta texto.
+
+             Las medidas y el verde salen de `$badgeEstado`, el badge de
+             "Afiliado OK" que queda a su izquierda: van uno al lado del otro en
+             la misma fila, y con cualquier diferencia de alto o de color el
+             renglón se ve torcido. Sin borde, como el badge, que si no queda
+             2px más alto. --}}
         <button type="button" id="btn-cert-arl" onclick="descargarCertificadoArl(this)"
             title="Bajar del portal de Sura el certificado de afiliación y el carné al día"
-            style="margin-top:0.3rem;width:100%;display:flex;align-items:center;justify-content:center;gap:0.3rem;padding:0.32rem;background:#fef2f2;border:1px solid #fecaca;border-radius:7px;color:#dc2626;font-size:0.68rem;font-weight:700;cursor:pointer;transition:background .15s;"
-            onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='#fef2f2'">
-          <svg width="13" height="15" viewBox="0 0 12 14" fill="none" style="flex:none" aria-hidden="true">
+            style="margin-top:0.22rem;width:100%;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:0.2rem;padding:0.18rem 0.4rem;background:#dcfce7;border:none;border-radius:5px;color:#166534;font-size:0.62rem;font-weight:700;cursor:pointer;transition:background .15s;"
+            onmouseover="this.style.background='#bbf7d0'" onmouseout="this.style.background='#dcfce7'">
+          <svg width="10" height="12" viewBox="0 0 12 14" fill="none" style="flex:none" aria-hidden="true">
             <path d="M1 1.5A.5.5 0 0 1 1.5 1H7l4 4v7.5a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5v-11Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
             <path d="M7 1v4h4" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
             <path d="M6 7.6v3.2m0 0L4.7 9.6M6 10.8l1.3-1.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>
