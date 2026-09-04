@@ -168,21 +168,56 @@ class PlanillaFormularioService
         $perSer = $anioPago . str_pad($mesPago, 2, '0', STR_PAD_LEFT);
 
         $granTotal = $c['vAfp'] + $c['vEps'] + $c['vArl'] + $c['vCcf'];
-        
+
+        // Lo que el operador dijo de esta planilla al liquidarla. Queda guardado
+        // en `operador_planillas_api`, así que el PDF usa su cifra sin volver a
+        // abrir sesión: el portal tarda más de un minuto y a veces ni responde.
+        $delOperador = $plano->numero_planilla
+            ? \DB::table('operador_planillas_api')
+                ->where('aliado_id', $plano->aliado_id)
+                ->where('numero_planilla', $plano->numero_planilla)
+                ->orderByDesc('id')
+                ->first(['estado', 'valor_total'])
+            : null;
+
+        // "PAGADA" solo cuando consta el pago. Antes iba fijo, así que el
+        // soporte de una planilla liquidada pero sin pagar salía igual de
+        // rotundo que el de una pagada.
+        $estadoPlanilla = $fechaPagoParaCarbon
+            ? 'PAGADA'
+            : match ($delOperador->estado ?? null) {
+                'validada'    => 'LIQUIDADA',
+                'con_errores' => 'CON ERRORES',
+                'error'       => 'CON ERRORES',
+                default       => '',
+            };
+
+        // Total que el operador liquidó para la planilla completa. Queda a mano
+        // de la plantilla, que hoy solo imprime el aporte de esta persona: el
+        // documento pasa a poder decir de qué planilla forma parte y por cuánto.
+        $totalOperador = isset($delOperador->valor_total)
+            ? '$ '.number_format((float) $delOperador->valor_total, 0, ',', '.')
+            : '';
+
         $afiliadosCount = Plano::where('numero_planilla', $plano->numero_planilla)
             ->where('aliado_id', $plano->aliado_id)
             ->count();
 
+        // Sin fecha real no se pone ninguna. Antes caía a un 03/07/2026 14:03:12
+        // fijo, así que un soporte sin pago registrado salía afirmando una hora
+        // exacta que nunca ocurrió —y este documento es lo que el cliente
+        // guarda como prueba—. En blanco se nota que falta; inventada, no.
         if ($fechaPagoParaCarbon) {
             $dt = \Carbon\Carbon::parse($fechaPagoParaCarbon);
             $pagoFecha = $dt->format('Y-m-d');
             $pagoHora  = $dt->format('H:i:s.0');
             $pagoHoraSinMs = $dt->format('H:i:s');
         } else {
-            $pagoFecha = '2026-07-03';
-            $pagoHora  = '14:03:12.0';
-            $pagoHoraSinMs = '14:03:12';
+            $pagoFecha = '';
+            $pagoHora  = '';
+            $pagoHoraSinMs = '';
         }
+
         $clienteObj = $plano->contrato?->cliente;
 
         $razonSocialAportante = $esIndependiente
@@ -261,8 +296,8 @@ class PlanillaFormularioService
             'plano.numero_planilla'         => $plano->numero_planilla,
             'plano.periodo_cotizacion'      => $perCot,
             'plano.periodo_servicio'        => $perSer,
-            'plano.fecha_pago_completa'     => "{$pagoFecha} {$pagoHora}",
-            'plano.fecha_pago_estado'       => 'PAGADA',
+            'plano.fecha_pago_completa'     => trim("{$pagoFecha} {$pagoHora}"),
+            'plano.fecha_pago_estado'       => $estadoPlanilla,
             'plano.fecha_pago_fecha'        => $pagoFecha,
             'plano.fecha_pago_hora'         => $pagoHora,
 
@@ -346,6 +381,10 @@ class PlanillaFormularioService
             'total.esap'  => '$ 0',
             'total.men'   => '$ 0',
             'total.final' => '$ ' . number_format($granTotal, 0, ',', '.'),
+            // Lo que el operador cobró por la planilla entera, tal como quedó
+            // registrado al liquidarla. Vacío en las planillas que no pasaron
+            // por el API: mejor sin dato que con uno deducido.
+            'total.planilla_operador' => $totalOperador,
         ];
     }
 
