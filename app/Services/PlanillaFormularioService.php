@@ -167,8 +167,6 @@ class PlanillaFormularioService
 
         $perSer = $anioPago . str_pad($mesPago, 2, '0', STR_PAD_LEFT);
 
-        $granTotal = $c['vAfp'] + $c['vEps'] + $c['vArl'] + $c['vCcf'];
-
         // Lo que el operador dijo de esta planilla al liquidarla. Queda guardado
         // en `operador_planillas_api`, así que el PDF usa su cifra sin volver a
         // abrir sesión: el portal tarda más de un minuto y a veces ni responde.
@@ -177,8 +175,22 @@ class PlanillaFormularioService
                 ->where('aliado_id', $plano->aliado_id)
                 ->where('numero_planilla', $plano->numero_planilla)
                 ->orderByDesc('id')
-                ->first(['estado', 'valor_total'])
+                ->first([
+                    'estado', 'valor_total', 'numero_afiliados', 'nombre_aportante',
+                    'periodo_cotizacion', 'periodo_servicio', 'fecha_limite',
+                ])
             : null;
+
+        // Los dos períodos se deducen arriba —el de cotización del plano, el de
+        // servicio sumándole un mes—, y esa cuenta ya se ha equivocado: es la
+        // que mete a dos personas en la misma planilla cuando se igualan. Si el
+        // operador los reporta, mandan ellos: es lo que quedó radicado.
+        $perCot = $delOperador?->periodo_cotizacion ?: $perCot;
+        $perSer = $delOperador?->periodo_servicio ?: $perSer;
+
+        $granTotal = $c['vAfp'] + $c['vEps'] + $c['vArl'] + $c['vCcf'];
+
+
 
         // "PAGADA" solo cuando consta el pago. Antes iba fijo, así que el
         // soporte de una planilla liquidada pero sin pagar salía igual de
@@ -239,7 +251,13 @@ class PlanillaFormularioService
             ? ($clienteObj?->celular ?? $clienteObj?->telefono ?? '5555555')
             : ($plano->razonSocial?->telefonos ?? $plano->razonSocial?->telefono ?? '5555555');
 
-        $afiliadosCountVal = $esIndependiente ? '1' : (string)max(1, $afiliadosCount);
+        // Cuánta gente lleva la planilla. Contar nuestros propios planos supone
+        // que BryNex y el operador tienen exactamente la misma lista, y si
+        // alguien quedó fuera al radicar, el soporte lo taparía. El número del
+        // operador es el que de verdad se pagó.
+        $afiliadosCountVal = $esIndependiente
+            ? '1'
+            : (string) ($delOperador?->numero_afiliados ?: max(1, $afiliadosCount));
 
         $representanteVal = $esIndependiente
             ? ''
@@ -300,6 +318,11 @@ class PlanillaFormularioService
             'plano.fecha_pago_estado'       => $estadoPlanilla,
             'plano.fecha_pago_fecha'        => $pagoFecha,
             'plano.fecha_pago_hora'         => $pagoHora,
+            // Hasta cuándo daba plazo el operador. Sirve para leer si el pago
+            // entró a tiempo o con mora, que hoy el documento no dice.
+            'plano.fecha_limite'            => $delOperador?->fecha_limite
+                ? \Carbon\Carbon::parse($delOperador->fecha_limite)->format('Y-m-d')
+                : '',
 
             // Afiliado
             'afiliado.tipo_doc'             => $plano->tipo_doc,

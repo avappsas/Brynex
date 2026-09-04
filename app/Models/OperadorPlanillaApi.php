@@ -26,7 +26,17 @@ class OperadorPlanillaApi extends BaseModel
         'url_pago',
         'estado',
         'mensaje_error',
-        'response_log'
+        'response_log',
+        // Lo que el operador reporta de la planilla, traído por
+        // `planillas:sincronizar-totales`. Sin declararlos aquí el `update()`
+        // los descarta sin decir nada.
+        'nombre_aportante',
+        'numero_afiliados',
+        'periodo_cotizacion',
+        'periodo_servicio',
+        'fecha_limite',
+        'total_administradoras',
+        'totales_at'
     ];
 
     protected $casts = [
