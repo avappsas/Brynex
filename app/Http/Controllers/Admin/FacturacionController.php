@@ -371,6 +371,23 @@ class FacturacionController extends Controller
         $saldoEmpresaFavor = $saldoNetoEmpresa > 0 ? (int) $saldoNetoEmpresa : 0;
         $saldoEmpresaPendiente = $saldoNetoEmpresa < 0 ? (int) abs($saldoNetoEmpresa) : 0;
 
+        // Las facturas que arman ese saldo neto, para poder ver de dónde sale.
+        // Mismas condiciones que la suma de arriba, sin las que quedaron en cero.
+        $facturasSaldoEmpresa = collect();
+        if ($saldoEmpresaFavor > 0 || $saldoEmpresaPendiente > 0) {
+            $facturasSaldoEmpresa = Factura::where('aliado_id', $aliadoId)
+                ->where('empresa_id', $empresa->id)
+                ->whereNotNull('saldo_proximo')
+                ->where('saldo_proximo', '!=', 0)
+                ->whereIn('estado', ['pagada', 'prestamo', 'abono'])
+                ->whereNull('deleted_at')
+                ->with('contrato.cliente')
+                ->orderByDesc('anio')
+                ->orderByDesc('mes')
+                ->orderByDesc('id')
+                ->get();
+        }
+
         $anticiposEmpresa = \App\Models\Anticipo::disponiblesParaEmpresa($aliadoId, $empresa->id);
         $totalAnticipoDisponible = (int) $anticiposEmpresa->sum('valor_disponible');
 
@@ -412,7 +429,7 @@ class FacturacionController extends Controller
 
         return compact(
             'empresa', 'contratos', 'facturasExistentes', 'bancos', 'planosActuales', 'asesores',
-            'saldoEmpresaFavor', 'saldoEmpresaPendiente', 'moraPorContrato',
+            'saldoEmpresaFavor', 'saldoEmpresaPendiente', 'facturasSaldoEmpresa', 'moraPorContrato',
             'anticiposEmpresa', 'totalAnticipoDisponible', 'saldoAnticipoPorContrato', 'hayAnticipos',
             'hayMora', 'cobrosAdicionales', 'cobrosRecurrentes', 'meses'
         );

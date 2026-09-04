@@ -930,25 +930,37 @@ document.addEventListener('DOMContentLoaded', function() {
 <div style="display:flex;justify-content:flex-end;gap:.6rem;flex-wrap:wrap;margin-top:.55rem;">
 
     @if($saldoEmpresaFavor > 0)
-    <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:.55rem .9rem;display:flex;align-items:center;gap:.5rem;min-width:210px;">
+    <button type="button" onclick="abrirDetalleSaldoEmpresa()" title="Ver de qué facturas viene este saldo"
+        style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:.55rem .9rem;display:flex;align-items:center;gap:.5rem;min-width:210px;cursor:pointer;font-family:inherit;text-align:left;transition:background .15s,border-color .15s;"
+        onmouseover="this.style.background='#dcfce7';this.style.borderColor='#22c55e';"
+        onmouseout="this.style.background='#f0fdf4';this.style.borderColor='#86efac';">
         <span style="font-size:1.2rem;">✅</span>
-        <div>
+        <div style="flex:1;">
             <div style="font-size:.6rem;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.04em;">Saldo a favor empresa</div>
             <div style="font-size:.95rem;font-weight:800;color:#15803d;">+${{ number_format($saldoEmpresaFavor,0,',','.') }}</div>
-            <div style="font-size:.58rem;color:#4ade80;">Se descuenta automáticamente al facturar</div>
+            <div style="font-size:.58rem;color:#4ade80;">
+                {{ $facturasSaldoEmpresa->count() }} {{ $facturasSaldoEmpresa->count() === 1 ? 'factura' : 'facturas' }} · ver detalle
+            </div>
         </div>
-    </div>
+        <span style="font-size:.9rem;color:#16a34a;">›</span>
+    </button>
     @endif
 
     @if($saldoEmpresaPendiente > 0)
-    <div style="background:#fef2f2;border:1.5px solid #fca5a5;border-radius:10px;padding:.55rem .9rem;display:flex;align-items:center;gap:.5rem;min-width:210px;">
+    <button type="button" onclick="abrirDetalleSaldoEmpresa()" title="Ver en qué facturas quedó debiendo"
+        style="background:#fef2f2;border:1.5px solid #fca5a5;border-radius:10px;padding:.55rem .9rem;display:flex;align-items:center;gap:.5rem;min-width:210px;cursor:pointer;font-family:inherit;text-align:left;transition:background .15s,border-color .15s;"
+        onmouseover="this.style.background='#fee2e2';this.style.borderColor='#ef4444';"
+        onmouseout="this.style.background='#fef2f2';this.style.borderColor='#fca5a5';">
         <span style="font-size:1.2rem;">⚠️</span>
-        <div>
+        <div style="flex:1;">
             <div style="font-size:.6rem;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.04em;">Pendiente empresa</div>
             <div style="font-size:.95rem;font-weight:800;color:#dc2626;">-${{ number_format($saldoEmpresaPendiente,0,',','.') }}</div>
-            <div style="font-size:.58rem;color:#fca5a5;">Se suma al total al facturar</div>
+            <div style="font-size:.58rem;color:#fca5a5;">
+                {{ $facturasSaldoEmpresa->count() }} {{ $facturasSaldoEmpresa->count() === 1 ? 'factura' : 'facturas' }} · ver detalle
+            </div>
         </div>
-    </div>
+        <span style="font-size:.9rem;color:#dc2626;">›</span>
+    </button>
     @endif
 
     {{-- ─── Panel anticipo disponible: resumen; el detalle va en el modal ── --}}
@@ -970,6 +982,131 @@ document.addEventListener('DOMContentLoaded', function() {
     @endif
 
 </div>
+@endif
+
+{{-- ═══ MODAL DETALLE DEL SALDO DE LA EMPRESA ══════════════════════
+     El saldo que se muestra en la tarjeta es el NETO de saldo_proximo de
+     todas las facturas de la empresa. Aquí se ve factura por factura de
+     dónde sale, porque unas pueden quedar a favor y otras debiendo.
+--}}
+@if($saldoEmpresaFavor > 0 || $saldoEmpresaPendiente > 0)
+@php
+    $seNeto      = $saldoEmpresaFavor > 0 ? $saldoEmpresaFavor : -$saldoEmpresaPendiente;
+    $seAFavor    = $seNeto > 0;
+    $seColor     = $seAFavor ? '#15803d' : '#dc2626';
+    $seFondo     = $seAFavor ? '#f0fdf4' : '#fef2f2';
+    $seBorde     = $seAFavor ? '#86efac' : '#fca5a5';
+    $seDegradado = $seAFavor ? 'linear-gradient(135deg,#15803d 0%,#22c55e 100%)' : 'linear-gradient(135deg,#b91c1c 0%,#ef4444 100%)';
+    $seMeses = [1=>'Enero',2=>'Febrero',3=>'Marzo',4=>'Abril',5=>'Mayo',6=>'Junio',
+                7=>'Julio',8=>'Agosto',9=>'Septiembre',10=>'Octubre',11=>'Noviembre',12=>'Diciembre'];
+@endphp
+<div id="se-overlay" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.65);backdrop-filter:blur(4px);z-index:2100;align-items:center;justify-content:center;padding:.75rem;"
+     onclick="if(event.target.id==='se-overlay') cerrarDetalleSaldoEmpresa()">
+    <div style="background:#fff;border-radius:18px;width:min(760px,98vw);max-height:92vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 32px 100px rgba(0,0,0,.35);">
+
+        <div style="background:{{ $seDegradado }};padding:.9rem 1.3rem;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:.8rem;">
+                <div style="width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:1.2rem;">{{ $seAFavor ? '✅' : '⚠️' }}</div>
+                <div>
+                    <h2 style="font-size:.95rem;font-weight:800;color:#fff;margin:0;">
+                        {{ $seAFavor ? 'Saldo a favor de la empresa' : 'Pendiente de la empresa' }}
+                    </h2>
+                    <p style="font-size:.68rem;color:rgba(255,255,255,.8);margin:0;">{{ $empresa->empresa }} · de dónde viene el saldo</p>
+                </div>
+            </div>
+            <button type="button" onclick="cerrarDetalleSaldoEmpresa()"
+                style="width:28px;height:28px;border-radius:7px;border:none;cursor:pointer;background:rgba(255,255,255,.1);color:rgba(255,255,255,.85);font-size:.95rem;">&times;</button>
+        </div>
+
+        <div style="background:{{ $seFondo }};border-bottom:1px solid {{ $seBorde }};padding:.6rem 1.3rem;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div>
+                <div style="font-size:.58rem;font-weight:800;color:{{ $seColor }};text-transform:uppercase;letter-spacing:.04em;">Saldo neto</div>
+                <div style="font-size:1.05rem;font-weight:900;color:{{ $seColor }};">
+                    {{ $seAFavor ? '+' : '-' }}${{ number_format(abs($seNeto),0,',','.') }}
+                </div>
+                <div style="font-size:.58rem;color:{{ $seColor }};opacity:.75;">
+                    {{ $seAFavor ? 'Se descuenta automáticamente al facturar' : 'Se suma al total al facturar' }}
+                </div>
+            </div>
+            <div style="text-align:right;">
+                <div style="font-size:.58rem;font-weight:800;color:{{ $seColor }};text-transform:uppercase;letter-spacing:.04em;">Facturas</div>
+                <div style="font-size:1.05rem;font-weight:900;color:{{ $seColor }};">{{ $facturasSaldoEmpresa->count() }}</div>
+            </div>
+        </div>
+
+        <div style="flex:1;overflow-y:auto;padding:.5rem 1rem 1rem;min-height:0;">
+            @if($facturasSaldoEmpresa->isEmpty())
+                <div style="padding:1.5rem;text-align:center;color:#64748b;font-size:.78rem;">
+                    No hay facturas con saldo pendiente ni a favor.
+                </div>
+            @else
+            <table style="width:100%;border-collapse:collapse;font-size:.75rem;">
+                <thead>
+                    <tr>
+                        @foreach(['Factura','Cliente','Período','Estado'] as $th)
+                        <th style="text-align:left;background:#f8fafc;color:#475569;padding:.5rem .6rem;font-size:.6rem;font-weight:800;text-transform:uppercase;border-bottom:1.5px solid #e2e8f0;position:sticky;top:0;z-index:5;">{{ $th }}</th>
+                        @endforeach
+                        <th style="text-align:right;background:#f8fafc;color:#475569;padding:.5rem .6rem;font-size:.6rem;font-weight:800;text-transform:uppercase;border-bottom:1.5px solid #e2e8f0;position:sticky;top:0;z-index:5;">Saldo</th>
+                        <th style="background:#f8fafc;border-bottom:1.5px solid #e2e8f0;position:sticky;top:0;z-index:5;width:70px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($facturasSaldoEmpresa as $f)
+                    @php
+                        $fSaldo   = (int) $f->saldo_proximo;
+                        $fAFavor  = $fSaldo > 0;
+                    @endphp
+                    <tr>
+                        <td style="padding:.4rem .6rem;border-bottom:1px solid #f1f5f9;font-family:monospace;color:#334155;font-weight:700;">
+                            {{ $f->numero_factura ?: '—' }}
+                            <div style="font-size:.58rem;color:#94a3b8;font-family:inherit;font-weight:500;">
+                                {{ $f->fecha_pago ? $f->fecha_pago->format('d/m/Y') : 'sin fecha' }}
+                            </div>
+                        </td>
+                        <td style="padding:.4rem .6rem;border-bottom:1px solid #f1f5f9;color:#1e293b;font-weight:700;">
+                            {{ $f->contrato?->cliente?->nombre_completo ?? '—' }}
+                            <div style="font-size:.62rem;color:#64748b;font-weight:500;">{{ $f->cedula }}</div>
+                        </td>
+                        <td style="padding:.4rem .6rem;border-bottom:1px solid #f1f5f9;color:#475569;white-space:nowrap;">
+                            {{ $seMeses[(int) $f->mes] ?? $f->mes }} {{ $f->anio }}
+                        </td>
+                        <td style="padding:.4rem .6rem;border-bottom:1px solid #f1f5f9;color:#475569;">
+                            {{ ucfirst($f->estado) }}
+                        </td>
+                        <td style="padding:.4rem .6rem;border-bottom:1px solid #f1f5f9;text-align:right;font-family:monospace;font-weight:800;white-space:nowrap;color:{{ $fAFavor ? '#15803d' : '#dc2626' }};">
+                            {{ $fAFavor ? '+' : '-' }}${{ number_format(abs($fSaldo),0,',','.') }}
+                        </td>
+                        <td style="padding:.4rem .6rem;border-bottom:1px solid #f1f5f9;text-align:center;">
+                            <button type="button" onclick="abrirRecibo('{{ route('admin.facturacion.recibo', $f->id) }}?modal=1')"
+                                style="background:#fff;border:1.5px solid #cbd5e1;color:#475569;border-radius:6px;padding:.2rem .45rem;font-size:.62rem;font-weight:700;cursor:pointer;font-family:inherit;">Recibo</button>
+                        </td>
+                    </tr>
+                    @endforeach
+                </tbody>
+            </table>
+            @endif
+        </div>
+
+        <div style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:.7rem 1.3rem;display:flex;justify-content:flex-end;flex-shrink:0;">
+            <button type="button" onclick="cerrarDetalleSaldoEmpresa()"
+                style="padding:.42rem 1.1rem;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;border:none;background:#e2e8f0;color:#334155;font-family:inherit;">Cerrar</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function abrirDetalleSaldoEmpresa() {
+    document.getElementById('se-overlay').style.display = 'flex';
+}
+function cerrarDetalleSaldoEmpresa() {
+    document.getElementById('se-overlay').style.display = 'none';
+}
+document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Escape') return;
+    const ov = document.getElementById('se-overlay');
+    if (ov && ov.style.display === 'flex') cerrarDetalleSaldoEmpresa();
+});
+</script>
 @endif
 
 {{-- ═══ MODAL DETALLE DE ANTICIPOS DISPONIBLES ═════════════════════ --}}
