@@ -217,6 +217,7 @@ class Anticipo extends BaseModel
         return static::aliado($aliadoId)
             ->porEmpresa($empresaId)
             ->conSaldo()
+            ->with('contrato.cliente') // el detalle muestra a quién pertenece cada anticipo
             ->orderBy('fecha_pago')
             ->get();
     }

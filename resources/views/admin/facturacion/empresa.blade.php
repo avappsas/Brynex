@@ -951,32 +951,119 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
     @endif
 
-    {{-- ─── Panel anticipo disponible ───────────────────────────── --}}
+    {{-- ─── Panel anticipo disponible: resumen; el detalle va en el modal ── --}}
     @if($totalAnticipoDisponible > 0)
-    <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:.55rem .9rem;display:flex;align-items:flex-start;gap:.5rem;min-width:210px;max-width:320px;">
-        <span style="font-size:1.2rem;margin-top:.05rem;">🟡</span>
+    <button type="button" onclick="abrirDetalleAnticipos()" title="Ver el detalle de los anticipos"
+        style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:.55rem .9rem;display:flex;align-items:center;gap:.5rem;min-width:210px;cursor:pointer;font-family:inherit;text-align:left;transition:background .15s,border-color .15s;"
+        onmouseover="this.style.background='#fef3c7';this.style.borderColor='#f59e0b';"
+        onmouseout="this.style.background='#fffbeb';this.style.borderColor='#fde68a';">
+        <span style="font-size:1.2rem;">🟡</span>
         <div style="flex:1;">
             <div style="font-size:.6rem;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.04em;">Anticipo disponible</div>
             <div style="font-size:.95rem;font-weight:800;color:#92400e;">${{ number_format($totalAnticipoDisponible,0,',','.') }}</div>
-            <div style="font-size:.58rem;color:#b45309;margin-bottom:.3rem;">Se puede aplicar al facturar este mes</div>
-            {{-- Detalle de cada anticipo --}}
-            @foreach($anticiposEmpresa as $ant)
-            <div style="display:flex;justify-content:space-between;align-items:center;font-size:.62rem;padding:.1rem 0;border-top:.5px solid #fde68a;color:#78350f;">
-                <span>
-                    {{ ucfirst($ant->forma_pago) }}
-                    · {{ $ant->fecha_pago->format('d/m/Y') }}
-                    @if($ant->estado === 'parcial')
-                        <span style="background:#fed7aa;color:#c2410c;border-radius:4px;padding:.05rem .25rem;font-size:.55rem;font-weight:700;">Parcial</span>
-                    @endif
-                </span>
-                <strong style="font-family:monospace;">${{ number_format($ant->valor_disponible,0,',','.') }}</strong>
+            <div style="font-size:.58rem;color:#b45309;">
+                {{ $anticiposEmpresa->count() }} {{ $anticiposEmpresa->count() === 1 ? 'anticipo' : 'anticipos' }} · ver detalle
             </div>
-            @endforeach
         </div>
-    </div>
+        <span style="font-size:.9rem;color:#d97706;">›</span>
+    </button>
     @endif
 
 </div>
+@endif
+
+{{-- ═══ MODAL DETALLE DE ANTICIPOS DISPONIBLES ═════════════════════ --}}
+@if($totalAnticipoDisponible > 0)
+<div id="da-overlay" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.65);backdrop-filter:blur(4px);z-index:2100;align-items:center;justify-content:center;padding:.75rem;"
+     onclick="if(event.target.id==='da-overlay') cerrarDetalleAnticipos()">
+    <div style="background:#fff;border-radius:18px;width:min(720px,98vw);max-height:92vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 32px 100px rgba(0,0,0,.35);">
+
+        <div style="background:linear-gradient(135deg,#b45309 0%,#d97706 100%);padding:.9rem 1.3rem;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:.8rem;">
+                <div style="width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:1.2rem;">🟡</div>
+                <div>
+                    <h2 style="font-size:.95rem;font-weight:800;color:#fff;margin:0;">Anticipos disponibles</h2>
+                    <p style="font-size:.68rem;color:rgba(255,255,255,.75);margin:0;">{{ $empresa->empresa }} · se pueden aplicar al facturar este mes</p>
+                </div>
+            </div>
+            <button type="button" onclick="cerrarDetalleAnticipos()"
+                style="width:28px;height:28px;border-radius:7px;border:none;cursor:pointer;background:rgba(255,255,255,.1);color:rgba(255,255,255,.85);font-size:.95rem;">&times;</button>
+        </div>
+
+        <div style="background:#fffbeb;border-bottom:1px solid #fde68a;padding:.6rem 1.3rem;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+            <div>
+                <div style="font-size:.58rem;font-weight:800;color:#92400e;text-transform:uppercase;letter-spacing:.04em;">Total disponible</div>
+                <div style="font-size:1.05rem;font-weight:900;color:#92400e;">${{ number_format($totalAnticipoDisponible,0,',','.') }}</div>
+            </div>
+            <div style="text-align:right;">
+                <div style="font-size:.58rem;font-weight:800;color:#92400e;text-transform:uppercase;letter-spacing:.04em;">Cantidad</div>
+                <div style="font-size:1.05rem;font-weight:900;color:#92400e;">{{ $anticiposEmpresa->count() }}</div>
+            </div>
+        </div>
+
+        <div style="flex:1;overflow-y:auto;padding:.5rem 1rem 1rem;min-height:0;">
+            <table style="width:100%;border-collapse:collapse;font-size:.75rem;">
+                <thead>
+                    <tr>
+                        <th style="text-align:left;background:#fffbeb;color:#92400e;padding:.5rem .6rem;font-size:.6rem;font-weight:800;text-transform:uppercase;border-bottom:1.5px solid #fde68a;position:sticky;top:0;z-index:5;">Cliente</th>
+                        <th style="text-align:left;background:#fffbeb;color:#92400e;padding:.5rem .6rem;font-size:.6rem;font-weight:800;text-transform:uppercase;border-bottom:1.5px solid #fde68a;position:sticky;top:0;z-index:5;">Pago</th>
+                        <th style="text-align:right;background:#fffbeb;color:#92400e;padding:.5rem .6rem;font-size:.6rem;font-weight:800;text-transform:uppercase;border-bottom:1.5px solid #fde68a;position:sticky;top:0;z-index:5;">Disponible</th>
+                        <th style="background:#fffbeb;border-bottom:1.5px solid #fde68a;position:sticky;top:0;z-index:5;width:70px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($anticiposEmpresa as $ant)
+                    <tr>
+                        <td style="padding:.4rem .6rem;border-bottom:1px solid #fef3c7;color:#1e293b;font-weight:700;">
+                            @if($ant->contrato?->cliente)
+                                {{ $ant->contrato->cliente->nombre_completo }}
+                                <div style="font-size:.62rem;color:#64748b;font-weight:500;">{{ $ant->cedula }}</div>
+                            @else
+                                <span style="color:#b45309;">🏢 Abono libre de empresa</span>
+                            @endif
+                        </td>
+                        <td style="padding:.4rem .6rem;border-bottom:1px solid #fef3c7;color:#475569;">
+                            {{ ucfirst($ant->forma_pago) }} · {{ $ant->fecha_pago->format('d/m/Y') }}
+                            @if($ant->estado === 'parcial')
+                                <span style="background:#fed7aa;color:#c2410c;border-radius:4px;padding:.05rem .25rem;font-size:.55rem;font-weight:700;">Parcial</span>
+                            @endif
+                            @if($ant->valor_disponible != $ant->valor)
+                                <div style="font-size:.6rem;color:#94a3b8;">de ${{ number_format($ant->valor,0,',','.') }}</div>
+                            @endif
+                        </td>
+                        <td style="padding:.4rem .6rem;border-bottom:1px solid #fef3c7;text-align:right;font-family:monospace;font-weight:800;color:#92400e;white-space:nowrap;">
+                            ${{ number_format($ant->valor_disponible,0,',','.') }}
+                        </td>
+                        <td style="padding:.4rem .6rem;border-bottom:1px solid #fef3c7;text-align:center;">
+                            <button type="button" onclick="abrirRecibo('/admin/anticipos/{{ $ant->id }}/recibo?modal=1')"
+                                style="background:#fff;border:1.5px solid #fcd34d;color:#92400e;border-radius:6px;padding:.2rem .45rem;font-size:.62rem;font-weight:700;cursor:pointer;font-family:inherit;">Recibo</button>
+                        </td>
+                    </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+
+        <div style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:.7rem 1.3rem;display:flex;justify-content:flex-end;flex-shrink:0;">
+            <button type="button" onclick="cerrarDetalleAnticipos()"
+                style="padding:.42rem 1.1rem;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;border:none;background:#e2e8f0;color:#334155;font-family:inherit;">Cerrar</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function abrirDetalleAnticipos() {
+    document.getElementById('da-overlay').style.display = 'flex';
+}
+function cerrarDetalleAnticipos() {
+    document.getElementById('da-overlay').style.display = 'none';
+}
+document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Escape') return;
+    const ov = document.getElementById('da-overlay');
+    if (ov && ov.style.display === 'flex') cerrarDetalleAnticipos();
+});
+</script>
 @endif
 
 {{-- ═══ MODAL CARGA MASIVA CÉDULAS (NP PROVISIONAL) ════════════════ --}}
