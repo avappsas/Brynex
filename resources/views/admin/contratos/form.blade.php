@@ -9,6 +9,20 @@
   $epsDefault     = old('eps_id',     $esEdicion ? ($contrato->eps_id     ?? '') : ($contrato->eps_id     ?? $clienteEpsId      ?? ''));
   $pensionDefault = old('pension_id', $esEdicion ? ($contrato->pension_id ?? '') : ($contrato->pension_id ?? $clientePensionId  ?? ''));
   $arlDefault     = old('arl_id',     $contrato->arl_id ?: $arlIdRazonSocial ?: '');
+
+  // ── Botón del certificado ARL ──────────────────────────────────────────
+  // Solo Sura tiene API, y la póliza de la razón social es lo que abre la
+  // sesión del portal: sin ella el botón sería un callejón sin salida, y
+  // cargarla se hace desde Gestión ARL. La descarga cuelga de
+  // `gestion_arl.ver`, que no es el permiso de esta pantalla, así que se
+  // pregunta antes en vez de dejar que el clic termine en un 403 mudo.
+  // `arlEfectivaNombre` lo resuelve el controlador con ResuelveArlEfectiva:
+  // en los independientes manda el `arl_id` del contrato y en las empresas
+  // el `arl_nit` de la razón social.
+  $puedeCertificadoArl = $esEdicion
+      && str_contains(mb_strtoupper($arlEfectivaNombre ?? ''), 'SURA')
+      && $contrato->razonSocial?->arl_poliza
+      && auth()->user()?->can('gestion_arl.ver');
   // intval evita que PHP emita "1750905.00" que rompe el JS de Alpine
   $defAdmon       = (int) old('administracion',   $contrato->administracion  ?? $defaultTarifas['administracion']    ?? 0);
   $defAdmonAsesor = (int) old('admon_asesor',     $contrato->admon_asesor    ?? $defaultTarifas['admon_asesor']      ?? 0);
@@ -437,6 +451,20 @@
           <option value="{{ $i }}" {{ old('n_arl', $contrato->n_arl ?? 1) == $i ? 'selected' : '' }}>{{ $i }}</option>
           @endfor
         </select>
+        @if($puedeCertificadoArl)
+        {{-- Pegado al nivel de riesgo porque el certificado es justo lo que lo
+             acredita: dice con qué clase y qué tasa quedó afiliada la persona. --}}
+        <button type="button" id="btn-cert-arl" onclick="descargarCertificadoArl(this)"
+            title="Bajar del portal de Sura el certificado de afiliación y el carné al día"
+            style="margin-top:0.3rem;width:100%;display:flex;align-items:center;justify-content:center;gap:0.35rem;padding:0.35rem;background:#b91c1c;border:none;border-radius:7px;color:#fff;font-size:0.72rem;font-weight:700;cursor:pointer;">
+          <svg width="13" height="15" viewBox="0 0 12 14" fill="none" style="flex:none" aria-hidden="true">
+            <path d="M1 1.5A.5.5 0 0 1 1.5 1H7l4 4v7.5a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5v-11Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+            <path d="M7 1v4h4" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+            <path d="M6 7.6v3.2m0 0L4.7 9.6M6 10.8l1.3-1.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span id="btn-cert-arl-txt">Certificado</span>
+        </button>
+        @endif
       </div>
       <div>
         <label class="lb">Caja Compensacion</label>
@@ -809,29 +837,6 @@
       <button type="button" onclick="abrirHistorialPagos()" style="display:flex;align-items:center;gap:0.55rem;padding:0.5rem 0.75rem;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;color:#6d28d9;text-decoration:none;font-size:0.8rem;font-weight:600;cursor:pointer;width:100%;text-align:left;">
         &#128202; Historial Pagos
       </button>
-      @php
-        // El certificado se le pide al portal de Sura, la única ARL con API, y
-        // la póliza de la razón social es lo que abre esa sesión: sin ella el
-        // botón sería un callejón sin salida y cargarla se hace desde Gestión
-        // ARL. La descarga cuelga de `gestion_arl.ver`, que no es el permiso
-        // de esta pantalla, así que se pregunta antes en vez de dejar que el
-        // clic termine en un 403.
-        $puedeCertificadoArl = str_contains(mb_strtoupper($arlEfectivaNombre ?? ''), 'SURA')
-            && $contrato->razonSocial?->arl_poliza
-            && auth()->user()?->can('gestion_arl.ver');
-      @endphp
-      @if($puedeCertificadoArl)
-      <button type="button" id="btn-cert-arl" onclick="descargarCertificadoArl(this)"
-          title="Baja del portal de Sura el certificado de afiliación y el carné al día"
-          style="display:flex;align-items:center;gap:0.55rem;padding:0.5rem 0.75rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;color:#334155;font-size:0.8rem;font-weight:600;cursor:pointer;width:100%;text-align:left;">
-        <svg width="14" height="16" viewBox="0 0 12 14" fill="none" style="flex:none" aria-hidden="true">
-          <path d="M1 1.5A.5.5 0 0 1 1.5 1H7l4 4v7.5a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5v-11Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
-          <path d="M7 1v4h4" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
-          <path d="M6 7.6v3.2m0 0L4.7 9.6M6 10.8l1.3-1.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <span id="btn-cert-arl-txt">Certificado ARL</span>
-      </button>
-      @endif
       <button type="button" onclick="document.getElementById('modal-radicados').style.display='flex'"
           style="display:flex;align-items:center;gap:0.55rem;padding:0.5rem 0.75rem;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;color:#0369a1;font-size:0.8rem;font-weight:600;cursor:pointer;width:100%;text-align:left;">
         &#128193; Ver Radicados
@@ -1910,6 +1915,70 @@ select:disabled { background:#f1f5f9;color:#1e293b;cursor:not-allowed;opacity:1;
 @keyframes spin-btn { to { transform: rotate(360deg); } }
 </style>
 
+
+@push('scripts')
+<script>
+/**
+ * Baja del portal de Sura el certificado de afiliación al día.
+ *
+ * Es el mismo botón de Gestión ARL. Aquí hace falta porque al abrir un
+ * contrato para revisarlo no hay razón para irse a otro módulo solo por el
+ * PDF, y encontrar de nuevo a la persona allá cuesta más que el trámite.
+ *
+ * Puede tardar: si el certificado no se bajó ya hoy, el servidor abre una
+ * sesión en el portal. Por eso el contador, que sin él el botón parece
+ * congelado.
+ */
+async function descargarCertificadoArl(btn) {
+    const texto  = document.getElementById('btn-cert-arl-txt');
+    const rotulo = texto.textContent;
+    const desde  = Date.now();
+
+    btn.disabled = true;
+    const pintar = () => texto.textContent = `Bajando… ${Math.round((Date.now() - desde) / 1000)}s`;
+    pintar();
+    const reloj = setInterval(pintar, 1000);
+
+    // El portal a veces tarda; se corta antes de que el navegador lo haga solo
+    // y deje al usuario sin saber qué pasó.
+    const corte  = new AbortController();
+    const alarma = setTimeout(() => corte.abort(), 280000);
+
+    try {
+        const res = await fetch(`/admin/gestion-arl/{{ $contrato->id }}/certificado`, {
+            headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+            signal: corte.signal,
+        });
+
+        // El error viene en JSON; el certificado, en PDF.
+        if (!res.ok || (res.headers.get('content-type') || '').includes('json')) {
+            const datos = await res.json().catch(() => ({}));
+            alert(datos.mensaje || 'No se pudo bajar el certificado.');
+            return;
+        }
+
+        // El PDF vive en el disco `local` del servidor —lleva cédula, cargo y
+        // salario—, así que llega en la respuesta y se guarda desde aquí.
+        const nombre = (res.headers.get('content-disposition') || '')
+            .match(/filename="?([^"]+)"?/)?.[1] || `certificado_arl_{{ $contrato->cedula }}.pdf`;
+        const url = URL.createObjectURL(await res.blob());
+        const a = document.createElement('a');
+        a.href = url; a.download = nombre;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } catch (e) {
+        alert(e.name === 'AbortError'
+            ? 'El portal de Sura no respondió a tiempo. Vuelve a intentarlo.'
+            : 'Se perdió la conexión mientras se bajaba el certificado.');
+    } finally {
+        clearTimeout(alarma);
+        clearInterval(reloj);
+        texto.textContent = rotulo;
+        btn.disabled = false;
+    }
+}
+</script>
+@endpush
 
 @push('scripts')
 <script src="/js/modal_facturar_v2.js?v={{ time() }}"></script>
@@ -4223,69 +4292,6 @@ function cerrarRecibo() {
 </div>
 </div>
 
-@push('scripts')
-<script>
-/**
- * Baja del portal de Sura el certificado de afiliación al día.
- *
- * Es el mismo botón de Gestión ARL. Aquí hace falta porque al abrir un
- * contrato para revisarlo no hay razón para irse a otro módulo solo por el
- * PDF, y encontrar de nuevo a la persona allá cuesta más que el trámite.
- *
- * Puede tardar: si el certificado no se bajó ya hoy, el servidor abre una
- * sesión en el portal. Por eso el contador, que sin él el botón parece
- * congelado.
- */
-async function descargarCertificadoArl(btn) {
-    const texto  = document.getElementById('btn-cert-arl-txt');
-    const rotulo = texto.textContent;
-    const desde  = Date.now();
-
-    btn.disabled = true;
-    const pintar = () => texto.textContent = `Bajando… ${Math.round((Date.now() - desde) / 1000)}s`;
-    pintar();
-    const reloj = setInterval(pintar, 1000);
-
-    // El portal a veces tarda; se corta antes de que el navegador lo haga solo
-    // y deje al usuario sin saber qué pasó.
-    const corte  = new AbortController();
-    const alarma = setTimeout(() => corte.abort(), 280000);
-
-    try {
-        const res = await fetch(`/admin/gestion-arl/{{ $contrato->id }}/certificado`, {
-            headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '' },
-            signal: corte.signal,
-        });
-
-        // El error viene en JSON; el certificado, en PDF.
-        if (!res.ok || (res.headers.get('content-type') || '').includes('json')) {
-            const datos = await res.json().catch(() => ({}));
-            alert(datos.mensaje || 'No se pudo bajar el certificado.');
-            return;
-        }
-
-        // El PDF vive en el disco `local` del servidor —lleva cédula, cargo y
-        // salario—, así que llega en la respuesta y se guarda desde aquí.
-        const nombre = (res.headers.get('content-disposition') || '')
-            .match(/filename="?([^"]+)"?/)?.[1] || `certificado_arl_{{ $contrato->cedula }}.pdf`;
-        const url = URL.createObjectURL(await res.blob());
-        const a = document.createElement('a');
-        a.href = url; a.download = nombre;
-        document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 4000);
-    } catch (e) {
-        alert(e.name === 'AbortError'
-            ? 'El portal de Sura no respondió a tiempo. Vuelve a intentarlo.'
-            : 'Se perdió la conexión mientras se bajaba el certificado.');
-    } finally {
-        clearTimeout(alarma);
-        clearInterval(reloj);
-        texto.textContent = rotulo;
-        btn.disabled = false;
-    }
-}
-</script>
-@endpush
 
 @push('scripts')
 <script>
