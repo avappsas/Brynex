@@ -518,6 +518,11 @@
                         @if($anticipo->bancoCuenta) 
                             ({{ $anticipo->bancoCuenta->descripcion }})
                         @endif
+                        @if($anticipo->empresa_id && in_array($anticipo->origen, ['empresa', 'clientes']))
+                            <br>
+                            <b>Dinero recibido de:</b>
+                            {{ $anticipo->origen === 'clientes' ? 'Los clientes (aporte individual)' : 'La empresa' }}
+                        @endif
                         <br>
                         <b>Fecha de Pago:</b> {{ $anticipo->fecha_pago->format('d/m/Y') }} 
                         @if($anticipo->referencia) 

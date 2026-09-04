@@ -20,6 +20,7 @@ class AnticipoController extends Controller
             'fecha_pago'     => 'required|date',
             'valor'          => 'required|integer|min:1',
             'forma_pago'     => 'required|in:efectivo,transferencia',
+            'origen'         => 'nullable|in:empresa,clientes,individual',
             'banco_cuenta_id'=> 'nullable|integer|exists:banco_cuentas,id',
             'referencia'     => 'nullable|string|max:100',
             'observacion'    => 'nullable|string|max:300',
@@ -74,6 +75,7 @@ class AnticipoController extends Controller
                 'referencia'     => $validated['referencia'] ?? null,
                 'observacion'    => $validated['observacion'] ?? null,
                 'estado'         => Anticipo::ESTADO_DISPONIBLE,
+                'origen'         => $validated['origen'] ?? 'empresa',
                 'usuario_id'     => Auth::id(),
             ]);
 
@@ -364,6 +366,7 @@ class AnticipoController extends Controller
             'fecha_pago'               => 'required|date',
             'valor'                    => 'required|integer|min:1',
             'forma_pago'               => 'required|in:efectivo,transferencia',
+            'origen'                   => 'nullable|in:empresa,clientes',
             'banco_cuenta_id'          => 'nullable|integer|exists:banco_cuentas,id',
             'referencia'               => 'nullable|string|max:100',
             'observacion'              => 'nullable|string|max:300',
@@ -436,7 +439,7 @@ class AnticipoController extends Controller
                 'referencia'      => $validated['referencia'] ?? null,
                 'observacion'     => $validated['observacion'] ?? null,
                 'estado'          => Anticipo::ESTADO_DISTRIBUIDO, // 'distribuido'
-                'origen'          => 'empresa',
+                'origen'          => $validated['origen'] ?? 'empresa',
                 'usuario_id'      => Auth::id(),
             ]);
 
@@ -474,7 +477,7 @@ class AnticipoController extends Controller
                     'referencia'        => $validated['referencia'] ?? null,
                     'observacion'       => $validated['observacion'] ?? null,
                     'estado'            => Anticipo::ESTADO_DISPONIBLE,
-                    'origen'            => 'empresa',
+                    'origen'            => $validated['origen'] ?? 'empresa',
                     'anticipo_padre_id' => $maestro->id,
                     'periodo_mes'       => $item['periodo_mes'] ?? null,
                     'periodo_anio'      => $item['periodo_anio'] ?? null,
@@ -522,11 +525,38 @@ class AnticipoController extends Controller
             9 => 'Septiembre', 10 => 'Octubre', 11 => 'Noviembre', 12 => 'Diciembre'
         ];
 
-        $contratosMapped = $contratos->map(function ($c) use ($meses) {
-            $periodo = Anticipo::periodoDestinoInfo($c->id);
+        // Última factura por contrato en UNA sola consulta.
+        // Antes se llamaba Anticipo::periodoDestinoInfo() dentro del map, lo que
+        // disparaba una consulta por contrato (y con 50+ empleados el modal
+        // se pasaba del máximo de ejecución de PHP).
+        $ultimaFacturaPorContrato = [];
+        foreach (
+            DB::table('facturas')
+                ->select('contrato_id', 'mes', 'anio')
+                ->where('aliado_id', $aliadoId)
+                ->whereIn('contrato_id', $contratos->pluck('id')->all())
+                ->whereIn('estado', ['pagada', 'pre_factura', 'abono', 'prestamo'])
+                ->whereNull('deleted_at')
+                ->get() as $f
+        ) {
+            $cid   = (int) $f->contrato_id;
+            $orden = ((int) $f->anio * 100) + (int) $f->mes;
+            if (!isset($ultimaFacturaPorContrato[$cid]) || $orden > $ultimaFacturaPorContrato[$cid]['orden']) {
+                $ultimaFacturaPorContrato[$cid] = [
+                    'orden' => $orden,
+                    'mes'   => (int) $f->mes,
+                    'anio'  => (int) $f->anio,
+                ];
+            }
+        }
+
+        $contratosMapped = $contratos->map(function ($c) use ($meses, $ultimaFacturaPorContrato) {
+            $periodo = $this->periodoDestinoDesdeCache($c, $ultimaFacturaPorContrato);
             return [
                 'id'              => $c->id,
                 'cedula'          => $c->cedula,
+                'estado'          => $c->estado,
+                'fecha_ingreso'   => $c->fecha_ingreso?->format('Y-m-d'),
                 'cliente_nombre'  => $c->cliente?->nombre_completo ?? '—',
                 'plan_nombre'     => $c->plan?->nombre ?? '—',
                 'periodo_mes'     => $periodo['mes'],
@@ -539,6 +569,31 @@ class AnticipoController extends Controller
             'ok'        => true,
             'contratos' => $contratosMapped,
         ]);
+    }
+
+    /**
+     * Mismo criterio que Anticipo::periodoDestinoInfo(), pero resolviendo la
+     * última factura desde un arreglo ya cargado: el mes siguiente al de la
+     * última factura, o el mes de ingreso si el contrato aún no tiene ninguna.
+     */
+    private function periodoDestinoDesdeCache(Contrato $contrato, array $ultimaFacturaPorContrato): array
+    {
+        $ultima = $ultimaFacturaPorContrato[(int) $contrato->id] ?? null;
+
+        if (!$ultima) {
+            if ($contrato->fecha_ingreso) {
+                $carbon = \Carbon\Carbon::parse($contrato->fecha_ingreso);
+
+                return ['mes' => $carbon->month, 'anio' => $carbon->year];
+            }
+
+            return ['mes' => (int) now()->month, 'anio' => (int) now()->year];
+        }
+
+        return [
+            'mes'  => $ultima['mes'] === 12 ? 1 : $ultima['mes'] + 1,
+            'anio' => $ultima['mes'] === 12 ? $ultima['anio'] + 1 : $ultima['anio'],
+        ];
     }
 
     // ── 9. Ver recibo de anticipo ─────────────────────────────────────
