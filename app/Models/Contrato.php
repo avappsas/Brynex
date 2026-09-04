@@ -262,10 +262,17 @@ class Contrato extends BaseModel
 
         $clave = $this->aliado_id.':'.$empresaId;
         if (! array_key_exists($clave, self::$cacheExoneracion)) {
-            self::$cacheExoneracion[$clave] = (bool) DB::table('empresas')
+            $valor = DB::table('empresas')
                 ->where('id', $empresaId)
                 ->where('aliado_id', $this->aliado_id)
                 ->value('exonerado_parafiscales');
+
+            // Sin fila no hay respuesta, y `null` no es un "no está exonerada":
+            // muchos clientes arrastran un `cod_empresa` que apunta a una empresa
+            // de otro aliado (la 1, sobre todo), así que la consulta con el
+            // aliado del contrato no encuentra nada. Tratarlo como no exonerada
+            // le sumaba SENA e ICBF a la factura sin que nadie lo pidiera.
+            self::$cacheExoneracion[$clave] = $valor === null ? true : (bool) $valor;
         }
 
         return ! self::$cacheExoneracion[$clave];
