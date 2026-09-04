@@ -29,6 +29,8 @@ use Illuminate\Validation\ValidationException;
 
 class ContratoController extends Controller
 {
+    use \App\Traits\ResuelveArlEfectiva;
+
     public function __construct()
     {
         $this->middleware(['auth', 'role:superadmin|admin|usuario']);
@@ -297,9 +299,20 @@ class ContratoController extends Controller
         $cfgAliado = \App\Models\ConfiguracionAliado::paraAliado($alidoId);
         $diaIngresoIr = max(1, min(28, (int) ($cfgAliado?->dia_ingreso_ir ?? 26)));
 
+        // Qué ARL le aplica de verdad. No basta con `arl_id`: en una razón
+        // social de empresa la ARL la pone la empresa por `arl_nit` y el
+        // contrato la trae vacía, que es el caso de todo Gestión ARL. Se usa
+        // el mismo criterio que las listas de Afiliaciones para que el botón
+        // del certificado aparezca en los mismos contratos que allá.
+        $contrato->loadMissing('arl');
+        $arlEfectivaNombre = self::arlEfectiva(
+            $contrato,
+            self::arlsPorNitDeContratos(collect([$contrato]))
+        );
+
         return view('admin.contratos.form', array_merge(
             $this->datosFormulario($alidoId, $cliente, $contrato->razon_social_id, $contrato->id),
-            compact('contrato', 'cliente', 'backUrl', 'radicadosPorTipo', 'rsBloquedaPorAfiliacion', 'rsDesbloqueoSuperadmin', 'economicoDesbloqueado', 'otrosContratosVigentes', 'tienePlanillaConDias', 'retiroInfoBloqueado', 'retiroInfoForzado', 'rsIrOpciones', 'rsIrPreviewId', 'rsIrHayDisponible', 'diaIngresoIr')
+            compact('contrato', 'cliente', 'backUrl', 'radicadosPorTipo', 'rsBloquedaPorAfiliacion', 'rsDesbloqueoSuperadmin', 'economicoDesbloqueado', 'otrosContratosVigentes', 'tienePlanillaConDias', 'retiroInfoBloqueado', 'retiroInfoForzado', 'rsIrOpciones', 'rsIrPreviewId', 'rsIrHayDisponible', 'diaIngresoIr', 'arlEfectivaNombre')
         ));
     }
 
