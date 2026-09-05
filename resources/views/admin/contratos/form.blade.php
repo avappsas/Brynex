@@ -390,10 +390,8 @@
         ];
         $c = $cfg[$rad->estado] ?? ['bg'=>'#f1f5f9','txt'=>'#475569','icono'=>'❓','label'=>$rad->estado];
         $num = $rad->numero_radicado ? $rad->numero_radicado : '';
-        return '<div style="margin-top:0.22rem;width:100%;box-sizing:border-box;">'
-          .'<span style="display:flex;align-items:center;justify-content:center;gap:0.2rem;width:100%;box-sizing:border-box;background:'.$c['bg'].';color:'.$c['txt'].';font-size:0.62rem;font-weight:700;padding:0.18rem 0.4rem;border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
-          .$c['icono'].' '.$c['label'].($num ? ' · '.$num : '').'</span>'
-          .'</div>';
+        return '<span class="chip-ss" style="background:'.$c['bg'].';color:'.$c['txt'].';">'
+          .$c['icono'].' '.$c['label'].($num ? ' · '.$num : '').'</span>';
       };
     @endphp
     <div style="display:grid;grid-template-columns:1.3fr 1.3fr 1.4fr 60px 1fr;gap:0.5rem;align-items:start;">
@@ -423,11 +421,9 @@
         @if($esEdicion && $contrato->pension_id && collect($pensiones)->contains('id', (int)$contrato->pension_id))
         {!! $badgeEstado($rPT->get('pension')) !!}
         @elseif($esEdicion && !$contrato->pension_id && ($planContrato?->incluye_pension ?? false))
-        <div style="margin-top:0.22rem;width:100%;box-sizing:border-box;">
-          <span style="display:flex;align-items:center;justify-content:center;gap:0.2rem;width:100%;box-sizing:border-box;background:#fef3c7;color:#92400e;font-size:0.62rem;font-weight:700;padding:0.18rem 0.4rem;border-radius:5px;white-space:nowrap;">
-            ⚠️ Sin AFP guardada — seleccione y guarde
-          </span>
-        </div>
+        <span class="chip-ss" style="background:#fef3c7;color:#92400e;">
+          ⚠️ Sin AFP guardada — seleccione y guarde
+        </span>
         @endif
         </div>
       </div>
@@ -458,14 +454,13 @@
              desborda. El contador de segundos aparece dentro mientras baja, que
              es cuando de verdad hace falta texto.
 
-             Las medidas y el verde salen de `$badgeEstado`, el badge de
+             Las medidas salen de `.chip-ss`, la misma clase del badge
              "Afiliado OK" que queda a su izquierda: van uno al lado del otro en
-             la misma fila, y con cualquier diferencia de alto o de color el
-             renglón se ve torcido. Sin borde, como el badge, que si no queda
-             2px más alto. --}}
-        <button type="button" id="btn-cert-arl" onclick="descargarCertificadoArl(this)"
+             la misma fila y cualquier diferencia de alto tuerce el renglón.
+             Aquí solo se pone el color. --}}
+        <button type="button" id="btn-cert-arl" class="chip-ss" onclick="descargarCertificadoArl(this)"
             title="Bajar del portal de Sura el certificado de afiliación y el carné al día"
-            style="margin-top:0.22rem;width:100%;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:0.2rem;padding:0.18rem 0.4rem;background:#dcfce7;border:none;border-radius:5px;color:#166534;font-size:0.62rem;font-weight:700;cursor:pointer;transition:background .15s;"
+            style="background:#dcfce7;color:#166534;cursor:pointer;transition:background .15s;"
             onmouseover="this.style.background='#bbf7d0'" onmouseout="this.style.background='#dcfce7'">
           <svg width="10" height="12" viewBox="0 0 12 14" fill="none" style="flex:none" aria-hidden="true">
             <path d="M1 1.5A.5.5 0 0 1 1.5 1H7l4 4v7.5a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5v-11Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
@@ -1900,6 +1895,19 @@ function mrOnSubmit() {
    desalineando la fila del grid. */
 .lb  { display:block;font-size:0.67rem;font-weight:700;color:#475569;margin-bottom:0.15rem;text-transform:uppercase;letter-spacing:0.03em;line-height:1.35; }
 
+/* Chip bajo un select de entidad: el badge del radicado y el botón del
+   certificado ARL van uno al lado del otro en la misma fila del grid, así que
+   comparten medidas. La altura va fija a propósito: el badge la sacaba del
+   texto (Inter) y el botón de su ícono de 12px, y eso dejaba al botón 2,5px
+   más bajo, con el renglón torcido. Solo el color cambia en cada uso. */
+.chip-ss {
+  display:flex;align-items:center;justify-content:center;gap:0.2rem;
+  width:100%;box-sizing:border-box;height:20px;margin-top:0.22rem;
+  padding:0 0.4rem;border:none;border-radius:5px;
+  font-family:inherit;font-size:0.62rem;font-weight:700;line-height:1;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+
 .cp  { background:#fff;border-radius:11px;border:1px solid #e2e8f0;padding:0.8rem 0.95rem; }
 .pt  { font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem; }
 .cr  { display:flex;justify-content:space-between;padding:0.25rem 0;border-bottom:1px solid rgba(255,255,255,0.06); }
@@ -2873,11 +2881,8 @@ function bloquearEntidadesPorPlan(planId) {
         const area = document.getElementById(areaId);
         if (!area) return;
         // Si el valor ya estaba guardado en BD (data-saved="1"), reemplazar con ⚠️ al cambiar
-        area.innerHTML = '<div style="margin-top:0.22rem;width:100%;box-sizing:border-box;">'
-            + '<span style="display:flex;align-items:center;justify-content:center;gap:0.2rem;width:100%;'
-            + 'box-sizing:border-box;background:#fef3c7;color:#92400e;font-size:0.62rem;font-weight:700;'
-            + 'padding:0.18rem 0.4rem;border-radius:5px;white-space:nowrap;">'
-            + '\u26a0\ufe0f Sin ' + nombre + ' guardada \u2014 seleccione y guarde</span></div>';
+        area.innerHTML = '<span class="chip-ss" style="background:#fef3c7;color:#92400e;">'
+            + '\u26a0\ufe0f Sin ' + nombre + ' guardada \u2014 seleccione y guarde</span>';
     }
     function limpiarBadge(areaId) {
         const area = document.getElementById(areaId);

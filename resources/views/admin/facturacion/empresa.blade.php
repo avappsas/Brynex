@@ -1563,8 +1563,14 @@ const BANCOS = [
 ];
 
 // ─── Ordenación de columnas ──────────────────────────────────────────
-let _sortCampo = null;
+// La tabla ya llega ordenada por nombre desde el controlador: se arranca con
+// ese estado para que el ícono lo muestre y el primer clic invierta el orden.
+let _sortCampo = 'nombre';
 let _sortAsc = true;
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('sort-icon-nombre')?.classList.add('asc');
+});
 
 function ordenarTabla(campo) {
     const tbody = document.querySelector('#tblTrab tbody');

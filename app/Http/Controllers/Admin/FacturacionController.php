@@ -128,7 +128,18 @@ class FacturacionController extends Controller
                 'plan',
             ])
             ->orderBy('cedula')
-            ->get();
+            ->get()
+            // El listado se lee por nombre, no por cédula. El nombre vive en
+            // clientes (relación por cédula), así que el orden se hace aquí.
+            ->sortBy(
+                fn ($c) => mb_strtolower(trim(
+                    ($c->cliente?->primer_nombre ?? '').' '.
+                    ($c->cliente?->primer_apellido ?? '').' '.
+                    ($c->cliente?->segundo_apellido ?? '')
+                )),
+                SORT_NATURAL
+            )
+            ->values();
 
         $facturasExistentes = Factura::where('aliado_id', $aliadoId)
             ->periodo($mes, $anio)
