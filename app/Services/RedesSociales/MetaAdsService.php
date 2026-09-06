@@ -812,16 +812,25 @@ class MetaAdsService
             }
         }
 
+        // Si la pieza ya tenía anuncio, se guarda antes de pisarlo: su gasto sigue contando
+        // para la pieza aunque el anuncio quede pausado en otro conjunto.
+        $publicacion->archivarAnuncio($publicacion->meta_ad_id);
+
         $publicacion->update([
             'pauta_estado' => $estadoConjunto === 'ACTIVE' ? 'activa' : 'borrador',
             'pauta_presupuesto_diario_cop' => $config->presupuestoDiarioCop(),
-            'meta_campana_id' => $config->meta_campana_permanente_id,
+            // La campaña es la del conjunto al que entró: las piezas de asesores viven en la
+            // suya, y escribir siempre la permanente dejaba el dato cruzado.
+            'meta_campana_id' => $esDeAsesores
+                ? $config->meta_campana_asesores_id
+                : $config->meta_campana_permanente_id,
             'meta_adset_id' => $conjunto['adset_id'],
             'meta_ad_id' => $ad->json('id'),
             'pauta_activada_at' => $estadoConjunto === 'ACTIVE' ? ($publicacion->pauta_activada_at ?: now()) : $publicacion->pauta_activada_at,
         ]);
 
-        return ['ok' => true, 'mensaje' => "Pieza #{$publicacion->id} agregada al conjunto permanente.".$extra];
+        return ['ok' => true, 'mensaje' => "Pieza #{$publicacion->id} agregada al conjunto "
+            .($esDeAsesores ? 'de asesores.' : 'permanente.').$extra];
     }
 
     /**
@@ -968,14 +977,33 @@ class MetaAdsService
         }
 
         $fb = RedSocialConfig::paraAliado($publicacion->aliado_id, 'facebook');
-        $resp = Http::get(self::BASE_URL."/{$publicacion->meta_ad_id}/insights", [
-            'fields' => 'spend',
-            'date_preset' => 'maximum',
-            'access_token' => self::tokenAds(PautaConfig::paraAliado($publicacion->aliado_id), $fb),
-        ]);
+        $token = self::tokenAds(PautaConfig::paraAliado($publicacion->aliado_id), $fb);
 
-        if ($resp->successful()) {
-            $gasto = (float) data_get($resp->json(), 'data.0.spend', 0);
+        // El gasto es el de la PIEZA, no el de su anuncio de turno. Cuando una pieza se muda
+        // de conjunto hay que recrear el anuncio —Meta no deja moverlo— y el nuevo empieza en
+        // cero: sin sumar los anteriores, la mudanza le borraba a la pieza todo lo gastado.
+        $ads = array_merge([$publicacion->meta_ad_id], $publicacion->meta_ads_previos ?? []);
+
+        $gasto = 0.0;
+        $alguno = false;
+        foreach (array_unique($ads) as $adId) {
+            $resp = Http::get(self::BASE_URL."/{$adId}/insights", [
+                'fields' => 'spend',
+                'date_preset' => 'maximum',
+                'access_token' => $token,
+            ]);
+
+            if (! $resp->successful()) {
+                // Un anuncio borrado en Meta ya no responde. Se ignora ese y se sigue: es
+                // preferible un total al que le falte un anuncio muerto que no actualizar nada.
+                continue;
+            }
+
+            $alguno = true;
+            $gasto += (float) data_get($resp->json(), 'data.0.spend', 0);
+        }
+
+        if ($alguno) {
             $publicacion->update(['pauta_gasto_total_cop' => $gasto]);
         }
     }

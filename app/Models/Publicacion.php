@@ -2,17 +2,20 @@
 
 namespace App\Models;
 
-use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Publicacion extends BaseModel
 {
     protected $table = 'publicaciones';
 
-    public const ESTADO_BORRADOR  = 'borrador';
+    public const ESTADO_BORRADOR = 'borrador';
+
     public const ESTADO_PENDIENTE = 'pendiente';
-    public const ESTADO_APROBADA  = 'aprobada';
+
+    public const ESTADO_APROBADA = 'aprobada';
+
     public const ESTADO_RECHAZADA = 'rechazada';
+
     public const ESTADO_PUBLICADA = 'publicada';
 
     public const DESTINOS_DISPONIBLES = ['web', 'facebook', 'instagram'];
@@ -37,6 +40,7 @@ class Publicacion extends BaseModel
         'meta_campana_id',
         'meta_adset_id',
         'meta_ad_id',
+        'meta_ads_previos',
         'pauta_activada_at',
         'estado',
         'destinos',
@@ -49,15 +53,16 @@ class Publicacion extends BaseModel
     ];
 
     protected $casts = [
-        'destinos'                     => 'array',
-        'resultado_publicacion'        => 'array',
-        'programada_at'                => 'datetime',
-        'publicada_at'                 => 'datetime',
-        'costo_estimado_usd'           => 'decimal:2',
+        'destinos' => 'array',
+        'resultado_publicacion' => 'array',
+        'programada_at' => 'datetime',
+        'publicada_at' => 'datetime',
+        'costo_estimado_usd' => 'decimal:2',
         'pauta_presupuesto_diario_cop' => 'decimal:2',
-        'pauta_gasto_total_cop'        => 'decimal:2',
-        'pauta_activada_at'            => 'datetime',
-        'pauta_excluida'               => 'boolean',
+        'pauta_gasto_total_cop' => 'decimal:2',
+        'pauta_activada_at' => 'datetime',
+        'pauta_excluida' => 'boolean',
+        'meta_ads_previos' => 'array',
     ];
 
     protected $attributes = [
@@ -98,13 +103,14 @@ class Publicacion extends BaseModel
     /** ¿Ya pasó (o no tiene) fecha de programación, es decir, se puede publicar ya? */
     public function listaParaPublicar(): bool
     {
-        return !$this->programada_at || $this->programada_at->isPast();
+        return ! $this->programada_at || $this->programada_at->isPast();
     }
 
     /** ID del post real de Facebook ({page_id}_{post_id}) para poder ponerle pauta encima — null si no se publicó ahí. */
     public function idPostFacebook(): ?string
     {
         $id = data_get($this->resultado_publicacion, 'facebook.id');
+
         return (is_string($id) && str_contains($id, '_')) ? $id : null;
     }
 
@@ -127,12 +133,31 @@ class Publicacion extends BaseModel
             : 'Hola, quiero información';
     }
 
+    /**
+     * Registra el anuncio que la pieza deja atrás al recrearse en otro conjunto.
+     *
+     * Meta no deja mudar un anuncio de conjunto, así que hay que crear uno nuevo. Sin esta
+     * lista el gasto de la pieza se reiniciaría en cada mudanza (ver sincronizarGasto).
+     */
+    public function archivarAnuncio(?string $adId): void
+    {
+        if (! $adId) {
+            return;
+        }
+
+        $previos = $this->meta_ads_previos ?? [];
+        if (! in_array($adId, $previos, true)) {
+            $previos[] = $adId;
+            $this->update(['meta_ads_previos' => $previos]);
+        }
+    }
+
     public function etiquetaEstado(): string
     {
         return match ($this->estado) {
-            self::ESTADO_BORRADOR  => 'Borrador',
+            self::ESTADO_BORRADOR => 'Borrador',
             self::ESTADO_PENDIENTE => 'Pendiente de aprobación',
-            self::ESTADO_APROBADA  => $this->programada_at ? 'Aprobada — programada' : 'Aprobada — publicando',
+            self::ESTADO_APROBADA => $this->programada_at ? 'Aprobada — programada' : 'Aprobada — publicando',
             self::ESTADO_RECHAZADA => 'Rechazada',
             self::ESTADO_PUBLICADA => 'Publicada',
             default => $this->estado,
