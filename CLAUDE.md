@@ -26,11 +26,14 @@ dueño, todo bajo Laravel 10.
    usuario que se quiere correr contra producción, lo cual normalmente no se
    quiere).
 
-3. **Este repo se auto-despliega a brynex.co.** Lo que queda commiteado en
-   `main` puede terminar sirviéndose en producción. Nunca poner un script
-   ejecutable dentro de `public/` "solo para probar algo" — ver
-   `docs/auditoria-seguridad.md`, hallazgos C-1/C-2/C-3: así se filtraron tres
-   scripts que quedaron accesibles por URL. `storage/app/public` NO se
+3. **El despliegue a brynex.co es manual.** El repo NO se auto-despliega:
+   el push a GitHub solo deja el commit en `origin/main`, y el servidor
+   (netcup, `/var/www/brynex`) sigue con el código viejo hasta que alguien
+   corre `./scripts/desplegar.sh` — ver la sección *Despliegue*. Aun así, todo
+   lo que se commitea en `main` está a un despliegue de estar en producción:
+   nunca poner un script ejecutable dentro de `public/` "solo para probar algo"
+   — ver `docs/auditoria-seguridad.md`, hallazgos C-1/C-2/C-3: así se filtraron
+   tres scripts que quedaron accesibles por URL. `storage/app/public` NO se
    sincroniza a producción; solo el código y la BD.
 
 4. **Migraciones incrementales, nunca recrear tablas.** Varias tablas son
@@ -68,6 +71,25 @@ php artisan migrate               # SOLO migraciones incrementales
 php artisan pint                  # formateo PHP (Laravel Pint)
 php -l ruta/al/archivo.php        # chequeo de sintaxis rápido, sin bootear Laravel
 ```
+
+### Despliegue
+
+```bash
+./scripts/desplegar.sh --dry-run   # qué se desplegaría, sin tocar nada
+./scripts/desplegar.sh             # despliega origin/main a netcup
+./scripts/desplegar.sh --migrate   # además corre las migraciones nuevas
+```
+
+El push a GitHub lo hace el usuario; el script solo lleva al servidor lo que ya
+esté en `origin/main`. Hace el `git pull`, devuelve los archivos a `www-data`
+(git corre como root y si no, Apache pierde la escritura), reinstala
+dependencias si cambió `composer.lock`, limpia y recompila las vistas y
+reinicia los workers. Si el despliegue trae migraciones **se detiene antes del
+pull** salvo que se pase `--migrate`: la base de datos es la de producción.
+
+El trabajo real está en `scripts/deploy.sh`, que se envía por stdin al servidor
+en vez de guardarse allá, para que nunca corra una versión desactualizada de sí
+mismo ni se reescriba a la mitad de un `git pull`.
 
 Tests: ver advertencia #2 arriba antes de correr `php artisan test`.
 
