@@ -19,11 +19,11 @@ use App\Services\Ia\Tools\BuscarInternetTool;
 use App\Services\Ia\Tools\CatalogoModulosTool;
 use App\Services\Ia\Tools\ChequeoSeguridadSocialTool;
 use App\Services\Ia\Tools\ConsultarClienteTool;
-use App\Services\Ia\Tools\EnviarPlanillaTool;
-use App\Services\Ia\Tools\EnviarTablaPlanesTool;
 use App\Services\Ia\Tools\ConsultarParametrosTool;
 use App\Services\Ia\Tools\CotizarPlanPublicoTool;
 use App\Services\Ia\Tools\CotizarPlanTool;
+use App\Services\Ia\Tools\EnviarPlanillaTool;
+use App\Services\Ia\Tools\EnviarTablaPlanesTool;
 use App\Services\Ia\Tools\HablarConAsesorTool;
 use App\Services\Ia\Tools\IaToolInterface;
 use App\Services\Ia\Tools\NoContactarTool;
@@ -33,6 +33,7 @@ use Illuminate\Support\Facades\Log;
 class AsistenteIaService
 {
     private const MAX_ITERACIONES_TOOL = 5;
+
     private const MENSAJES_HISTORIAL = 12; // últimos N mensajes de contexto
 
     /**
@@ -44,7 +45,7 @@ class AsistenteIaService
     public function responderWeb(int $alidoId, int $userId, string $mensajeUsuario): array
     {
         $config = IaConfiguracionAliado::paraAliado($alidoId);
-        if (!$config->activo_web) {
+        if (! $config->activo_web) {
             throw new \RuntimeException('El asistente IA no está activo para este aliado.');
         }
 
@@ -63,10 +64,10 @@ class AsistenteIaService
         $resultado = $this->ejecutarTurno($conversacion, $mensajeUsuario, $systemPrompt, $tools, $credenciales, $contextoExtra, 'web');
 
         return [
-            'respuesta'       => $resultado['respuesta'],
-            'acciones'        => $resultado['acciones'],
+            'respuesta' => $resultado['respuesta'],
+            'acciones' => $resultado['acciones'],
             'conversacion_id' => $conversacion->id,
-            'nombre_bot'      => $config->nombreBot(),
+            'nombre_bot' => $config->nombreBot(),
         ];
     }
 
@@ -88,7 +89,7 @@ class AsistenteIaService
         bool $modoPrueba = false
     ): array {
         $config = IaConfiguracionAliado::paraAliado($alidoId);
-        if (!$config->activo_whatsapp) {
+        if (! $config->activo_whatsapp) {
             throw new \RuntimeException('El asistente IA no está activo en WhatsApp para este aliado.');
         }
 
@@ -129,9 +130,9 @@ class AsistenteIaService
         $resultado = $this->ejecutarTurno($conversacion, $mensajeUsuario, $systemPrompt, $tools, $credenciales, $contextoExtra, 'whatsapp');
 
         return [
-            'respuesta'           => $resultado['respuesta'],
-            'conversacion_id'     => $conversacion->id,
-            'nombre_bot'          => $config->nombreBot(),
+            'respuesta' => $resultado['respuesta'],
+            'conversacion_id' => $conversacion->id,
+            'nombre_bot' => $config->nombreBot(),
             'herramientas_usadas' => $resultado['herramientas_usadas'],
         ];
     }
@@ -145,17 +146,17 @@ class AsistenteIaService
     private function construirToolsWeb(array $credenciales): array
     {
         $tools = [
-            new CotizarPlanTool(),
-            new ConsultarParametrosTool(),
-            new CatalogoModulosTool(),
-            new BuscarConocimientoTool(),
+            new CotizarPlanTool,
+            new ConsultarParametrosTool,
+            new CatalogoModulosTool,
+            new BuscarConocimientoTool,
         ];
 
         if (($credenciales['proveedor'] ?? null) === 'claude') {
-            $tools[] = new BuscarInternetTool();
+            $tools[] = new BuscarInternetTool;
         }
 
-        $tools[] = new PreguntarEntrenadorTool();
+        $tools[] = new PreguntarEntrenadorTool;
 
         return $tools;
     }
@@ -176,9 +177,9 @@ class AsistenteIaService
      */
     public static function esPiezaDeAsesores(\App\Models\Publicacion $pieza): bool
     {
-        $texto = mb_strtolower(($pieza->tema ?? '') . ' ' . ($pieza->titulo ?? ''), 'UTF-8');
+        $texto = mb_strtolower(($pieza->tema ?? '').' '.($pieza->titulo ?? ''), 'UTF-8');
 
-        if (!str_contains($texto, 'asesor')) {
+        if (! str_contains($texto, 'asesor')) {
             return false;
         }
 
@@ -196,21 +197,21 @@ class AsistenteIaService
     private function construirToolsWhatsapp(array $credenciales): array
     {
         $tools = [
-            new CotizarPlanPublicoTool(),
-            new BuscarConocimientoTool(),
+            new CotizarPlanPublicoTool,
+            new BuscarConocimientoTool,
         ];
 
         if (($credenciales['proveedor'] ?? null) === 'claude') {
-            $tools[] = new BuscarInternetTool();
+            $tools[] = new BuscarInternetTool;
         }
 
-        $tools[] = new PreguntarEntrenadorTool();
-        $tools[] = new HablarConAsesorTool();
-        $tools[] = new ConsultarClienteTool();
-        $tools[] = new EnviarPlanillaTool();
-        $tools[] = new NoContactarTool();
-        $tools[] = new ChequeoSeguridadSocialTool();
-        $tools[] = new EnviarTablaPlanesTool();
+        $tools[] = new PreguntarEntrenadorTool;
+        $tools[] = new HablarConAsesorTool;
+        $tools[] = new ConsultarClienteTool;
+        $tools[] = new EnviarPlanillaTool;
+        $tools[] = new NoContactarTool;
+        $tools[] = new ChequeoSeguridadSocialTool;
+        $tools[] = new EnviarTablaPlanesTool;
 
         return $tools;
     }
@@ -230,24 +231,24 @@ class AsistenteIaService
         $numeroLimpio = preg_replace('/[^0-9]/', '', $telefono);
         $matchTelefono = function ($q, string $columna) use ($numeroLimpio) {
             $q->where($columna, $numeroLimpio)
-              ->orWhere($columna, '+57' . $numeroLimpio)
-              ->orWhere($columna, 'like', '%' . substr($numeroLimpio, -10));
+                ->orWhere($columna, '+57'.$numeroLimpio)
+                ->orWhere($columna, 'like', '%'.substr($numeroLimpio, -10));
         };
 
         // Empresa: primero la que ya tenga vinculada la conversación (la deja el envío
         // masivo de cobros), y si no, por el teléfono o celular registrado.
         $empresa = $waConversacion?->empresa_id ? Empresa::find($waConversacion->empresa_id) : null;
-        if (!$empresa) {
+        if (! $empresa) {
             $empresa = Empresa::where('aliado_id', $alidoId)
                 ->where(function ($q) use ($matchTelefono) {
                     $q->where(fn ($s) => $matchTelefono($s, 'celular'))
-                      ->orWhere(fn ($s) => $matchTelefono($s, 'telefono'));
+                        ->orWhere(fn ($s) => $matchTelefono($s, 'telefono'));
                 })
                 ->first();
         }
 
         $empresaInfo = $empresa ? [
-            'nombre'   => $empresa->empresa ?: "Empresa #{$empresa->id}",
+            'nombre' => $empresa->empresa ?: "Empresa #{$empresa->id}",
             'contacto' => $empresa->contacto ?: null,
         ] : null;
 
@@ -255,7 +256,7 @@ class AsistenteIaService
             ->where(fn ($q) => $matchTelefono($q, 'celular'))
             ->first();
 
-        if (!$cliente) {
+        if (! $cliente) {
             return ['es_cliente' => false, 'nombre' => null, 'plan_actual' => null, 'empresa' => $empresaInfo];
         }
 
@@ -266,10 +267,10 @@ class AsistenteIaService
             ->first();
 
         return [
-            'es_cliente'  => true,
-            'nombre'      => trim(($cliente->primer_nombre ?? '') . ' ' . ($cliente->primer_apellido ?? '')),
+            'es_cliente' => true,
+            'nombre' => trim(($cliente->primer_nombre ?? '').' '.($cliente->primer_apellido ?? '')),
             'plan_actual' => $contrato?->plan?->nombre,
-            'empresa'     => $empresaInfo,
+            'empresa' => $empresaInfo,
         ];
     }
 
@@ -284,7 +285,7 @@ class AsistenteIaService
      */
     private function resolverUltimaPlantillaEnviada(?int $waConversacionId): ?array
     {
-        if (!$waConversacionId) {
+        if (! $waConversacionId) {
             return null;
         }
 
@@ -296,20 +297,20 @@ class AsistenteIaService
             ->latest('id')
             ->first(['plantilla_id', 'plantilla_parametros', 'created_at']);
 
-        if (!$mensaje) {
+        if (! $mensaje) {
             return null;
         }
 
         $plantilla = WhatsappPlantilla::find($mensaje->plantilla_id);
-        if (!$plantilla) {
+        if (! $plantilla) {
             return null;
         }
 
         return [
-            'nombre'    => $plantilla->nombre_display ?: $plantilla->nombre,
+            'nombre' => $plantilla->nombre_display ?: $plantilla->nombre,
             'categoria' => $plantilla->categoria,
-            'texto'     => $this->renderizarCuerpoPlantilla($plantilla->cuerpo, $mensaje->plantilla_parametros ?? []),
-            'dias'      => (int) $mensaje->created_at->startOfDay()->diffInDays(now()->startOfDay()),
+            'texto' => $this->renderizarCuerpoPlantilla($plantilla->cuerpo, $mensaje->plantilla_parametros ?? []),
+            'dias' => (int) $mensaje->created_at->startOfDay()->diffInDays(now()->startOfDay()),
         ];
     }
 
@@ -326,20 +327,20 @@ class AsistenteIaService
 
         foreach (array_values($parametros) as $indice => $valor) {
             if (is_scalar($valor)) {
-                $cuerpo = str_replace('{{' . ($indice + 1) . '}}', (string) $valor, $cuerpo);
+                $cuerpo = str_replace('{{'.($indice + 1).'}}', (string) $valor, $cuerpo);
             }
         }
 
         $cuerpo = trim($cuerpo);
 
-        return mb_strlen($cuerpo) > 700 ? mb_substr($cuerpo, 0, 700) . '…' : $cuerpo;
+        return mb_strlen($cuerpo) > 700 ? mb_substr($cuerpo, 0, 700).'…' : $cuerpo;
     }
 
     /**
      * Bucle común: guarda el mensaje del usuario, llama al proveedor, ejecuta las
      * tools que pida (hasta MAX_ITERACIONES_TOOL veces) y persiste todo el intercambio.
      *
-     * @param IaToolInterface[] $tools
+     * @param  IaToolInterface[]  $tools
      * @return array{respuesta: string, acciones: array}
      */
     private function ejecutarTurno(
@@ -355,32 +356,32 @@ class AsistenteIaService
 
         IaMensaje::create([
             'conversacion_id' => $conversacion->id,
-            'rol'             => 'user',
-            'contenido'       => $mensajeUsuario,
+            'rol' => 'user',
+            'contenido' => $mensajeUsuario,
         ]);
 
         $messages = $this->cargarHistorialNormalizado($conversacion->id);
 
         $provider = IaProviderFactory::make($credenciales['proveedor']);
         $toolSchemas = array_map(fn (IaToolInterface $t) => [
-            'name'         => $t->nombre(),
-            'description'  => $t->descripcion(),
+            'name' => $t->nombre(),
+            'description' => $t->descripcion(),
             'input_schema' => $t->schema(),
         ], $tools);
 
         $tokensEntradaTotal = 0;
-        $tokensSalidaTotal  = 0;
-        $accionesSugeridas  = [];
+        $tokensSalidaTotal = 0;
+        $accionesSugeridas = [];
         $herramientasUsadas = [];
         $textoFinal = '';
         $reintentoRespuestaSospechosaHecho = false;
 
         $contextoTool = array_merge([
-            'aliado_id'       => $conversacion->aliado_id,
+            'aliado_id' => $conversacion->aliado_id,
             'conversacion_id' => $conversacion->id,
-            'proveedor'       => $credenciales['proveedor'],
-            'api_key'         => $credenciales['api_key'],
-            'modelo'          => $credenciales['modelo'],
+            'proveedor' => $credenciales['proveedor'],
+            'api_key' => $credenciales['api_key'],
+            'modelo' => $credenciales['modelo'],
             // Texto crudo del cliente en ESTE turno — permite que una tool sensible (ej.
             // chequeo_seguridad_social) verifique que un dato como la autorización de verdad
             // se dijo ahora, en vez de confiar en que el modelo no reciclará algo de hace rato.
@@ -391,23 +392,24 @@ class AsistenteIaService
             $resp = $provider->chat($credenciales['api_key'], $credenciales['modelo'], $systemPrompt, $messages, $toolSchemas);
 
             $tokensEntradaTotal += $resp['tokens_entrada'];
-            $tokensSalidaTotal  += $resp['tokens_salida'];
+            $tokensSalidaTotal += $resp['tokens_salida'];
 
             if (empty($resp['tool_calls'])) {
                 // Raro pero real (visto con Gemini en pruebas): a veces el proveedor devuelve un
                 // turno en blanco (sin texto ni tool_calls), o incluso texto completo en otro
                 // alfabeto sin ninguna relación con la conversación. Un reintento evita mostrarle
                 // eso al cliente por lo que probablemente fue una generación mala puntual.
-                if ($this->respuestaSospechosa($resp['content']) && !$reintentoRespuestaSospechosaHecho) {
+                if ($this->respuestaSospechosa($resp['content']) && ! $reintentoRespuestaSospechosaHecho) {
                     $reintentoRespuestaSospechosaHecho = true;
+
                     continue;
                 }
 
                 $textoFinal = $resp['content'] ?? 'No tengo una respuesta para eso.';
                 IaMensaje::create([
                     'conversacion_id' => $conversacion->id,
-                    'rol'             => 'assistant',
-                    'contenido'       => $textoFinal,
+                    'rol' => 'assistant',
+                    'contenido' => $textoFinal,
                 ]);
                 break;
             }
@@ -416,9 +418,9 @@ class AsistenteIaService
 
             IaMensaje::create([
                 'conversacion_id' => $conversacion->id,
-                'rol'             => 'assistant',
-                'contenido'       => $resp['content'],
-                'tool_name'       => implode(',', array_column($resp['tool_calls'], 'name')),
+                'rol' => 'assistant',
+                'contenido' => $resp['content'],
+                'tool_name' => implode(',', array_column($resp['tool_calls'], 'name')),
             ]);
 
             foreach ($resp['tool_calls'] as $toolCall) {
@@ -429,9 +431,9 @@ class AsistenteIaService
                     ? $herramienta->ejecutar($toolCall['input'], $contextoTool)
                     : ['error' => 'Herramienta no encontrada.'];
 
-                if ($toolCall['name'] === 'catalogo_modulos' && !empty($resultado['resultados'])) {
+                if ($toolCall['name'] === 'catalogo_modulos' && ! empty($resultado['resultados'])) {
                     foreach ($resultado['resultados'] as $r) {
-                        if (!empty($r['url'])) {
+                        if (! empty($r['url'])) {
                             $accionesSugeridas[$r['url']] = ['nombre' => $r['nombre'], 'url' => $r['url']];
                         }
                     }
@@ -440,17 +442,17 @@ class AsistenteIaService
                 $contenidoJson = json_encode($resultado, JSON_UNESCAPED_UNICODE);
 
                 $messages[] = [
-                    'role'         => 'tool_result',
+                    'role' => 'tool_result',
                     'tool_call_id' => $toolCall['id'],
-                    'name'         => $toolCall['name'],
-                    'content'      => $contenidoJson,
+                    'name' => $toolCall['name'],
+                    'content' => $contenidoJson,
                 ];
 
                 IaMensaje::create([
                     'conversacion_id' => $conversacion->id,
-                    'rol'             => 'tool',
-                    'tool_name'       => $toolCall['name'],
-                    'contenido'       => $contenidoJson,
+                    'rol' => 'tool',
+                    'tool_name' => $toolCall['name'],
+                    'contenido' => $contenidoJson,
                 ]);
             }
         }
@@ -462,8 +464,8 @@ class AsistenteIaService
         $this->registrarConsumo($conversacion->aliado_id, $conversacion->id, $canalConsumo, $credenciales, $tokensEntradaTotal, $tokensSalidaTotal);
 
         return [
-            'respuesta'           => $textoFinal,
-            'acciones'            => array_values($accionesSugeridas),
+            'respuesta' => $textoFinal,
+            'acciones' => array_values($accionesSugeridas),
             'herramientas_usadas' => $herramientasUsadas,
         ];
     }
@@ -500,6 +502,7 @@ class AsistenteIaService
                 return $tool;
             }
         }
+
         return null;
     }
 
@@ -546,39 +549,39 @@ class AsistenteIaService
     ): string {
         $fecha = now()->translatedFormat('d \d\e F \d\e Y');
         $esCliente = $clienteInfo['es_cliente'] ?? false;
-        $empresa   = $clienteInfo['empresa'] ?? null;
+        $empresa = $clienteInfo['empresa'] ?? null;
 
         if ($empresa) {
-            $quienEscribe = $esCliente && !empty($clienteInfo['nombre'])
+            $quienEscribe = $esCliente && ! empty($clienteInfo['nombre'])
                 ? "{$clienteInfo['nombre']}, de la empresa \"{$empresa['nombre']}\""
                 : ($empresa['contacto']
                     ? "{$empresa['contacto']}, de la empresa \"{$empresa['nombre']}\""
                     : "la empresa \"{$empresa['nombre']}\"");
 
             $contextoContacto = "\n## Quién te escribe: es un EMPLEADOR ({$quienEscribe}). Es una empresa que ya "
-                . "trabaja con nosotros y nos paga la seguridad social de sus trabajadores. NO es un prospecto: "
-                . "NUNCA le preguntes si quiere afiliarse ni le ofrezcas cotizar un plan para él — ya es cliente. "
-                . "Lo que suele necesitar es algo de su cuenta: el valor a pagar del mes, las cuentas para pagar, "
-                . "confirmar un pago que ya hizo, o algo de alguno de sus trabajadores. Las herramientas que "
-                . "tienes consultan personas por cédula, no empresas: si pide el total de la empresa, el detalle "
-                . "de sus trabajadores o confirmar un pago suyo, no lo adivines ni lo calcules — pásalo con un "
-                . "asesor (hablar_con_asesor). NO llames consultar_cliente ni enviar_planilla mientras no te haya "
-                . "dado la cédula de una persona concreta: por el número de la empresa no van a encontrar nada y "
-                . "gastas un turno en vano. Con esa cédula en la mano, ahí sí úsalas. Solo cotiza si ÉL MISMO pide "
-                . "expresamente cotizar a alguien nuevo que quiera vincular.\n";
+                .'trabaja con nosotros y nos paga la seguridad social de sus trabajadores. NO es un prospecto: '
+                .'NUNCA le preguntes si quiere afiliarse ni le ofrezcas cotizar un plan para él — ya es cliente. '
+                .'Lo que suele necesitar es algo de su cuenta: el valor a pagar del mes, las cuentas para pagar, '
+                .'confirmar un pago que ya hizo, o algo de alguno de sus trabajadores. Las herramientas que '
+                .'tienes consultan personas por cédula, no empresas: si pide el total de la empresa, el detalle '
+                .'de sus trabajadores o confirmar un pago suyo, no lo adivines ni lo calcules — pásalo con un '
+                .'asesor (hablar_con_asesor). NO llames consultar_cliente ni enviar_planilla mientras no te haya '
+                .'dado la cédula de una persona concreta: por el número de la empresa no van a encontrar nada y '
+                .'gastas un turno en vano. Con esa cédula en la mano, ahí sí úsalas. Solo cotiza si ÉL MISMO pide '
+                ."expresamente cotizar a alguien nuevo que quiera vincular.\n";
         } elseif ($esCliente) {
             $nombreCliente = $clienteInfo['nombre'] ?: null;
-            $planActual    = $clienteInfo['plan_actual'] ?? null;
+            $planActual = $clienteInfo['plan_actual'] ?? null;
             $contextoContacto = "\n## Quién te escribe: YA ES CLIENTE"
-                . ($nombreCliente ? " ({$nombreCliente})" : '')
-                . ($planActual ? ", con el plan \"{$planActual}\" activo" : ', pero sin contrato vigente activo')
-                . ". NO le ofrezcas ni le pitchees un plan nuevo — es alguien que ya confió en nosotros, trátalo "
-                . "como cliente, no como prospecto. Si pregunta por su cuenta, saldo o cómo pagar, usa "
-                . "consultar_cliente. Solo cotiza con cotizar_plan si ÉL MISMO pide expresamente cotizar algo "
-                . "nuevo o adicional (ej. afiliar a alguien más, cambiar de plan).\n";
+                .($nombreCliente ? " ({$nombreCliente})" : '')
+                .($planActual ? ", con el plan \"{$planActual}\" activo" : ', pero sin contrato vigente activo')
+                .'. NO le ofrezcas ni le pitchees un plan nuevo — es alguien que ya confió en nosotros, trátalo '
+                .'como cliente, no como prospecto. Si pregunta por su cuenta, saldo o cómo pagar, usa '
+                .'consultar_cliente. Solo cotiza con cotizar_plan si ÉL MISMO pide expresamente cotizar algo '
+                ."nuevo o adicional (ej. afiliar a alguien más, cambiar de plan).\n";
         } else {
             $contextoContacto = "\n## Quién te escribe: es un PROSPECTO (no tiene contrato activo con nosotros). "
-                . "Aquí sí aplica todo el enfoque de venta de abajo.\n";
+                ."Aquí sí aplica todo el enfoque de venta de abajo.\n";
         }
 
         // Lead que llegó de una pieza de publicidad (el "ref: P##" del anuncio). Se antepone a
@@ -613,7 +616,7 @@ class AsistenteIaService
             - NUNCA inventes porcentajes de comisión ni condiciones. Ese acuerdo lo hace una persona.
 
             ASESOR;
-        } elseif ($piezaOrigen && !$esCliente && !$empresa) {
+        } elseif ($piezaOrigen && ! $esCliente && ! $empresa) {
             $tema = $piezaOrigen->tema ?: $piezaOrigen->titulo;
             $contextoPieza = <<<PIEZA
 
@@ -674,36 +677,38 @@ class AsistenteIaService
             $contextoCampana = $this->bloqueUltimaPlantillaEnviada($ultimoEnvio);
         } elseif ($campana) {
             $guiaTexto = '';
-            if (!empty($campana->guia_botones)) {
+            if (! empty($campana->guia_botones)) {
                 $lineas = [];
                 foreach ($campana->guia_botones as $boton => $instruccion) {
-                    if (trim((string) $instruccion) === '') continue;
+                    if (trim((string) $instruccion) === '') {
+                        continue;
+                    }
                     $lineas[] = "  - Si el cliente toca/escribe \"{$boton}\": {$instruccion}";
                 }
                 if ($lineas) {
-                    $guiaTexto = "\nGuía de respuesta según el botón que haya tocado:\n" . implode("\n", $lineas) . "\n";
+                    $guiaTexto = "\nGuía de respuesta según el botón que haya tocado:\n".implode("\n", $lineas)."\n";
                 }
             }
 
             $contextoCampana = "\n## De dónde llegó este contacto: respondió a nuestra campaña de marketing "
-                . "\"{$origenCampana}\". Qué se está promocionando: {$campana->descripcion_ia}. NO reinicies la "
-                . "conversación desde cero ni preguntes en qué le puedes ayudar — retoma directamente ese tema, "
-                . "como si ya supieras de qué se trata, y guía la conversación hacia cerrarlo."
-                . ($campana->objetivo ? " Objetivo de esta campaña: {$campana->objetivo}." : '')
-                . $guiaTexto . "\n";
+                ."\"{$origenCampana}\". Qué se está promocionando: {$campana->descripcion_ia}. NO reinicies la "
+                .'conversación desde cero ni preguntes en qué le puedes ayudar — retoma directamente ese tema, '
+                .'como si ya supieras de qué se trata, y guía la conversación hacia cerrarlo.'
+                .($campana->objetivo ? " Objetivo de esta campaña: {$campana->objetivo}." : '')
+                .$guiaTexto."\n";
         } elseif ($ultimoEnvio) {
             $contextoCampana = $this->bloqueUltimaPlantillaEnviada($ultimoEnvio);
         } elseif ($origenCampana) {
             if ($origenCampanaCategoria === 'MARKETING') {
                 $contextoCampana = "Este contacto respondió a nuestra campaña/promoción \"{$origenCampana}\": "
-                    . "es un prospecto interesado, aprovecha ese interés inicial para cotizar y cerrar.\n";
+                    ."es un prospecto interesado, aprovecha ese interés inicial para cotizar y cerrar.\n";
             } elseif ($origenCampanaCategoria === 'UTILITY') {
                 $contextoCampana = "Este contacto respondió a un recordatorio/notificación (\"{$origenCampana}\") "
-                    . "que le enviamos — probablemente es sobre su cuenta o pago, no una promoción. Prioriza "
-                    . "ayudarlo con eso antes que ofrecerle algo nuevo.\n";
+                    .'que le enviamos — probablemente es sobre su cuenta o pago, no una promoción. Prioriza '
+                    ."ayudarlo con eso antes que ofrecerle algo nuevo.\n";
             } else {
                 $contextoCampana = "Este contacto respondió a la plantilla \"{$origenCampana}\" que le enviamos "
-                    . "hace poco: ten ese contexto presente, pero no lo menciones a menos que sea natural.\n";
+                    ."hace poco: ten ese contexto presente, pero no lo menciones a menos que sea natural.\n";
             }
         }
 
@@ -894,7 +899,7 @@ class AsistenteIaService
      * nosotros. Las UTILITY (cobros, notificaciones de cuenta) llevan además la instrucción
      * explícita de no vender: quien las recibe ya es cliente nuestro.
      *
-     * @param array{nombre: string, categoria: ?string, texto: ?string, dias: int} $ultimoEnvio
+     * @param  array{nombre: string, categoria: ?string, texto: ?string, dias: int}  $ultimoEnvio
      */
     private function bloqueUltimaPlantillaEnviada(array $ultimoEnvio): string
     {
@@ -905,31 +910,31 @@ class AsistenteIaService
         };
 
         $bloque = "\n## Por qué te está escribiendo: {$cuando} NOSOTROS le enviamos la plantilla "
-            . "\"{$ultimoEnvio['nombre']}\", y lo que escribe es su respuesta a ESE mensaje — no está llegando "
-            . "de cero ni buscándonos por su cuenta.";
+            ."\"{$ultimoEnvio['nombre']}\", y lo que escribe es su respuesta a ESE mensaje — no está llegando "
+            .'de cero ni buscándonos por su cuenta.';
 
-        if (!empty($ultimoEnvio['texto'])) {
+        if (! empty($ultimoEnvio['texto'])) {
             $bloque .= " Esto fue lo que le llegó, textualmente:\n\"\"\"\n{$ultimoEnvio['texto']}\n\"\"\"\n"
-                . "Léelo antes de responder: los datos que ya le dimos ahí (cuentas de pago, plazos, a qué "
-                . "número enviar el comprobante) son los que debes usar si pregunta por ellos, sin inventar otros.";
+                .'Léelo antes de responder: los datos que ya le dimos ahí (cuentas de pago, plazos, a qué '
+                .'número enviar el comprobante) son los que debes usar si pregunta por ellos, sin inventar otros.';
         }
 
         if (($ultimoEnvio['categoria'] ?? null) === 'UTILITY') {
-            $motivo = !empty($ultimoEnvio['texto'])
+            $motivo = ! empty($ultimoEnvio['texto'])
                 ? 'el motivo real es exactamente el de ese mensaje que te copié arriba — sácalo de ahí, no lo adivines'
                 : "el motivo real es el de esa plantilla (\"{$ultimoEnvio['nombre']}\"), no lo adivines";
 
-            $bloque .= " Es un mensaje de servicio sobre su cuenta, NO publicidad: quien lo recibe ya es cliente "
-                . "nuestro. Por lo tanto NO le preguntes si necesita afiliarse, NO le ofrezcas cotizar un plan y "
-                . "NO arranques con \"¿en qué te puedo ayudar?\" — reconoce tú misma por qué le escribimos: "
-                . "{$motivo}. Si es un recordatorio de pago, el pago puede ser suyo o el de sus trabajadores "
-                . "cuando quien escribe es una empresa; si te dice que ya pagó, agradécele y pídele el comprobante "
-                . "por este mismo chat para registrarlo, y si pregunta cuánto debe usa consultar_cliente (o pasa "
-                . "con un asesor si es una empresa y no puedes consultarla). Si te dice que eso no le corresponde "
-                . "o que no sabe de qué se trata, no insistas: pásalo con un asesor (hablar_con_asesor).";
+            $bloque .= ' Es un mensaje de servicio sobre su cuenta, NO publicidad: quien lo recibe ya es cliente '
+                .'nuestro. Por lo tanto NO le preguntes si necesita afiliarse, NO le ofrezcas cotizar un plan y '
+                .'NO arranques con "¿en qué te puedo ayudar?" — reconoce tú misma por qué le escribimos: '
+                ."{$motivo}. Si es un recordatorio de pago, el pago puede ser suyo o el de sus trabajadores "
+                .'cuando quien escribe es una empresa; si te dice que ya pagó, agradécele y pídele el comprobante '
+                .'por este mismo chat para registrarlo, y si pregunta cuánto debe usa consultar_cliente (o pasa '
+                .'con un asesor si es una empresa y no puedes consultarla). Si te dice que eso no le corresponde '
+                .'o que no sabe de qué se trata, no insistas: pásalo con un asesor (hablar_con_asesor).';
         }
 
-        return $bloque . "\n";
+        return $bloque."\n";
     }
 
     private function cargarHistorialNormalizado(int $conversacionId): array
@@ -948,7 +953,7 @@ class AsistenteIaService
             } elseif ($m->rol === 'assistant') {
                 // Los tool_calls no se persisten con su input completo; para el historial
                 // basta reconstruir un mensaje de texto simple (evita reintentos de tools ya resueltas).
-                if (!empty($m->contenido)) {
+                if (! empty($m->contenido)) {
                     $normalizado[] = ['role' => 'assistant', 'content' => $m->contenido];
                 }
             }
@@ -963,13 +968,13 @@ class AsistenteIaService
     {
         try {
             IaConsumo::create([
-                'aliado_id'          => $alidoId,
-                'canal'              => $canal,
-                'conversacion_id'    => $conversacionId,
-                'proveedor'          => $credenciales['proveedor'],
-                'modelo'             => $credenciales['modelo'],
-                'tokens_entrada'     => $tokensIn,
-                'tokens_salida'      => $tokensOut,
+                'aliado_id' => $alidoId,
+                'canal' => $canal,
+                'conversacion_id' => $conversacionId,
+                'proveedor' => $credenciales['proveedor'],
+                'modelo' => $credenciales['modelo'],
+                'tokens_entrada' => $tokensIn,
+                'tokens_salida' => $tokensOut,
                 'costo_estimado_usd' => $this->estimarCosto($credenciales['proveedor'], $credenciales['modelo'], $tokensIn, $tokensOut),
             ]);
         } catch (\Exception $e) {
@@ -988,8 +993,8 @@ class AsistenteIaService
     {
         $precios = [
             'claude' => [
-                'sonnet'  => ['in' => 2.0, 'out' => 10.0],  // Claude Sonnet 5 (introductorio, hasta 2026-08-31)
-                'haiku'   => ['in' => 1.0, 'out' => 5.0],   // Claude Haiku 4.5
+                'sonnet' => ['in' => 2.0, 'out' => 10.0],  // Claude Sonnet 5 (introductorio, hasta 2026-08-31)
+                'haiku' => ['in' => 1.0, 'out' => 5.0],   // Claude Haiku 4.5
                 'default' => ['in' => 1.0, 'out' => 5.0],
             ],
             'openai' => [
@@ -999,12 +1004,12 @@ class AsistenteIaService
                 // Ojo con el orden: "3.5-flash-lite" tiene que ir antes que "3.5-flash" porque
                 // ese nombre de modelo también contiene la subcadena "3.5-flash" (stripos matchearía
                 // el precio equivocado, mucho más caro, si "3.5-flash" fuera primero).
-                '3.6-flash'      => ['in' => 1.5,  'out' => 7.5],  // Gemini 3.6 Flash
+                '3.6-flash' => ['in' => 1.5,  'out' => 7.5],  // Gemini 3.6 Flash
                 '3.5-flash-lite' => ['in' => 0.3,  'out' => 2.5],  // Gemini 3.5 Flash-Lite
-                '3.5-flash'      => ['in' => 1.5,  'out' => 9.0],  // Gemini 3.5 Flash
-                '2.5-flash'      => ['in' => 0.3,  'out' => 2.5],  // Gemini 2.5 Flash
-                '2.5-pro'        => ['in' => 1.25, 'out' => 10.0], // Gemini 2.5 Pro, tramo <=200k tokens
-                'default'        => ['in' => 1.5,  'out' => 7.5],
+                '3.5-flash' => ['in' => 1.5,  'out' => 9.0],  // Gemini 3.5 Flash
+                '2.5-flash' => ['in' => 0.3,  'out' => 2.5],  // Gemini 2.5 Flash
+                '2.5-pro' => ['in' => 1.25, 'out' => 10.0], // Gemini 2.5 Pro, tramo <=200k tokens
+                'default' => ['in' => 1.5,  'out' => 7.5],
             ],
         ];
 
