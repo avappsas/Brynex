@@ -2591,12 +2591,18 @@ class IncapacidadController extends Controller
             $cuadreId = $cuadre ? $cuadre->id : null;
 
             // 5. Registrar el Gasto (tipo pago_incapacidad)
+            // `incapacidad_id` no es opcional: sin él el gasto queda huérfano y el
+            // detalle del Canal 5 no lo resta, así que la incapacidad sigue
+            // apareciendo como pendiente aunque ya se le haya pagado al afiliado —
+            // y el aviso de pago duplicado tampoco lo ve. El nombre de la
+            // incapacidad en la descripción no sirve para cruzarlo.
             DB::table('gastos')->insert([
                 'aliado_id' => $aliadoId,
                 'usuario_id' => $usuarioId,
                 'cuadre_id' => $cuadreId,
                 'fecha' => $request->fecha_pago,
                 'tipo' => 'pago_incapacidad',
+                'incapacidad_id' => $inc->id,
                 'descripcion' => "Anticipo/Préstamo incapacidad #{$inc->id} al afiliado (Neto: \${$request->valor_pago})",
                 'pagado_a' => $nombreCliente,
                 'cc_pagado_a' => $inc->cedula_usuario,
