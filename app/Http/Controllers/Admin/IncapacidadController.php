@@ -80,6 +80,19 @@ class IncapacidadController extends Controller
     private const DISCO_DOCUMENTOS = 'local';
 
     /**
+     * Los cuatro gastos en que se parte una salida de caja del Canal 5.
+     * El neto al afiliado va en `pago_incapacidad`; los descuentos salen como
+     * gastos aparte y también son plata que sale del canal. Misma lista que usa
+     * el detalle del Canal 5 en InformeController.
+     */
+    private const TIPOS_GASTO_CANAL5 = [
+        'pago_incapacidad',
+        'cuatropormil_incapacidad',
+        'otros_incapacidad',
+        'admon_incapacidad',
+    ];
+
+    /**
      * Query base restringida al aliado en sesión.
      *
      * Todo acceso a una incapacidad por id debe pasar por aquí. Sin este filtro,
@@ -961,6 +974,21 @@ class IncapacidadController extends Controller
                 'ok' => false,
                 'message' => 'Ingresa el valor que la entidad le pagó directamente al afiliado.',
             ], 422);
+        }
+
+        // Mismo criterio: se avisa antes de crear la gestión. El pago directo de
+        // la entidad no entra aquí porque no mueve la caja del aliado.
+        if ($incActualizar && $nuevoEstado === 'pagada_afiliado' && ! $esPagoDirectoAfiliado
+            && $request->filled('valor_pago_afiliado') && ! $request->boolean('confirmar_pago')) {
+            $brutoNuevo = (float) $request->valor_pago_afiliado
+                + (float) $request->input('descuento_admon', 0)
+                + (float) $request->input('descuento_4x1000', 0)
+                + (float) $request->input('descuento_otros', 0);
+
+            $avisos = $this->avisosPagoAfiliado($incActualizar, (int) $incActualizar->aliado_id, $brutoNuevo);
+            if ($avisos) {
+                return $this->pedirConfirmacionPago($avisos);
+            }
         }
 
         // 'Directo al cliente' no es una forma de recibir el pago en la razón
@@ -2428,6 +2456,76 @@ class IncapacidadController extends Controller
         ]);
     }
 
+    /**
+     * Avisos antes de registrar una salida de caja del Canal 5.
+     *
+     * Hay dos vías que registran el gasto de un pago al afiliado — el botón de
+     * Anticipo/Préstamo y el paso a 'pagada_afiliado' — y nada impedía usar las
+     * dos para el mismo giro: pasó con la incapacidad #2119 del aliado 7, donde
+     * el mismo pago quedó registrado dos veces con 27 minutos de diferencia al
+     * cargar la historia completa de golpe, e infló el Canal 5 de julio-2026 en
+     * $1.6M. Devuelve los avisos que ameritan confirmación del operador.
+     *
+     * No bloquea: adelantarle plata al afiliado antes de que la entidad pague es
+     * un caso legítimo y frecuente.
+     */
+    private function avisosPagoAfiliado(Incapacidad $inc, int $aliadoId, float $brutoNuevo): array
+    {
+        $avisos = [];
+
+        $previos = DB::table('gastos')
+            ->where('aliado_id', $aliadoId)
+            ->where('incapacidad_id', $inc->id)
+            ->where('tipo', 'pago_incapacidad')
+            ->orderBy('fecha')
+            ->get(['fecha', 'valor']);
+
+        if ($previos->isNotEmpty()) {
+            $detalle = $previos
+                ->map(fn ($p) => \Carbon\Carbon::parse($p->fecha)->format('d/m/Y').' por $'.number_format((float) $p->valor, 0, ',', '.'))
+                ->implode(' y ');
+
+            $avisos[] = $previos->count() === 1
+                ? "Esta incapacidad ya tiene un pago al afiliado registrado el {$detalle}. Si es el mismo giro, no lo registres otra vez."
+                : "Esta incapacidad ya tiene {$previos->count()} pagos al afiliado registrados: {$detalle}. Si alguno es el mismo giro, no lo registres otra vez.";
+        }
+
+        $recibido = (float) DB::table('abonos_incapacidades')
+            ->where('aliado_id', $aliadoId)
+            ->where('incapacidad_id', $inc->id)
+            ->where('tipo', 'entrada_incapacidad')
+            ->sum('valor');
+
+        $pagado = (float) DB::table('gastos')
+            ->where('aliado_id', $aliadoId)
+            ->where('incapacidad_id', $inc->id)
+            ->whereIn('tipo', self::TIPOS_GASTO_CANAL5)
+            ->sum('valor');
+
+        // Mientras no haya entrado nada de la entidad, cualquier pago es por
+        // definición un adelanto: avisarlo sería ruido en el caso normal.
+        // El umbral de $1.000 ignora los redondeos del 4x1000.
+        $exceso = ($pagado + $brutoNuevo) - $recibido;
+        if ($recibido > 0 && $exceso >= 1000) {
+            $avisos[] = 'Con este pago habrían salido $'.number_format($pagado + $brutoNuevo, 0, ',', '.')
+                .' por una incapacidad de la que solo entraron $'.number_format($recibido, 0, ',', '.')
+                .' de la entidad: $'.number_format($exceso, 0, ',', '.').' de más.';
+        }
+
+        return $avisos;
+    }
+
+    /** 409 que el front convierte en un "¿seguro?" y reintenta con confirmar_pago. */
+    private function pedirConfirmacionPago(array $avisos)
+    {
+        return response()->json([
+            'ok' => false,
+            'requiere_confirmacion' => true,
+            'avisos' => $avisos,
+            'message' => implode("\n\n", $avisos),
+        ], 409);
+    }
+
     // ── REGISTRAR PAGO AL AFILIADO (ANTICIPO / PRÉSTAMO) ─────────────────────
     public function registrarPago(Request $request, int $id)
     {
@@ -2444,6 +2542,13 @@ class IncapacidadController extends Controller
 
         $aliadoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
         $usuarioId = Auth::id();
+
+        if (! $request->boolean('confirmar_pago')) {
+            $avisos = $this->avisosPagoAfiliado($inc, (int) $aliadoId, (float) $request->valor_pago);
+            if ($avisos) {
+                return $this->pedirConfirmacionPago($avisos);
+            }
+        }
 
         // 1. Calcular saldos antes de aplicar este abono
         $saldoPendiente = $inc->saldo_pendiente;

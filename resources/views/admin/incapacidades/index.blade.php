@@ -2607,7 +2607,15 @@ function _actualizarSubtituloGestion(sel) {
     }
 }
 
-function enviarGestion(incId) {
+// El servidor responde 409 cuando el pago al afiliado se parece a un duplicado
+// (ya hay un pago registrado, o saldría más plata de la que entró de la entidad).
+// No es un error: es un "¿seguro?" que el operador puede aceptar.
+function confirmarAvisosPago(d) {
+    const avisos = (d.avisos || [d.message || '']).filter(Boolean);
+    return confirm('⚠️ ' + avisos.join('\n\n') + '\n\n¿Registrar el pago de todas formas?');
+}
+
+function enviarGestion(incId, confirmarPago) {
     const alcanceEl = document.getElementById('gAlcance');
     const alcanceVal = alcanceEl?.value || 'esta_incapacidad';
     const tramite = document.getElementById('gRespuesta').value.trim();
@@ -2651,6 +2659,7 @@ function enviarGestion(incId) {
         descuento_admon:     (esPagoAfiliado && !esPagoDirecto) ? (document.getElementById('gDescuentoAdmon')?.value || 0) : 0,
         descuento_4x1000:    (esPagoAfiliado && !esPagoDirecto) ? (document.getElementById('gDescuento4x1000')?.value || 0) : 0,
         descuento_otros:     (esPagoAfiliado && !esPagoDirecto) ? (document.getElementById('gDescuentoOtros')?.value || 0) : 0,
+        confirmar_pago:      confirmarPago ? 1 : 0,
         _token:              TOKEN,
     };
 
@@ -2734,6 +2743,8 @@ function enviarGestion(incId) {
                     if (tabProrrogas) tabProrrogas.click();
                 }, 600);
             }
+        } else if (status === 409 && d.requiere_confirmacion) {
+            if (confirmarAvisosPago(d)) enviarGestion(incId, true);
         } else if (status === 422 && d.errors) {
             // Error de validación de Laravel
             const msgs = Object.values(d.errors).flat().join('\n');
@@ -3039,7 +3050,7 @@ function toggleBancoOrigen(val) {
     }
 }
 
-function enviarPago(incId){
+function enviarPago(incId, confirmarPago){
     const valor = document.getElementById('pValor').value;
     const fecha = document.getElementById('pFecha').value;
     const formaPago = document.getElementById('pFormaPago').value;
@@ -3069,9 +3080,14 @@ function enviarPago(incId){
             forma_pago: formaPago,
             banco_cuenta_id: bancoId,
             detalle_pago: detalle,
+            confirmar_pago: confirmarPago ? 1 : 0,
             _token: TOKEN
         })
-    }).then(r=>r.json()).then(d=>{
+    }).then(r => r.json().then(d => ({ d, status: r.status }))).then(({ d, status })=>{
+        if (status === 409 && d.requiere_confirmacion) {
+            if (confirmarAvisosPago(d)) enviarPago(incId, true);
+            return;
+        }
         if(d.ok){ 
             document.getElementById('modalPago').classList.remove('open'); 
             verDetalle(incId); 

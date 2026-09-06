@@ -1,63 +1,79 @@
 # Plan — API de Bancolombia para Brygar
 
-Estado: **por solicitar al banco** (31-ago-2026). Nada implementado todavía.
+Estado: catálogo revisado el **6-sep-2026**, cuenta creada en el portal, falta
+solicitar el ingreso a Sandbox. En BryNex ya está el módulo de movimientos con
+un adaptador falso (`config/banco.php`), esperando credenciales.
 
-Dos productos en la mira:
+Dos frentes:
 
-- **A. Consulta de saldos y movimientos** de la cuenta de Brygar.
-- **B. Recaudo / botón de pagos** para que el cliente pague en línea.
+- **A. Consulta de movimientos** de la cuenta de Brygar → confirmar cobros solos.
+- **B. Botón / QR / llaves Bre-B** → que el cliente pague y se confirme en línea.
 
 ---
 
-## 1. Qué hay que pedirle al ejecutivo de Bancolombia
+## 1. El catálogo real (revisado el 6-sep-2026)
 
-El catálogo del API Market no es público: se ve con credenciales, y la
-activación **no es autoservicio** — la habilita el ejecutivo comercial
-asignado. Lo confirmado en la documentación pública:
+El API Market **sí es público**: el catálogo y la documentación de cada
+producto se ven sin iniciar sesión en
+`api-portal-external.apps.bancolombia.com/products`. Lo que exige cuenta y
+aprobación es probar contra Sandbox.
 
-- El API Market (`api-portal-external.apps.bancolombia.com`) tiene el catálogo
-  y la documentación técnica de cada producto.
-- Las credenciales `Client-Id` / `Client-Secret` se piden por **formulario de
-  la mesa de ayuda** (`soportedevs.bancolombia.com`).
-- Hay **sandbox**, y el banco dice que cada operación refleja la misma
-  información que producción.
-- Para el Botón Bancolombia: cliente y comercio deben tener cuenta activa que
-  permita créditos y débitos, el comercio debe estar inscrito en clave dinámica,
-  y **la tarifa se negocia** con el gerente transaccional (no hay tarifa fija
-  publicada).
+Son ~100 productos. Los que le sirven a BryNex:
 
-### Lista para la reunión
+| Producto | Tipo | Para qué nos sirve |
+|---|---|---|
+| **Transactional Information** 1.0.1 | Pública · Sandbox | «Consulta información transaccional dentro de un período determinado» — es el extracto. **Su documentación no está publicada**: hay que verla con sesión o preguntarle a la mesa de ayuda |
+| **Button Payment Instruction** 2.0.0 | Pública · Sandbox | Botón de pago. El flujo es: generar intención de pago → validar → generar pago → **notificar estado final**. Esa última parte es la confirmación en línea que hoy no existe |
+| **BancolombiaPay Payments Keys Administration / Information / Transactions** 1.0.0 | Pública · Sandbox | **Bre-B**. Crear, cancelar y actualizar llaves; consultar las llaves de un cliente; y mover plata con llaves del sistema Bre-B |
+| **QR Code** 3.0.1 · **QR Payments Information** 2.0.0 · **QR Code Information** · **QR Code Refunds** | Pública · Sandbox | Administrar códigos QR, consultar sus transacciones y reversar pagos |
+| **Collections Operations And Services** 1.1.0 | Pública · Sandbox | Pago de facturas en corresponsales bancarios — el cliente que paga en efectivo en la esquina |
+| **Deposit Account Ownership** 3.0.2 | Pública · Sandbox | Valida si una cédula o NIT es el titular de una cuenta. Sirve para no consignarle a la cuenta equivocada |
+| **Account Information** 1.0.0 | Open Finance | Consulta de cuentas de ahorro y corriente del titular que da su consentimiento |
+| **Corporate Payment Order Initiation / Information** 1.0.0 | Pública · Sandbox | Órdenes de pago empresarial (dispersión). Solo con confirmación humana, nunca automático |
+| **Financial Institutions** 1.0.0 | Pública · Sandbox | Catálogo de entidades para transferencias interbancarias |
 
-Datos que hay que llevar:
+Ojo con el lenguaje del portal: Keys, Button y QR hablan de «comercios
+aliados». Sandbox se prueba solo, pero producción dice **«según cotización»**
+— hay convenio comercial de por medio.
 
-- NIT y razón social de Brygar, y el número de la cuenta a conectar.
-- Dominio: `brynex.co`.
-- IP fija de salida del servidor (netcup) — probablemente la pidan para la
-  lista blanca.
+No existe ningún producto llamado «recaudo», ni aparece nada de webhooks o
+suscripciones como producto aparte: buscar `webhook`, `subscription` y
+`notification` no devuelve nada. La notificación de estado vive dentro del
+flujo del Button.
 
-Preguntas que hay que hacer (de esto depende el diseño):
+### Autenticación (documentada y pública)
 
-1. Nombre exacto del producto de **consulta de movimientos y saldos** y su
-   alcance: ¿movimientos del día, histórico de cuántos meses, incluye la
-   descripción/referencia de cada transacción y el NIT/nombre de quien
-   consigna?
-2. ¿Cuántas consultas al día están incluidas y desde cuánto se cobra? (Define
-   si el cruce corre cada hora o una vez en la noche.)
-3. Autenticación: ¿OAuth2 `client_credentials` a secas, o además certificado
-   mTLS / firma del mensaje? ¿Exige IP en lista blanca?
-4. Recaudo: cuál conviene para cobrar seguridad social mensual —
-   **Botón Bancolombia** (transferencia desde la Sucursal Virtual, solo
-   clientes Bancolombia, costo bajo), **convenio de recaudo con referencia**
-   (el cliente paga en corresponsal/app y llega con la referencia de la
-   factura), o **Wompi** (es de Bancolombia; cubre PSE, tarjeta, Nequi y
-   Bancolombia, y se activa mucho más rápido).
-5. ¿El recaudo notifica por **webhook** al comercio, o toca consultar? Si es
-   webhook: cómo se firma para poder validarlo.
-6. Tiempos: cuánto tarda sandbox y cuánto el paso a producción.
+- **OAuth2 `client_credentials`**, con `Authorization: Basic base64(client_id:client_secret)`
+  o las credenciales en formData. Pide `scope`.
+- **JWT** con certificado X.509 propio: RSA 2048, SHA256, base64 (RS256).
 
-> Recomendación: pedir **A** en firme (no mueve dinero, riesgo bajo) y en
-> paralelo cotizar **B**. Si el banco se demora con el Botón, Wompi resuelve
-> lo mismo en días.
+Es decir: el servidor de BryNex puede autenticarse solo, sin usuario humano.
+Encaja con guardar las credenciales cifradas por cuenta bancaria.
+
+### Cómo se llega a Sandbox
+
+Registrarse en el portal no basta. Falta:
+
+1. **Solicitar el ingreso a Sandbox** (formulario con nombre de la empresa y
+   el producto de API que se quiere). Aprobación en **menos de 24 horas** de
+   lunes a viernes.
+2. Activar el segundo factor en el portal.
+3. **Crear una aplicación** dentro del portal — de ahí salen el `client_id` y
+   el `client_secret`.
+
+Sandbox es **gratis**; producción se cotiza.
+
+### Preguntas que siguen abiertas para el banco
+
+1. La documentación de **Transactional Information** no está publicada: qué
+   devuelve exactamente, cuánto histórico, y si trae la referencia del
+   comprobante y el documento de quien consigna.
+2. Si la transferencia **Bre-B** llega al extracto con nombre y documento del
+   pagador. De eso depende que las entradas sueltas se amarren solas.
+3. Si el QR puede llevar **valor y referencia por factura**, o solo es el QR
+   estático de la llave.
+4. Tarifa de producción de Button / QR / Keys, y si exigen convenio de comercio.
+5. Cuántas consultas al día están incluidas en Transactional Information.
 
 ---
 
