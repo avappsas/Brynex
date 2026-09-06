@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Crypt;
 
@@ -32,25 +31,29 @@ class PautaConfig extends BaseModel
         'exterior_interes_id',
         'exterior_interes_nombre',
         'exterior_presupuesto_diario_cop',
+        'meta_campana_asesores_id',
+        'meta_adset_asesores_id',
+        'asesores_presupuesto_diario_cop',
         'creatividades_max',
         'piezas_semana_max',
     ];
 
     protected $casts = [
-        'activo'                          => 'boolean',
-        'limite_mensual_cop'              => 'decimal:2',
-        'presupuesto_diario_default_cop'  => 'decimal:2',
-        'audiencias'                      => 'array',
-        'audiencias_sync_at'              => 'datetime',
-        'ciudades'                        => 'array',
-        'ciudades_claves'                 => 'array',
-        'edad_min'                        => 'integer',
-        'edad_max'                        => 'integer',
-        'presupuesto_semanal_cop'         => 'decimal:2',
-        'exterior_activo'                 => 'boolean',
+        'activo' => 'boolean',
+        'limite_mensual_cop' => 'decimal:2',
+        'presupuesto_diario_default_cop' => 'decimal:2',
+        'audiencias' => 'array',
+        'audiencias_sync_at' => 'datetime',
+        'ciudades' => 'array',
+        'ciudades_claves' => 'array',
+        'edad_min' => 'integer',
+        'edad_max' => 'integer',
+        'presupuesto_semanal_cop' => 'decimal:2',
+        'exterior_activo' => 'boolean',
         'exterior_presupuesto_diario_cop' => 'decimal:2',
-        'creatividades_max'               => 'integer',
-        'piezas_semana_max'               => 'integer',
+        'asesores_presupuesto_diario_cop' => 'decimal:2',
+        'creatividades_max' => 'integer',
+        'piezas_semana_max' => 'integer',
     ];
 
     /** Techo duro de gasto diario. Ni el ajuste automático ni el panel pueden pasarse de aquí. */
@@ -87,7 +90,7 @@ class PautaConfig extends BaseModel
 
     public function getAccessTokenAdsAttribute(?string $value): ?string
     {
-        if (!$value) {
+        if (! $value) {
             return null;
         }
         try {
@@ -137,6 +140,7 @@ class PautaConfig extends BaseModel
         if ($this->limite_mensual_cop === null) {
             return 0;
         }
+
         return max(0, (float) $this->limite_mensual_cop - $this->gastadoEsteMes());
     }
 }
