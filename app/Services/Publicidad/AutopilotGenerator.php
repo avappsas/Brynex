@@ -54,7 +54,7 @@ class AutopilotGenerator
             return FlyerPlanGenerator::generar($aliado, $config);
         }
 
-        $iaConfig     = IaConfiguracionAliado::paraAliado($aliado->id);
+        $iaConfig = IaConfiguracionAliado::paraAliado($aliado->id);
         $credenciales = $iaConfig->credencialesEfectivas();
 
         // Reel: la medición propia manda. Sobre las piezas ya publicadas, las imágenes
@@ -67,14 +67,14 @@ class AutopilotGenerator
         if (empty($credenciales['api_key'])) {
             return ['ok' => false, 'publicacion' => null, 'error' => 'No hay clave de IA de texto configurada (ver Asistente Virtual).'];
         }
-        if (!$iaConfig->tieneGemini()) {
+        if (! $iaConfig->tieneGemini()) {
             return ['ok' => false, 'publicacion' => null, 'error' => 'No hay clave de Gemini configurada para generar la imagen (ver Asistente Virtual).'];
         }
 
         $estilo = $config->estiloDelDia();
 
         $concepto = self::pedirConceptoALaIa($aliado, $credenciales, $estilo);
-        if (!$concepto['ok']) {
+        if (! $concepto['ok']) {
             return ['ok' => false, 'publicacion' => null, 'error' => $concepto['error']];
         }
 
@@ -85,14 +85,14 @@ class AutopilotGenerator
         $logoParaReferencia = $aliado->logo_marca_claro ?: $aliado->logo;
         $rutaLogo = $logoParaReferencia ? \Illuminate\Support\Facades\Storage::disk('public')->path($logoParaReferencia) : null;
         $promptImagen = $concepto['prompt_imagen']
-            . " Compórtate como un director creativo experto en publicidad para redes sociales (Meta Ads) de {$aliado->nombre}, una agencia de afiliación a seguridad social en Colombia (EPS, ARL, pensión, caja de compensación): compón la pieza para llamar la atención, verse profesional y generar clics — no como una simple foto o ilustración de escena sin texto. "
-            . "El concepto de esta pieza YA fue decidido, no lo cambies ni inventes uno distinto — tema: \"{$concepto['tema']}\"; título: \"{$concepto['titulo']}\"; texto del post: \"{$concepto['copy']}\". "
-            . 'Basado ÚNICAMENTE en ese concepto (nunca en asesoría legal, financiera o de negocios genérica ni en ningún otro tema), escribe en la imagen, en español: un titular principal corto y muy impactante (máximo 5 palabras, fiel al concepto de arriba), un subtítulo que explique el beneficio principal, entre 3 y 5 beneficios clave relacionados con seguridad social (cada uno con un ícono relacionado + texto corto), y un llamado a la acción claro sobre afiliarse ya, agendar una asesoría o pedir una consulta (ej. "Afíliate ya", "Agenda tu asesoría", "Consulta sin costo") — NUNCA uses frases de urgencia o escasez falsa como "cupos limitados", "inscripciones abiertas" o "solo hoy": la afiliación está siempre disponible, no es una oferta por tiempo limitado. '
-            . 'Usa tipografía bold, alto contraste, degradados modernos, sombras y buena jerarquía visual — estilo campaña premium, no plano. '
-            . 'Si aporta, agrega elementos de conversión como una garantía o el proceso sin trámites — pero NUNCA generes un código QR (los que dibuja un modelo de imagen no funcionan, no escanean de verdad), y NUNCA inventes datos concretos que no te haya dado (teléfonos, precios, fechas exactas, nombres de personas, cupos, plazos) — mantén esas menciones genéricas salvo los precios reales ya incluidos arriba. '
-            . 'Cuida la ortografía y las tildes del español. '
-            . "NUNCA dibujes tú mismo ningún logo, isotipo, ícono de marca ni el nombre \"{$aliado->nombre}\" a modo de logo en NINGUNA parte de la imagen — ni en la esquina inferior derecha ni en ninguna otra — eso lo agrega el sistema después, por separado, con el logo real. "
-            . 'Deja la esquina inferior derecha libre de texto e íconos, pero SIN dibujar ahí ningún recuadro, marco o bloque de color sólido — debe verse como parte natural del fondo/escena, nunca como un espacio en blanco marcado; ahí se superpone el logo real de la marca después, por separado.';
+            ." Compórtate como un director creativo experto en publicidad para redes sociales (Meta Ads) de {$aliado->nombre}, una agencia de afiliación a seguridad social en Colombia (EPS, ARL, pensión, caja de compensación): compón la pieza para llamar la atención, verse profesional y generar clics — no como una simple foto o ilustración de escena sin texto. "
+            ."El concepto de esta pieza YA fue decidido, no lo cambies ni inventes uno distinto — tema: \"{$concepto['tema']}\"; título: \"{$concepto['titulo']}\"; texto del post: \"{$concepto['copy']}\". "
+            .'Basado ÚNICAMENTE en ese concepto (nunca en asesoría legal, financiera o de negocios genérica ni en ningún otro tema), escribe en la imagen, en español: un titular principal corto y muy impactante (máximo 5 palabras, fiel al concepto de arriba), un subtítulo que explique el beneficio principal, entre 3 y 5 beneficios clave relacionados con seguridad social (cada uno con un ícono relacionado + texto corto), y un llamado a la acción claro sobre afiliarse ya, agendar una asesoría o pedir una consulta (ej. "Afíliate ya", "Agenda tu asesoría", "Consulta sin costo") — NUNCA uses frases de urgencia o escasez falsa como "cupos limitados", "inscripciones abiertas" o "solo hoy": la afiliación está siempre disponible, no es una oferta por tiempo limitado. '
+            .'Usa tipografía bold, alto contraste, degradados modernos, sombras y buena jerarquía visual — estilo campaña premium, no plano. '
+            .'Si aporta, agrega elementos de conversión como una garantía o el proceso sin trámites — pero NUNCA generes un código QR (los que dibuja un modelo de imagen no funcionan, no escanean de verdad), y NUNCA inventes datos concretos que no te haya dado (teléfonos, precios, fechas exactas, nombres de personas, cupos, plazos) — mantén esas menciones genéricas salvo los precios reales ya incluidos arriba. '
+            .'Cuida la ortografía y las tildes del español. '
+            ."NUNCA dibujes tú mismo ningún logo, isotipo, ícono de marca ni el nombre \"{$aliado->nombre}\" a modo de logo en NINGUNA parte de la imagen — ni en la esquina inferior derecha ni en ninguna otra — eso lo agrega el sistema después, por separado, con el logo real. "
+            .'Deja la esquina inferior derecha libre de texto e íconos, pero SIN dibujar ahí ningún recuadro, marco o bloque de color sólido — debe verse como parte natural del fondo/escena, nunca como un espacio en blanco marcado; ahí se superpone el logo real de la marca después, por separado.';
         if ($rutaLogo) {
             // La imagen adjunta (aparte del prompt) es el logo real — se le pide inspirarse
             // en su paleta, NUNCA reproducirlo literal (los modelos de imagen distorsionan
@@ -100,8 +100,8 @@ class AutopilotGenerator
             $promptImagen .= ' Te adjunto el logo de la marca SOLO como referencia de color: usa tonos inspirados en su paleta para la escena. NO intentes dibujar ni reproducir el logo, ni ningún otro logo propio, dentro de la imagen — eso se agrega después por separado.';
         }
         $imagen = GeminiImagenGenerator::generarVariantes($iaConfig->gemini_api_key, $promptImagen, 1, $modelo, $rutaLogo);
-        if (!$imagen['ok'] || empty($imagen['rutas'])) {
-            return ['ok' => false, 'publicacion' => null, 'error' => 'Imagen: ' . ($imagen['error'] ?? 'Gemini no devolvió imagen.')];
+        if (! $imagen['ok'] || empty($imagen['rutas'])) {
+            return ['ok' => false, 'publicacion' => null, 'error' => 'Imagen: '.($imagen['error'] ?? 'Gemini no devolvió imagen.')];
         }
 
         LogoWatermarker::aplicar($imagen['rutas'][0], $aliado->logo_marca_claro, $aliado->logo_marca_recorte);
@@ -114,17 +114,17 @@ class AutopilotGenerator
         $esAuto = $config->modo === AutopilotConfig::MODO_AUTO;
 
         $publicacion = Publicacion::create([
-            'aliado_id'   => $aliado->id,
-            'titulo'      => $concepto['titulo'],
-            'copy'        => $concepto['copy'],
+            'aliado_id' => $aliado->id,
+            'titulo' => $concepto['titulo'],
+            'copy' => $concepto['copy'],
             'imagen_path' => $imagen['rutas'][0],
-            'origen'      => 'ia_auto',
-            'tema'        => $concepto['tema'],
+            'origen' => 'ia_auto',
+            'tema' => $concepto['tema'],
             'estilo_imagen' => $estilo,
             'costo_estimado_usd' => GeminiImagenGenerator::costoEstimadoUsd($modelo),
-            'destinos'    => $destinos,
-            'estado'      => $esAuto ? Publicacion::ESTADO_APROBADA : Publicacion::ESTADO_PENDIENTE,
-            'creado_por'  => null,
+            'destinos' => $destinos,
+            'estado' => $esAuto ? Publicacion::ESTADO_APROBADA : Publicacion::ESTADO_PENDIENTE,
+            'creado_por' => null,
         ]);
 
         if ($esAuto) {
@@ -164,7 +164,7 @@ class AutopilotGenerator
             || str_contains($t, 'plan') || str_contains($t, 'afiliar') || str_contains($t, 'afiliaci');
         $esDeArl = str_contains($t, 'arl') || str_contains($t, 'riesgo') || str_contains($t, 'accidente');
 
-        if (!$esDePrecio && !$esDeArl) {
+        if (! $esDePrecio && ! $esDeArl) {
             return null;
         }
 
@@ -174,21 +174,22 @@ class AutopilotGenerator
             // paga riesgo V, no I, y prometerle el piso es prometer lo que no se le va a cobrar.
             if ($esDeArl) {
                 $arl = CotizacionPublicaService::cotizarGestionArlConDescuento($aliadoId, 1);
-                return !empty($arl['valor_descuento'])
-                    ? 'ARL desde $' . number_format($arl['valor_descuento'], 0, ',', '.') . ' al mes'
+
+                return ! empty($arl['valor_descuento'])
+                    ? 'ARL desde $'.number_format($arl['valor_descuento'], 0, ',', '.').' al mes'
                     : null;
             }
 
             // Para lo demás, el plan más barato por su PRIMER MES, que es más económico que la
             // mensualidad y es la cifra que de verdad baja la barrera de entrada.
             $planes = CotizacionPublicaService::planesDestacadosConPrecio($aliadoId, true)
-                ->filter(fn ($p) => !empty($p['costo_afiliacion']))
+                ->filter(fn ($p) => ! empty($p['costo_afiliacion']))
                 ->sortBy('costo_afiliacion');
 
             $barato = $planes->first();
 
             return $barato
-                ? 'Afíliate desde $' . number_format($barato['costo_afiliacion'], 0, ',', '.') . ' el primer mes'
+                ? 'Afíliate desde $'.number_format($barato['costo_afiliacion'], 0, ',', '.').' el primer mes'
                 : null;
         } catch (\Throwable $e) {
             // Sin precio la pieza sale igual: es peor no publicar que publicar sin cifra.
@@ -205,20 +206,20 @@ class AutopilotGenerator
         if (empty($credenciales['api_key'])) {
             return ['ok' => false, 'publicacion' => null, 'video' => null, 'error' => 'No hay clave de IA de texto configurada (ver Asistente Virtual).'];
         }
-        if (!$iaConfig->tieneGemini()) {
+        if (! $iaConfig->tieneGemini()) {
             return ['ok' => false, 'publicacion' => null, 'video' => null, 'error' => 'No hay clave de Gemini configurada para generar el video (ver Asistente Virtual).'];
         }
 
         // El tema, el título y el copy salen del mismo cerebro que los posts de imagen: así
         // el Reel sigue rotando ángulos y respetando el historial y los precios reales.
         $concepto = self::pedirConceptoALaIa($aliado, $credenciales, $config->estiloDelDia());
-        if (!$concepto['ok']) {
+        if (! $concepto['ok']) {
             return ['ok' => false, 'publicacion' => null, 'video' => null, 'error' => $concepto['error']];
         }
 
-        $contexto  = $concepto['tema'] ?: 'seguridad social para independientes en Colombia';
-        $modelo    = $config->modeloVideo();
-        $duracion  = max(8, (int) ($config->video_duracion ?: 8));
+        $contexto = $concepto['tema'] ?: 'seguridad social para independientes en Colombia';
+        $modelo = $config->modeloVideo();
+        $duracion = max(8, (int) ($config->video_duracion ?: 8));
 
         // Frases del overlay animado: van encima del clip, no dentro del prompt de Veo —
         // los modelos de video no escriben texto legible.
@@ -234,6 +235,10 @@ class AutopilotGenerator
             )
             : [];
 
+        // Se calcula una sola vez: lo usan las frases (para escribir la cifra) y la escena
+        // (para no poner el precio de riesgo I sobre un oficio de riesgo V).
+        $precioEnPantalla = self::precioEnPantalla($aliado->id, $contexto);
+
         $frasesResultado = CopiaIaGenerator::generarFrasesVideo(
             $aliado->id,
             $aliado->nombre,
@@ -241,15 +246,15 @@ class AutopilotGenerator
             3,
             (bool) $config->cierre_activo,
             $diceElCierre,
-            self::precioEnPantalla($aliado->id, $contexto)
+            $precioEnPantalla
         );
         $frases = $frasesResultado['ok'] ? array_slice($frasesResultado['frases'], 0, 3) : [];
 
         $payload = [
-            'tema'     => $concepto['tema'],
-            'titulo'   => $concepto['titulo'],
-            'copy'     => $concepto['copy'],
-            'modo'     => $config->modo,
+            'tema' => $concepto['tema'],
+            'titulo' => $concepto['titulo'],
+            'copy' => $concepto['copy'],
+            'modo' => $config->modo,
             'destinos' => array_merge(
                 ['web'],
                 RedSocialConfig::where('aliado_id', $aliado->id)->where('activo', true)->pluck('red')->all()
@@ -261,63 +266,63 @@ class AutopilotGenerator
         if ($duracion > 8) {
             $numEscenas = (int) ($duracion / 8);
             $prompts = CopiaIaGenerator::generarPromptsMultiEscena($aliado->id, $aliado->nombre, $contexto, $numEscenas);
-            if (!$prompts['ok']) {
+            if (! $prompts['ok']) {
                 return ['ok' => false, 'publicacion' => null, 'video' => null, 'error' => $prompts['error']];
             }
 
             $escenas = [];
             foreach ($prompts['prompts'] as $orden => $promptEscena) {
                 $inicio = VeoVideoGenerator::iniciar($iaConfig->gemini_api_key, $promptEscena, $modelo, '9:16', '720p', 8);
-                if (!$inicio['ok']) {
-                    return ['ok' => false, 'publicacion' => null, 'video' => null, 'error' => 'Escena ' . ($orden + 1) . ': ' . $inicio['error']];
+                if (! $inicio['ok']) {
+                    return ['ok' => false, 'publicacion' => null, 'video' => null, 'error' => 'Escena '.($orden + 1).': '.$inicio['error']];
                 }
                 $escenas[] = [
-                    'orden'            => $orden,
-                    'prompt'           => $promptEscena,
-                    'operation_name'   => $inicio['operationName'],
-                    'estado'           => 'generando',
+                    'orden' => $orden,
+                    'prompt' => $promptEscena,
+                    'operation_name' => $inicio['operationName'],
+                    'estado' => 'generando',
                     'video_bruto_path' => null,
                 ];
             }
 
             $video = PublicidadVideoIa::create([
-                'aliado_id'          => $aliado->id,
-                'prompt_video'       => implode(' / ', $prompts['prompts']),
-                'frases_texto'       => $frases,
-                'modelo'             => $modelo,
-                'duracion_seg'       => $duracion,
+                'aliado_id' => $aliado->id,
+                'prompt_video' => implode(' / ', $prompts['prompts']),
+                'frases_texto' => $frases,
+                'modelo' => $modelo,
+                'duracion_seg' => $duracion,
                 'costo_estimado_usd' => VeoVideoGenerator::costoEstimadoUsd($modelo, $duracion),
-                'escenas'            => $escenas,
-                'autopilot_payload'  => $payload,
-                'creado_por'         => null,
+                'escenas' => $escenas,
+                'autopilot_payload' => $payload,
+                'creado_por' => null,
             ]);
 
             return ['ok' => true, 'publicacion' => null, 'video' => $video, 'error' => null];
         }
 
-        $promptResultado = CopiaIaGenerator::generarPromptVideo($aliado->id, $aliado->nombre, $contexto);
-        if (!$promptResultado['ok']) {
+        $promptResultado = CopiaIaGenerator::generarPromptVideo($aliado->id, $aliado->nombre, $contexto, $precioEnPantalla);
+        if (! $promptResultado['ok']) {
             return ['ok' => false, 'publicacion' => null, 'video' => null, 'error' => $promptResultado['error']];
         }
 
         $inicio = VeoVideoGenerator::iniciar($iaConfig->gemini_api_key, $promptResultado['prompt'], $modelo, '9:16', '720p', $duracion);
-        if (!$inicio['ok']) {
+        if (! $inicio['ok']) {
             return ['ok' => false, 'publicacion' => null, 'video' => null, 'error' => $inicio['error']];
         }
 
         $video = PublicidadVideoIa::create([
-            'aliado_id'          => $aliado->id,
-            'prompt_video'       => $promptResultado['prompt'],
-            'frases_texto'       => $frases,
+            'aliado_id' => $aliado->id,
+            'prompt_video' => $promptResultado['prompt'],
+            'frases_texto' => $frases,
             // Sin diálogo el clip queda mudo salvo el ambiente, y un Reel mudo se salta: se
             // marca para ponerle narración en off cuando Veo termine.
-            'narrar'             => !($promptResultado['dialogo'] ?? true),
-            'modelo'             => $modelo,
-            'duracion_seg'       => $duracion,
+            'narrar' => ! ($promptResultado['dialogo'] ?? true),
+            'modelo' => $modelo,
+            'duracion_seg' => $duracion,
             'costo_estimado_usd' => VeoVideoGenerator::costoEstimadoUsd($modelo, $duracion),
-            'operation_name'     => $inicio['operationName'],
-            'autopilot_payload'  => $payload,
-            'creado_por'         => null,
+            'operation_name' => $inicio['operationName'],
+            'autopilot_payload' => $payload,
+            'creado_por' => null,
         ]);
 
         return ['ok' => true, 'publicacion' => null, 'video' => $video, 'error' => null];
@@ -343,10 +348,13 @@ class AutopilotGenerator
 
         $porTema = $piezas->groupBy('tema')->map(function ($grupo) use ($aliadoId) {
             $interacciones = $grupo->sum(fn ($p) => $p->metricas->sum(fn ($m) => $m->interacciones()));
-            $alcance       = $grupo->sum(fn ($p) => $p->metricas->sum('alcance'));
+            $alcance = $grupo->sum(fn ($p) => $p->metricas->sum('alcance'));
             // Leads del formulario web en las 48h siguientes — correlación, no certeza.
             $leadsWeb = $grupo->sum(function ($p) use ($aliadoId) {
-                if (!$p->publicada_at) return 0;
+                if (! $p->publicada_at) {
+                    return 0;
+                }
+
                 return \App\Models\PaginaLead::where('aliado_id', $aliadoId)
                     ->whereBetween('created_at', [$p->publicada_at, $p->publicada_at->copy()->addHours(48)])
                     ->count();
@@ -357,18 +365,17 @@ class AutopilotGenerator
             $estilos = $grupo->pluck('estilo_imagen')->filter()->unique()->implode('/');
 
             return [
-                'piezas'            => $grupo->count(),
-                'interacciones'     => $interacciones,
-                'alcance'           => $alcance,
-                'leads_web'         => $leadsWeb,
+                'piezas' => $grupo->count(),
+                'interacciones' => $interacciones,
+                'alcance' => $alcance,
+                'leads_web' => $leadsWeb,
                 'conversaciones_wa' => $conversacionesWa,
-                'estilos'           => $estilos ?: 'n/d',
+                'estilos' => $estilos ?: 'n/d',
             ];
         })->sortByDesc(fn ($d) => $d['conversaciones_wa'] * 3 + $d['interacciones']);
 
-        $lineas = $porTema->map(fn ($datos, $tema) =>
-            "- [{$tema}] ({$datos['estilos']}): {$datos['interacciones']} interacciones, alcance {$datos['alcance']}, "
-            . "{$datos['conversaciones_wa']} conversaciones de WhatsApp atribuidas (real), {$datos['leads_web']} leads web en 48h ({$datos['piezas']} pieza(s))"
+        $lineas = $porTema->map(fn ($datos, $tema) => "- [{$tema}] ({$datos['estilos']}): {$datos['interacciones']} interacciones, alcance {$datos['alcance']}, "
+            ."{$datos['conversaciones_wa']} conversaciones de WhatsApp atribuidas (real), {$datos['leads_web']} leads web en 48h ({$datos['piezas']} pieza(s))"
         )->implode("\n");
 
         return "\nRENDIMIENTO REAL DE PIEZAS ANTERIORES (ordenado de mejor a peor — prioriza los ángulos y estilos que más interacciones y leads atraen, pero sigue variando el contenido):\n{$lineas}";
@@ -383,18 +390,19 @@ class AutopilotGenerator
         $listaPlanes = collect($planes)
             ->map(function ($p) {
                 $servicios = collect([
-                    'incluye_eps'     => 'EPS',
-                    'incluye_arl'     => 'ARL',
+                    'incluye_eps' => 'EPS',
+                    'incluye_arl' => 'ARL',
                     'incluye_pension' => 'Pensión',
-                    'incluye_caja'    => 'Caja de compensación',
-                ])->filter(fn ($nombre, $clave) => !empty($p['componentes'][$clave]))->values()->implode(', ');
+                    'incluye_caja' => 'Caja de compensación',
+                ])->filter(fn ($nombre, $clave) => ! empty($p['componentes'][$clave]))->values()->implode(', ');
 
-                $linea = "- {$p['nombre']} (cubre: {$servicios}): primer mes (solo afiliación) \$" . number_format($p['costo_afiliacion'], 0, ',', '.')
-                    . ' COP · desde el mes siguiente $' . number_format($p['valor_mensual'], 0, ',', '.') . ' COP/mes';
+                $linea = "- {$p['nombre']} (cubre: {$servicios}): primer mes (solo afiliación) \$".number_format($p['costo_afiliacion'], 0, ',', '.')
+                    .' COP · desde el mes siguiente $'.number_format($p['valor_mensual'], 0, ',', '.').' COP/mes';
                 if ($p['en_promocion']) {
-                    $linea .= ' · 🏷️ EN PROMOCIÓN (precio normal de afiliación $' . number_format($p['costo_afiliacion_normal'], 0, ',', '.')
-                        . ' COP, válida hasta ' . \Carbon\Carbon::parse($p['promocion_vence'])->translatedFormat('d \d\e F') . ')';
+                    $linea .= ' · 🏷️ EN PROMOCIÓN (precio normal de afiliación $'.number_format($p['costo_afiliacion_normal'], 0, ',', '.')
+                        .' COP, válida hasta '.\Carbon\Carbon::parse($p['promocion_vence'])->translatedFormat('d \d\e F').')';
                 }
+
                 return $linea;
             })
             ->implode("\n") ?: '- (sin planes configurados: no menciones precios)';
@@ -405,11 +413,11 @@ class AutopilotGenerator
         // y anunciar el nivel 1 a un obrero de andamio es prometer lo que no se va a cobrar.
         $arl1 = CotizacionPublicaService::cotizarGestionArlConDescuento($aliado->id, 1);
         $arl5 = CotizacionPublicaService::cotizarGestionArlConDescuento($aliado->id, 5);
-        if (!empty($arl1['valor_descuento'])) {
-            $listaPlanes .= "\n- Solo ARL (cubre: ARL): desde $" . number_format($arl1['valor_descuento'], 0, ',', '.')
-                . ' COP/mes en riesgo I (oficios de oficina) y hasta $' . number_format($arl5['valor_descuento'], 0, ',', '.')
-                . ' COP/mes en riesgo V (construcción, alturas). Si la pieza menciona este precio, SIEMPRE con la palabra'
-                . ' "desde" y sin prometer el valor bajo a oficios de riesgo alto.';
+        if (! empty($arl1['valor_descuento'])) {
+            $listaPlanes .= "\n- Solo ARL (cubre: ARL): desde $".number_format($arl1['valor_descuento'], 0, ',', '.')
+                .' COP/mes en riesgo I (oficios de oficina) y hasta $'.number_format($arl5['valor_descuento'], 0, ',', '.')
+                .' COP/mes en riesgo V (construcción, alturas). Si la pieza menciona este precio, SIEMPRE con la palabra'
+                .' "desde" y sin prometer el valor bajo a oficios de riesgo alto.';
         }
 
         $hayPromocion = collect($planes)->contains('en_promocion', true);
@@ -422,7 +430,7 @@ class AutopilotGenerator
             ->orderByDesc('created_at')
             ->limit(30)
             ->get(['titulo', 'tema'])
-            ->map(fn ($p) => '- ' . ($p->tema ? "[{$p->tema}] " : '') . $p->titulo)
+            ->map(fn ($p) => '- '.($p->tema ? "[{$p->tema}] " : '').$p->titulo)
             ->implode("\n") ?: '- (aún no hay publicaciones)';
 
         $rendimiento = self::resumenRendimiento($aliado->id);
@@ -465,11 +473,11 @@ class AutopilotGenerator
         }
 
         $catalogo = implode("\n", array_map(fn ($t) => "- {$t}", array_merge($disponibles, $temaPromocion)));
-        $color    = $aliado->color_primario ?: '#2563eb';
-        $fecha    = now('America/Bogota')->locale('es')->isoFormat('dddd D [de] MMMM [de] YYYY');
+        $color = $aliado->color_primario ?: '#2563eb';
+        $fecha = now('America/Bogota')->locale('es')->isoFormat('dddd D [de] MMMM [de] YYYY');
 
         $instruccionEstilo = $estilo === \App\Models\AutopilotConfig::ESTILO_FOTORREALISTA
-            ? "Pide una FOTOGRAFÍA PROFESIONAL FOTORREALISTA (no ilustración, no dibujo), formato VERTICAL 4:5 (para el feed de Instagram/Facebook en celular, NUNCA panorámica): personas colombianas reales de aspecto auténtico y diverso, PLANO CERCANO (medio cuerpo o retrato, no de cuerpo entero ni de lejos) para que se sientan las expresiones, mirando a cámara o en un momento genuino de conexión (una sonrisa real, una mano en el hombro, un apretón de manos, una conversación cercana entre asesor y cliente) — nada de poses rígidas tipo banco de imágenes. Luz cálida (dorada/natural, no fría ni clínica), profundidad de campo baja, look editorial cercano y humano, transmitiendo confianza y calidez, no corporativo distante."
+            ? 'Pide una FOTOGRAFÍA PROFESIONAL FOTORREALISTA (no ilustración, no dibujo), formato VERTICAL 4:5 (para el feed de Instagram/Facebook en celular, NUNCA panorámica): personas colombianas reales de aspecto auténtico y diverso, PLANO CERCANO (medio cuerpo o retrato, no de cuerpo entero ni de lejos) para que se sientan las expresiones, mirando a cámara o en un momento genuino de conexión (una sonrisa real, una mano en el hombro, un apretón de manos, una conversación cercana entre asesor y cliente) — nada de poses rígidas tipo banco de imágenes. Luz cálida (dorada/natural, no fría ni clínica), profundidad de campo baja, look editorial cercano y humano, transmitiendo confianza y calidez, no corporativo distante.'
             : "Pide una ilustración digital plana moderna (flat design vector, NO fotografía), formato VERTICAL 4:5 (para el feed de Instagram/Facebook en celular), paleta CÁLIDA basada en {$color} combinada con tonos piel/beige/dorado suaves (no solo azul corporativo frío), personas colombianas diversas con expresiones genuinas y cercanas (sonrisas reales, contacto visual, gestos de cercanía como un abrazo o una mano en el hombro) en plano cercano — evita figuras rígidas o distantes tipo clipart genérico, estilo limpio pero cálido, con espacio en blanco.";
 
         $prompt = <<<PROMPT
@@ -504,23 +512,23 @@ PROMPT;
                 []
             );
         } catch (\Throwable $e) {
-            return ['ok' => false, 'tema' => null, 'titulo' => null, 'copy' => null, 'prompt_imagen' => null, 'error' => 'IA de texto: ' . $e->getMessage()];
+            return ['ok' => false, 'tema' => null, 'titulo' => null, 'copy' => null, 'prompt_imagen' => null, 'error' => 'IA de texto: '.$e->getMessage()];
         }
 
         $texto = trim(preg_replace('/^```(?:json)?|```$/m', '', trim($resp['content'] ?? '')));
         $datos = json_decode($texto, true);
 
-        if (!is_array($datos) || empty($datos['titulo']) || empty($datos['copy']) || empty($datos['prompt_imagen'])) {
+        if (! is_array($datos) || empty($datos['titulo']) || empty($datos['copy']) || empty($datos['prompt_imagen'])) {
             return ['ok' => false, 'tema' => null, 'titulo' => null, 'copy' => null, 'prompt_imagen' => null, 'error' => 'La IA no devolvió un concepto utilizable.'];
         }
 
         return [
-            'ok'            => true,
-            'tema'          => mb_substr((string) ($datos['tema'] ?? ''), 0, 100) ?: null,
-            'titulo'        => mb_substr((string) $datos['titulo'], 0, 120),
-            'copy'          => mb_substr((string) $datos['copy'], 0, 2000),
+            'ok' => true,
+            'tema' => mb_substr((string) ($datos['tema'] ?? ''), 0, 100) ?: null,
+            'titulo' => mb_substr((string) $datos['titulo'], 0, 120),
+            'copy' => mb_substr((string) $datos['copy'], 0, 2000),
             'prompt_imagen' => mb_substr((string) $datos['prompt_imagen'], 0, 1000),
-            'error'         => null,
+            'error' => null,
         ];
     }
 }

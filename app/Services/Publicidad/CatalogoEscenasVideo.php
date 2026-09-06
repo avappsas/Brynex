@@ -30,7 +30,7 @@ class CatalogoEscenasVideo
     {
         return [
             'arl' => [
-                'claves'  => ['arl', 'riesgo', 'accidente', 'laboral', 'protección laboral'],
+                'claves' => ['arl', 'riesgo', 'accidente', 'laboral', 'protección laboral'],
                 'oficios' => [
                     'un obrero de construcción con casco y chaleco reflectivo sobre un andamio',
                     'un mensajero domiciliario en moto abriéndose paso entre el tráfico de la ciudad',
@@ -41,12 +41,25 @@ class CatalogoEscenasVideo
                     'una estilista de pie todo el día atendiendo clientas en su salón',
                     'un vendedor ambulante empujando su carreta bajo el sol',
                 ],
+                // Los únicos de la lista que cotizan RIESGO I. La tarifa de ARL se multiplica
+                // por tres según el oficio, así que una pieza que anuncia el precio de entrada
+                // ($42.600) solo puede mostrar a alguien que de verdad lo pagaría: la #71
+                // enseñaba a un pintor colgado de un rascacielos —riesgo IV o V, cerca de
+                // $129.300— con el precio de oficina sobreimpreso.
+                'oficios_riesgo_i' => [
+                    'una estilista de pie todo el día atendiendo clientas en su salón',
+                    'un vendedor ambulante empujando su carreta bajo el sol',
+                    'una manicurista trabajando concentrada en su local',
+                    'un tendero de barrio atendiendo su negocio detrás del mostrador',
+                    'una señora que vende almuerzos caseros, sirviendo en su cocina',
+                    'un domiciliario joven descansando un momento en el andén con su bicicleta',
+                ],
                 'emocion' => 'la conciencia de que el cuerpo es la herramienta de trabajo y un accidente lo para todo',
                 'tension' => 'si hoy te pasa algo trabajando, ¿quién responde? Sin ARL, nadie.',
             ],
 
             'eps' => [
-                'claves'  => ['eps', 'salud', 'médic', 'enferm', 'familia', 'beneficiario'],
+                'claves' => ['eps', 'salud', 'médic', 'enferm', 'familia', 'beneficiario'],
                 'oficios' => [
                     'una madre cabeza de familia con su hijo pequeño en la sala de espera de un centro médico',
                     'un tendero de barrio atendiendo su negocio, cansado pero de buen ánimo',
@@ -60,7 +73,7 @@ class CatalogoEscenasVideo
             ],
 
             'pension' => [
-                'claves'  => ['pensión', 'pension', 'futuro', 'vejez', 'semanas', 'ahorro'],
+                'claves' => ['pensión', 'pension', 'futuro', 'vejez', 'semanas', 'ahorro'],
                 'oficios' => [
                     'un carpintero de unos 50 años lijando una pieza en su taller, mirada serena',
                     'un taxista veterano al volante, esperando en un semáforo, pensativo',
@@ -73,7 +86,7 @@ class CatalogoEscenasVideo
             ],
 
             'caja' => [
-                'claves'  => ['caja', 'compensación', 'subsidio', 'recreación', 'bono'],
+                'claves' => ['caja', 'compensación', 'subsidio', 'recreación', 'bono'],
                 'oficios' => [
                     'una familia colombiana disfrutando un día de piscina en un club familiar',
                     'unos papás llevando a sus hijos a un parque recreativo un domingo',
@@ -85,7 +98,7 @@ class CatalogoEscenasVideo
             ],
 
             'general' => [
-                'claves'  => [],
+                'claves' => [],
                 'oficios' => [
                     'un independiente trabajando en su oficio con las manos, concentrado',
                     'una emprendedora atendiendo su negocio propio',
@@ -103,9 +116,13 @@ class CatalogoEscenasVideo
      * normalizado; si el tema no menciona ninguna cobertura concreta (por ejemplo "años de
      * experiencia acompañando afiliados"), cae en 'general', que sirve para cualquier caso.
      *
+     * @param  bool  $soloRiesgoI  Restringe el oficio a los que cotizan riesgo I. Se usa cuando
+     *                             la pieza va a mostrar el precio de entrada de ARL: anunciar
+     *                             $42.600 sobre un obrero de andamio es prometer un tercio de
+     *                             lo que se le va a cobrar.
      * @return array{oficio: string, emocion: string, tension: string, bloque: string}
      */
-    public static function paraContexto(string $contexto): array
+    public static function paraContexto(string $contexto, bool $soloRiesgoI = false): array
     {
         $t = mb_strtolower($contexto, 'UTF-8');
         $bloques = self::bloques();
@@ -113,11 +130,15 @@ class CatalogoEscenasVideo
         foreach ($bloques as $nombre => $def) {
             foreach ($def['claves'] as $clave) {
                 if (str_contains($t, $clave)) {
+                    $oficios = $soloRiesgoI && ! empty($def['oficios_riesgo_i'])
+                        ? $def['oficios_riesgo_i']
+                        : $def['oficios'];
+
                     return [
-                        'oficio'  => $def['oficios'][array_rand($def['oficios'])],
+                        'oficio' => $oficios[array_rand($oficios)],
                         'emocion' => $def['emocion'],
                         'tension' => $def['tension'],
-                        'bloque'  => $nombre,
+                        'bloque' => $nombre,
                     ];
                 }
             }
@@ -126,10 +147,10 @@ class CatalogoEscenasVideo
         $g = $bloques['general'];
 
         return [
-            'oficio'  => $g['oficios'][array_rand($g['oficios'])],
+            'oficio' => $g['oficios'][array_rand($g['oficios'])],
             'emocion' => $g['emocion'],
             'tension' => $g['tension'],
-            'bloque'  => 'general',
+            'bloque' => 'general',
         ];
     }
 }

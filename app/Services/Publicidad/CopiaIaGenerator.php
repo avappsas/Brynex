@@ -26,11 +26,11 @@ class CopiaIaGenerator
         }
 
         $prompt = "Eres redactor publicitario de {$nombreAliado}, una agencia de afiliación a seguridad social en Colombia "
-            . "(EPS, ARL, pensión, caja de compensación). Escribe {$cantidad} variantes CORTAS de texto publicitario "
-            . "(máximo 220 caracteres cada una, español colombiano, tono cercano y profesional, sin emojis excesivos, "
-            . "sin inventar precios ni cifras) para una pieza de tipo \"{$tipoPieza}\". Contexto: {$contexto}. "
-            . 'Responde ÚNICAMENTE con un array JSON de strings, sin texto adicional ni bloque de código. '
-            . 'Ejemplo de formato: ["texto 1", "texto 2", "texto 3"]';
+            ."(EPS, ARL, pensión, caja de compensación). Escribe {$cantidad} variantes CORTAS de texto publicitario "
+            .'(máximo 220 caracteres cada una, español colombiano, tono cercano y profesional, sin emojis excesivos, '
+            ."sin inventar precios ni cifras) para una pieza de tipo \"{$tipoPieza}\". Contexto: {$contexto}. "
+            .'Responde ÚNICAMENTE con un array JSON de strings, sin texto adicional ni bloque de código. '
+            .'Ejemplo de formato: ["texto 1", "texto 2", "texto 3"]';
 
         try {
             $provider = IaProviderFactory::make($credenciales['proveedor']);
@@ -42,7 +42,7 @@ class CopiaIaGenerator
                 []
             );
         } catch (\Throwable $e) {
-            return ['ok' => false, 'variantes' => [], 'error' => 'Error al generar el texto: ' . $e->getMessage()];
+            return ['ok' => false, 'variantes' => [], 'error' => 'Error al generar el texto: '.$e->getMessage()];
         }
 
         $texto = trim($resp['content'] ?? '');
@@ -50,7 +50,7 @@ class CopiaIaGenerator
 
         $variantes = json_decode($texto, true);
 
-        if (!is_array($variantes) || empty($variantes)) {
+        if (! is_array($variantes) || empty($variantes)) {
             return $texto !== ''
                 ? ['ok' => true, 'variantes' => [$texto], 'error' => null]
                 : ['ok' => false, 'variantes' => [], 'error' => 'La IA no devolvió texto utilizable.'];
@@ -68,8 +68,23 @@ class CopiaIaGenerator
      *
      * @return array{ok: bool, prompt: ?string, dialogo: bool, error: ?string}
      */
-    public static function generarPromptVideo(int $aliadoId, string $nombreAliado, string $contexto): array
+    /**
+     * ¿El precio que va a salir en pantalla es el piso de ARL (riesgo I)?
+     *
+     * Solo esa cifra obliga a cuidar el oficio de la escena: los precios de plan no dependen
+     * del nivel de riesgo, así que ahí cualquier oficio es honesto.
+     */
+    private static function esPrecioDeEntradaArl(?string $precio): bool
     {
+        return $precio !== null && str_contains(mb_strtolower($precio, 'UTF-8'), 'arl desde');
+    }
+
+    public static function generarPromptVideo(
+        int $aliadoId,
+        string $nombreAliado,
+        string $contexto,
+        ?string $precioEnPantalla = null
+    ): array {
         $config = IaConfiguracionAliado::paraAliado($aliadoId);
         $credenciales = $config->credencialesEfectivas();
 
@@ -79,7 +94,13 @@ class CopiaIaGenerator
 
         // La escena sale del tema: un anuncio de ARL tiene que verse en el andamio o en la
         // moto, no en una oficina. Ver CatalogoEscenasVideo.
-        $escena = CatalogoEscenasVideo::paraContexto($contexto);
+        //
+        // Con una excepción: si la pieza va a llevar el precio de ENTRADA de ARL en pantalla,
+        // el oficio se restringe a los de riesgo I. La tarifa se triplica según el riesgo, y
+        // la pieza #71 salió anunciando $42.600 sobre un pintor colgado de un rascacielos
+        // —que paga cerca de $129.300—. Quien escribía por esa pieza llegaba esperando pagar
+        // un tercio de lo suyo.
+        $escena = CatalogoEscenasVideo::paraContexto($contexto, self::esPrecioDeEntradaArl($precioEnPantalla));
 
         // Y la FORMA de contarlo rota, en vez de ser siempre un testimonio a cámara. Las
         // frases en pantalla ya cargan el mensaje, así que un video sin diálogo comunica
@@ -91,34 +112,34 @@ class CopiaIaGenerator
         // cuando de verdad hay alguien pronunciando algo.
         $instruccionDialogo = $formato['dialogo']
             ? 'Incluye TEXTUAL y entre comillas, dentro del mismo prompt, la frase EXACTA que dice en VOZ ALTA en '
-              . 'ESPAÑOL COLOMBIANO (no en inglés): corta (máx. 15 palabras), natural, hablada como habla la gente, '
-              . "que toque esa necesidad concreta y se relacione con: {$contexto}. No un eslogan: algo que la persona "
-              . 'diría de verdad — una pregunta incómoda, una confesión ("yo pensaba que..."), un alivio ("por fin..."). '
-              . "\n\n" . PronunciacionEsp::reglaParaPrompt($nombreAliado)
+              .'ESPAÑOL COLOMBIANO (no en inglés): corta (máx. 15 palabras), natural, hablada como habla la gente, '
+              ."que toque esa necesidad concreta y se relacione con: {$contexto}. No un eslogan: algo que la persona "
+              .'diría de verdad — una pregunta incómoda, una confesión ("yo pensaba que..."), un alivio ("por fin..."). '
+              ."\n\n".PronunciacionEsp::reglaParaPrompt($nombreAliado)
             : 'NADIE HABLA en este video: no incluyas ninguna frase, ni diálogo, ni voz en off, ni gente mirando a '
-              . 'la cámara. El mensaje lo lleva el texto que se sobrepone después, así que el clip solo tiene que '
-              . 'mostrar la escena y transmitir la emoción con la imagen. Describe el sonido ambiente real del lugar '
-              . '(la calle, el taller, las herramientas), nunca música ni locución.';
+              .'la cámara. El mensaje lo lleva el texto que se sobrepone después, así que el clip solo tiene que '
+              .'mostrar la escena y transmitir la emoción con la imagen. Describe el sonido ambiente real del lugar '
+              .'(la calle, el taller, las herramientas), nunca música ni locución.';
 
         $prompt = "Eres director creativo de anuncios en video para {$nombreAliado}, una agencia de afiliación a seguridad social "
-            . 'en Colombia (EPS, ARL, pensión, caja de compensación). Escribe UN SOLO prompt para un modelo de IA de '
-            . 'texto-a-video (Veo 3.1) que produzca un video LLAMATIVO de 8 segundos.' . "\n\n"
+            .'en Colombia (EPS, ARL, pensión, caja de compensación). Escribe UN SOLO prompt para un modelo de IA de '
+            .'texto-a-video (Veo 3.1) que produzca un video LLAMATIVO de 8 segundos.'."\n\n"
 
-            . "FORMA DE CONTARLO — es OBLIGATORIA, no la cambies ({$formato['nombre']}): {$formato['direccion']}" . "\n\n"
+            ."FORMA DE CONTARLO — es OBLIGATORIA, no la cambies ({$formato['nombre']}): {$formato['direccion']}"."\n\n"
 
-            . "PROTAGONISTA Y LUGAR (respétalo, es lo que hace que el espectador se reconozca): {$escena['oficio']}. "
-            . 'Tiene que verse EN SU OFICIO, con la ropa, las herramientas y el entorno reales de ese trabajo — nada de '
-            . 'oficinas genéricas ni gente de saco y corbata. Aspecto auténtico de colombiano de a pie, no modelo de '
-            . 'banco de imágenes.' . "\n\n"
+            ."PROTAGONISTA Y LUGAR (respétalo, es lo que hace que el espectador se reconozca): {$escena['oficio']}. "
+            .'Tiene que verse EN SU OFICIO, con la ropa, las herramientas y el entorno reales de ese trabajo — nada de '
+            .'oficinas genéricas ni gente de saco y corbata. Aspecto auténtico de colombiano de a pie, no modelo de '
+            .'banco de imágenes.'."\n\n"
 
-            . "LO QUE TIENE QUE REMOVER: {$escena['emocion']}. La tensión de fondo es esta: {$escena['tension']}" . "\n\n"
+            ."LO QUE TIENE QUE REMOVER: {$escena['emocion']}. La tensión de fondo es esta: {$escena['tension']}"."\n\n"
 
-            . 'FORMATO DEL PROMPT: describe en inglés (los modelos de video entienden mejor la dirección de escena en '
-            . 'inglés) quién es la persona, dónde está y qué está haciendo con las manos, la cámara y la luz. '
-            . $instruccionDialogo . "\n\n"
+            .'FORMATO DEL PROMPT: describe en inglés (los modelos de video entienden mejor la dirección de escena en '
+            .'inglés) quién es la persona, dónde está y qué está haciendo con las manos, la cámara y la luz. '
+            .$instruccionDialogo."\n\n"
 
-            . 'Máximo 80 palabras en total. NO menciones texto en pantalla, subtítulos, logos ni marcas — eso se agrega '
-            . 'después por separado. Responde ÚNICAMENTE con el prompt en sí, sin explicación, sin bloque de código.';
+            .'Máximo 80 palabras en total. NO menciones texto en pantalla, subtítulos, logos ni marcas — eso se agrega '
+            .'después por separado. Responde ÚNICAMENTE con el prompt en sí, sin explicación, sin bloque de código.';
 
         try {
             $provider = IaProviderFactory::make($credenciales['proveedor']);
@@ -130,7 +151,7 @@ class CopiaIaGenerator
                 []
             );
         } catch (\Throwable $e) {
-            return ['ok' => false, 'prompt' => null, 'dialogo' => true, 'error' => 'Error al generar el prompt: ' . $e->getMessage()];
+            return ['ok' => false, 'prompt' => null, 'dialogo' => true, 'error' => 'Error al generar el prompt: '.$e->getMessage()];
         }
 
         $texto = trim($resp['content'] ?? '');
@@ -163,29 +184,29 @@ class CopiaIaGenerator
         }
 
         $rolEscenas = $numEscenas === 3
-            ? "1) GANCHO/AUTORIDAD: alguien explicando el servicio con autoridad y calidez, CON diálogo hablado. "
-              . "2) PROCESO/FACILIDAD: una escena visual que transmita simplicidad/rapidez del trámite — normalmente sin "
-              . 'diálogo, salvo que una frase corta ayude a entender el proceso. '
-              . '3) PAGO EMOCIONAL: personas disfrutando el resultado/beneficio final — puede tener una frase corta y '
-              . 'natural (no forzada) que refuerce el valor recibido, o ir sin diálogo si la imagen ya lo transmite sola.'
-            : "1) GANCHO/AUTORIDAD: alguien explicando el servicio con autoridad y calidez, CON diálogo hablado. "
-              . '2) PAGO EMOCIONAL: personas disfrutando el resultado/beneficio final — puede tener una frase corta y '
-              . 'natural que refuerce el valor recibido, o ir sin diálogo si la imagen ya lo transmite sola.';
+            ? '1) GANCHO/AUTORIDAD: alguien explicando el servicio con autoridad y calidez, CON diálogo hablado. '
+              .'2) PROCESO/FACILIDAD: una escena visual que transmita simplicidad/rapidez del trámite — normalmente sin '
+              .'diálogo, salvo que una frase corta ayude a entender el proceso. '
+              .'3) PAGO EMOCIONAL: personas disfrutando el resultado/beneficio final — puede tener una frase corta y '
+              .'natural (no forzada) que refuerce el valor recibido, o ir sin diálogo si la imagen ya lo transmite sola.'
+            : '1) GANCHO/AUTORIDAD: alguien explicando el servicio con autoridad y calidez, CON diálogo hablado. '
+              .'2) PAGO EMOCIONAL: personas disfrutando el resultado/beneficio final — puede tener una frase corta y '
+              .'natural que refuerce el valor recibido, o ir sin diálogo si la imagen ya lo transmite sola.';
 
         $prompt = "Eres director creativo de anuncios en video para {$nombreAliado}, una agencia de afiliación a seguridad social "
-            . "en Colombia (EPS, ARL, pensión, caja de compensación). Vas a escribir {$numEscenas} prompts en inglés para un "
-            . "modelo de texto-a-video (Veo 3.1), uno por cada escena de un anuncio de {$numEscenas} cortes, sobre: {$contexto}. "
-            . "Cada escena dura 8 segundos. Roles de cada escena en orden: {$rolEscenas} "
-            . 'La escena de gancho/autoridad SIEMPRE lleva diálogo. Las demás escenas pueden o no llevar diálogo según '
-            . 'convenga — cuando una escena SÍ tenga diálogo, inclúyelo TEXTUAL y entre comillas dentro de su prompt, en '
-            . 'ESPAÑOL COLOMBIANO (máx. 15 palabras), natural para ese momento de la historia. No describas texto en '
-            . 'pantalla, subtítulos, logos, ni marcas en ninguna escena (eso se agrega después por separado). Cada prompt '
-            . 'máximo 60 palabras.' . "\n\n"
+            ."en Colombia (EPS, ARL, pensión, caja de compensación). Vas a escribir {$numEscenas} prompts en inglés para un "
+            ."modelo de texto-a-video (Veo 3.1), uno por cada escena de un anuncio de {$numEscenas} cortes, sobre: {$contexto}. "
+            ."Cada escena dura 8 segundos. Roles de cada escena en orden: {$rolEscenas} "
+            .'La escena de gancho/autoridad SIEMPRE lleva diálogo. Las demás escenas pueden o no llevar diálogo según '
+            .'convenga — cuando una escena SÍ tenga diálogo, inclúyelo TEXTUAL y entre comillas dentro de su prompt, en '
+            .'ESPAÑOL COLOMBIANO (máx. 15 palabras), natural para ese momento de la historia. No describas texto en '
+            .'pantalla, subtítulos, logos, ni marcas en ninguna escena (eso se agrega después por separado). Cada prompt '
+            .'máximo 60 palabras.'."\n\n"
             // Faltaba aquí: los videos de más de 8 segundos se arman por escenas y salían sin
             // ninguna regla de pronunciación, así que las siglas se leían deletreadas.
-            . PronunciacionEsp::reglaParaPrompt($nombreAliado) . "\n\n"
-            . 'Responde ÚNICAMENTE con un array JSON de strings en el orden de las escenas, sin texto '
-            . 'adicional ni bloque de código. Ejemplo de formato: ["prompt escena 1", "prompt escena 2"]';
+            .PronunciacionEsp::reglaParaPrompt($nombreAliado)."\n\n"
+            .'Responde ÚNICAMENTE con un array JSON de strings en el orden de las escenas, sin texto '
+            .'adicional ni bloque de código. Ejemplo de formato: ["prompt escena 1", "prompt escena 2"]';
 
         try {
             $provider = IaProviderFactory::make($credenciales['proveedor']);
@@ -197,7 +218,7 @@ class CopiaIaGenerator
                 []
             );
         } catch (\Throwable $e) {
-            return ['ok' => false, 'prompts' => [], 'error' => 'Error al generar los prompts: ' . $e->getMessage()];
+            return ['ok' => false, 'prompts' => [], 'error' => 'Error al generar los prompts: '.$e->getMessage()];
         }
 
         $texto = trim($resp['content'] ?? '');
@@ -205,8 +226,8 @@ class CopiaIaGenerator
 
         $prompts = json_decode($texto, true);
 
-        if (!is_array($prompts) || count($prompts) !== $numEscenas) {
-            return ['ok' => false, 'prompts' => [], 'error' => 'La IA no devolvió las ' . $numEscenas . ' escenas esperadas.'];
+        if (! is_array($prompts) || count($prompts) !== $numEscenas) {
+            return ['ok' => false, 'prompts' => [], 'error' => 'La IA no devolvió las '.$numEscenas.' escenas esperadas.'];
         }
 
         return ['ok' => true, 'prompts' => array_values(array_map('strval', $prompts)), 'error' => null];
@@ -251,18 +272,18 @@ class CopiaIaGenerator
 
         $cierreFrase = $conCierre
             ? '(3) la última DEJA CLARO lo fácil o rápido que es resolverlo con la marca (ej. "Te afiliamos hoy '
-              . 'mismo", "Sin filas ni papeleo"). PROHIBIDO que la última frase pida escribir, contactar, llamar o '
-              . 'mandar mensaje: el video termina con un cierre de marca que ya lo pide con el WhatsApp en pantalla, '
-              . 'y repetirlo aquí lo arruina. Ninguna de las tres frases puede contener "escríbe", "escríba", '
-              . '"contáctanos", "llámanos" ni "mándanos".'
+              .'mismo", "Sin filas ni papeleo"). PROHIBIDO que la última frase pida escribir, contactar, llamar o '
+              .'mandar mensaje: el video termina con un cierre de marca que ya lo pide con el WhatsApp en pantalla, '
+              .'y repetirlo aquí lo arruina. Ninguna de las tres frases puede contener "escríbe", "escríba", '
+              .'"contáctanos", "llámanos" ni "mándanos".'
             : '(3) la última es el llamado a la acción para afiliarse o cotizar.';
 
         $evitar = $diceElCierre
-            ? "\n\n" . 'NO REPITAS EL CIERRE. Cuatro segundos después de tus frases, el video remata con un cierre '
-              . 'de marca que ya dice esto:' . "\n  · " . implode("\n  · ", $diceElCierre) . "\n"
-              . 'Tus frases tienen que decir algo DISTINTO: ni la misma idea con otras palabras, ni las mismas '
-              . 'palabras clave. Si el cierre ya habla de mejorar cotizaciones, tú no hablas de cotizaciones; si '
-              . 'ya habla de rapidez o de no hacer papeleo, tú buscas otro ángulo.'
+            ? "\n\n".'NO REPITAS EL CIERRE. Cuatro segundos después de tus frases, el video remata con un cierre '
+              .'de marca que ya dice esto:'."\n  · ".implode("\n  · ", $diceElCierre)."\n"
+              .'Tus frases tienen que decir algo DISTINTO: ni la misma idea con otras palabras, ni las mismas '
+              .'palabras clave. Si el cierre ya habla de mejorar cotizaciones, tú no hablas de cotizaciones; si '
+              .'ya habla de rapidez o de no hacer papeleo, tú buscas otro ángulo.'
             : '';
 
         // El precio en pantalla: de 13 personas que escribieron por un anuncio sin haber visto
@@ -270,27 +291,27 @@ class CopiaIaGenerator
         // el que escribe llega precalificado en vez de a preguntar cuánto vale.
         $bloquePrecio = $precioEntrada
             ? "\n\nPRECIO EN PANTALLA — OBLIGATORIO: una de las tres frases (la segunda, salvo que quede "
-              . "forzada) tiene que llevar este precio TAL CUAL, sin redondear ni cambiarlo: \"{$precioEntrada}\". "
-              . 'Conserva la palabra "desde": el valor final depende del oficio y del salario, y sin ese "desde" '
-              . 'es una promesa que no se puede sostener. Esa frase puede pasar de 6 palabras si el precio no cabe.'
+              ."forzada) tiene que llevar este precio TAL CUAL, sin redondear ni cambiarlo: \"{$precioEntrada}\". "
+              .'Conserva la palabra "desde": el valor final depende del oficio y del salario, y sin ese "desde" '
+              .'es una promesa que no se puede sostener. Esa frase puede pasar de 6 palabras si el precio no cabe.'
             : '';
 
         $prompt = "Eres redactor publicitario de {$nombreAliado}, una agencia de afiliación a seguridad social en Colombia. "
-            . "Escribe {$cantidad} frases MUY CORTAS (máximo 6 palabras cada una, español colombiano) para animar como "
-            . 'texto en pantalla sobre un video publicitario.' . "\n\n"
-            . "Contexto: {$contexto}. La tensión que hay que tocar: {$escena['tension']}" . "\n\n"
-            . 'ORDEN OBLIGATORIO: (1) la primera GOLPEA con el problema o el miedo concreto —que el espectador piense '
-            . '"eso me puede pasar a mí"—, idealmente una pregunta o una frase incómoda; (2) la del medio muestra la '
-            . 'salida o el alivio; ' . $cierreFrase . "\n\n"
-            . 'Habla como la gente en la calle, no como un folleto: nada de "soluciones integrales", "bienestar '
-            . 'garantizado" ni "protección integral". Frases que un trabajador diría de verdad. Sin emojis, sin '
-            . 'inventar precios, sin urgencia falsa (nada de "cupos limitados" ni "solo hoy"). '
-            . 'Trata al espectador de TÚ, nunca de USTED (nada de "escríbanos", "cotice", "afíliese"): el resto de '
-            . 'la pieza tutea y mezclar los dos tratos se nota. '
-            . $evitar . "\n\n"
-            . $bloquePrecio . "\n\n"
-            . 'Responde ÚNICAMENTE con un array JSON de strings, sin texto adicional ni bloque de código. '
-            . 'Ejemplo de formato: ["frase 1", "frase 2", "frase 3"]';
+            ."Escribe {$cantidad} frases MUY CORTAS (máximo 6 palabras cada una, español colombiano) para animar como "
+            .'texto en pantalla sobre un video publicitario.'."\n\n"
+            ."Contexto: {$contexto}. La tensión que hay que tocar: {$escena['tension']}"."\n\n"
+            .'ORDEN OBLIGATORIO: (1) la primera GOLPEA con el problema o el miedo concreto —que el espectador piense '
+            .'"eso me puede pasar a mí"—, idealmente una pregunta o una frase incómoda; (2) la del medio muestra la '
+            .'salida o el alivio; '.$cierreFrase."\n\n"
+            .'Habla como la gente en la calle, no como un folleto: nada de "soluciones integrales", "bienestar '
+            .'garantizado" ni "protección integral". Frases que un trabajador diría de verdad. Sin emojis, sin '
+            .'inventar precios, sin urgencia falsa (nada de "cupos limitados" ni "solo hoy"). '
+            .'Trata al espectador de TÚ, nunca de USTED (nada de "escríbanos", "cotice", "afíliese"): el resto de '
+            .'la pieza tutea y mezclar los dos tratos se nota. '
+            .$evitar."\n\n"
+            .$bloquePrecio."\n\n"
+            .'Responde ÚNICAMENTE con un array JSON de strings, sin texto adicional ni bloque de código. '
+            .'Ejemplo de formato: ["frase 1", "frase 2", "frase 3"]';
 
         try {
             $provider = IaProviderFactory::make($credenciales['proveedor']);
@@ -302,7 +323,7 @@ class CopiaIaGenerator
                 []
             );
         } catch (\Throwable $e) {
-            return ['ok' => false, 'frases' => [], 'error' => 'Error al generar las frases: ' . $e->getMessage()];
+            return ['ok' => false, 'frases' => [], 'error' => 'Error al generar las frases: '.$e->getMessage()];
         }
 
         $texto = trim($resp['content'] ?? '');
@@ -310,7 +331,7 @@ class CopiaIaGenerator
 
         $frases = json_decode($texto, true);
 
-        if (!is_array($frases) || empty($frases)) {
+        if (! is_array($frases) || empty($frases)) {
             return ['ok' => false, 'frases' => [], 'error' => 'La IA no devolvió frases utilizables.'];
         }
 
@@ -322,7 +343,7 @@ class CopiaIaGenerator
         if ($conCierre) {
             $frases = array_values(array_filter(
                 $frases,
-                fn (string $f) => !preg_match(
+                fn (string $f) => ! preg_match(
                     '/\b(escr[ií]b|cont[áa]ctanos|cont[áa]ctenos|ll[áa]manos|ll[áa]menos|m[áa]ndanos|m[áa]ndenos|whatsapp)/iu',
                     $f
                 )
@@ -374,7 +395,7 @@ class CopiaIaGenerator
 
         $palabras = array_filter(
             preg_split('/\s+/', trim($norm), -1, PREG_SPLIT_NO_EMPTY) ?: [],
-            fn (string $p) => mb_strlen($p) > 2 && !in_array($p, $vacias, true)
+            fn (string $p) => mb_strlen($p) > 2 && ! in_array($p, $vacias, true)
         );
 
         return array_values(array_unique($palabras));
