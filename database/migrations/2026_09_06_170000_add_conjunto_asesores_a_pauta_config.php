@@ -20,7 +20,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('pauta_configs', function (Blueprint $table) {
+        Schema::table('pauta_config', function (Blueprint $table) {
             $table->string('meta_campana_asesores_id')->nullable()->after('exterior_interes_nombre');
             $table->string('meta_adset_asesores_id')->nullable()->after('meta_campana_asesores_id');
             $table->decimal('asesores_presupuesto_diario_cop', 12, 2)->nullable()->after('meta_adset_asesores_id');
@@ -29,7 +29,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::table('pauta_configs', function (Blueprint $table) {
+        Schema::table('pauta_config', function (Blueprint $table) {
             $table->dropColumn([
                 'meta_campana_asesores_id',
                 'meta_adset_asesores_id',
