@@ -36,20 +36,25 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Composer y algunos comandos de artisan escriben en $HOME; www-data no tiene uno
-# escribible, así que se le presta un directorio temporal.
-HOME_TEMPORAL="$(mktemp -d /tmp/brynex-deploy.XXXXXX)"
-chmod 777 "$HOME_TEMPORAL"
-trap 'rm -rf "$HOME_TEMPORAL"' EXIT
+WEB_HOME="$(getent passwd "$WEB_USER" | cut -d: -f6)"
 
 titulo() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 aviso()  { printf '\033[33m!! %s\033[0m\n' "$*"; }
 error()  { printf '\033[31mXX %s\033[0m\n' "$*" >&2; }
 
+# psysh (tinker) y composer escriben en $HOME/.config, y el home de www-data
+# (/var/www) es de root: sin esto, `sudo -u www-data php artisan tinker` muere
+# con "Writing to directory /var/www/.config/psysh is not allowed". Se rehace en
+# cada despliegue para que el arreglo no dependa de que alguien lo recuerde si
+# se reconstruye el servidor. Ningún vhost sirve $WEB_HOME a secas (todos
+# apuntan a subdirectorios), así que este directorio no queda expuesto por web.
+asegurar_home_web() {
+    install -d -o "$WEB_USER" -g "$WEB_USER" -m 750 "$WEB_HOME/.config"
+}
+
 # Corre un comando como el usuario de Apache para no dejar archivos de root.
 como_web() {
-    sudo -u "$WEB_USER" HOME="$HOME_TEMPORAL" XDG_CONFIG_HOME="$HOME_TEMPORAL" \
-        COMPOSER_HOME="$HOME_TEMPORAL/composer" "$@"
+    sudo -u "$WEB_USER" HOME="$WEB_HOME" "$@"
 }
 
 # ---------------------------------------------------------------- comprobaciones
@@ -121,7 +126,9 @@ commit_nuevo="$(git rev-parse HEAD)"
 
 # Si algo falla de aquí en adelante, el código ya quedó actualizado: se avisa
 # cómo devolverse en vez de hacerlo solo.
-trap 'error "Falló el despliegue. Para devolver el código: cd '"$APP_DIR"' && git reset --hard '"$commit_antes"'"; rm -rf "$HOME_TEMPORAL"' ERR
+trap 'error "Falló el despliegue. Para devolver el código: cd '"$APP_DIR"' && git reset --hard '"$commit_antes"'"' ERR
+
+asegurar_home_web
 
 titulo "Devolviendo los archivos a $WEB_USER"
 # git corre como root, así que lo que escribe queda de root y Apache pierde acceso.
@@ -158,8 +165,6 @@ fi
 supervisorctl status | sed 's/^/  /'
 
 # ------------------------------------------------------------------------ cierre
-
-trap 'rm -rf "$HOME_TEMPORAL"' EXIT
 
 titulo "Listo"
 echo "  $(git rev-parse --short "$commit_antes") -> $(git rev-parse --short "$commit_nuevo")"

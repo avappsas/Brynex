@@ -91,6 +91,17 @@ El trabajo real está en `scripts/deploy.sh`, que se envía por stdin al servido
 en vez de guardarse allá, para que nunca corra una versión desactualizada de sí
 mismo ni se reescriba a la mitad de un `git pull`.
 
+Para entrar a tinker en producción, siempre como `www-data` (nunca como root,
+que deja archivos sin escritura para Apache):
+
+```bash
+ssh netcup 'cd /var/www/brynex && sudo -u www-data php artisan tinker'
+```
+
+Eso funciona porque `/var/www/.config` es de `www-data` — sin ese directorio,
+psysh muere con *"Writing to directory /var/www/.config/psysh is not allowed"*.
+El script de despliegue lo rehace en cada corrida, así que no hay que acordarse.
+
 Tests: ver advertencia #2 arriba antes de correr `php artisan test`.
 
 ## Estructura
