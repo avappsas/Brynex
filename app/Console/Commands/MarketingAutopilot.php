@@ -27,8 +27,9 @@ class MarketingAutopilot extends Command
 
         if ($slug = $this->option('aliado')) {
             $aliado = Aliado::where('slug', $slug)->first();
-            if (!$aliado) {
+            if (! $aliado) {
                 $this->error("No existe un aliado con slug '{$slug}'.");
+
                 return self::FAILURE;
             }
             $configs = collect([AutopilotConfig::paraAliado($aliado->id)->load('aliado')]);
@@ -36,6 +37,7 @@ class MarketingAutopilot extends Command
 
         if ($configs->isEmpty()) {
             $this->info('Ningún aliado tiene el piloto automático activo.');
+
             return self::SUCCESS;
         }
 
@@ -44,8 +46,8 @@ class MarketingAutopilot extends Command
         foreach ($configs as $config) {
             $aliado = $config->aliado;
 
-            if (!$force) {
-                if (!$config->tocaHoy() || !$config->horaLlego()) {
+            if (! $force) {
+                if (! $config->tocaHoy() || ! $config->horaLlego()) {
                     continue;
                 }
                 $inicioDia = now('America/Bogota')->startOfDay();
@@ -69,13 +71,26 @@ class MarketingAutopilot extends Command
                 if ($yaGenerada || $videoDeHoy) {
                     continue;
                 }
+
+                // Freno por cola: si hay piezas esperando aprobación, no se produce más. El
+                // piloto generaba una diaria pasara lo que pasara y llegó a 32 sin revisar,
+                // 28 de ellas de más de una semana — y cada Reel se paga en Veo.
+                // El --force sí las genera: es la salida manual para cuando se quiere una
+                // pieza concreta aunque la bandeja esté llena.
+                if ($config->colaLlena()) {
+                    $this->warn("{$aliado->nombre}: {$config->pendientesSinAprobar()} pieza(s) sin aprobar "
+                        ."(tope {$config->max_pendientes_sin_aprobar}). No se genera nada hasta despejar la bandeja.");
+
+                    continue;
+                }
             }
 
             $this->info("Generando pieza del día para {$aliado->nombre}...");
             $resultado = AutopilotGenerator::generarPiezaDelDia($aliado, $config);
 
-            if (!$resultado['ok']) {
+            if (! $resultado['ok']) {
                 $this->error("❌ {$aliado->nombre}: {$resultado['error']}");
+
                 continue;
             }
 

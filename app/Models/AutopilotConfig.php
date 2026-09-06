@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class AutopilotConfig extends BaseModel
@@ -10,16 +9,21 @@ class AutopilotConfig extends BaseModel
     protected $table = 'autopilot_config';
 
     public const MODO_APROBAR = 'aprobar';
-    public const MODO_AUTO    = 'auto';
 
-    public const ESTILO_ILUSTRACION   = 'ilustracion';
+    public const MODO_AUTO = 'auto';
+
+    public const ESTILO_ILUSTRACION = 'ilustracion';
+
     public const ESTILO_FOTORREALISTA = 'fotorrealista';
-    public const ESTILO_ALTERNAR      = 'alternar';
 
-    public const FORMATO_REEL   = 'reel';
+    public const ESTILO_ALTERNAR = 'alternar';
+
+    public const FORMATO_REEL = 'reel';
+
     public const FORMATO_IMAGEN = 'imagen';
 
-    public const NIVEL_LITE     = 'lite';
+    public const NIVEL_LITE = 'lite';
+
     public const NIVEL_STANDARD = 'standard';
 
     protected $fillable = [
@@ -36,16 +40,39 @@ class AutopilotConfig extends BaseModel
         'cierre_activo',
         'cierre_anios',
         'cierre_ciudad',
+        'max_pendientes_sin_aprobar',
     ];
 
     protected $casts = [
-        'activo'         => 'boolean',
-        'dias'           => 'array',
-        'dias_flyer'     => 'array',
+        'activo' => 'boolean',
+        'dias' => 'array',
+        'dias_flyer' => 'array',
         'video_duracion' => 'integer',
-        'cierre_activo'  => 'boolean',
-        'cierre_anios'   => 'integer',
+        'cierre_activo' => 'boolean',
+        'cierre_anios' => 'integer',
+        'max_pendientes_sin_aprobar' => 'integer',
     ];
+
+    /**
+     * ¿Hay demasiadas piezas esperando aprobación como para generar otra?
+     *
+     * El piloto generaba una pieza diaria pasara lo que pasara: al 6-sep-2026 había 32 sin
+     * revisar, 28 de ellas de más de una semana. Cada Reel se paga en Veo, así que la cola no
+     * solo estorba, cuesta. Con el tope en 0 el piloto solo produce con la bandeja limpia.
+     */
+    public function colaLlena(): bool
+    {
+        $tope = (int) ($this->max_pendientes_sin_aprobar ?? 3);
+
+        return $this->pendientesSinAprobar() >= $tope;
+    }
+
+    public function pendientesSinAprobar(): int
+    {
+        return \App\Models\Publicacion::where('aliado_id', $this->aliado_id)
+            ->where('estado', \App\Models\Publicacion::ESTADO_PENDIENTE)
+            ->count();
+    }
 
     public function aliado(): BelongsTo
     {
@@ -57,8 +84,13 @@ class AutopilotConfig extends BaseModel
     {
         // Un día de flyer siempre cuenta como día activo, aunque no esté en la lista normal:
         // si no, marcar un día promocional que no esté en `dias` no publicaría nada.
-        if ($this->tocaFlyerHoy()) return true;
-        if (empty($this->dias)) return true;
+        if ($this->tocaFlyerHoy()) {
+            return true;
+        }
+        if (empty($this->dias)) {
+            return true;
+        }
+
         return in_array(now('America/Bogota')->isoWeekday(), array_map('intval', $this->dias), true);
     }
 
@@ -68,7 +100,10 @@ class AutopilotConfig extends BaseModel
      */
     public function tocaFlyerHoy(): bool
     {
-        if (empty($this->dias_flyer)) return false;
+        if (empty($this->dias_flyer)) {
+            return false;
+        }
+
         return in_array(now('America/Bogota')->isoWeekday(), array_map('intval', $this->dias_flyer), true);
     }
 
@@ -84,6 +119,7 @@ class AutopilotConfig extends BaseModel
         if ($this->estilo_imagen === self::ESTILO_ALTERNAR) {
             return random_int(0, 1) ? self::ESTILO_FOTORREALISTA : self::ESTILO_ILUSTRACION;
         }
+
         return $this->estilo_imagen ?: self::ESTILO_ILUSTRACION;
     }
 
@@ -93,7 +129,7 @@ class AutopilotConfig extends BaseModel
      */
     public function tocaReelHoy(): bool
     {
-        return !$this->tocaFlyerHoy() && ($this->formato ?? self::FORMATO_REEL) === self::FORMATO_REEL;
+        return ! $this->tocaFlyerHoy() && ($this->formato ?? self::FORMATO_REEL) === self::FORMATO_REEL;
     }
 
     /** Modelo de Veo a usar, resuelto desde la config (ver costos en la migración). */
@@ -109,12 +145,12 @@ class AutopilotConfig extends BaseModel
         return static::firstOrCreate(
             ['aliado_id' => $aliadoId],
             [
-                'activo'         => false,
-                'modo'           => self::MODO_APROBAR,
-                'hora'           => '09:00',
-                'estilo_imagen'  => self::ESTILO_ILUSTRACION,
-                'formato'        => self::FORMATO_REEL,
-                'video_nivel'    => self::NIVEL_LITE,
+                'activo' => false,
+                'modo' => self::MODO_APROBAR,
+                'hora' => '09:00',
+                'estilo_imagen' => self::ESTILO_ILUSTRACION,
+                'formato' => self::FORMATO_REEL,
+                'video_nivel' => self::NIVEL_LITE,
                 'video_duracion' => 8,
             ]
         );
