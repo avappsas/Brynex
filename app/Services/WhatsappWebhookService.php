@@ -9,6 +9,7 @@ use App\Jobs\ResolverCaptchaAdresJob;
 use App\Jobs\WhatsappDescargarMediaJob;
 use App\Jobs\WhatsappEscalarMultimediaJob;
 use App\Jobs\WhatsappResponderIaJob;
+use App\Jobs\WhatsappTranscribirAudioJob;
 use App\Models\{
     AdresChequeo,
     ConsentimientoDato,
@@ -390,7 +391,11 @@ class WhatsappWebhookService
                     Cache::put(self::claveDebounce($conversacion->id), $mensaje->id, now()->addSeconds(30));
                     WhatsappResponderIaJob::dispatch($conversacion->id, $mensaje->id)
                         ->delay(now()->addSeconds($delay));
-                } elseif (in_array($tipo, ['image', 'audio', 'document', 'video'], true)) {
+                } elseif ($tipo === 'audio') {
+                    // La nota de voz se transcribe y sigue como si fuera texto. Si no se puede,
+                    // ese job escala igual que antes: nadie se queda sin respuesta.
+                    WhatsappTranscribirAudioJob::dispatch($mensaje->id)->delay(now()->addSeconds(5));
+                } elseif (in_array($tipo, ['image', 'document', 'video'], true)) {
                     // El bot no puede leer multimedia: avisa al cliente y escala a un humano
                     // en vez de quedarse en silencio (ej. comprobantes de pago requieren revisión humana).
                     dispatch(new WhatsappEscalarMultimediaJob($conversacion->id, $tipo));
