@@ -235,6 +235,39 @@ class MarketingVideoGuion extends Command
                 .'por la administración mensual.'."\n\n"
                 .'📲 Escríbenos al '.self::WHATSAPP_ASESORES.' y cuéntanos cuántos clientes manejas.',
         ],
+        // Para quien se retiró hace meses o años. No sirve el discurso de "no te quedes sin
+        // cobertura" que se le manda al que se fue el mes pasado: este ya lleva un año sin
+        // ella y sobrevivió. Lo que lo mueve es que volver hoy cuesta poco y no le toca hacer
+        // nada. Por eso la cifra va en el video, no solo en el copy: la plantilla de
+        // reactivación sin cifra ni imagen tuvo 0 respuestas en 58 envíos, todas leídas.
+        'retirados' => [
+            'tema' => 'reactivación de clientes retirados hace meses: volver a estar afiliado es barato y sin trámite',
+            'titulo' => '¿Te retiraste hace un tiempo? Volver es más fácil de lo que crees',
+            'escenas' => [
+                'Vertical 9:16 cinematic shot. A Colombian man in his 40s in work clothes takes a break '
+                .'at his small workshop, looking at his phone with a thoughtful expression, as if '
+                .'remembering something he left pending. Warm afternoon light through a window, handheld '
+                .'camera, shallow depth of field. Ambient workshop sounds only. No text on screen, '
+                .'nobody speaks.',
+
+                'Vertical 9:16 cinematic shot. The same Colombian man back at work, relaxed and focused, '
+                .'a slight satisfied smile, his phone face down on the workbench beside him. Natural '
+                .'daylight, medium shot, shallow depth of field. Ambient sounds only. No text on screen, '
+                .'nobody speaks.',
+            ],
+            'frases' => [
+                '¿Te retiraste hace un tiempo?',
+                'Volver cuesta desde $42.600',
+            ],
+            'narracion' => 'Si estuviste afiliado con BRYGAR y te retiraste, volver es más fácil de lo que crees. '
+                .'Hoy puedes retomar tu seguridad social desde noventa y nueve mil novecientos pesos el primer mes, '
+                .'o solo aereele desde cuarenta y dos mil seiscientos. Nosotros hacemos todo el trámite: tú solo '
+                .'nos dices que sí. Escríbenos y te contamos cómo retomar.',
+            'copy' => '¿Estuviste afiliado con BRYGAR y te retiraste? Volver es más fácil de lo que crees.'."\n\n"
+                .'Hoy puedes retomar desde $99.900 el primer mes, o solo ARL desde $42.600. Nosotros hacemos todo '
+                .'el trámite.'."\n\n"
+                .'📲 Escríbenos y te contamos cómo retomar.',
+        ],
     ];
 
     public function handle(): int
