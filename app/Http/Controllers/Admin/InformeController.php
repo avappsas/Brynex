@@ -1478,7 +1478,18 @@ class InformeController extends Controller
         $saldoPlanillas    = ($totalSSMesActual - $pagadoSSReg) + $subtotalRetiros;
         $saldoSS           = $ssFuturasRegular;
 
-        // ── Incapacidades Canal 5: Con movimientos en el mes o con saldo vivo ──
+        // ── Incapacidades Canal 5: solo las que tienen algo pendiente ──────────
+        // Pendiente = descuadre entre lo que entró de la EPS y lo que salió de la
+        // caja por esa incapacidad. Los egresos del canal viven en `gastos`
+        // (neto al afiliado + 4x1000 + otros + admon), NO en abonos_incapacidades:
+        // restar solo el abono `pago_cliente` dejaba un residuo falso del tamaño
+        // de los descuentos y las incapacidades cerradas nunca desaparecían.
+        // Umbral de $1.000 para ignorar residuos de redondeo del 4x1000.
+        $tiposGastoC5 = "'pago_incapacidad','cuatropormil_incapacidad','otros_incapacidad','admon_incapacidad'";
+        $sqlEntradas  = "(SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND aliado_id = {$aid} AND tipo = 'entrada_incapacidad')";
+        $sqlEgresos   = "(SELECT ISNULL(SUM(valor), 0) FROM gastos WHERE incapacidad_id = incapacidades.id AND aliado_id = {$aid} AND tipo IN ({$tiposGastoC5}))";
+        $sqlNetoAfil  = "(SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND aliado_id = {$aid} AND tipo = 'pago_cliente')";
+
         $canal5Incapacidades = DB::table('incapacidades')
             ->where('incapacidades.aliado_id', $aid)
             ->whereNull('incapacidades.deleted_at')
@@ -1494,28 +1505,14 @@ class InformeController extends Controller
                     ISNULL(c.primer_apellido,'') + ' ' + 
                     ISNULL(c.segundo_apellido,'')
                 )) FROM clientes c WHERE c.cedula = incapacidades.cedula_usuario AND c.aliado_id = {$aid}) as nombre_cliente"),
-                // Total entradas histórico de esta incapacidad
-                DB::raw("(SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND tipo = 'entrada_incapacidad') as total_entradas_historico"),
-                // Total pagos histórico al afiliado de esta incapacidad
-                DB::raw("(SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND tipo = 'pago_cliente') as total_pagos_historico"),
-                // Entradas de esta incapacidad en el mes seleccionado
-                DB::raw("(SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND tipo = 'entrada_incapacidad' AND MONTH(fecha) = {$mes} AND YEAR(fecha) = {$anio}) as entradas_mes"),
-                // Pagos de esta incapacidad en el mes seleccionado
-                DB::raw("(SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND tipo = 'pago_cliente' AND MONTH(fecha) = {$mes} AND YEAR(fecha) = {$anio}) as pagos_mes"),
+                // Total que entró de la EPS/ARL/AFP a la razón social
+                DB::raw("{$sqlEntradas} as total_entradas_historico"),
+                // Total que salió de la caja por esta incapacidad (neto + descuentos)
+                DB::raw("{$sqlEgresos} as total_pagos_historico"),
+                // Neto girado al afiliado, para el detalle de la fila
+                DB::raw("{$sqlNetoAfil} as pago_neto_afiliado"),
             ])
-            ->where(function($query) use ($mes, $anio) {
-                $query->where(function($q) use ($mes, $anio) {
-                    $q->whereRaw("(SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND tipo = 'entrada_incapacidad' AND MONTH(fecha) = {$mes} AND YEAR(fecha) = {$anio}) > 0")
-                      ->orWhereRaw("(SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND tipo = 'pago_cliente' AND MONTH(fecha) = {$mes} AND YEAR(fecha) = {$anio}) > 0");
-                })
-                ->orWhere(function($q) {
-                    $q->where('incapacidades.estado', '!=', 'cierre_exitoso')
-                      ->where(function($sub) {
-                          $sub->whereRaw("(SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND tipo = 'entrada_incapacidad') > 0")
-                              ->orWhereRaw("(SELECT ISNULL(SUM(valor), 0) FROM abonos_incapacidades WHERE incapacidad_id = incapacidades.id AND tipo = 'pago_cliente') > 0");
-                      });
-                });
-            })
+            ->whereRaw("ABS({$sqlEntradas} - {$sqlEgresos}) >= 1000")
             ->get();
 
         $usuarios = DB::table('users')->where('aliado_id', $aid)->where('activo', 1)->orderBy('nombre')->get(['id', 'nombre']);

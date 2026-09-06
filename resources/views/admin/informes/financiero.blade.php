@@ -431,7 +431,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
         {{-- ══ Card Ancha: Detalle de Incapacidades en Canal 5 (ocupa 2 columnas) ══ --}}
         <div class="fc-card" style="grid-column: span 2; display: flex; flex-direction: column;">
             <div class="fc-header" style="background:linear-gradient(135deg,#475569,#334155);">
-                <div class="fc-label">Movimientos y Saldo</div>
+                <div class="fc-label">Pendientes por cuadrar</div>
                 <div class="fc-title">📋 Detalle de Incapacidades (Canal 5)</div>
             </div>
             <div class="fc-body" style="padding: 0; overflow-y: auto; max-height: 298px; flex: 1;">
@@ -442,7 +442,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                                 <th style="padding:.65rem .85rem;">Incapacidad / Cliente</th>
                                 <th style="padding:.65rem .85rem; text-align:center;">Estado</th>
                                 <th style="padding:.65rem .85rem; text-align:right;">Total Recibido EPS</th>
-                                <th style="padding:.65rem .85rem; text-align:right;">Total Pagos/Ant.</th>
+                                <th style="padding:.65rem .85rem; text-align:right;">Total Pagos/Desc.</th>
                                 <th style="padding:.65rem .85rem; text-align:right;">Saldo Canal 5</th>
                                 <th style="padding:.65rem .85rem; text-align:center;">Acción</th>
                             </tr>
@@ -455,6 +455,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                                         $nombreCompleto = "C.C. {$inc->cedula_usuario}";
                                     }
                                     $saldoCanal5 = (float)$inc->total_entradas_historico - (float)$inc->total_pagos_historico;
+                                    $descuentosInc = (float)$inc->total_pagos_historico - (float)$inc->pago_neto_afiliado;
                                     
                                     // Determinar estados y badges
                                     $estadosLabels = [
@@ -511,6 +512,11 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                                     </td>
                                     <td style="padding:.65rem .85rem; text-align:right; font-family:monospace; font-weight:600; color:#2563eb; white-space:nowrap;">
                                         {{ $inc->total_pagos_historico > 0 ? $fmt($inc->total_pagos_historico) : '—' }}
+                                        @if($descuentosInc > 0)
+                                            <div style="font-size:.6rem; color:#94a3b8; font-weight:600;" title="Neto girado al afiliado + descuentos (4x1000, admon, otros)">
+                                                neto {{ $fmt($inc->pago_neto_afiliado) }} · desc. {{ $fmt($descuentosInc) }}
+                                            </div>
+                                        @endif
                                     </td>
                                     <td style="padding:.65rem .85rem; text-align:right; font-family:monospace; font-weight:700; color:{{ $saldoCanal5 >= 0 ? '#16a34a' : '#dc2626' }}; white-space:nowrap;">
                                         {{ $saldoCanal5 > 0 ? '+' : '' }}{{ $fmt($saldoCanal5) }}
@@ -527,7 +533,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                 @else
                     <div style="text-align:center; padding:3rem 1.5rem; color:#94a3b8; font-size:.85rem;">
                         <div>📭</div>
-                        <div style="margin-top:.5rem;">No hay incapacidades con saldo vivo ni movimientos en este mes.</div>
+                        <div style="margin-top:.5rem;">No hay incapacidades pendientes por cuadrar: todo lo recibido de la EPS ya se pagó.</div>
                     </div>
                 @endif
             </div>
