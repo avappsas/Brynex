@@ -36,7 +36,7 @@
         @endslot
     @endcomponent
 
-    {{-- Cripto Widget — carga en el shell (caché CoinGecko) --}}
+    {{-- Cripto Widget — carga en el shell (caché de 15 min del precio USDT/COP) --}}
     <div class="cripto-widget-bx">
         <div class="cw-title">🪙 Cotización Tether (USDT):</div>
         <div class="cw-values">
@@ -44,7 +44,11 @@
             <span class="cw-usd">${{ number_format($criptoPrecio['precio_usd'], 2) }} USD</span>
             <span class="cw-date">({{ \Carbon\Carbon::parse($criptoPrecio['actualizado'])->format('H:i') }})</span>
         </div>
-        @if($criptoPrecio['fallback'])<span class="badge-warn" style="font-size:0.65rem;">Fallback</span>@endif
+        @if($criptoPrecio['fallback'])
+            <span class="badge-warn" style="font-size:0.65rem;">Sin conexión — último precio conocido</span>
+        @else
+            <span class="cw-date" style="font-size:0.65rem;">{{ $criptoPrecio['fuente'] ?? '' }}</span>
+        @endif
     </div>
 
     {{-- KPIs skeleton → llenado por /api/resumen --}}

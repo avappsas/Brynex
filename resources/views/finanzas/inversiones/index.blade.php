@@ -27,9 +27,14 @@
         <div class="clh-left">
             <span class="clh-icon">🪙</span>
             <div>
-                <strong>Cotización USDT en Vivo (CoinGecko):</strong>
+                <strong>Cotización USDT en Vivo ({{ $precioUsdtData['fuente'] ?? 'mercado' }}):</strong>
                 <span class="clh-val">${{ number_format($precioUsdtData['precio_cop'], 0, ',', '.') }} COP</span>
                 <span class="clh-val-usd">(${{ number_format($precioUsdtData['precio_usd'], 2) }} USD)</span>
+                @if($precioUsdtData['fallback'])
+                    <span class="badge-warn" style="font-size:0.7rem;">
+                        ⚠️ Sin conexión — último precio conocido ({{ $precioUsdtData['actualizado'] }})
+                    </span>
+                @endif
             </div>
         </div>
         <button @click="refreshPrecio()" class="btn-refresh-cripto" :disabled="refresando">

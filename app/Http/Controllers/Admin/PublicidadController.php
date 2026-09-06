@@ -143,8 +143,8 @@ class PublicidadController extends Controller
             ->orderByDesc('created_at')
             ->get(['id', 'nombre_contacto', 'wa_contact_id', 'created_at']);
 
-        // TRM en vivo (mismo servicio de Finanzas — USDT/COP de CoinGecko, 1:1 con USD, caché
-        // de 15 min con respaldo si falla) — no hay que actualizarla a mano.
+        // TRM en vivo (mismo servicio de Finanzas — USDT/COP de Binance, con la TRM oficial
+        // como respaldo, caché de 15 min) — no hay que actualizarla a mano.
         $trmCop = app(\App\Services\Finanzas\CriptoApiService::class)->getPrecioUsdt()['precio_cop'];
 
         return view('admin.publicidad.show', compact('aliado', 'publicacion', 'conversacionesWa', 'trmCop'));

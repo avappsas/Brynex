@@ -42,7 +42,9 @@ class InversionController extends Controller
         $valorTotalActual = 0.00;
 
         foreach ($inversiones as $inversion) {
-            if (in_array($inversion->tipo, ['cripto', 'trading']) && $inversion->cantidad_tokens > 0) {
+            // Sin cotización válida no se toca el valor guardado: escribirlo en cero
+            // borraría el último valor bueno de la inversión.
+            if ($precioUsdtCop > 0 && in_array($inversion->tipo, ['cripto', 'trading']) && $inversion->cantidad_tokens > 0) {
                 // Estimamos valor actual = cantidad_tokens * precio_usdt_cop
                 $inversion->valor_actual_cop = $inversion->cantidad_tokens * $precioUsdtCop;
                 $inversion->save();
@@ -154,8 +156,11 @@ class InversionController extends Controller
         // Recalcular valor actual si es cripto
         if ($inversion->tipo === 'cripto' && $inversion->cantidad_tokens > 0) {
             $precioUsdtData = $this->criptoService->getPrecioUsdt();
-            $inversion->valor_actual_cop = $inversion->cantidad_tokens * $precioUsdtData['precio_cop'];
-            $inversion->save();
+
+            if ($precioUsdtData['precio_cop'] > 0) {
+                $inversion->valor_actual_cop = $inversion->cantidad_tokens * $precioUsdtData['precio_cop'];
+                $inversion->save();
+            }
         }
 
         $this->invalidarCacheFinanzas();
@@ -193,6 +198,11 @@ class InversionController extends Controller
         ]);
 
         $user = Auth::user();
+
+        // Sin cotización ni precio digitado el movimiento quedaría en cero: mejor no registrarlo.
+        if (! $request->precio_token_cop && ! $request->monto_cop && $this->criptoService->getPrecioUsdt()['precio_cop'] <= 0) {
+            return back()->withErrors(['precio_token_cop' => 'No hay cotización del USDT disponible. Digita el precio del token o el monto en pesos.']);
+        }
 
         DB::transaction(function () use ($request, $inversion, $user) {
             $tipo = $request->tipo;
@@ -244,7 +254,10 @@ class InversionController extends Controller
 
             // Recalcular valor actual estimado en pesos
             if (in_array($inversion->tipo, ['cripto', 'trading']) && $inversion->cantidad_tokens > 0) {
-                $inversion->valor_actual_cop = $inversion->cantidad_tokens * $precioUsdtCop;
+                // Sin cotización válida se conserva el valor guardado en vez de ponerlo en cero.
+                if ($precioUsdtCop > 0) {
+                    $inversion->valor_actual_cop = $inversion->cantidad_tokens * $precioUsdtCop;
+                }
             } else {
                 $inversion->valor_actual_cop = max(0, ($inversion->valor_actual_cop ?? 0) + ($tipo === 'ganancia' || $tipo === 'compra' ? $montoCop : -$montoCop));
             }
@@ -262,9 +275,12 @@ class InversionController extends Controller
 
     /**
      * AJAX endpoint para refrescar el precio de USDT.
+     * Botón de refrescar = consulta nueva, así que se descarta la caché de 15 minutos.
      */
     public function precioUsdt()
     {
+        $this->criptoService->olvidarCache();
+
         return response()->json($this->criptoService->getPrecioUsdt());
     }
 }
