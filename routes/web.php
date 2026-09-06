@@ -611,7 +611,6 @@ Route::middleware('auth')->group(function () {
             Route::get('/tareas', [$ic, 'resumenTareas'])->name('tareas');
             Route::get('/conciliacion-bancos', [$ic, 'conciliacionBancos'])->name('conciliacion_bancos');
 
-
             // El KPI de préstamos del mes también lo consume la pantalla de
             // Cobros, así que cuelga de `prestamos.ver` y no del financiero:
             // si no, a un `usuario` en Cobros le respondería 403.
@@ -636,6 +635,25 @@ Route::middleware('auth')->group(function () {
             Route::middleware('permiso:informes.financiero_editar')->group(function () use ($ic) {
                 Route::patch('/financiero/consignacion/{id}', [$ic, 'editarConsignacion'])->name('financiero.consignacion.editar');
                 Route::post('/financiero/consignacion/{id}/imagen', [$ic, 'subirImagenConsignacionFinanciero'])->name('financiero.consignacion.imagen');
+            });
+
+            // ── Extracto del banco: la bandeja de conciliación ─────────────
+            // Va con los mismos permisos que el resto de la plata del aliado:
+            // el contable mira las diferencias, pero confirmar un pago o
+            // deshacer un cruce es escritura financiera.
+            $eb = \App\Http\Controllers\Admin\ExtractoBancoController::class;
+            Route::middleware('permiso:informes.financiero')->group(function () use ($eb) {
+                Route::get('/extracto-banco', [$eb, 'index'])->name('extracto_banco');
+                Route::get('/extracto-banco/consignaciones', [$eb, 'buscarConsignaciones'])
+                    ->name('extracto_banco.consignaciones');
+            });
+            Route::middleware('permiso:informes.financiero_editar')->group(function () use ($eb) {
+                Route::post('/extracto-banco/sincronizar', [$eb, 'sincronizar'])->name('extracto_banco.sincronizar');
+                Route::post('/extracto-banco/conciliar', [$eb, 'conciliar'])->name('extracto_banco.conciliar');
+                Route::post('/extracto-banco/movimiento/{id}/vincular', [$eb, 'vincular'])->name('extracto_banco.vincular');
+                Route::post('/extracto-banco/movimiento/{id}/ignorar', [$eb, 'ignorar'])->name('extracto_banco.ignorar');
+                Route::post('/extracto-banco/vinculo/{id}/deshacer', [$eb, 'desvincular'])->name('extracto_banco.desvincular');
+                Route::post('/extracto-banco/consignacion/{id}/no-aparece', [$eb, 'noAparece'])->name('extracto_banco.no_aparece');
             });
             Route::get('/auditoria-facturas', [$ic, 'auditoriaFacturas'])->name('auditoria_facturas');
 
@@ -1197,7 +1215,7 @@ Route::middleware('auth')->group(function () {
         $ent = \App\Http\Controllers\Finanzas\EntradaController::class;
         $gas = \App\Http\Controllers\Finanzas\GastoController::class;
         $pre = \App\Http\Controllers\Finanzas\PrestamoController::class;
-        $cc  = \App\Http\Controllers\Finanzas\CuentaCorrienteController::class;
+        $cc = \App\Http\Controllers\Finanzas\CuentaCorrienteController::class;
         $inv = \App\Http\Controllers\Finanzas\InversionController::class;
         $pat = \App\Http\Controllers\Finanzas\PatrimonioController::class;
         $pro = \App\Http\Controllers\Finanzas\ProyectoController::class;

@@ -75,6 +75,20 @@
         </div>
     </a>
 
+    {{-- Extracto del banco: la bandeja del cruce automático. Va con el mismo
+         permiso que el resto de la plata del aliado. --}}
+    @can('informes.financiero')
+    <a href="{{ route('admin.informes.extracto_banco') }}" style="display:flex;align-items:center;gap:1.25rem;background:linear-gradient(135deg,#0f766e,#115e59);border-radius:14px;padding:1.5rem 1.75rem;text-decoration:none;border:2px solid transparent;box-shadow:0 4px 20px rgba(15,118,110,.3);transition:all .18s;margin-top:1rem;"
+       onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 12px 32px rgba(15,118,110,.4)'"
+       onmouseout="this.style.transform='';this.style.boxShadow='0 4px 20px rgba(15,118,110,.3)'">
+        <div style="font-size:2.5rem;">🧾</div>
+        <div>
+            <div style="font-size:1rem;font-weight:700;color:#fff;">Extracto del banco</div>
+            <div style="font-size:.82rem;color:rgba(255,255,255,.7);margin-top:.2rem;">Lo que entró y nadie registró · Lo registrado sin respaldo · Cruce automático</div>
+        </div>
+    </a>
+    @endcan
+
     {{-- Distribución de Afiliaciones: entrar con `comisiones.ver` (admin,
          contable y superadmin), repartir con `comisiones.gestionar` (solo
          admin y superadmin, que es quien puede editar). --}}
