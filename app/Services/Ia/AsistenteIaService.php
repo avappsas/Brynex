@@ -177,7 +177,14 @@ class AsistenteIaService
      */
     public static function esPiezaDeAsesores(\App\Models\Publicacion $pieza): bool
     {
-        $texto = mb_strtolower(($pieza->tema ?? '').' '.($pieza->titulo ?? ''), 'UTF-8');
+        // El COPY entra en la comparación además del tema y el título: el tema es el campo más
+        // fácil de perder —las piezas #90 y #91 se recrearon con él vacío, y la #91 dejó de
+        // reconocerse pese a estar pautada— mientras que el copy es el texto del anuncio y
+        // siempre está. Sin esto, un asesor recibe el guion de cliente y nadie se entera.
+        $texto = mb_strtolower(
+            ($pieza->tema ?? '').' '.($pieza->titulo ?? '').' '.($pieza->copy ?? ''),
+            'UTF-8'
+        );
 
         if (! str_contains($texto, 'asesor')) {
             return false;
