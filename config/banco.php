@@ -34,6 +34,23 @@ return [
     // uno por uno convierte 300 movimientos en más de un minuto de red.
     'lote_insert' => (int) env('BANCO_API_LOTE_INSERT', 100),
 
+    // Débitos que el banco cobra y BryNex no registra en el libro. El cruce
+    // los marca `ignorado` en vez de dejarlos como diferencia sin explicar.
+    'costos_bancarios' => [
+        'GMF',
+        '4X1000',
+        'CUOTA DE MANEJO',
+        'COMISION',
+        'IVA COMISION',
+        'RETENCION',
+    ],
+
+    // Días que puede correrse la fecha del banco frente a la del libro. Dos
+    // cubre el caso normal (consignó tarde, el banco lo aplicó al otro día);
+    // más allá empiezan a cruzarse pagos de clientes distintos por el mismo
+    // valor.
+    'dias_tolerancia' => (int) env('BANCO_DIAS_TOLERANCIA', 2),
+
     'timeout' => (int) env('BANCO_API_TIMEOUT', 30),
     'connect_timeout' => (int) env('BANCO_API_CONNECT_TIMEOUT', 10),
 ];

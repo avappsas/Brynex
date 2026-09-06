@@ -59,6 +59,23 @@ class BancoMovimiento extends BaseModel
         return $this->belongsTo(Consignacion::class, 'consignacion_id');
     }
 
+    /**
+     * Consignaciones que este movimiento respalda.
+     *
+     * Es muchos-a-muchos porque un cobro puede llegar partido en varias
+     * transferencias y una transferencia puede cubrir varias consignaciones.
+     * `consignacion_id` es solo el atajo del caso simple.
+     */
+    public function consignaciones()
+    {
+        return $this->belongsToMany(
+            Consignacion::class,
+            'banco_movimiento_consignacion',
+            'banco_movimiento_id',
+            'consignacion_id'
+        )->withPivot('valor_aplicado', 'regla', 'dias_diferencia')->withTimestamps();
+    }
+
     public function conciliador()
     {
         return $this->belongsTo(User::class, 'conciliado_por');
