@@ -813,13 +813,18 @@ class PrestamoController extends Controller
         $diaCobroReancla = null;
 
         foreach ($movimientos as $mov) {
-            $mov->saldo_antes = $saldo;
+            // Los saldos se redondean a dos decimales en cada paso. Un pago que
+            // cancela el préstamo exacto deja un residuo de coma flotante (del
+            // orden de 1e-10) que SQL Server rechaza al guardarlo: en notación
+            // científica no lo convierte a numeric y el recálculo revienta, con
+            // lo que el préstamo ni siquiera se puede abrir.
+            $mov->saldo_antes = round($saldo, 2);
 
             if (in_array($mov->tipo, ['desembolso', 'interes_mensual', 'interes_proporcional', 'capitalizacion'])) {
-                $mov->saldo_despues = $saldo + $mov->monto;
+                $mov->saldo_despues = round($saldo + $mov->monto, 2);
             } else {
                 // abono_capital, abono_interes, pago_total
-                $mov->saldo_despues = $saldo - $mov->monto;
+                $mov->saldo_despues = round($saldo - $mov->monto, 2);
             }
 
             // El capital vigente sigue a los movimientos que mueven capital. La
@@ -856,7 +861,7 @@ class PrestamoController extends Controller
         $corteVigente = $ultimoCorteFecha ?: $prestamo->fecha_desembolso;
 
         $cambios = [
-            'saldo_actual' => $saldo,
+            'saldo_actual' => round($saldo, 2),
             'monto_original' => $saldo <= 0 ? 0.00 : round(min($capital, $saldo), 2),
             'ultimo_corte' => $corteVigente,
             'estado' => $estadoCalculado,
