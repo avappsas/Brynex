@@ -521,6 +521,28 @@
     openConsolidado: false,
     openEditarGasto: false,
     selectedGasto: {},
+    openIntereses: false,
+    intTipo: 'cobrados',
+    intCargando: false,
+    intError: false,
+    intTotal: 0,
+    intMovs: [],
+    async verIntereses(tipo) {
+        this.intTipo = tipo;
+        this.openIntereses = true;
+        this.intCargando = true; this.intError = false; this.intMovs = []; this.intTotal = 0;
+        try {
+            // URLSearchParams y no un '&' literal: esto vive dentro de un atributo
+            // HTML, donde el ampersand crudo queda a merced del parser.
+            const q = new URLSearchParams({ anio: '{{ $anio }}', mes: '{{ $mes }}', tipo: tipo });
+            const r = await fetch('{{ route('finanzas.api.intereses-detalle') }}?' + q, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            if (!r.ok) throw new Error(r.status);
+            const d = await r.json();
+            this.intMovs = d.movimientos; this.intTotal = d.total;
+        } catch (e) { this.intError = true; }
+        this.intCargando = false;
+    },
+    fmtCop(v) { return '$' + Number(v).toLocaleString('es-CO', { maximumFractionDigits: 0 }); },
     abrirEditar(item) {
         let gastoClon = Object.assign({}, item);
         gastoClon.fecha = item.raw_fecha;
@@ -664,15 +686,15 @@
                 @endif
             @endif
 
-            <!-- Intereses del mes: causados vs cobrados -->
+            <!-- Intereses del mes: causados vs cobrados. Cada lado abre su detalle. -->
             <div class="glass-card" style="width: 100%; display:flex; gap:0.5rem;">
-                <div style="flex:1; text-align:center;">
-                    <span style="display:block; font-size:0.62rem; font-weight:700; color:var(--texto-secundario); text-transform:uppercase;">📈 Int. causados</span>
+                <div @click="verIntereses('causados')" style="flex:1; text-align:center; cursor:pointer;">
+                    <span style="display:block; font-size:0.62rem; font-weight:700; color:var(--texto-secundario); text-transform:uppercase;">📈 Int. causados 🔍</span>
                     <strong style="font-size:0.92rem; color:#fbbf24;">${{ number_format($resumen['intereses_causados'] ?? 0, 0, ',', '.') }}</strong>
                 </div>
                 <div style="width:1px; background:rgba(255,255,255,0.08);"></div>
-                <div style="flex:1; text-align:center;">
-                    <span style="display:block; font-size:0.62rem; font-weight:700; color:var(--texto-secundario); text-transform:uppercase;">💰 Int. cobrados</span>
+                <div @click="verIntereses('cobrados')" style="flex:1; text-align:center; cursor:pointer;">
+                    <span style="display:block; font-size:0.62rem; font-weight:700; color:var(--texto-secundario); text-transform:uppercase;">💰 Int. cobrados 🔍</span>
                     <strong style="font-size:0.92rem; color:var(--verde-neon, #34d399);">${{ number_format($resumen['intereses_cobrados'] ?? 0, 0, ',', '.') }}</strong>
                 </div>
             </div>
@@ -1404,6 +1426,77 @@
         </div>
 
         <!-- BOTTOM SHEET: CONSOLIDADO GLOBAL -->
+        {{-- Detalle de intereses del mes: de quién entró (cobrados) o a quién se le
+             liquidó el ciclo (causados). Los datos llegan por /api/intereses-detalle,
+             no van en el render inicial. --}}
+        <div x-show="openIntereses" x-cloak class="bottom-sheet-overlay" @click.self="openIntereses = false">
+            <div class="bottom-sheet-box"
+                 x-show="openIntereses"
+                 x-transition:enter="transition ease-out duration-300 transform"
+                 x-transition:enter-start="translate-y-full"
+                 x-transition:enter-end="translate-y-0"
+                 x-transition:leave="transition ease-in duration-200 transform"
+                 x-transition:leave-start="translate-y-0"
+                 x-transition:leave-end="translate-y-full"
+            >
+                <div class="bs-handle"></div>
+                <div class="bs-header">
+                    <h3 style="display:flex; align-items:center; gap:0.35rem;"
+                        :style="intTipo === 'causados' ? 'color:#fbbf24;' : 'color:var(--verde-neon, #34d399);'">
+                        <span x-text="intTipo === 'causados' ? '📈 Intereses causados' : '💰 Intereses cobrados'"></span>
+                    </h3>
+                    <button @click="openIntereses = false" class="bs-close">&times;</button>
+                </div>
+
+                <div class="bs-body" style="padding-bottom: 2rem;">
+                    <p style="font-size:0.7rem; color:var(--texto-secundario); margin-bottom:0.6rem;">
+                        {{ ucfirst(\Carbon\Carbon::create()->month($mes)->locale('es')->monthName) }} {{ $anio }}
+                    </p>
+
+                    <template x-if="intCargando">
+                        <p style="text-align:center; color:var(--texto-secundario); font-size:0.8rem; padding:1.5rem 0;">Cargando…</p>
+                    </template>
+
+                    <template x-if="intError">
+                        <p style="text-align:center; color:var(--rojo-coral); font-size:0.8rem; padding:1.5rem 0;">Error cargando el detalle.</p>
+                    </template>
+
+                    <template x-if="!intCargando && !intError && intMovs.length === 0">
+                        <p style="text-align:center; color:var(--texto-secundario); font-size:0.8rem; padding:1.5rem 0;"
+                           x-text="intTipo === 'causados' ? 'Este mes todavía no se ha liquidado ningún ciclo de interés.' : 'Este mes todavía no ha entrado ningún pago de intereses.'"></p>
+                    </template>
+
+                    <div style="display:flex; flex-direction:column; gap:0.5rem;">
+                        <template x-for="m in intMovs" :key="m.id">
+                            <a :href="m.url_ficha"
+                               style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; background:rgba(255,255,255,0.03); border:1px solid var(--borde-tarjeta); padding:0.6rem 0.75rem; border-radius:12px; text-decoration:none;">
+                                <div style="min-width:0;">
+                                    <strong style="display:block; font-size:0.8rem; color:var(--texto-principal); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" x-text="m.deudor"></strong>
+                                    <span style="font-size:0.66rem; color:var(--texto-secundario);">
+                                        <span x-text="m.fecha"></span> ·
+                                        <span x-text="m.concepto"></span>
+                                        <template x-if="m.dias_periodo"><span x-text="' (' + m.dias_periodo + 'd)'"></span></template>
+                                        <template x-if="m.cuenta"><span x-text="' → ' + m.cuenta"></span></template>
+                                    </span>
+                                </div>
+                                <strong style="font-size:0.85rem; white-space:nowrap;"
+                                        :style="intTipo === 'causados' ? 'color:#fbbf24;' : 'color:var(--verde-neon, #34d399);'"
+                                        x-text="fmtCop(m.monto)"></strong>
+                            </a>
+                        </template>
+                    </div>
+
+                    <template x-if="intMovs.length > 0">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.9rem; padding-top:0.75rem; border-top:1px solid var(--borde-tarjeta);">
+                            <span style="font-size:0.72rem; color:var(--texto-secundario);"
+                                  x-text="intMovs.length + (intMovs.length === 1 ? ' movimiento' : ' movimientos')"></span>
+                            <strong style="font-size:0.95rem; color:var(--texto-principal);" x-text="fmtCop(intTotal)"></strong>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
         <div x-show="openConsolidado" x-cloak class="bottom-sheet-overlay" @click.self="openConsolidado = false">
             <div class="bottom-sheet-box" 
                  x-show="openConsolidado"
