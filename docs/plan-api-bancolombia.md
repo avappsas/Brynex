@@ -11,6 +11,36 @@ Dos frentes:
 
 ---
 
+## 0. Dónde está esto parado (6-sep-2026)
+
+Cuenta creada en el portal y sesión funcionando. Lo que está trabado:
+
+- **No se puede crear la aplicación.** El formulario de `/my-apps/create-app`
+  queda completo y válido, pero el backend rechaza el envío:
+  `POST https://apic-ext.apps.bancolombia.com/api-portal-ext/public-partner/sb/apps`
+  → *"No se ha podido crear la aplicación. Código: no disponible"*. Ocho
+  intentos, siempre igual. Sin aplicación no hay `Client Id` ni `Client Secret`.
+- **La documentación de las APIs que sirven no está publicada**, ni siquiera
+  con sesión iniciada: Transactional Information, Button Payment Instruction y
+  Account Information dicen "se está actualizando".
+
+Las dos cosas apuntan a lo mismo, y el portal lo avisa en el propio formulario:
+falta la **habilitación** de la cuenta para crear aplicaciones. Se pide a la
+mesa de ayuda; es el único paso que desbloquea el resto.
+
+Ya listo de nuestro lado:
+
+- **Certificado X.509** generado para el mecanismo JWT — RSA 2048, SHA256,
+  `C=CO, ST=Valle del Cauca, L=Cali, O=BRYGAR, OU=Bancolombia, CN=brynex.co`,
+  vigente hasta el **6-sep-2028**. Vive en `~/.brynex/certs/` (fuera del repo):
+  `bancolombia-api.crt` es el público que se pega en el portal, y
+  `bancolombia-api.key` es la llave privada, permisos 600. Si esa llave se
+  pierde hay que generar otro par y actualizar la aplicación.
+- El módulo de extracto, el cruce y la bandeja funcionan con el adaptador
+  falso, así que nada del desarrollo está esperando al banco.
+
+---
+
 ## 1. El catálogo real (revisado el 6-sep-2026)
 
 El API Market **sí es público**: el catálogo y la documentación de cada
