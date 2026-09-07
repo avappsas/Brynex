@@ -117,8 +117,11 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
                     <input type="text" name="numero_cuenta" class="finp" placeholder="Ej: 123-456789" required>
                 </div>
                 <div>
-                    <label class="flb">Llave de Pago</label>
-                    <input type="text" name="llave" class="finp" placeholder="Llave alfanumérica (opcional)">
+                    <label class="flb">Llave Bre-B</label>
+                    <input type="text" name="llave" class="finp" placeholder="@alias, correo, celular o código de comercio">
+                    <span style="font-size:.68rem;color:#94a3b8;display:block;margin-top:.2rem">
+                        Con llave, el cliente paga en segundos desde cualquier banco
+                    </span>
                 </div>
                 <div class="usos-box" style="grid-column:1/-1">
                     <span class="flb" style="margin:0 .3rem 0 0">Usos:</span>
@@ -179,6 +182,19 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
             </tr>
         </thead>
         <tbody>
+        @php($sinLlave = $cuentas->where('cobro', true)->where('activo', true)->filter(fn ($x) => blank($x->llave)))
+        @if($sinLlave->isNotEmpty())
+            <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:.7rem .9rem;margin-bottom:.8rem;font-size:.78rem;color:#92400e;display:flex;gap:.5rem;align-items:flex-start">
+                <span style="font-size:1rem;line-height:1">🔑</span>
+                <span>
+                    <b>{{ $sinLlave->count() }}</b>
+                    {{ $sinLlave->count() === 1 ? 'cuenta sale' : 'cuentas salen' }} en la cuenta de cobro sin llave Bre-B.
+                    El cliente tiene que copiar el número a mano; con llave paga en segundos desde cualquier banco.
+                    La consultas en tu app del banco, en <b>Bre-B → Mis llaves</b>.
+                </span>
+            </div>
+        @endif
+
         @forelse($cuentas as $c)
         <tr id="row-{{ $c->id }}"
             data-banco="{{ strtolower($c->banco) }}"
@@ -197,7 +213,11 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
             <td style="font-family:monospace;font-weight:600;color:#0f172a">
                 {{ $c->numero_cuenta }}
                 @if($c->llave)
-                    <br><span style="font-family:sans-serif;font-size:.7rem;color:#475569;background:#f1f5f9;padding:.1rem .35rem;border-radius:4px;font-weight:600">🔑 {{ $c->llave }}</span>
+                    <br><span style="font-family:sans-serif;font-size:.7rem;color:#475569;background:#f1f5f9;padding:.1rem .35rem;border-radius:4px;font-weight:600"
+                              title="Llave Bre-B{{ $c->tipo_llave ? ' — ' . $c->tipo_llave : '' }}">🔑 {{ $c->llave }}</span>
+                @elseif($c->cobro && $c->activo)
+                    <br><span style="font-family:sans-serif;font-size:.7rem;color:#92400e;background:#fef3c7;border:1px solid #fde68a;padding:.1rem .35rem;border-radius:4px;font-weight:600"
+                              title="Esta cuenta sale en la cuenta de cobro; sin llave el cliente debe copiar el número a mano">⚠️ sin llave Bre-B</span>
                 @endif
             </td>
             <td>
@@ -287,8 +307,8 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
                     <input type="text" name="numero_cuenta" id="e_numero" class="finp" required>
                 </div>
                 <div>
-                    <label class="flb">Llave de Pago</label>
-                    <input type="text" name="llave" id="e_llave" class="finp" placeholder="Llave alfanumérica (opcional)">
+                    <label class="flb">Llave Bre-B</label>
+                    <input type="text" name="llave" id="e_llave" class="finp" placeholder="@alias, correo, celular o código de comercio">
                 </div>
                 <div class="usos-box" style="grid-column:1/-1">
                     <span class="flb" style="margin:0 .3rem 0 0">Usos:</span>

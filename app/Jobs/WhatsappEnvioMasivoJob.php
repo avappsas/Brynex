@@ -244,18 +244,7 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
                 $plazoDias = $cfgAliado?->mora_dia_habil_inicio ? (string)$cfgAliado->mora_dia_habil_inicio : '10';
 
                 // Obtener cuentas para cobro
-                $cuentasCobro = \App\Models\BancoCuenta::paraCobro($empresa->aliado_id ?: ($detalle->envio?->aliado_id ?: session('aliado_id_activo')));
-                $cuentasText = $cuentasCobro->map(function($bc) {
-                    $tipoPart = $bc->tipo_cuenta ? " {$bc->tipo_cuenta}" : "";
-                    $llavePart = $bc->llave ? " o llave {$bc->llave}" : "";
-                    return "{$bc->banco}{$tipoPart} {$bc->numero_cuenta} {$bc->nombre}{$llavePart}";
-                })->join("  •  ");
-
-                if (!empty($cuentasText)) {
-                    $cuentasText = "•  " . $cuentasText;
-                } else {
-                    $cuentasText = 'no tiene configurada';
-                }
+                $cuentasText = \App\Models\BancoCuenta::textoCobro($empresa->aliado_id ?: ($detalle->envio?->aliado_id ?: session('aliado_id_activo')));
 
                 // Celular de soporte
                 $configAliado   = \App\Models\WhatsappConfig::where('aliado_id', $empresa->aliado_id ?: ($detalle->envio?->aliado_id ?: session('aliado_id_activo')))->first();
@@ -299,18 +288,7 @@ class WhatsappEnvioMasivoJob implements ShouldQueue
                 $plazoDias = $cfgAliado?->mora_dia_habil_inicio ? (string)$cfgAliado->mora_dia_habil_inicio : '10';
 
                 // Obtener cuentas para cobro
-                $cuentasCobro = \App\Models\BancoCuenta::paraCobro($contrato->aliado_id);
-                $cuentasText = $cuentasCobro->map(function($bc) {
-                    $tipoPart = $bc->tipo_cuenta ? " {$bc->tipo_cuenta}" : "";
-                    $llavePart = $bc->llave ? " o llave {$bc->llave}" : "";
-                    return "{$bc->banco}{$tipoPart} {$bc->numero_cuenta} {$bc->nombre}{$llavePart}";
-                })->join("  •  ");
-
-                if (!empty($cuentasText)) {
-                    $cuentasText = "•  " . $cuentasText;
-                } else {
-                    $cuentasText = 'no tiene configurada';
-                }
+                $cuentasText = \App\Models\BancoCuenta::textoCobro($contrato->aliado_id);
 
                 // Celular de soporte
                 $configAliado   = \App\Models\WhatsappConfig::where('aliado_id', $contrato->aliado_id)->first();

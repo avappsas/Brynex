@@ -1412,18 +1412,7 @@ class CobrosController extends Controller
         }
 
         // Cuentas de cobro
-        $cuentasCobro = BancoCuenta::paraCobro($aliadoId);
-        $cuentasText = $cuentasCobro->map(function($bc) {
-            $tipoPart = $bc->tipo_cuenta ? " {$bc->tipo_cuenta}" : "";
-            $llavePart = $bc->llave ? " o llave {$bc->llave}" : "";
-            return "{$bc->banco}{$tipoPart} {$bc->numero_cuenta} {$bc->nombre}{$llavePart}";
-        })->join("  •  ");
-
-        if (!empty($cuentasText)) {
-            $cuentasText = "•  " . $cuentasText;
-        } else {
-            $cuentasText = 'no tiene configurada';
-        }
+        $cuentasText = BancoCuenta::textoCobro($aliadoId);
 
         // Obtener el nombre del aliado
         $aliado = \App\Models\Aliado::find($aliadoId);
@@ -1691,18 +1680,7 @@ class CobrosController extends Controller
             $plantilla = $config->cobroPlantilla;
         }
 
-        $cuentasCobro = BancoCuenta::paraCobro($aliadoId);
-        $cuentasText = $cuentasCobro->map(function($bc) {
-            $tipoPart = $bc->tipo_cuenta ? " {$bc->tipo_cuenta}" : "";
-            $llavePart = $bc->llave ? " o llave {$bc->llave}" : "";
-            return "{$bc->banco}{$tipoPart} {$bc->numero_cuenta} {$bc->nombre}{$llavePart}";
-        })->join("  •  ");
-
-        if (!empty($cuentasText)) {
-            $cuentasText = "•  " . $cuentasText;
-        } else {
-            $cuentasText = 'no tiene configurada';
-        }
+        $cuentasText = BancoCuenta::textoCobro($aliadoId);
 
         $aliado = \App\Models\Aliado::find($aliadoId);
         $nombreAliado = $aliado ? $aliado->nombre : 'BryNex Global';
@@ -2469,18 +2447,7 @@ class CobrosController extends Controller
         $incluirValor = $request->get('incluir_valor', '1') === '1';
 
         // Cuentas de cobro
-        $cuentasCobro = BancoCuenta::paraCobro($aliadoId);
-        $cuentasText = $cuentasCobro->map(function($bc) {
-            $tipoPart = $bc->tipo_cuenta ? " {$bc->tipo_cuenta}" : "";
-            $llavePart = $bc->llave ? " o llave {$bc->llave}" : "";
-            return "{$bc->banco}{$tipoPart} {$bc->numero_cuenta} {$bc->nombre}{$llavePart}";
-        })->join("  •  ");
-
-        if (!empty($cuentasText)) {
-            $cuentasText = "•  " . $cuentasText;
-        } else {
-            $cuentasText = 'no tiene configurada';
-        }
+        $cuentasText = BancoCuenta::textoCobro($aliadoId);
 
         $aliado = \App\Models\Aliado::find($aliadoId);
         $nombreAliado = $aliado ? $aliado->nombre : 'BryNex Global';

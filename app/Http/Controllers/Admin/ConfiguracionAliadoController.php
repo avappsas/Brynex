@@ -597,7 +597,14 @@ class ConfiguracionAliadoController extends Controller
             'facturacion' => 'boolean',
             'incapacidad' => 'boolean',
             'observacion' => 'nullable|string|max:300',
-            'llave' => 'nullable|string|max:100',
+            // La llave Bre-B se valida por formato: mal escrita, el cliente
+            // intenta pagar, no le funciona y termina llamando igual.
+            'llave' => ['nullable', 'string', 'max:100', function ($attr, $valor, $fail) {
+                if (! \App\Models\BancoCuenta::llaveValida($valor)) {
+                    $fail('La llave Bre-B no parece válida. Use @alias, un correo, un celular '
+                        .'de 10 dígitos, o el documento o código de comercio (solo números).');
+                }
+            }],
         ]);
         $v['aliado_id'] = $alidoId;
         $v['activo'] = $request->boolean('activo');
@@ -635,7 +642,14 @@ class ConfiguracionAliadoController extends Controller
             'facturacion' => 'boolean',
             'incapacidad' => 'boolean',
             'observacion' => 'nullable|string|max:300',
-            'llave' => 'nullable|string|max:100',
+            // La llave Bre-B se valida por formato: mal escrita, el cliente
+            // intenta pagar, no le funciona y termina llamando igual.
+            'llave' => ['nullable', 'string', 'max:100', function ($attr, $valor, $fail) {
+                if (! \App\Models\BancoCuenta::llaveValida($valor)) {
+                    $fail('La llave Bre-B no parece válida. Use @alias, un correo, un celular '
+                        .'de 10 dígitos, o el documento o código de comercio (solo números).');
+                }
+            }],
         ]);
         $v['activo'] = $request->boolean('activo');
         $v['cobro'] = $request->boolean('cobro');
