@@ -8,6 +8,7 @@ use App\Models\BancoMovimiento;
 use App\Models\Bitacora;
 use App\Models\Consignacion;
 use App\Services\Banco\ConciliadorConsignacionesService;
+use App\Services\Banco\LectorExtractoBancolombia;
 use App\Services\Banco\SincronizadorMovimientosService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -187,6 +188,84 @@ class ExtractoBancoController extends Controller
         }
 
         return back()->with('success', "Extracto actualizado: $nuevos movimientos nuevos.");
+    }
+
+    /**
+     * Carga el extracto que se descarga de la Sucursal Virtual en Excel.
+     *
+     * Es la forma real de traer los movimientos: el banco respondió que sus
+     * APIs no sirven para consultar la cuenta propia. El archivo entra, se
+     * deduplica igual que si viniera de un API, y el cruce corre de una para
+     * que la pantalla quede útil sin un segundo clic.
+     */
+    public function cargarExtracto(Request $request)
+    {
+        $request->validate([
+            'cuenta' => 'required|integer',
+            'archivo' => 'required|file|mimes:xlsx,xls|max:10240',
+        ], [
+            'archivo.mimes' => 'El extracto debe ser el Excel que descarga de la Sucursal Virtual (.xlsx).',
+            'cuenta.required' => 'Elija a qué cuenta corresponde el extracto.',
+        ]);
+
+        $aliadoId = $this->aliadoId();
+
+        $cuenta = BancoCuenta::where('id', $request->integer('cuenta'))
+            ->where('aliado_id', $aliadoId)
+            ->first();
+
+        if (! $cuenta) {
+            abort(403, 'Esa cuenta no es de este aliado.');
+        }
+
+        try {
+            $lector = new LectorExtractoBancolombia;
+            $extracto = $lector->leer($request->file('archivo')->getRealPath());
+            $lector->verificarCuenta($extracto, $cuenta);
+        } catch (Throwable $e) {
+            return back()->with('error', 'No se pudo leer el extracto: '.$e->getMessage());
+        }
+
+        if ($extracto['movimientos'] === []) {
+            return back()->with('error', 'El archivo no tiene movimientos. ¿Es el extracto de la Sucursal Virtual?');
+        }
+
+        $r = (new SincronizadorMovimientosService)
+            ->guardar($cuenta, $extracto['movimientos'], 'extracto_xlsx');
+
+        // Cruzar de una: sin esto el usuario carga el archivo y no ve nada.
+        $cruce = (new ConciliadorConsignacionesService)->conciliar(
+            $cuenta,
+            Carbon::parse($r['desde']),
+            Carbon::parse($r['hasta']),
+            true
+        );
+
+        Bitacora::registrar(
+            'cargar_extracto', 'BancoMovimiento', (int) $cuenta->id,
+            "Extracto cargado ({$r['desde']} a {$r['hasta']}): {$r['nuevos']} movimientos nuevos, {$cruce['confirmadas']} consignaciones confirmadas",
+            [
+                'archivo' => $request->file('archivo')->getClientOriginalName(),
+                'traidos' => $r['traidos'],
+                'repetidos' => $r['repetidos'],
+                'por_regla' => $cruce['por_regla'],
+            ],
+            $aliadoId
+        );
+
+        $aviso = "Extracto de {$r['desde']} a {$r['hasta']}: {$r['nuevos']} movimientos nuevos"
+            .($r['repetidos'] ? " ({$r['repetidos']} ya estaban)" : '')
+            .'. Se cruzaron '.count($cruce['cruces'])." y quedaron confirmadas {$cruce['confirmadas']} consignaciones.";
+
+        // El propio archivo dice cuánto debía sumar; si no cuadra llegó
+        // recortado y más vale decirlo que dejar medio mes sin conciliar.
+        if ($extracto['descuadre'] !== null) {
+            return back()->with('error', $aviso
+                .' OJO: los abonos leídos no cuadran con el resumen del archivo (diferencia de $'
+                .number_format(abs($extracto['descuadre']), 0, ',', '.').'). Revise que el Excel esté completo.');
+        }
+
+        return back()->with('success', $aviso);
     }
 
     /** Corre el cruce automático sobre el rango en pantalla. */

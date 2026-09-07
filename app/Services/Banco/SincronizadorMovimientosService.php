@@ -60,6 +60,33 @@ class SincronizadorMovimientosService
 
         $movimientos = $this->api->movimientos($cuenta, $desde, $hasta);
 
+        return $this->guardar($cuenta, $movimientos, $this->api->nombre(), $desde, $hasta);
+    }
+
+    /**
+     * Guarda una lista de movimientos ya obtenidos, vengan de donde vengan.
+     *
+     * Lo usa tanto la sincronización por API como la carga del extracto en
+     * Excel: la deduplicación por huella y el insert por tandas son los
+     * mismos, y separarlos sería tener dos formas de entrar a la misma tabla.
+     *
+     * @param  MovimientoBanco[]  $movimientos
+     */
+    public function guardar(
+        BancoCuenta $cuenta,
+        array $movimientos,
+        string $proveedor,
+        ?CarbonInterface $desde = null,
+        ?CarbonInterface $hasta = null,
+    ): array {
+        // Sin rango explícito se deduce de lo que traen los movimientos, que
+        // es lo que pasa al cargar un archivo.
+        if (! $desde || ! $hasta) {
+            $fechas = array_map(fn ($m) => $m->fecha->toDateString(), $movimientos);
+            $desde = $fechas ? Carbon::parse(min($fechas)) : Carbon::today();
+            $hasta = $fechas ? Carbon::parse(max($fechas)) : Carbon::today();
+        }
+
         // Huellas ya guardadas del rango, en una sola consulta. Preguntar por
         // cada movimiento sería un viaje al SQL Server por fila.
         $existentes = BancoMovimiento::query()
@@ -92,7 +119,7 @@ class SincronizadorMovimientosService
             $filas[] = [
                 'aliado_id' => $cuenta->aliado_id,
                 'banco_cuenta_id' => $cuenta->id,
-                'proveedor' => $this->api->nombre(),
+                'proveedor' => $proveedor,
                 'id_externo' => $mov->idExterno,
                 'huella' => $huella,
                 'fecha' => $mov->fecha->toDateString(),
@@ -119,7 +146,7 @@ class SincronizadorMovimientosService
 
         return [
             'cuenta_id' => (int) $cuenta->id,
-            'proveedor' => $this->api->nombre(),
+            'proveedor' => $proveedor,
             'desde' => $desde->toDateString(),
             'hasta' => $hasta->toDateString(),
             'traidos' => count($movimientos),

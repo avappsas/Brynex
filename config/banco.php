@@ -45,6 +45,15 @@ return [
         'RETENCION',
     ],
 
+    // Entradas que pone el banco, no un cliente. En el extracto de julio de
+    // Brygar eran 28 abonos de intereses; sin esta lista aparecen cada mes como
+    // «entró y nadie registró».
+    'creditos_ignorados' => [
+        'ABONO INTERESES',
+        'REVERSION',
+        'REINTEGRO',
+    ],
+
     // Días que puede correrse la fecha del banco frente a la del libro. Dos
     // cubre el caso normal (consignó tarde, el banco lo aplicó al otro día);
     // más allá empiezan a cruzarse pagos de clientes distintos por el mismo

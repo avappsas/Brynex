@@ -648,6 +648,7 @@ Route::middleware('auth')->group(function () {
                     ->name('extracto_banco.consignaciones');
             });
             Route::middleware('permiso:informes.financiero_editar')->group(function () use ($eb) {
+                Route::post('/extracto-banco/cargar', [$eb, 'cargarExtracto'])->name('extracto_banco.cargar');
                 Route::post('/extracto-banco/sincronizar', [$eb, 'sincronizar'])->name('extracto_banco.sincronizar');
                 Route::post('/extracto-banco/conciliar', [$eb, 'conciliar'])->name('extracto_banco.conciliar');
                 Route::post('/extracto-banco/movimiento/{id}/vincular', [$eb, 'vincular'])->name('extracto_banco.vincular');

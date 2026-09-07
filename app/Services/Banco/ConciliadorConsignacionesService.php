@@ -104,7 +104,12 @@ class ConciliadorConsignacionesService
             'por_regla' => $porRegla,
             'ignorados' => count($ignorados),
             'confirmadas' => $confirmadas,
-            'movimientos_sin_identificar' => $this->idsLibres($movs),
+            // Los que el banco puso (intereses, 4x1000) ya quedaron marcados
+            // `ignorado`: contarlos aquí infla la lista de diferencias con
+            // plata que no es de ningún cliente.
+            'movimientos_sin_identificar' => array_values(
+                array_diff($this->idsLibres($movs), $ignorados)
+            ),
             'consignaciones_sin_respaldo' => $this->idsLibres($cons),
         ];
     }
@@ -486,18 +491,36 @@ class ConciliadorConsignacionesService
     private function costosBancarios(BancoCuenta $cuenta, CarbonInterface $desde, CarbonInterface $hasta): array
     {
         $patrones = (array) config('banco.costos_bancarios', []);
-        if ($patrones === []) {
-            return [];
-        }
+
+        // Los créditos del propio banco (intereses de la cuenta, reversiones)
+        // tampoco están en el libro. En el extracto de julio de Brygar eran 28
+        // abonos de intereses: sin esto, cada mes ensucian la bandeja de
+        // «entró y nadie registró» con plata que no es de ningún cliente.
+        $creditos = (array) config('banco.creditos_ignorados', []);
 
         $query = DB::table('banco_movimientos')
             ->where('banco_cuenta_id', $cuenta->id)
-            ->where('tipo', BancoMovimiento::TIPO_DEBITO)
             ->where('estado_conciliacion', BancoMovimiento::CONCILIACION_PENDIENTE)
             ->whereBetween('fecha', [$desde->toDateString(), $hasta->toDateString()])
-            ->where(function ($q) use ($patrones) {
-                foreach ($patrones as $p) {
-                    $q->orWhere('descripcion', 'like', '%'.$p.'%');
+            ->where(function ($q) use ($patrones, $creditos) {
+                $q->where(function ($qq) use ($patrones) {
+                    $qq->where('tipo', BancoMovimiento::TIPO_DEBITO)
+                        ->where(function ($qqq) use ($patrones) {
+                            foreach ($patrones as $p) {
+                                $qqq->orWhere('descripcion', 'like', '%'.$p.'%');
+                            }
+                        });
+                });
+
+                if ($creditos !== []) {
+                    $q->orWhere(function ($qq) use ($creditos) {
+                        $qq->where('tipo', BancoMovimiento::TIPO_CREDITO)
+                            ->where(function ($qqq) use ($creditos) {
+                                foreach ($creditos as $p) {
+                                    $qqq->orWhere('descripcion', 'like', '%'.$p.'%');
+                                }
+                            });
+                    });
                 }
             });
 

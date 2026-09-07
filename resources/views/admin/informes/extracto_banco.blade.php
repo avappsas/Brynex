@@ -107,6 +107,9 @@
         <div>
             <h1>Extracto del banco</h1>
             <p>Lo que dice el banco contra lo que dice el libro de BryNex</p>
+            <p style="font-size:.68rem;opacity:.6;margin-top:.15rem">
+                El extracto se descarga de la Sucursal Virtual en Excel y se carga aquí
+            </p>
         </div>
 
         <form method="GET" action="{{ route('admin.informes.extracto_banco') }}" class="eb-filtros">
@@ -121,12 +124,20 @@
         </form>
 
         <div class="eb-filtros">
-            <form method="POST" action="{{ route('admin.informes.extracto_banco.sincronizar') }}">
+            <form method="POST" action="{{ route('admin.informes.extracto_banco.cargar') }}"
+                  enctype="multipart/form-data" x-ref="formCargar" style="display:flex;align-items:center;gap:.35rem">
                 @csrf
-                <input type="hidden" name="cuenta" value="{{ $cuentaId }}">
-                <input type="hidden" name="desde" value="{{ $desde }}">
-                <input type="hidden" name="hasta" value="{{ $hasta }}">
-                <button class="eb-btn eb-btn--ghost"><i class="fas fa-download"></i> Traer extracto</button>
+                <select name="cuenta" class="eb-btn eb-btn--ghost" style="padding:.3rem .5rem" required>
+                    <option value="">¿de qué cuenta?</option>
+                    @foreach ($cuentas as $c)
+                        <option value="{{ $c->id }}" @selected($cuentaId == $c->id)>{{ $c->banco }} {{ $c->numero_cuenta }}</option>
+                    @endforeach
+                </select>
+                <input type="file" name="archivo" accept=".xlsx,.xls" x-ref="archivo" style="display:none"
+                       @change="$refs.formCargar.submit()">
+                <button type="button" class="eb-btn" @click="$refs.archivo.click()">
+                    <i class="fas fa-file-excel"></i> Cargar extracto
+                </button>
             </form>
             <form method="POST" action="{{ route('admin.informes.extracto_banco.conciliar') }}">
                 @csrf
