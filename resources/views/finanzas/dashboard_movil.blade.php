@@ -605,7 +605,8 @@
             </div>
 
             <!-- Alertas Críticas (Mora y Recurrentes Pendientes) -->
-            @if(count($prestamosMora) > 0 || count($gastosFaltantes) > 0)
+            @php $nGestionadosHoy = count($prestamosGestionadosHoy ?? []); @endphp
+            @if(count($prestamosMora) > 0 || count($gastosFaltantes) > 0 || $nGestionadosHoy > 0)
                 <div class="list-title-row">
                     <h3>Alertas Pendientes</h3>
                 </div>
@@ -630,6 +631,20 @@
                                 </div>
                             @endforeach
                         </div>
+                        @if($nGestionadosHoy > 0)
+                            <p style="margin-top:0.6rem; font-size:0.7rem; font-weight:600; color:var(--verde-neon, #34d399);">✅ {{ $nGestionadosHoy }} ya {{ $nGestionadosHoy === 1 ? 'gestionado' : 'gestionados' }} hoy</p>
+                        @endif
+                    </div>
+                @elseif($nGestionadosHoy > 0)
+                    {{-- Sin pendientes pero con gestión hecha: el card se queda para
+                         que vaciarse no parezca que la alerta se rompió. --}}
+                    <div class="glass-card" style="border-left: 4px solid var(--verde-neon, #34d399);">
+                        <h4 style="font-size: 0.8rem; font-weight: 700; color: var(--verde-neon, #34d399); display: flex; align-items: center; gap: 0.35rem;">
+                            ✅ Deudores en Mora Vencidos
+                        </h4>
+                        <p style="font-size:0.72rem; color:var(--texto-secundario); margin-top:0.35rem;">
+                            Nada pendiente: hoy ya se escribió {{ $nGestionadosHoy === 1 ? 'al único deudor en mora' : 'a los '.$nGestionadosHoy.' deudores en mora' }}.
+                        </p>
                     </div>
                 @endif
 

@@ -59,6 +59,7 @@ class FinanzasDashboardController extends Controller
         if ($this->isMobileDevice($request)) {
             $resumen = $this->alertaService->getResumenMensual($user->id, $anio, $mes);
             $prestamosMora = $this->alertaService->getPrestamosEnMora($user->id);
+            $prestamosGestionadosHoy = $this->alertaService->getPrestamosGestionadosHoy($user->id);
             $gastosFaltantes = $this->alertaService->getGastosRecurrentesPendientes($user->id, $anio, $mes);
             $consolidado = $this->alertaService->getConsolidadoGlobal($user->id);
             $cuentas = \App\Models\Finanzas\Cuenta::conSaldos($user->id);
@@ -74,6 +75,7 @@ class FinanzasDashboardController extends Controller
             return view('finanzas.dashboard_movil', compact(
                 'resumen',
                 'prestamosMora',
+                'prestamosGestionadosHoy',
                 'gastosFaltantes',
                 'criptoPrecio',
                 'consolidado',
@@ -205,6 +207,8 @@ class FinanzasDashboardController extends Controller
                 'url_whatsapp' => route('finanzas.prestamos.whatsapp', $p->id),
             ]);
 
+        $gestionadosHoy = $this->alertaService->getPrestamosGestionadosHoy($user->id);
+
         $gastosFaltantes = $this->alertaService
             ->getGastosRecurrentesPendientes($user->id, $anio, $mes)
             ->map(fn ($g) => [
@@ -216,6 +220,10 @@ class FinanzasDashboardController extends Controller
         return response()->json([
             'prestamos_mora' => $prestamosMora->values(),
             'gastos_faltantes' => $gastosFaltantes,
+            'gestionados_hoy' => [
+                'total' => $gestionadosHoy->count(),
+                'deudores' => $gestionadosHoy->pluck('nombre_deudor')->values(),
+            ],
         ]);
     }
 

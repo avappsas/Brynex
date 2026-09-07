@@ -16,6 +16,10 @@ class FinanzasAlertaService
     protected static $fuentesCache = null;
     protected static $entradasCache = [];
 
+    /** Préstamos en mora ya separados, por usuario. De instancia, no estático:
+     *  un worker de colas vive horas y no debe arrastrar el corte del día. */
+    private array $moraCache = [];
+
     // TTLs de caché en segundos
     const TTL_RESUMEN    = 600;  // 10 minutos
     const TTL_EVOLUCION  = 1800; // 30 minutos
@@ -124,27 +128,54 @@ class FinanzasAlertaService
      */
     public function getPrestamosEnMora(int $userId)
     {
+        return $this->prestamosEnMoraSeparados($userId)['pendientes'];
+    }
+
+    /**
+     * Los que salieron del card porque hoy ya se les escribió. El card los
+     * cuenta al pie para que vaciarse no se confunda con haberse roto.
+     */
+    public function getPrestamosGestionadosHoy(int $userId)
+    {
+        return $this->prestamosEnMoraSeparados($userId)['gestionados'];
+    }
+
+    /**
+     * Parte los préstamos en mora entre los que faltan por gestionar y los que
+     * ya recibieron mensaje hoy. Memorizado por request: el dashboard pregunta
+     * por ambos lados y la consulta de WhatsApp no tiene por qué repetirse.
+     */
+    private function prestamosEnMoraSeparados(int $userId): array
+    {
+        if (isset($this->moraCache[$userId])) {
+            return $this->moraCache[$userId];
+        }
+
         $prestamos = Prestamo::activos()
             ->where('user_id', $userId)
             ->where('alertas_activas', true)
             ->where('estado', 'mora')
             ->get();
 
-        if ($prestamos->isEmpty()) {
-            return $prestamos;
-        }
-
-        $yaNotificados = $this->contactosConMensajeDeCobroHoy($userId, $prestamos);
+        $vacio = $prestamos->take(0);
+        $yaNotificados = $prestamos->isEmpty()
+            ? []
+            : $this->contactosConMensajeDeCobroHoy($userId, $prestamos);
 
         if (empty($yaNotificados)) {
-            return $prestamos;
+            return $this->moraCache[$userId] = ['pendientes' => $prestamos, 'gestionados' => $vacio];
         }
 
-        return $prestamos->reject(function ($p) use ($yaNotificados) {
+        $gestionado = function ($p) use ($yaNotificados) {
             $numero = self::normalizarCelular($p->telefono_deudor);
 
             return $numero && in_array($numero, $yaNotificados, true);
-        })->values();
+        };
+
+        return $this->moraCache[$userId] = [
+            'pendientes' => $prestamos->reject($gestionado)->values(),
+            'gestionados' => $prestamos->filter($gestionado)->values(),
+        ];
     }
 
     /**

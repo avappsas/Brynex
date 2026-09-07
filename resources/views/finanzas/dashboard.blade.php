@@ -229,6 +229,7 @@
 .alert-card-bx{display:flex;gap:0.75rem;padding:1rem;border-radius:12px;border:1px solid;}
 .alert-card-bx.error{background:#fef2f2;border-color:#fca5a5;color:#991b1b;}
 .alert-card-bx.warning{background:#fffbeb;border-color:#fef3c7;color:#92400e;}
+.alert-card-bx.done{background:#f0fdf4;border-color:#bbf7d0;color:#166534;}
 .ac-icon{font-size:1.4rem;}.ac-body h3{font-size:0.9rem;font-weight:700;}.ac-body p{font-size:0.78rem;margin-top:0.15rem;}
 .btn-fin-small{padding:0.25rem 0.5rem;border:none;border-radius:6px;font-size:0.72rem;font-weight:600;cursor:pointer;text-decoration:none;}
 .btn-fin-small.primary{background:#3b82f6;color:#fff;}.btn-fin-small.success{background:#22c55e;color:#fff;}
@@ -387,13 +388,22 @@ async function cargarCuentas(){
 // ── 4. Alertas ────────────────────────────────────────────────
 async function cargarAlertas(){
     try{
-        const{prestamos_mora:mora,gastos_faltantes:faltantes}=await get(`${BASE}/alertas?anio=${ANIO}&mes=${MES}`);
+        const{prestamos_mora:mora,gastos_faltantes:faltantes,gestionados_hoy:gestionados}=await get(`${BASE}/alertas?anio=${ANIO}&mes=${MES}`);
         const sec=$('alertas-section'); let html='';
+        const nHechos=gestionados?.total??0;
+        // Pie del card: sin esto, gestionar al último deudor haría desaparecer el
+        // card entero y parecería que se perdió algo.
+        const pieHechos=nHechos>0
+            ? `<p title="${(gestionados.deudores??[]).join(', ')}" style="margin-top:0.6rem;font-size:0.75rem;font-weight:600;color:#166534;">✅ ${nHechos} ya ${nHechos===1?'gestionado':'gestionados'} hoy</p>`
+            : '';
         if(faltantes.length>0) html+=`<div class="alert-card-bx warning"><div class="ac-icon">💡</div><div class="ac-body">
             <h3>Gastos Recurrentes Pendientes</h3><p>Aún no has registrado estos gastos mensuales obligatorios:</p>
             <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-top:0.5rem;">
             ${faltantes.map(g=>`<span class="badge-warn" style="font-size:0.75rem;">${g.icono} ${g.nombre}</span>`).join('')}
             </div></div></div>`;
+        if(mora.length===0&&nHechos>0) html+=`<div class="alert-card-bx done" ${faltantes.length>0?'style="margin-top:0.75rem;"':''}><div class="ac-icon">✅</div><div class="ac-body">
+            <h3>Préstamos por gestionar</h3><p title="${(gestionados.deudores??[]).join(', ')}">Nada pendiente: hoy ya se escribió ${nHechos===1?'al único deudor en mora':'a los '+nHechos+' deudores en mora'}.</p>
+            </div></div>`;
         if(mora.length>0) html+=`<div class="alert-card-bx error" ${faltantes.length>0?'style="margin-top:0.75rem;"':''}><div class="ac-icon">⚠️</div><div class="ac-body">
             <h3>Préstamos por gestionar</h3><p>Estos préstamos están marcados en mora; los que ya tienen interés sin pagar se señalan con los días vencidos:</p>
             <div class="ac-list" style="margin-top:0.5rem;display:flex;flex-direction:column;gap:0.5rem;">
@@ -403,7 +413,7 @@ async function cargarAlertas(){
                 <div style="display:flex;gap:0.4rem;"><a href="${p.url_ficha}" class="btn-fin-small primary">Ficha</a>
                 <form action="${p.url_whatsapp}" method="POST" style="display:inline;"><input type="hidden" name="_token" value="${CSRF}">
                 <button type="submit" class="btn-fin-small success">${p.esta_vencido ? '🔴 Cobrar WA' : '🟢 Recordar WA'}</button></form></div></div>`).join('')}
-            </div></div></div>`;
+            </div>${pieHechos}</div></div>`;
         if(html){sec.innerHTML=html; sec.style.display='';}
     }catch(e){}
 }
