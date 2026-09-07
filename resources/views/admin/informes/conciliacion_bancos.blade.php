@@ -223,12 +223,36 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .78rem; min-width
                     <div style="font-size:.68rem;color:#dc2626;font-weight:700">⚠️ {{ $nSinRespaldo }} sin respaldo</div>
                 @endif
             </div>
+            {{-- Saldo del libro al cierre del mes filtrado, contra el que reporta
+                 el extracto. La diferencia es el descuadre real de ese mes. --}}
+            @php
+                $sMes = $sb['saldo_mes'];
+                $sExt = $sb['saldo_extracto'];
+                $dif  = $sExt !== null ? $sMes - $sExt : null;
+            @endphp
             <div style="text-align:right">
-                <div id="saldo-banco-{{ $sb['banco']->id }}" class="banco-saldo" style="color:{{ $sb['saldo'] >= 0 ? '#1d4ed8' : '#dc2626' }}">
-                    {{ $fmt($sb['saldo']) }}
+                <div id="saldo-banco-{{ $sb['banco']->id }}" class="banco-saldo" style="color:{{ $sMes >= 0 ? '#1d4ed8' : '#dc2626' }}">
+                    {{ $fmt($sMes) }}
                 </div>
-                <div style="font-size:.62rem;color:#94a3b8">Saldo histórico</div>
+                <div style="font-size:.62rem;color:#94a3b8"
+                     title="Histórico de la cuenta: {{ $fmt($sb['saldo']) }}">
+                    Saldo del libro al cierre de {{ \Carbon\Carbon::createFromFormat('Y-m', $mes)->locale('es')->isoFormat('MMMM') }}
+                </div>
             </div>
+            @if($sExt !== null)
+            <div style="text-align:right;border-left:1px solid #e2e8f0;padding-left:1rem">
+                <div class="banco-saldo" style="color:#0f172a">{{ $fmt($sExt) }}</div>
+                <div style="font-size:.62rem;color:#94a3b8">Según el extracto</div>
+                @if($dif !== 0)
+                    <div style="font-size:.68rem;font-weight:800;color:#dc2626;margin-top:.1rem"
+                         title="{{ $dif > 0 ? 'El libro tiene más plata que el banco' : 'El banco tiene más plata que el libro' }}">
+                        {{ $dif > 0 ? '+' : '−' }}{{ $fmt(abs($dif)) }} de diferencia
+                    </div>
+                @else
+                    <div style="font-size:.68rem;font-weight:800;color:#15803d;margin-top:.1rem">✅ cuadra</div>
+                @endif
+            </div>
+            @endif
         </div>
     </div>
 

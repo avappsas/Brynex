@@ -1862,9 +1862,36 @@ class InformeController extends Controller
             ->groupBy('banco_origen_id');
 
         // ── 4. Pre-calcular saldos (uno por banco) ────────────────────────────
+        // Dos saldos distintos y los dos hacen falta: el histórico —todo lo que
+        // lleva la cuenta desde su apertura— y el del cierre del mes filtrado,
+        // que es el que se compara contra el extracto.
         $saldosBanco = [];
+        $saldosMes = [];
         foreach ($bancoIds as $bid) {
             $saldosBanco[$bid] = \App\Models\Consignacion::saldoBanco($aliadoId, $bid);
+            $saldosMes[$bid] = \App\Models\Consignacion::saldoBancoAlFin($aliadoId, $bid, (int) $mesNum, (int) $anio);
+        }
+
+        // Saldo que reporta el banco al cierre del mes: es el `saldo_despues`
+        // del último movimiento del extracto. Sale en una sola consulta con
+        // ROW_NUMBER porque hacerlo por cuenta serían trece viajes al servidor.
+        $saldosExtracto = [];
+        if ($bancoIds !== []) {
+            $marcas = implode(',', array_fill(0, count($bancoIds), '?'));
+            $filas = DB::select(
+                "SELECT banco_cuenta_id, saldo_despues FROM (
+                    SELECT banco_cuenta_id, saldo_despues,
+                           ROW_NUMBER() OVER (PARTITION BY banco_cuenta_id ORDER BY fecha DESC, id DESC) AS rn
+                    FROM banco_movimientos
+                    WHERE banco_cuenta_id IN ($marcas)
+                      AND fecha BETWEEN ? AND ?
+                      AND saldo_despues IS NOT NULL
+                 ) t WHERE rn = 1",
+                array_merge($bancoIds, [$inicio, $fin])
+            );
+            foreach ($filas as $f) {
+                $saldosExtracto[(int) $f->banco_cuenta_id] = (int) round((float) $f->saldo_despues);
+            }
         }
 
         // ── 4-bis. Respaldo en el extracto del banco ─────────────────────────
@@ -1907,7 +1934,7 @@ class InformeController extends Controller
         // ── 5. Agrupar y transformar por banco ────────────────────────────────
         $consigPorBanco = $todasConsigRaw->groupBy('banco_cuenta_id');
 
-        $saldos = $bancos->map(function ($bc) use ($consigPorBanco, $todasSalidas, $saldosBanco, $anticipos, $respaldoExtracto, $respaldoGastos, $hayExtracto) {
+        $saldos = $bancos->map(function ($bc) use ($consigPorBanco, $todasSalidas, $saldosBanco, $saldosMes, $saldosExtracto, $anticipos, $respaldoExtracto, $respaldoGastos, $hayExtracto) {
 
             $extractoCargado = (int) ($hayExtracto[$bc->id] ?? 0) > 0;
 
@@ -2021,9 +2048,13 @@ class InformeController extends Controller
                 ->values();
 
             return [
-                'banco'       => $bc,
-                'saldo'       => $saldosBanco[$bc->id] ?? 0,
-                'movimientos' => $movimientos,
+                'banco'          => $bc,
+                'saldo'          => $saldosBanco[$bc->id] ?? 0,
+                'saldo_mes'      => $saldosMes[$bc->id] ?? 0,
+                // null cuando no se ha cargado el extracto del mes: ahí no hay
+                // nada que comparar y la pantalla no debe inventar un cero.
+                'saldo_extracto' => $saldosExtracto[$bc->id] ?? null,
+                'movimientos'    => $movimientos,
             ];
         });
 
