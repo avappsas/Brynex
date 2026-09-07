@@ -159,6 +159,9 @@ if ($esTramiteG) {
         $uEntidades[] = ['Parafiscales', 'SENA + ICBF', (int)$fU->v_parafiscales, '#c2410c'];
     }
     $uEntidades[] = ['Días cotizados', $fU->dias_cotizados ?? 30, null, '#0f172a'];
+    if ($retU = $retiroDe($fU)) {
+        $uEntidades[] = ['Retiro', '⛔ '.$retU, null, '#b91c1c'];
+    }
 }
 @endphp
 <div style="padding:.45rem .85rem .1rem">
@@ -248,6 +251,12 @@ $tIva += $vIvaG; $tOtros += $vOtrG;
             <a href="{{ route('admin.facturacion.recibo', $f->id) }}?modal={{ request()->get('modal', 0) }}&individual=1" class="no-print" title="Ver recibo individual" style="text-decoration:none;font-size:.85rem;cursor:pointer">👤</a>
         </div>
         <div style="font-size:.63rem;color:#94a3b8">CC {{ $f->cedula }}</div>
+        @php $retG = $retiroDe($f); @endphp
+        @if($retG)
+        <div style="font-size:.6rem;font-weight:700;color:#b91c1c;margin-top:.12rem">
+            ⛔ RETIRO {{ $retG }}
+        </div>
+        @endif
     </td>
     <td>
         @if($rsG)
@@ -433,9 +442,20 @@ $tSS = $tEps + $tArl + $tPen + $tCaj + $tParaf;
 {{-- BARRA INFERIOR dentro del cuadro --}}
 <div class="fact-bottom-bar" style="border-top:1px solid rgba(255,255,255,.07);margin: 0 0 0; border-radius:0">
     <span>{{ $nomAliadoG }} — Asesoría en Seguridad Social</span>
-    {{-- Sin "Facturó"/"Creado": el lote agrupa varios trabajadores y sus filas
-         pueden venir de personas y momentos distintos; un solo nombre mentiría. --}}
-    <span style="font-size:.65rem;color:#94a3b8">Impreso: {{ now()->format('d/m/Y H:i') }}</span>
+    @php
+    // El lote agrupa varios trabajadores y sus filas pueden venir de personas y
+    // momentos distintos, así que un solo nombre mentiría: se firma con el nombre
+    // únicamente cuando todas las filas son del mismo usuario, y si no se listan
+    // todos. Lo mismo con la fecha de creación (la del primer registro del lote).
+    $usrsG   = $filas->map(fn ($x) => $x->usuario?->nombre ?? $x->usuario?->name)->filter()->unique()->values();
+    $firmaG  = $usrsG->count() === 1 ? $usrsG->first() : ($usrsG->isEmpty() ? null : $usrsG->implode(', '));
+    $creadoG = $filas->min('created_at');
+    @endphp
+    <span style="font-size:.65rem;color:#94a3b8">
+        @if($firmaG)Facturó: {{ $firmaG }} &nbsp;&middot;&nbsp;@endif
+        @if($creadoG)Creado: {{ \Carbon\Carbon::parse($creadoG)->format('d/m/Y H:i') }} &nbsp;&middot;&nbsp;@endif
+        Impreso: {{ now()->format('d/m/Y H:i') }}
+    </span>
 </div>
 </div>{{-- /recibo-inner --}}
 @else
@@ -654,6 +674,15 @@ $empresaCliente = $cli1?->empresa ?? ($cli1?->cod_empresa ? \App\Models\Empresa:
             {{ sqldate($factura->fecha_pago)->format('d/m/Y') }}
         </span>
     </div>
+    @php $ret1 = $retiroDe($factura); @endphp
+    @if($ret1)
+    <div class="fact-cliente-row">
+        <span class="fact-cliente-lbl">Retiro</span>
+        <span class="fact-cliente-val" style="color:#b91c1c;font-size:.73rem;font-weight:700">
+            ⛔ {{ $ret1 }}
+        </span>
+    </div>
+    @endif
 </div>
 
 {{-- ALERTA PRÉSTAMO --}}

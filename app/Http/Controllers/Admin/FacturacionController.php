@@ -2994,7 +2994,7 @@ class FacturacionController extends Controller
                 ->where('numero_factura', $factura->numero_factura)
                 ->with(['contrato.cliente', 'contrato.eps', 'contrato.arl',
                     'contrato.pension', 'contrato.caja', 'contrato.razonSocial',
-                    'abonos', 'consignaciones.bancoCuenta'])
+                    'abonos', 'consignaciones.bancoCuenta', 'usuario'])
                 ->orderBy('id')
                 ->get();
         }
@@ -3047,8 +3047,25 @@ class FacturacionController extends Controller
                 'planilla' => $p->numero_planilla,
             ]);
 
+        // Retiros marcados en este recibo. El retiro suele aplicarse al facturar
+        // (casilla de retiro), y hasta ahora no quedaba a la vista en ningún lado:
+        // había que ir a la bitácora para saber quién retiró a quién. El plano de
+        // la factura guarda la fecha de retiro y el usuario que lo generó.
+        $retirosGrupo = Plano::whereIn('factura_id', ($grupoNp ?? collect([$factura]))->pluck('id'))
+            ->whereNotNull('fecha_ret')
+            ->orderBy('id')
+            ->get(['factura_id', 'fecha_ret', 'usuario_id']);
+
+        $nombresRetiro = \App\Models\User::whereIn('id', $retirosGrupo->pluck('usuario_id')->filter()->unique())
+            ->pluck('nombre', 'id');
+
+        $retirosGrupo = $retirosGrupo->keyBy('factura_id')->map(fn ($p) => [
+            'fecha' => $p->fecha_ret,
+            'usuario' => $nombresRetiro[$p->usuario_id] ?? null,
+        ]);
+
         return view('admin.facturacion.recibo',
-            compact('factura', 'grupoNp', 'anticiposAplicados', 'reciboDoble', 'saldoAnterior', 'planillasGrupo'));
+            compact('factura', 'grupoNp', 'anticiposAplicados', 'reciboDoble', 'saldoAnterior', 'planillasGrupo', 'retirosGrupo'));
     }
 
     // ─── Anular factura (solo admin) ─────────────────────────────────

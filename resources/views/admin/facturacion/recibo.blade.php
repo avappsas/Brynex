@@ -9,6 +9,17 @@ $fmt   = fn($v) => '$'.number_format($v ?? 0, 0, ',', '.');
 $esGrupo = $grupoNp && $grupoNp->count() > 0 && !request()->boolean('individual');
 $filas   = $esGrupo ? $grupoNp : collect([$factura]);
 
+// ── Retiro marcado al facturar ────────────────────────────────────────
+// Devuelve "31/07/2026 · Sandra Villota" para la fila cuyo plano trae fecha
+// de retiro. Antes el recibo no decía nada del retiro y había que buscar en
+// la bitácora quién lo había marcado.
+$retiroDe = function ($f) use ($retirosGrupo) {
+    $r = ($retirosGrupo ?? collect())->get($f->id);
+    if (!$r) { return null; }
+    $fec = $r['fecha'] ? Carbon::parse($r['fecha'])->format('d/m/Y') : null;
+    return trim(($fec ?: '') . ($r['usuario'] ? ($fec ? ' · ' : '').$r['usuario'] : '')) ?: null;
+};
+
 // ── Detectar par Afiliación + Planilla (independientes, modo "ambos") ──
 // Cuando el mismo numero_factura tiene 2 registros del mismo contrato
 // con tipos afiliacion y planilla, redirigimos la referencia al registro
