@@ -173,7 +173,15 @@
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Monto ($ COP)</label>
                         <input type="number" name="monto" placeholder="Ej: 650000" class="form-input-bx" required min="1" autocomplete="off">
-                        <small style="color:#64748b; font-size:0.7rem;">Este gasto se creará automáticamente también en la tabla general de gastos.</small>
+                        <small style="color:#64748b; font-size:0.7rem;">Se registra también en los gastos del mes y baja el saldo de la cuenta que elijas: mantener un bien sí es un gasto.</small>
+                    </div>
+                    <div class="form-group-bx" style="margin-top:1rem;">
+                        <label class="form-label-bx">¿De dónde salió la plata?</label>
+                        <select name="cuenta_id" class="form-select-bx">
+                            @foreach($cuentas as $cuenta)
+                                <option value="{{ $cuenta->id }}">{{ $cuenta->icono ?? '💳' }} {{ $cuenta->nombre }}</option>
+                            @endforeach
+                        </select>
                     </div>
                     <div class="form-group-bx" style="margin-top:1rem;">
                         <label class="form-label-bx">Observación (Opcional)</label>

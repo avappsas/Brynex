@@ -119,7 +119,9 @@ class PatrimonioController extends Controller
             }])
             ->findOrFail($id);
 
-        return view('finanzas.patrimonio.show', compact('patrimonio'));
+        $cuentas = \App\Models\Finanzas\Cuenta::where('user_id', Auth::id())->activas()->orderBy('orden')->get();
+
+        return view('finanzas.patrimonio.show', compact('patrimonio', 'cuentas'));
     }
 
     public function update(Request $request, $id)
@@ -163,6 +165,7 @@ class PatrimonioController extends Controller
             'monto' => 'required|numeric|min:1',
             'fecha' => 'required|date',
             'observacion' => 'nullable|string|max:255',
+            'cuenta_id' => 'nullable|integer',
         ]);
 
         $user = Auth::user();
@@ -182,14 +185,19 @@ class PatrimonioController extends Controller
                 ? 'Impuestos'
                 : 'Otros';
 
-            $categoria = CategoriaGasto::where('user_id', $user->id)
-                ->where('nombre', $catNombre)
-                ->first();
-            $catId = $categoria ? $categoria->id : 1;
+            // firstOrCreate y no un id de respaldo: el fallback caía en la
+            // categoría 1, la que fuera, cuando el usuario no tenía esa categoría.
+            $categoria = CategoriaGasto::firstOrCreate(
+                ['user_id' => $user->id, 'nombre' => $catNombre],
+                ['icono' => $catNombre === 'Impuestos' ? '🧾' : '📁', 'orden' => 99]
+            );
 
             Gasto::create([
                 'user_id' => $user->id,
-                'categoria_id' => $catId,
+                'categoria_id' => $categoria->id,
+                // El mantenimiento sale de una cuenta como cualquier gasto; sin
+                // esto el saldo del bolsillo se quedaba inflado.
+                'cuenta_id' => $this->resolverCuenta($request->cuenta_id),
                 'fecha' => $request->fecha,
                 'monto' => $request->monto,
                 'descripcion' => "Gasto de patrimonio ({$patrimonio->nombre}): {$request->concepto}",

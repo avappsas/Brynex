@@ -118,8 +118,11 @@ class GastoController extends Controller
             'monto' => 'required|numeric|min:1',
             'descripcion' => 'nullable|string|max:255',
             'tipo_movimiento' => 'required|string|in:gasto,prestamo,inversion,ingreso_esporadico',
-            'es_patrimonio' => 'nullable|boolean',
+            // 'no' | 'gasto' (de un bien que ya tengo) | 'compra' (bien nuevo)
+            'modo_patrimonio' => 'nullable|string|in:no,gasto,compra',
             'patrimonio_id' => 'nullable|integer',
+            'bien_nombre' => 'required_if:modo_patrimonio,compra|nullable|string|max:100',
+            'bien_categoria' => 'required_if:modo_patrimonio,compra|nullable|string|in:inmueble,vehiculo,electronico,joya,otro',
             'soporte' => 'nullable|file|mimes:jpeg,png,jpg,webp|max:10240',
         ]);
 
@@ -155,6 +158,30 @@ class GastoController extends Controller
             $soportePath = $request->file('soporte')->store('finanzas/gastos_soportes', 'local');
         }
 
+        // Comprar un bien y mantener un bien son cosas distintas, y antes las
+        // decidía la misma casilla: el predial del apartamento salía marcado como
+        // patrimonio y desaparecía de los gastos del mes.
+        //   - compra → nace el bien y el gasto no cuenta como gasto del mes
+        //   - gasto  → se liga al bien, pero sigue siendo un gasto de verdad
+        $modo = $request->input('modo_patrimonio', 'no');
+        $patrimonioId = $modo === 'no' ? null : $request->patrimonio_id;
+        $esCompraDeBien = $modo === 'compra';
+
+        if ($esCompraDeBien) {
+            $bien = \App\Models\Finanzas\Patrimonio::create([
+                'user_id' => $user->id,
+                'nombre' => $request->bien_nombre,
+                'categoria' => $request->bien_categoria,
+                'valor_compra' => $request->monto,
+                'fecha_adquisicion' => $request->fecha,
+                'valor_actual' => $request->monto,
+                'valor_actual_fecha' => $request->fecha,
+                'activo' => true,
+            ]);
+
+            $patrimonioId = $bien->id;
+        }
+
         Gasto::create([
             'user_id' => $user->id,
             'categoria_id' => $categoriaId,
@@ -163,10 +190,21 @@ class GastoController extends Controller
             'monto' => $request->monto,
             'descripcion' => $request->descripcion,
             'tipo_movimiento' => $request->tipo_movimiento,
-            'es_patrimonio' => $request->has('es_patrimonio') ? (bool) $request->es_patrimonio : false,
-            'patrimonio_id' => $request->patrimonio_id,
+            'es_patrimonio' => $esCompraDeBien,
+            'patrimonio_id' => $patrimonioId,
             'soporte_path' => $soportePath,
         ]);
+
+        // El gasto de un bien también se copia a su ficha, que lee de su propia
+        // tabla (mismo camino que `PatrimonioController::agregarGasto`).
+        if ($modo === 'gasto' && $patrimonioId) {
+            \App\Models\Finanzas\PatrimonioGasto::create([
+                'patrimonio_id' => $patrimonioId,
+                'concepto' => $request->descripcion ?: 'Gasto del bien',
+                'monto' => $request->monto,
+                'fecha' => $request->fecha,
+            ]);
+        }
 
         $this->invalidarCacheFinanzas(
             (int) date('Y', strtotime($request->fecha)),

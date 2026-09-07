@@ -231,26 +231,48 @@ class="modal-overlay-bx"
                     </div>
                 </div>
 
-                {{-- Patrimonio Checkbox --}}
-                <div x-data="{ esPatrimonio: false }">
-                    <div style="display:flex; align-items:center; gap:0.5rem; margin-top:0.5rem;">
-                        <input type="checkbox" name="es_patrimonio" value="1" x-model="esPatrimonio" id="es_patrimonio_check" style="cursor:pointer; width:16px; height:16px;">
-                        <label for="es_patrimonio_check" style="font-size:0.8rem; color:#475569; cursor:pointer; font-weight:500;">
-                            ¿Este gasto genera o se asocia a un bien de Patrimonio?
-                        </label>
-                    </div>
+                {{-- Patrimonio: comprar un bien no es lo mismo que mantenerlo --}}
+                <div x-data="{ modo: 'no' }" style="margin-top:0.5rem;">
+                    <label class="form-label-bx">¿Tiene que ver con un bien?</label>
+                    <select name="modo_patrimonio" x-model="modo" class="form-select-bx">
+                        <option value="no">No</option>
+                        <option value="gasto">Es un gasto de un bien que ya tengo (predial, SOAT, arreglo)</option>
+                        <option value="compra">Estoy comprando un bien nuevo</option>
+                    </select>
 
-                    {{-- Selector de Patrimonio --}}
-                    <div x-show="esPatrimonio" x-cloak style="margin-top:0.75rem; padding-left:1.5rem; border-left:2px solid #a855f7;">
-                        <label class="form-label-bx" style="color:#7e22ce;">Asociar al Bien Patrimonial</label>
-                        <select name="patrimonio_id" class="form-select-bx">
+                    {{-- Gasto de un bien existente: se liga, pero sigue siendo gasto --}}
+                    <div x-show="modo === 'gasto'" x-cloak style="margin-top:0.75rem; padding-left:1.5rem; border-left:2px solid #a855f7;">
+                        <label class="form-label-bx" style="color:#7e22ce;">¿De cuál bien?</label>
+                        <select name="patrimonio_id" class="form-select-bx" :required="modo === 'gasto'">
                             <option value="">-- Seleccionar Bien --</option>
                             @foreach($patrimonios ?? [] as $pat)
                                 <option value="{{ $pat->id }}">{{ $pat->nombre }}</option>
                             @endforeach
                         </select>
                         <small style="color:#64748b; font-size:0.7rem; display:block; margin-top:0.25rem;">
-                            El valor de este gasto se acumulará en el historial de gastos del bien.
+                            Se suma al historial del bien y sigue contando como gasto del mes: el predial se paga y se va.
+                        </small>
+                    </div>
+
+                    {{-- Compra de un bien nuevo: nace el bien y el gasto no baja la ganancia --}}
+                    <div x-show="modo === 'compra'" x-cloak style="margin-top:0.75rem; padding-left:1.5rem; border-left:2px solid #0891b2;">
+                        <div class="form-group-bx">
+                            <label class="form-label-bx" style="color:#0e7490;">Nombre del bien</label>
+                            <input type="text" name="bien_nombre" class="form-input-bx" placeholder="Ej: Nevera, Moto, Portátil" :required="modo === 'compra'">
+                        </div>
+                        <div class="form-group-bx" style="margin-top:0.5rem;">
+                            <label class="form-label-bx" style="color:#0e7490;">Tipo</label>
+                            <select name="bien_categoria" class="form-select-bx" :required="modo === 'compra'">
+                                <option value="otro">📦 Otro (se devalúa 10% al año)</option>
+                                <option value="electronico">💻 Electrónico (30% al año)</option>
+                                <option value="vehiculo">🚗 Vehículo (12% al año)</option>
+                                <option value="inmueble">🏢 Inmueble (no se devalúa solo)</option>
+                                <option value="joya">💎 Joya (no se devalúa sola)</option>
+                            </select>
+                        </div>
+                        <small style="color:#64748b; font-size:0.7rem; display:block; margin-top:0.25rem;">
+                            Se crea el bien en Patrimonio. La plata sale de la cuenta, pero no cuenta como gasto del mes:
+                            el bien queda y se puede vender.
                         </small>
                     </div>
                 </div>
