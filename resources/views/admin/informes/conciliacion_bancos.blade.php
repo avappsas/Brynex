@@ -244,10 +244,17 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .78rem; min-width
                 <div class="banco-saldo" style="color:#0f172a">{{ $fmt($sExt) }}</div>
                 <div style="font-size:.62rem;color:#94a3b8">Según el extracto</div>
                 @if($dif !== 0)
-                    <div style="font-size:.68rem;font-weight:800;color:#dc2626;margin-top:.1rem"
+                    <div style="font-size:.68rem;font-weight:800;color:{{ $sb['banco']->uso_personal ? '#6d28d9' : '#dc2626' }};margin-top:.1rem"
                          title="{{ $dif > 0 ? 'El libro tiene más plata que el banco' : 'El banco tiene más plata que el libro' }}">
                         {{ $dif > 0 ? '+' : '−' }}{{ $fmt(abs($dif)) }} de diferencia
+                        @if($sb['banco']->uso_personal)<span style="font-weight:600">(cuenta mixta)</span>@endif
                     </div>
+                    @if($sb['personal_n'])
+                        <div style="font-size:.64rem;color:#6d28d9;margin-top:.05rem"
+                             title="Movimientos marcados como personales en este mes">
+                            👤 {{ $sb['personal_n'] }} personales · {{ $fmt(abs($sb['personal_neto'])) }}
+                        </div>
+                    @endif
                 @else
                     <div style="font-size:.68rem;font-weight:800;color:#15803d;margin-top:.1rem">✅ cuadra</div>
                 @endif

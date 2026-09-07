@@ -239,6 +239,9 @@ class ConciliadorConsignacionesService
             foreach (array_chunk($ignorados, 400) as $tanda) {
                 DB::table('banco_movimientos')->whereIn('id', $tanda)->update([
                     'estado_conciliacion' => BancoMovimiento::CONCILIACION_IGNORADO,
+                    // Queda dicho por qué: lo cobró el banco. Sin el motivo no
+                    // se puede separar de lo que alguien marcó como personal.
+                    'clasificacion' => BancoMovimiento::CLASIFICACION_COSTO_BANCO,
                     'conciliado_at' => $ahora,
                     'updated_at' => $ahora,
                 ]);

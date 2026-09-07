@@ -231,7 +231,7 @@ class ExtractoBancoController extends Controller
             ->whereBetween('bm.fecha', [$desde, $hasta])
             ->orderByDesc('bm.valor')
             ->limit(300)
-            ->select('bm.id', 'bm.fecha', 'bm.valor', 'bm.tipo', 'bm.descripcion', 'bc.banco')
+            ->select('bm.id', 'bm.fecha', 'bm.valor', 'bm.tipo', 'bm.descripcion', 'bm.clasificacion', 'bc.banco')
             ->get();
     }
 
@@ -661,11 +661,51 @@ class ExtractoBancoController extends Controller
 
         $mov->update([
             'estado_conciliacion' => BancoMovimiento::CONCILIACION_IGNORADO,
+            'clasificacion' => BancoMovimiento::CLASIFICACION_COSTO_BANCO,
             'conciliado_por' => Auth::id(),
             'conciliado_at' => now(),
         ]);
 
         return back()->with('success', "Movimiento {$mov->id} marcado como ajeno al libro.");
+    }
+
+    /**
+     * Marca un movimiento como plata personal del titular.
+     *
+     * Varias cuentas del aliado son personales aunque por ellas pase la
+     * operación: en su extracto conviven la planilla de un cliente y el mercado
+     * del sábado. Lo personal sale del cuadre del negocio, pero se guarda con
+     * su motivo —no revuelto con los cobros del banco— para poder decir cuánto
+     * de la diferencia de una cuenta es simplemente vida privada.
+     */
+    public function marcarPersonal(int $movimientoId)
+    {
+        $aliadoId = $this->aliadoId();
+
+        $mov = BancoMovimiento::where('id', $movimientoId)->where('aliado_id', $aliadoId)->first();
+        if (! $mov) {
+            abort(404, 'Ese movimiento no es de este aliado.');
+        }
+
+        if ($mov->consignaciones()->count() > 0 || $mov->gastos()->count() > 0) {
+            return back()->with('error', 'Ese movimiento ya está cruzado con el libro. Deshaga el cruce primero.');
+        }
+
+        $mov->update([
+            'estado_conciliacion' => BancoMovimiento::CONCILIACION_IGNORADO,
+            'clasificacion' => BancoMovimiento::CLASIFICACION_PERSONAL,
+            'conciliado_por' => Auth::id(),
+            'conciliado_at' => now(),
+        ]);
+
+        Bitacora::registrar(
+            'marcar_personal', 'BancoMovimiento', (int) $mov->id,
+            'Movimiento marcado como personal: '.mb_substr((string) $mov->descripcion, 0, 60),
+            ['valor' => (float) $mov->valor],
+            $aliadoId
+        );
+
+        return back()->with('success', 'Movimiento marcado como personal: queda fuera del cuadre del negocio.');
     }
 
     /**

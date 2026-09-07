@@ -596,6 +596,7 @@ class ConfiguracionAliadoController extends Controller
             'cobro' => 'boolean',
             'facturacion' => 'boolean',
             'incapacidad' => 'boolean',
+            'uso_personal' => 'boolean',
             'observacion' => 'nullable|string|max:300',
             // La llave Bre-B se valida por formato: mal escrita, el cliente
             // intenta pagar, no le funciona y termina llamando igual.
@@ -611,6 +612,7 @@ class ConfiguracionAliadoController extends Controller
         $v['cobro'] = $request->boolean('cobro');
         $v['facturacion'] = $request->boolean('facturacion');
         $v['incapacidad'] = $request->boolean('incapacidad');
+        $v['uso_personal'] = $request->boolean('uso_personal');
 
         // El rol `usuario` solo puede dar de alta cuentas DE INCAPACIDAD: se le
         // fuerzan las marcas para que no cree por accidente (ni a propósito) una
@@ -641,6 +643,7 @@ class ConfiguracionAliadoController extends Controller
             'cobro' => 'boolean',
             'facturacion' => 'boolean',
             'incapacidad' => 'boolean',
+            'uso_personal' => 'boolean',
             'observacion' => 'nullable|string|max:300',
             // La llave Bre-B se valida por formato: mal escrita, el cliente
             // intenta pagar, no le funciona y termina llamando igual.
@@ -655,6 +658,7 @@ class ConfiguracionAliadoController extends Controller
         $v['cobro'] = $request->boolean('cobro');
         $v['facturacion'] = $request->boolean('facturacion');
         $v['incapacidad'] = $request->boolean('incapacidad');
+        $v['uso_personal'] = $request->boolean('uso_personal');
         $cuenta->update($v);
         // Si petición AJAX (fetch) devuelve JSON
         if ($request->expectsJson() || $request->ajax()) {

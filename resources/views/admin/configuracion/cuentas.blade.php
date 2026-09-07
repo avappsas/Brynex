@@ -128,6 +128,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
                     <label class="chk-uso"><input type="checkbox" name="cobro" value="1"> 💳 Cobro</label>
                     <label class="chk-uso"><input type="checkbox" name="facturacion" value="1" checked> 🧾 Facturación</label>
                     <label class="chk-uso"><input type="checkbox" name="incapacidad" value="1"> 🏥 Incapacidad</label>
+                    <label class="chk-uso" title="Cuenta personal por la que también pasa la operación: su extracto trae movimientos que el negocio no registra"><input type="checkbox" name="uso_personal" value="1"> 👤 Personal</label>
                     <label class="chk-uso" style="margin-left:auto"><input type="checkbox" name="activo" value="1" checked> Activa</label>
                 </div>
                 <div style="padding-top:.9rem;grid-column:1/-1">
@@ -215,6 +216,12 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
                 @if($c->llave)
                     <br><span style="font-family:sans-serif;font-size:.7rem;color:#475569;background:#f1f5f9;padding:.1rem .35rem;border-radius:4px;font-weight:600"
                               title="Llave Bre-B{{ $c->tipo_llave ? ' — ' . $c->tipo_llave : '' }}">🔑 {{ $c->llave }}</span>
+                @endif
+                @if($c->uso_personal)
+                    <br><span style="font-family:sans-serif;font-size:.7rem;color:#6d28d9;background:#f5f3ff;border:1px solid #ddd6fe;padding:.1rem .35rem;border-radius:4px;font-weight:600"
+                              title="Cuenta personal: su extracto trae movimientos que el negocio no registra">👤 personal</span>
+                @endif
+                @if(false)
                 @elseif($c->cobro && $c->activo)
                     <br><span style="font-family:sans-serif;font-size:.7rem;color:#92400e;background:#fef3c7;border:1px solid #fde68a;padding:.1rem .35rem;border-radius:4px;font-weight:600"
                               title="Esta cuenta sale en la cuenta de cobro; sin llave el cliente debe copiar el número a mano">⚠️ sin llave Bre-B</span>
@@ -315,6 +322,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
                     <label class="chk-uso"><input type="checkbox" name="cobro" id="e_cobro" value="1"> 💳 Cobro</label>
                     <label class="chk-uso"><input type="checkbox" name="facturacion" id="e_facturacion" value="1"> 🧾 Facturación</label>
                     <label class="chk-uso"><input type="checkbox" name="incapacidad" id="e_incapacidad" value="1"> 🏥 Incapacidad</label>
+                    <label class="chk-uso" title="Cuenta personal por la que también pasa la operación: su extracto trae movimientos que el negocio no registra"><input type="checkbox" name="uso_personal" id="e_uso_personal" value="1"> 👤 Personal</label>
                     <label class="chk-uso" style="margin-left:auto"><input type="checkbox" name="activo" id="e_activo" value="1"> Activa</label>
                 </div>
                 <div style="padding-top:.9rem;grid-column:1/-1">
@@ -395,6 +403,7 @@ function editarCuenta(id, data) {
             ? row.getAttribute(`data-${u}`) === '1'
             : !!data[u];
     });
+    document.getElementById('e_uso_personal').checked = data.uso_personal === true || data.uso_personal === 1 || data.uso_personal === '1';
     document.getElementById('e_activo').checked = data.activo !== false && data.activo !== 0;
     document.getElementById('modal-editar').style.display = 'flex';
 }

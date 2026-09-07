@@ -9,6 +9,9 @@ class BancoCuenta extends BaseModel
     protected $fillable = [
         'aliado_id', 'nombre', 'nit', 'banco',
         'tipo_cuenta', 'numero_cuenta', 'activo', 'cobro', 'facturacion', 'incapacidad',
+        // Cuenta personal por la que también pasa la operación: su extracto trae
+        // movimientos que el libro del negocio nunca va a tener.
+        'uso_personal',
         'observacion', 'llave',
     ];
 
@@ -17,6 +20,7 @@ class BancoCuenta extends BaseModel
         'cobro' => 'boolean',
         'facturacion' => 'boolean',
         'incapacidad' => 'boolean',
+        'uso_personal' => 'boolean',
     ];
 
     /**

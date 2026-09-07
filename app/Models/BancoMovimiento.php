@@ -19,7 +19,7 @@ class BancoMovimiento extends BaseModel
         'fecha', 'fecha_hora', 'tipo', 'valor', 'saldo_despues',
         'descripcion', 'referencia', 'canal',
         'contraparte_nombre', 'contraparte_documento',
-        'estado_conciliacion', 'consignacion_id', 'conciliado_por', 'conciliado_at',
+        'estado_conciliacion', 'clasificacion', 'consignacion_id', 'conciliado_por', 'conciliado_at',
         'payload',
     ];
 
@@ -47,6 +47,13 @@ class BancoMovimiento extends BaseModel
 
     /** Movimiento que no le corresponde al libro (comisiones, 4x1000…) */
     const CONCILIACION_IGNORADO = 'ignorado';
+
+    // ── Por qué quedó fuera del cuadre ───────────────────────────────
+    /** Lo cobró o lo abonó el banco: 4x1000, cuota de manejo, intereses */
+    const CLASIFICACION_COSTO_BANCO = 'costo_banco';
+
+    /** Plata personal del titular en una cuenta por la que también pasa el negocio */
+    const CLASIFICACION_PERSONAL = 'personal';
 
     // ── Relaciones ───────────────────────────────────────────────────
     public function bancoCuenta()

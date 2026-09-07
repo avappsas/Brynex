@@ -1866,11 +1866,26 @@ class InformeController extends Controller
         // lleva la cuenta desde su apertura— y el del cierre del mes filtrado,
         // que es el que se compara contra el extracto.
         $saldosBanco = [];
-        $saldosMes = [];
         foreach ($bancoIds as $bid) {
             $saldosBanco[$bid] = \App\Models\Consignacion::saldoBanco($aliadoId, $bid);
-            $saldosMes[$bid] = \App\Models\Consignacion::saldoBancoAlFin($aliadoId, $bid, (int) $mesNum, (int) $anio);
         }
+
+        // El saldo al cierre del mes se calcula para todas las cuentas de una,
+        // no cuenta por cuenta: `saldoBancoAlFin` hace tres consultas cada vez
+        // y con trece bancos eran ocho segundos de la pantalla.
+        $saldosMes = $this->saldosAlCierre($aliadoId, $bancoIds, $fin);
+
+        // Cuánto de lo que se movió en el mes quedó marcado como personal. En
+        // las cuentas mixtas explica buena parte de la diferencia, así que se
+        // muestra al lado en vez de dejar que el descuadre parezca un error.
+        $personalMes = DB::table('banco_movimientos')
+            ->whereIn('banco_cuenta_id', $bancoIds)
+            ->where('clasificacion', \App\Models\BancoMovimiento::CLASIFICACION_PERSONAL)
+            ->whereBetween('fecha', [$inicio, $fin])
+            ->groupBy('banco_cuenta_id')
+            ->selectRaw("banco_cuenta_id, SUM(CASE WHEN tipo = 'credito' THEN valor ELSE -valor END) AS neto, COUNT(*) AS n")
+            ->get()
+            ->keyBy('banco_cuenta_id');
 
         // Saldo que reporta el banco al cierre del mes: es el `saldo_despues`
         // del último movimiento del extracto. Sale en una sola consulta con
@@ -1934,7 +1949,7 @@ class InformeController extends Controller
         // ── 5. Agrupar y transformar por banco ────────────────────────────────
         $consigPorBanco = $todasConsigRaw->groupBy('banco_cuenta_id');
 
-        $saldos = $bancos->map(function ($bc) use ($consigPorBanco, $todasSalidas, $saldosBanco, $saldosMes, $saldosExtracto, $anticipos, $respaldoExtracto, $respaldoGastos, $hayExtracto) {
+        $saldos = $bancos->map(function ($bc) use ($consigPorBanco, $todasSalidas, $saldosBanco, $saldosMes, $saldosExtracto, $personalMes, $anticipos, $respaldoExtracto, $respaldoGastos, $hayExtracto) {
 
             $extractoCargado = (int) ($hayExtracto[$bc->id] ?? 0) > 0;
 
@@ -2054,11 +2069,94 @@ class InformeController extends Controller
                 // null cuando no se ha cargado el extracto del mes: ahí no hay
                 // nada que comparar y la pantalla no debe inventar un cero.
                 'saldo_extracto' => $saldosExtracto[$bc->id] ?? null,
+                'personal_neto'  => (int) round((float) ($personalMes[$bc->id]->neto ?? 0)),
+                'personal_n'     => (int) ($personalMes[$bc->id]->n ?? 0),
                 'movimientos'    => $movimientos,
             ];
         });
 
         return view('admin.informes.conciliacion_bancos', compact('saldos', 'bancos', 'mes'));
+    }
+
+    /**
+     * Saldo del libro al cierre de una fecha, para varias cuentas a la vez.
+     *
+     * Replica lo que hace `Consignacion::saldoBancoAlFin` —saldo de apertura
+     * más consignaciones menos gastos— pero en dos consultas agrupadas en vez
+     * de tres por cuenta. Cada cuenta arranca en su propia fecha de apertura,
+     * y las que no tienen apertura suman desde el principio; eso es lo que
+     * resuelve el CASE.
+     *
+     * @return array<int,int> saldo por banco_cuenta_id
+     */
+    private function saldosAlCierre(int $aliadoId, array $bancoIds, string $fechaFin): array
+    {
+        if ($bancoIds === []) {
+            return [];
+        }
+
+        $aperturas = DB::table('saldos_banco')
+            ->where('aliado_id', $aliadoId)
+            ->whereIn('banco_cuenta_id', $bancoIds)
+            ->where('tipo', 'saldo_inicial')
+            ->where('fecha', '<=', $fechaFin)
+            ->orderBy('fecha')
+            ->get(['banco_cuenta_id', 'fecha', 'saldo_acumulado']);
+
+        $base = [];
+        $desde = [];
+        foreach ($aperturas as $a) {
+            $base[(int) $a->banco_cuenta_id] = (int) $a->saldo_acumulado;
+            $desde[(int) $a->banco_cuenta_id] = $a->fecha;
+        }
+
+        // Sin apertura, la cuenta arranca en el corte del 1-jul-2026, igual que
+        // `saldoBancoAlFin`. Esa fecha está quemada en el modelo desde el ajuste
+        // de apertura; replicarla es lo que hace que los dos den lo mismo.
+        $corte = '2026-06-30';
+        $casos = '';
+        $bind = [];
+        foreach ($desde as $bid => $fecha) {
+            $casos .= " WHEN $bid THEN ? ";
+            $bind[] = $fecha;
+        }
+        $expr = $casos !== ''
+            ? "CASE banco_cuenta_id $casos ELSE '$corte' END"
+            : "'$corte'";
+
+        $marcas = implode(',', array_fill(0, count($bancoIds), '?'));
+
+        $entradas = DB::select(
+            "SELECT banco_cuenta_id, ISNULL(SUM(CAST(valor AS BIGINT)), 0) AS total
+             FROM consignaciones
+             WHERE aliado_id = ? AND banco_cuenta_id IN ($marcas)
+               AND deleted_at IS NULL AND fecha > $expr AND fecha <= ?
+             GROUP BY banco_cuenta_id",
+            array_merge([$aliadoId], $bancoIds, $bind, [$fechaFin])
+        );
+
+        $salidas = DB::select(
+            "SELECT banco_origen_id AS banco_cuenta_id, ISNULL(SUM(CAST(valor AS BIGINT)), 0) AS total
+             FROM gastos
+             WHERE aliado_id = ? AND banco_origen_id IN ($marcas)
+               AND tipo <> 'ajuste_apertura'
+               AND fecha > ".str_replace('banco_cuenta_id', 'banco_origen_id', $expr)." AND fecha <= ?
+             GROUP BY banco_origen_id",
+            array_merge([$aliadoId], $bancoIds, $bind, [$fechaFin])
+        );
+
+        $saldos = [];
+        foreach ($bancoIds as $bid) {
+            $saldos[$bid] = $base[$bid] ?? 0;
+        }
+        foreach ($entradas as $e) {
+            $saldos[(int) $e->banco_cuenta_id] = ($saldos[(int) $e->banco_cuenta_id] ?? 0) + (int) $e->total;
+        }
+        foreach ($salidas as $x) {
+            $saldos[(int) $x->banco_cuenta_id] = ($saldos[(int) $x->banco_cuenta_id] ?? 0) - (int) $x->total;
+        }
+
+        return $saldos;
     }
 
     // ── JSON: movimientos de un banco ────────────────────────────────

@@ -222,6 +222,11 @@
                             <button class="eb-accion" @click="abrirEntrada({{ $m->id }}, '{{ $fmt($m->valor) }}', @js($m->descripcion))">
                                 <i class="fas fa-plus"></i> Registrar
                             </button>
+                            <form method="POST" action="{{ route('admin.informes.extracto_banco.personal', $m->id) }}" style="display:inline"
+                                  onsubmit="return confirm('¿Marcar como movimiento personal? Sale del cuadre del negocio.')">
+                                @csrf
+                                <button class="eb-accion"><i class="fas fa-user"></i> Es personal</button>
+                            </form>
                             <form method="POST" action="{{ route('admin.informes.extracto_banco.ignorar', $m->id) }}" style="display:inline"
                                   onsubmit="return confirm('¿Marcar este movimiento como ajeno al libro?')">
                                 @csrf
@@ -337,6 +342,11 @@
                             <button class="eb-accion" @click="abrirGasto({{ $s->id }}, '{{ $fmt($s->valor) }}', @js($s->descripcion))">
                                 <i class="fas fa-plus"></i> Registrar gasto
                             </button>
+                            <form method="POST" action="{{ route('admin.informes.extracto_banco.personal', $s->id) }}" style="display:inline"
+                                  onsubmit="return confirm('¿Marcar como movimiento personal? Sale del cuadre del negocio.')">
+                                @csrf
+                                <button class="eb-accion"><i class="fas fa-user"></i> Es personal</button>
+                            </form>
                         </td>
                     </tr>
                 @empty
@@ -365,7 +375,12 @@
                     <tr>
                         <td>{{ \Carbon\Carbon::parse($b->fecha)->format('d/m/Y') }}</td>
                         <td>{{ $b->descripcion ?: '—' }}</td>
-                        <td class="eb-mini">{{ $b->banco }}</td>
+                        <td class="eb-mini">
+                            {{ $b->banco }}
+                            @if(($b->clasificacion ?? '') === 'personal')
+                                <div style="color:#7c3aed;font-weight:700">👤 personal</div>
+                            @endif
+                        </td>
                         <td class="eb-num" style="color:{{ $b->tipo === 'debito' ? '#b91c1c' : '#15803d' }}">
                             {{ $b->tipo === 'debito' ? '-' : '+' }}{{ $fmt($b->valor) }}
                         </td>
