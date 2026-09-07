@@ -79,7 +79,7 @@
             {{-- Gráfica histórica 6 meses --}}
             <div class="chart-container-card">
                 <h3 style="margin-bottom:0.35rem;">📈 Entradas vs Egresos (Últimos 6 meses)</h3>
-                <p style="font-size:0.7rem;color:#94a3b8;margin:-0.5rem 0 0.75rem;">Prestar no cuenta como egreso ni recuperar capital como entrada: solo el interés cobrado.</p>
+                <p style="font-size:0.7rem;color:#94a3b8;margin:-0.5rem 0 0.75rem;">Prestar e invertir no son egresos: la plata sigue siendo tuya. Del préstamo solo entra el interés cobrado.</p>
                 <div style="height:250px;position:relative;">
                     <div class="sk-chart" id="hist-sk"></div>
                     <canvas id="historicalChart" style="display:none;"></canvas>

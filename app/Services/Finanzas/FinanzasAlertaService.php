@@ -466,10 +466,11 @@ class FinanzasAlertaService
     {
         $conn = DB::connection('finanzas');
 
-        // Salidas por mes, separando el préstamo del resto: prestar no es un
-        // egreso —la plata pasa del bolsillo a la cartera y vuelve—, así que la
-        // gráfica de Entradas vs Egresos no lo cuenta. La liquidez acumulada sí
-        // lo resta, porque mientras está prestada no se tiene en la mano.
+        // Salidas por mes, separando lo que solo cambia de forma: prestar e
+        // invertir no son egresos —la plata sigue siendo del dueño, pasa del
+        // bolsillo a la cartera o a cripto y vuelve—, así que la gráfica de
+        // Entradas vs Egresos deja fuera ambos. La liquidez acumulada sí los
+        // resta, porque mientras están afuera no se tienen en la mano.
         $salidasPorTipo = $conn->table('finanzas_gastos')
             ->where('user_id', $userId)
             ->whereYear('fecha', $anio)
@@ -480,18 +481,17 @@ class FinanzasAlertaService
 
         $salidasMes = [];
         $prestadoMes = [];
+        $invertidoMes = [];
 
         foreach ($salidasPorTipo as $fila) {
             $mesFila = (int) $fila->mes;
             $monto = (float) $fila->total;
 
-            if ($fila->tipo_movimiento === 'prestamo') {
-                $prestadoMes[$mesFila] = ($prestadoMes[$mesFila] ?? 0) + $monto;
-
-                continue;
-            }
-
-            $salidasMes[$mesFila] = ($salidasMes[$mesFila] ?? 0) + $monto;
+            match ($fila->tipo_movimiento) {
+                'prestamo' => $prestadoMes[$mesFila] = ($prestadoMes[$mesFila] ?? 0) + $monto,
+                'inversion' => $invertidoMes[$mesFila] = ($invertidoMes[$mesFila] ?? 0) + $monto,
+                default => $salidasMes[$mesFila] = ($salidasMes[$mesFila] ?? 0) + $monto,
+            };
         }
 
         // Intereses causados por mes
@@ -522,7 +522,8 @@ class FinanzasAlertaService
             $entradas = $this->calculateTotalEntradas($userId, $anio, $m);
             $salidas  = (float) ($salidasMes[$m] ?? 0);
             $prestado = (float) ($prestadoMes[$m] ?? 0);
-            $liquidezAcumulada += ($entradas - $salidas - $prestado);
+            $invertido = (float) ($invertidoMes[$m] ?? 0);
+            $liquidezAcumulada += ($entradas - $salidas - $prestado - $invertido);
 
             $meses[] = [
                 'mes'                  => $m,
@@ -530,6 +531,7 @@ class FinanzasAlertaService
                 'entradas'             => round($entradas, 2),
                 'salidas'              => round($salidas, 2),
                 'prestado'             => round($prestado, 2),
+                'invertido'            => round($invertido, 2),
                 'intereses_causados'   => round((float) ($causadosMes[$m] ?? 0), 2),
                 'intereses_cobrados'   => round((float) ($cobradosMes[$m] ?? 0), 2),
                 'liquidez_acumulada'   => round($liquidezAcumulada, 2),
