@@ -107,6 +107,10 @@ class PrestamoController extends Controller
             'tasa_interes_mensual' => $request->tasa_interes_mensual,
             'fecha_desembolso' => $request->fecha_desembolso,
             'ultimo_corte' => $request->fecha_desembolso,
+            // El ciclo nace el día del desembolso; de aquí en adelante solo lo
+            // mueve un pago que re-ancle. Sin esto el campo queda vacío y la
+            // liquidación depende del respaldo sobre `fecha_desembolso`.
+            'dia_cobro' => (int) \Carbon\Carbon::parse($request->fecha_desembolso)->day,
             'saldo_actual' => $request->monto_original,
             'estado' => 'activo',
             'dias_mora_alerta' => $request->dias_mora_alerta,

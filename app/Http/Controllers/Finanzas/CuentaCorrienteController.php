@@ -263,6 +263,7 @@ class CuentaCorrienteController extends Controller
                 'tasa_interes_mensual' => (float) $request->tasa_interes_mensual,
                 'fecha_desembolso' => $request->fecha,
                 'ultimo_corte' => $request->fecha,
+                'dia_cobro' => (int) \Carbon\Carbon::parse($request->fecha)->day,
                 'saldo_actual' => $total,
                 'estado' => 'activo',
                 'dias_mora_alerta' => $cliente->dias_mora_alerta,
