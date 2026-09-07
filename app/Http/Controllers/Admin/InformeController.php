@@ -1867,12 +1867,38 @@ class InformeController extends Controller
             $saldosBanco[$bid] = \App\Models\Consignacion::saldoBanco($aliadoId, $bid);
         }
 
+        // ── 4-bis. Respaldo en el extracto del banco ─────────────────────────
+        // Qué consignaciones tienen detrás un movimiento real del extracto. Se
+        // trae en una consulta agregada y no con un JOIN a la consulta grande:
+        // un cobro puede llegar partido en varias transferencias y el JOIN
+        // duplicaría la fila de la consignación.
+        $respaldoExtracto = DB::table('banco_movimiento_consignacion AS p')
+            ->join('consignaciones AS cs2', 'cs2.id', '=', 'p.consignacion_id')
+            ->where('p.aliado_id', $aliadoId)
+            ->whereIn('cs2.banco_cuenta_id', $bancoIds)
+            ->whereBetween('cs2.fecha', [$inicio, $fin])
+            ->groupBy('p.consignacion_id')
+            ->selectRaw('p.consignacion_id, COUNT(*) AS piezas, MIN(p.regla) AS regla, MAX(p.dias_diferencia) AS dias')
+            ->get()
+            ->keyBy('consignacion_id');
+
+        // Sin extracto cargado, «sin respaldo» no significa nada: hay que poder
+        // distinguir «el banco no lo reporta» de «todavía no subieron el mes».
+        $hayExtracto = DB::table('banco_movimientos')
+            ->whereIn('banco_cuenta_id', $bancoIds)
+            ->whereBetween('fecha', [$inicio, $fin])
+            ->groupBy('banco_cuenta_id')
+            ->selectRaw('banco_cuenta_id, COUNT(*) AS n')
+            ->pluck('n', 'banco_cuenta_id');
+
         // ── 5. Agrupar y transformar por banco ────────────────────────────────
         $consigPorBanco = $todasConsigRaw->groupBy('banco_cuenta_id');
 
-        $saldos = $bancos->map(function ($bc) use ($consigPorBanco, $todasSalidas, $saldosBanco, $anticipos) {
+        $saldos = $bancos->map(function ($bc) use ($consigPorBanco, $todasSalidas, $saldosBanco, $anticipos, $respaldoExtracto, $hayExtracto) {
 
-            $movEntradas = ($consigPorBanco[$bc->id] ?? collect())->map(function ($c) use ($anticipos) {
+            $extractoCargado = (int) ($hayExtracto[$bc->id] ?? 0) > 0;
+
+            $movEntradas = ($consigPorBanco[$bc->id] ?? collect())->map(function ($c) use ($anticipos, $respaldoExtracto, $extractoCargado) {
                 // nombre_cliente ya viene del CASE WHEN en SQL Server (igual que financiero)
                 $pagador   = trim($c->nombre_cliente ?? '');
                 $esEmpresa = ($c->empresa_id ?? 0) > 0;
@@ -1927,6 +1953,11 @@ class InformeController extends Controller
                     'es_salida'            => false,
                     'es_gasto'             => false,
                     'referencia'           => $c->referencia,
+                    // Respaldo en el extracto del banco: cruzado, sin respaldo,
+                    // o sin extracto cargado para ese mes.
+                    'extracto'             => ($r = $respaldoExtracto[$c->id] ?? null)
+                        ? ['estado' => 'cruzado', 'regla' => $r->regla, 'piezas' => (int) $r->piezas, 'dias' => (int) $r->dias]
+                        : ['estado' => $extractoCargado ? 'sin_respaldo' : 'sin_extracto'],
                 ];
             });
 
@@ -1950,6 +1981,9 @@ class InformeController extends Controller
                 'imagen_url'       => $g->imagen_path ? \Storage::url($g->imagen_path) : null,
                 'es_salida'        => true,
                 'es_gasto'         => true,
+                // Las salidas aún no se cruzan contra el extracto: eso es
+                // conciliar gastos, que es otro bloque.
+                'extracto'         => ['estado' => 'no_aplica'],
                 'es_planilla'      => $g->tipo === 'pago_planilla',
                 'referencia'       => $g->numero_planilla ?? null,
             ]);

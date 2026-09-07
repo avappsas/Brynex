@@ -221,6 +221,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .78rem; min-width
             <th>Referencia</th>
             <th style="text-align:right;padding-right:.8rem">Valor</th>
             <th>Estado</th>
+            <th title="Respaldo en el extracto del banco">Extracto</th>
             <th>Img.</th>
         </tr></thead>
         <tbody>
@@ -234,7 +235,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .78rem; min-width
         @if($fechaActual !== $fechaMov)
             @php $fechaActual = $fechaMov; @endphp
             <tr class="fecha-separador-row" data-fecha="{{ $fechaMov }}">
-                <td colspan="10">📅 {{ $fechaMov }}</td>
+                <td colspan="11">📅 {{ $fechaMov }}</td>
             </tr>
         @endif
         <tr id="{{ $rowId }}" class="mov-row" data-estado="{{ $estadoFila }}" data-fecha-grupo="{{ $fechaMov }}"
@@ -366,6 +367,39 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .78rem; min-width
                 @endif
                 @else
                 <span style="font-size:.72rem;color:#94a3b8">—</span>
+                @endif
+            </td>
+
+            {{-- Extracto del banco: ¿el movimiento existe de verdad en la cuenta? --}}
+            <td style="white-space:nowrap">
+                @php
+                    $ex = $mov->extracto ?? ['estado' => 'sin_extracto'];
+                    $reglas = [
+                        'referencia'    => 'por comprobante',
+                        'fecha_valor'   => 'fecha y valor',
+                        'valor_cercano' => 'valor, otro día',
+                        'partido'       => 'pago partido',
+                        'agrupado'      => 'varias facturas',
+                        'manual'        => 'vinculado a mano',
+                    ];
+                @endphp
+                @if($ex['estado'] === 'cruzado')
+                    <span class="badge" style="background:#dcfce7;color:#15803d"
+                          title="Cruzado {{ $reglas[$ex['regla']] ?? $ex['regla'] }}{{ ($ex['piezas'] ?? 1) > 1 ? ' · ' . $ex['piezas'] . ' movimientos' : '' }}{{ ($ex['dias'] ?? 0) > 0 ? ' · ' . $ex['dias'] . ' día(s) de diferencia' : '' }}">
+                        🏦 En el banco
+                    </span>
+                @elseif($ex['estado'] === 'sin_respaldo')
+                    <span class="badge" style="background:#fee2e2;color:#dc2626"
+                          title="El extracto de este mes está cargado y no reporta esta entrada">
+                        ⚠️ No está
+                    </span>
+                @elseif($ex['estado'] === 'no_aplica')
+                    <span style="font-size:.72rem;color:#cbd5e1">—</span>
+                @else
+                    <span class="badge" style="background:#f1f5f9;color:#64748b"
+                          title="Todavía no se ha cargado el extracto de este mes para esta cuenta">
+                        sin extracto
+                    </span>
                 @endif
             </td>
 
