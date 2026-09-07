@@ -74,7 +74,12 @@
                         </div>
                         <div style="display:flex; justify-content:space-between;">
                             <span style="color:#64748b;">Valor Actual Est.:</span>
-                            <strong style="color:#0f172a; font-size:0.85rem;">${{ number_format($pat->valor_actual ?? $pat->valor_compra, 0, ',', '.') }}</strong>
+                            <strong style="color:#0f172a; font-size:0.85rem;">${{ number_format($pat->valor_estimado, 0, ',', '.') }}</strong>
+                            @if($pat->diferencia_valor != 0)
+                                <small style="display:block; font-size:0.65rem; color:{{ $pat->diferencia_valor < 0 ? '#ef4444' : '#10b981' }};">
+                                    {{ $pat->diferencia_valor < 0 ? '▼' : '▲' }} ${{ number_format(abs($pat->diferencia_valor), 0, ',', '.') }} vs compra
+                                </small>
+                            @endif
                         </div>
                         <div style="display:flex; justify-content:space-between; border-top:1px dashed #e2e8f0; padding-top:0.4rem; margin-top:0.4rem;">
                             <span style="color:#64748b;">Gastos Mantenimiento:</span>

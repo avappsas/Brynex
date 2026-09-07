@@ -30,9 +30,7 @@ class PatrimonioController extends Controller
             ->get();
 
         $valorTotalPatrimonio = $patrimonios->where('activo', true)->sum('valor_compra');
-        $valorTotalActual = $patrimonios->where('activo', true)->sum(function ($item) {
-            return $item->valor_actual ?? $item->valor_compra;
-        });
+        $valorTotalActual = $patrimonios->where('activo', true)->sum->valor_estimado;
 
         return view('finanzas.patrimonio.index', compact('patrimonios', 'valorTotalPatrimonio', 'valorTotalActual'));
     }
@@ -64,6 +62,12 @@ class PatrimonioController extends Controller
                 'valor_compra' => $request->valor_compra,
                 'fecha_adquisicion' => $request->fecha_adquisicion,
                 'valor_actual' => $request->valor_actual ?: $request->valor_compra,
+                // Desde cuándo se sabe ese valor: es la fecha desde la que corre
+                // la devaluación. Sin avalúo propio, el dato que se tiene es el
+                // precio de compra, y ese se sabe el día de la adquisición.
+                'valor_actual_fecha' => $request->valor_actual
+                    ? now()->toDateString()
+                    : $request->fecha_adquisicion,
                 'activo' => true,
                 'observaciones' => $request->observaciones,
             ]);
@@ -128,7 +132,15 @@ class PatrimonioController extends Controller
             'observaciones' => 'nullable|string',
         ]);
 
-        $patrimonio->update($request->only('nombre', 'categoria', 'valor_compra', 'fecha_adquisicion', 'valor_actual', 'activo', 'observaciones'));
+        $cambios = $request->only('nombre', 'categoria', 'valor_compra', 'fecha_adquisicion', 'valor_actual', 'activo', 'observaciones');
+
+        // Un valor nuevo es un avalúo de hoy: reinicia el conteo de la
+        // devaluación. Si no lo tocó, la fecha se queda donde estaba.
+        if ($request->filled('valor_actual') && (float) $request->valor_actual !== (float) $patrimonio->valor_actual) {
+            $cambios['valor_actual_fecha'] = now()->toDateString();
+        }
+
+        $patrimonio->update($cambios);
         $this->invalidarCacheFinanzas();
 
         return redirect()->route('finanzas.patrimonio.show', $patrimonio->id)->with('success', 'Patrimonio actualizado con éxito.');

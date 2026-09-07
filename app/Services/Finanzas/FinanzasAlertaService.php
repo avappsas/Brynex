@@ -273,16 +273,29 @@ class FinanzasAlertaService
         $entradasAnterior = $this->calculateTotalEntradas($userId, $fechaAnterior->year, $fechaAnterior->month);
 
         // 2. Gastos del mes actual y anterior (excluyendo abonos a préstamos o inversiones)
+        // `es_patrimonio` fuera: comprar una cama o un portátil saca plata de la
+        // cuenta, pero no es un gasto del mes — el bien queda y se puede vender.
         $gastosActual = (float) Gasto::where('user_id', $userId)
             ->whereYear('fecha', $anio)
             ->whereMonth('fecha', $mes)
             ->where('tipo_movimiento', 'gasto')
+            ->where('es_patrimonio', false)
             ->sum('monto');
 
         $gastosAnterior = (float) Gasto::where('user_id', $userId)
             ->whereYear('fecha', $fechaAnterior->year)
             ->whereMonth('fecha', $fechaAnterior->month)
             ->where('tipo_movimiento', 'gasto')
+            ->where('es_patrimonio', false)
+            ->sum('monto');
+
+        // Lo que se fue en bienes este mes, para que las salidas totales sigan
+        // cuadrando con la plata que realmente salió.
+        $enPatrimonioActual = (float) Gasto::where('user_id', $userId)
+            ->whereYear('fecha', $anio)
+            ->whereMonth('fecha', $mes)
+            ->where('tipo_movimiento', 'gasto')
+            ->where('es_patrimonio', true)
             ->sum('monto');
 
         // 3. Préstamos desembolsados en este mes (salida de dinero)
@@ -300,7 +313,7 @@ class FinanzasAlertaService
             ->sum('monto');
 
         // Salidas totales = Gastos habituales + Préstamos nuevos + Inversiones nuevas
-        $salidasTotalesActual = $gastosActual + $prestadoActual + $invertidoActual;
+        $salidasTotalesActual = $gastosActual + $prestadoActual + $invertidoActual + $enPatrimonioActual;
 
         // Balance neto del mes = Entradas del mes - Gastos habituales
         $balanceActual = $entradasActual - $gastosActual;
@@ -329,7 +342,9 @@ class FinanzasAlertaService
             ->sum('finanzas_prestamo_movimientos.monto');
 
         // 6. Patrimonio Total (valor actual)
-        $totalPatrimonio = (float) Patrimonio::activos()->where('user_id', $userId)->sum('valor_actual');
+        // Valor estimado y no la columna: lo que vale hoy es el último avalúo ya
+        // devaluado por los meses que pasaron (ver Patrimonio::valor_estimado).
+        $totalPatrimonio = (float) Patrimonio::activos()->where('user_id', $userId)->get()->sum->valor_estimado;
 
         // Calcular porcentajes de cambio
         $cambioEntradas = $entradasAnterior > 0 ? (($entradasActual - $entradasAnterior) / $entradasAnterior) * 100 : 0;
@@ -343,6 +358,7 @@ class FinanzasAlertaService
             'gastos_cambio'       => round($cambioGastos, 1),
             'prestado'            => $prestadoActual,
             'invertido'           => $invertidoActual,
+            'en_patrimonio'       => $enPatrimonioActual,
             'balance'             => $balanceActual,
             'total_cartera'       => $totalCartera,
             'total_patrimonio'    => $totalPatrimonio,
@@ -475,17 +491,27 @@ class FinanzasAlertaService
             ->where('user_id', $userId)
             ->whereYear('fecha', $anio)
             ->whereIn('tipo_movimiento', ['gasto', 'prestamo', 'inversion'])
-            ->selectRaw('MONTH(fecha) as mes, tipo_movimiento, SUM(monto) as total')
-            ->groupByRaw('MONTH(fecha), tipo_movimiento')
+            ->selectRaw('MONTH(fecha) as mes, tipo_movimiento, es_patrimonio, SUM(monto) as total')
+            ->groupByRaw('MONTH(fecha), tipo_movimiento, es_patrimonio')
             ->get();
 
         $salidasMes = [];
         $prestadoMes = [];
         $invertidoMes = [];
+        $patrimonioMes = [];
 
         foreach ($salidasPorTipo as $fila) {
             $mesFila = (int) $fila->mes;
             $monto = (float) $fila->total;
+
+            // Comprar un bien tampoco es gastar: la plata se vuelve un objeto que
+            // se puede vender. Sale de la cuenta igual (eso lo lleva el saldo de
+            // cada bolsillo), pero no baja la ganancia del año.
+            if ($fila->es_patrimonio) {
+                $patrimonioMes[$mesFila] = ($patrimonioMes[$mesFila] ?? 0) + $monto;
+
+                continue;
+            }
 
             match ($fila->tipo_movimiento) {
                 'prestamo' => $prestadoMes[$mesFila] = ($prestadoMes[$mesFila] ?? 0) + $monto,
@@ -523,6 +549,7 @@ class FinanzasAlertaService
             $salidas  = (float) ($salidasMes[$m] ?? 0);
             $prestado = (float) ($prestadoMes[$m] ?? 0);
             $invertido = (float) ($invertidoMes[$m] ?? 0);
+            $enPatrimonio = (float) ($patrimonioMes[$m] ?? 0);
             // Lo ganado en el año, no la plata en la mano: prestar e invertir no
             // restan (la plata sigue siendo del dueño) y el capital que vuelve
             // tampoco suma, porque nunca fue un ingreso. Mismos números que las
@@ -536,6 +563,7 @@ class FinanzasAlertaService
                 'salidas'              => round($salidas, 2),
                 'prestado'             => round($prestado, 2),
                 'invertido'            => round($invertido, 2),
+                'patrimonio'           => round($enPatrimonio, 2),
                 'intereses_causados'   => round((float) ($causadosMes[$m] ?? 0), 2),
                 'intereses_cobrados'   => round((float) ($cobradosMes[$m] ?? 0), 2),
                 'ganancia_acumulada'   => round($gananciaAcumulada, 2),
@@ -633,10 +661,11 @@ class FinanzasAlertaService
             ->where('activo', true)
             ->sum('valor_actual_cop');
 
-        // 3. PATRIMONIO (valor de invertido)
+        // 3. PATRIMONIO (lo que valen hoy los bienes, ya devaluados)
         $patrimonioTotal = (float) \App\Models\Finanzas\Patrimonio::where('user_id', $userId)
             ->where('activo', true)
-            ->sum('valor_actual');
+            ->get()
+            ->sum->valor_estimado;
 
         // 4. PRESTADO (valor prestado)
         $prestamosCartera = (float) \App\Models\Finanzas\Prestamo::activos()

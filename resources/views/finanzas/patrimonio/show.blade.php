@@ -45,7 +45,19 @@
                     <span>Valor de Adquisición:</span> <strong>${{ number_format($patrimonio->valor_compra, 0, ',', '.') }} COP</strong>
                 </div>
                 <div class="fdcg-row">
-                    <span>Valor Comercial Est.:</span> <strong style="color:#006064;">${{ number_format($patrimonio->valor_actual ?? $patrimonio->valor_compra, 0, ',', '.') }} COP</strong>
+                    <span>Valor Comercial Est.:</span> <strong style="color:#006064;">${{ number_format($patrimonio->valor_estimado, 0, ',', '.') }} COP</strong>
+                    @php $tasa = \App\Models\Finanzas\Patrimonio::DEVALUACION_ANUAL[$patrimonio->categoria] ?? 0; @endphp
+                    <small style="display:block; font-size:0.68rem; color:#64748b;">
+                        @if($tasa > 0)
+                            Devaluado {{ number_format($tasa * 100, 0) }}% al año desde
+                            {{ \Carbon\Carbon::parse($patrimonio->valor_actual_fecha ?? $patrimonio->fecha_adquisicion)->format('d/m/Y') }},
+                            cuando valía ${{ number_format($patrimonio->valor_actual ?? $patrimonio->valor_compra, 0, ',', '.') }}.
+                        @else
+                            Valor fijado el {{ \Carbon\Carbon::parse($patrimonio->valor_actual_fecha ?? $patrimonio->fecha_adquisicion)->format('d/m/Y') }};
+                            esta categoría no se devalúa sola.
+                        @endif
+                        Escribir un valor nuevo abajo lo actualiza a hoy.
+                    </small>
                 </div>
                 <div class="fdcg-row" style="border-top:1px dashed #e2e8f0; padding-top:0.4rem; margin-top:0.4rem;">
                     <span>Total Gastos de Mantenimiento:</span> <strong style="color:#b91c1c;">${{ number_format($patrimonio->valor_total_gastos, 0, ',', '.') }} COP</strong>
