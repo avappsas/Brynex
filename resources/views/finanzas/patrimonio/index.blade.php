@@ -15,11 +15,6 @@
             'Patrimonio' => null
         ]
     ])
-        @slot('opciones')
-            <button @click="openCrear = true" class="btn-fin success" style="background:#006064;">
-                ➕ Registrar Bien
-            </button>
-        @endslot
     @endcomponent
 
     {{-- Grid de KPIs del Patrimonio --}}
@@ -40,65 +35,101 @@
         </div>
     </div>
 
-    {{-- Grid de Bienes --}}
-    <div class="patrimonio-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(290px, 1fr)); gap:1.25rem; margin-top:1.5rem;">
-        @forelse($patrimonios as $pat)
-            @php
-                $catIcon = match($pat->categoria) {
-                    'inmueble' => '🏢',
-                    'vehiculo' => '🚗',
-                    'electronico' => '💻',
-                    'joya' => '💎',
-                    default => '📦'
-                };
-            @endphp
-            <div class="pat-card" style="border-top:4px solid #006064; background:#fff; border-radius:12px; border:1px solid #e2e8f0; padding:1.25rem; display:flex; flex-direction:column; justify-content:space-between; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
-                <div>
-                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.75rem;">
-                        <div>
-                            <span style="font-size:1.5rem; margin-bottom:0.25rem; display:block;">{{ $catIcon }}</span>
-                            <h3 style="font-size:0.95rem; font-weight:700; color:#0f172a;">{{ $pat->nombre }}</h3>
-                            <small style="color:#64748b; font-size:0.7rem; text-transform:uppercase; font-weight:600;">{{ $pat->categoria }}</small>
-                        </div>
-                        @if($pat->activo)
-                            <span class="badge-ok-bx">Activo</span>
-                        @else
-                            <span class="badge-err-bx" style="background:#f1f5f9; color:#64748b; border-color:#cbd5e1;">Vendido</span>
-                        @endif
-                    </div>
-                    
-                    <div style="display:flex; flex-direction:column; gap:0.35rem; margin-top:1rem; font-size:0.78rem;">
-                        <div style="display:flex; justify-content:space-between;">
-                            <span style="color:#64748b;">Valor de Compra:</span>
-                            <strong style="color:#334155;">${{ number_format($pat->valor_compra, 0, ',', '.') }}</strong>
-                        </div>
-                        <div style="display:flex; justify-content:space-between;">
-                            <span style="color:#64748b;">Valor Actual Est.:</span>
-                            <strong style="color:#0f172a; font-size:0.85rem;">${{ number_format($pat->valor_estimado, 0, ',', '.') }}</strong>
-                            @if($pat->diferencia_valor != 0)
-                                <small style="display:block; font-size:0.65rem; color:{{ $pat->diferencia_valor < 0 ? '#ef4444' : '#10b981' }};">
-                                    {{ $pat->diferencia_valor < 0 ? '▼' : '▲' }} ${{ number_format(abs($pat->diferencia_valor), 0, ',', '.') }} vs compra
-                                </small>
+    {{-- Tabla de bienes --}}
+    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:14px; box-shadow:0 2px 8px rgba(0,0,0,0.04); margin-top:1.5rem; overflow:hidden;">
+        <div style="overflow-x:auto;">
+            <table style="width:100%; border-collapse:collapse; font-size:0.8rem; white-space:nowrap;">
+                <thead>
+                    <tr style="background:#f8fafc; border-bottom:2px solid #e2e8f0; color:#64748b; text-align:left;">
+                        <th style="padding:0.7rem 0.9rem; font-weight:700;">Bien</th>
+                        <th style="padding:0.7rem 0.9rem; font-weight:700;">Adquirido</th>
+                        <th style="padding:0.7rem 0.9rem; font-weight:700; text-align:right;">Costó</th>
+                        <th style="padding:0.7rem 0.9rem; font-weight:700; text-align:right;">Vale hoy</th>
+                        <th style="padding:0.7rem 0.9rem; font-weight:700; text-align:right;">Diferencia</th>
+                        <th style="padding:0.7rem 0.9rem; font-weight:700; text-align:right;">Mantenimiento</th>
+                        <th style="padding:0.7rem 0.9rem; font-weight:700; text-align:center;">Estado</th>
+                        <th style="padding:0.7rem 0.9rem;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                @forelse($patrimonios as $pat)
+                    @php
+                        $catIcon = match($pat->categoria) {
+                            'inmueble' => '🏢',
+                            'vehiculo' => '🚗',
+                            'electronico' => '💻',
+                            'joya' => '💎',
+                            default => '📦'
+                        };
+                        $tasa = \App\Models\Finanzas\Patrimonio::DEVALUACION_ANUAL[$pat->categoria] ?? 0;
+                    @endphp
+                    <tr style="border-bottom:1px solid #f1f5f9;">
+                        <td style="padding:0.7rem 0.9rem;">
+                            <strong style="color:#0f172a;">{{ $catIcon }} {{ $pat->nombre }}</strong>
+                            <small style="display:block; color:#94a3b8; font-size:0.68rem; text-transform:uppercase; font-weight:600;">
+                                {{ $pat->categoria }}@if($tasa > 0) · −{{ number_format($tasa * 100, 0) }}%/año @endif
+                            </small>
+                        </td>
+                        <td style="padding:0.7rem 0.9rem; color:#64748b;">{{ \Carbon\Carbon::parse($pat->fecha_adquisicion)->format('d/m/Y') }}</td>
+                        <td style="padding:0.7rem 0.9rem; text-align:right; color:#475569;">${{ number_format($pat->valor_compra, 0, ',', '.') }}</td>
+                        <td style="padding:0.7rem 0.9rem; text-align:right; font-weight:700; color:#0f172a;">${{ number_format($pat->valor_estimado, 0, ',', '.') }}</td>
+                        <td style="padding:0.7rem 0.9rem; text-align:right; font-weight:600; color:{{ $pat->diferencia_valor < 0 ? '#ef4444' : ($pat->diferencia_valor > 0 ? '#10b981' : '#94a3b8') }};">
+                            @if($pat->diferencia_valor == 0) — @else
+                                {{ $pat->diferencia_valor < 0 ? '▼' : '▲' }} ${{ number_format(abs($pat->diferencia_valor), 0, ',', '.') }}
                             @endif
-                        </div>
-                        <div style="display:flex; justify-content:space-between; border-top:1px dashed #e2e8f0; padding-top:0.4rem; margin-top:0.4rem;">
-                            <span style="color:#64748b;">Gastos Mantenimiento:</span>
-                            <strong style="color:#b91c1c;">${{ number_format($pat->valor_total_gastos, 0, ',', '.') }}</strong>
-                        </div>
-                    </div>
-                </div>
+                        </td>
+                        <td style="padding:0.7rem 0.9rem; text-align:right; color:{{ ($pat->gastos_sum_monto ?? 0) > 0 ? '#b91c1c' : '#cbd5e1' }};">
+                            ${{ number_format($pat->gastos_sum_monto ?? 0, 0, ',', '.') }}
+                        </td>
+                        <td style="padding:0.7rem 0.9rem; text-align:center;">
+                            @if($pat->activo)
+                                <span class="badge-ok-bx">Activo</span>
+                            @else
+                                <span class="badge-err-bx" style="background:#f1f5f9; color:#64748b; border-color:#cbd5e1;">Vendido</span>
+                            @endif
+                        </td>
+                        <td style="padding:0.7rem 0.9rem; text-align:right;">
+                            <a href="{{ route('finanzas.patrimonio.show', $pat->id) }}" class="btn-fin-small primary" style="background:rgba(0,96,100,0.1); color:#006064; text-decoration:none; padding:0.3rem 0.6rem; border-radius:6px; font-size:0.72rem; font-weight:600;">
+                                👁️ Ficha
+                            </a>
+                        </td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="8" style="text-align:center; padding:2.5rem; color:#64748b;">
+                            No tienes bienes patrimoniales registrados.
+                        </td>
+                    </tr>
+                @endforelse
+                </tbody>
+                @if($patrimonios->count() > 0)
+                <tfoot>
+                    <tr style="border-top:2px solid #cbd5e1; background:#f8fafc; font-weight:700;">
+                        @php
+                            $activos = $patrimonios->where('activo', true);
+                            $difTotal = $activos->sum->diferencia_valor;
+                        @endphp
+                        <td colspan="2" style="padding:0.7rem 0.9rem; color:#475569;">TOTAL ({{ $activos->count() }} bienes activos)</td>
+                        <td style="padding:0.7rem 0.9rem; text-align:right; color:#475569;">${{ number_format($activos->sum('valor_compra'), 0, ',', '.') }}</td>
+                        <td style="padding:0.7rem 0.9rem; text-align:right; color:#0f172a;">${{ number_format($valorTotalActual, 0, ',', '.') }}</td>
+                        <td style="padding:0.7rem 0.9rem; text-align:right; color:{{ $difTotal < 0 ? '#ef4444' : '#10b981' }};">
+                            {{ $difTotal < 0 ? '▼' : '▲' }} ${{ number_format(abs($difTotal), 0, ',', '.') }}
+                        </td>
+                        <td style="padding:0.7rem 0.9rem; text-align:right; color:#b91c1c;">${{ number_format($patrimonios->sum('gastos_sum_monto'), 0, ',', '.') }}</td>
+                        <td colspan="2"></td>
+                    </tr>
+                </tfoot>
+                @endif
+            </table>
+        </div>
+    </div>
 
-                <div style="border-top:1px solid #f1f5f9; padding-top:0.75rem; margin-top:1.25rem;">
-                    <a href="{{ route('finanzas.patrimonio.show', $pat->id) }}" class="btn-fin-card" style="background:rgba(0,96,100,0.1); color:#006064; text-decoration:none; padding:0.4rem; text-align:center; display:block; border-radius:8px; font-size:0.75rem; font-weight:600;">
-                        👁️ Ficha y Gastos
-                    </a>
-                </div>
-            </div>
-        @empty
-            <div style="grid-column:1/-1; text-align:center; padding:3rem; background:#fff; border-radius:14px; border:1px solid #e2e8f0; color:#64748b;">
-                No tienes bienes patrimoniales registrados.
-            </div>
-        @endforelse
+    {{-- Registrar, al final de la tabla --}}
+    <div style="margin-top:1rem;">
+        <button @click="openCrear = true" class="btn-fin"
+                style="background:linear-gradient(135deg,#00838f,#006064); color:#fff; width:100%; border:none; padding:0.75rem; border-radius:12px; font-weight:700; cursor:pointer; box-shadow:0 4px 12px rgba(0,96,100,0.25); display:flex; align-items:center; justify-content:center; gap:0.5rem;">
+            ➕ Registrar Bien
+        </button>
     </div>
 
     {{-- Modal Crear --}}

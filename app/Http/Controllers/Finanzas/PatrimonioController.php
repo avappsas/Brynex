@@ -26,7 +26,10 @@ class PatrimonioController extends Controller
      */
     public function index()
     {
+        // withSum y no el accessor: la tabla muestra el mantenimiento de cada bien
+        // y pedirlo uno por uno son tantas consultas como filas.
         $patrimonios = Patrimonio::where('user_id', Auth::id())
+            ->withSum('gastos', 'monto')
             ->orderBy('activo', 'desc')
             ->orderBy('fecha_adquisicion', 'desc')
             ->get();
