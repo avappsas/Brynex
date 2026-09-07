@@ -87,6 +87,24 @@ class EmparejadorMovimientos
     }
 
     /**
+     * Lo que quedó sin emparejar, pero solo dentro del rango consultado.
+     *
+     * Los candidatos se buscan con holgura hacia ambos lados —un gasto puede
+     * registrarse días después del pago—, y sin este filtro el informe de un
+     * mes terminaba listando movimientos del mes anterior como si fueran
+     * diferencias suyas.
+     */
+    public function idsLibresEnRango(array $lista, CarbonInterface $desde, CarbonInterface $hasta): array
+    {
+        $dentro = array_filter(
+            $lista,
+            fn ($x) => ! $x['usado'] && $x['fecha']->between($desde, $hasta)
+        );
+
+        return array_values(array_column($dentro, 'id'));
+    }
+
+    /**
      * Deja la referencia comparable: sin espacios ni signos, sin ceros a la
      * izquierda. Las de menos de 4 caracteres se descartan — un "12" coincide
      * con cualquier cosa y ahí es donde nacen los cruces falsos.

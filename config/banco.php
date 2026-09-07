@@ -40,8 +40,11 @@ return [
         'GMF',
         '4X1000',
         'CUOTA DE MANEJO',
+        'C MANEJO TARJ',
         'COMISION',
         'IVA COMISION',
+        'COBRO IVA',
+        'SERVICIO TRANSFERENCIA',
         'RETENCION',
     ],
 
@@ -59,6 +62,15 @@ return [
     // más allá empiezan a cruzarse pagos de clientes distintos por el mismo
     // valor.
     'dias_tolerancia' => (int) env('BANCO_DIAS_TOLERANCIA', 2),
+
+    // Los gastos aguantan más holgura que las consignaciones: un pago de
+    // planilla se registra con la fecha de la planilla, no con la del día en
+    // que salió la plata. Diez días cubren ese desfase.
+    //
+    // Más allá empieza a cruzar planillas de meses distintos: con treinta días
+    // emparejaba un pago del 3 de junio con un gasto del 3 de julio por el
+    // mismo valor, que es la misma planilla mensual, no el mismo pago.
+    'dias_tolerancia_gastos' => (int) env('BANCO_DIAS_TOLERANCIA_GASTOS', 10),
 
     'timeout' => (int) env('BANCO_API_TIMEOUT', 30),
     'connect_timeout' => (int) env('BANCO_API_CONNECT_TIMEOUT', 10),

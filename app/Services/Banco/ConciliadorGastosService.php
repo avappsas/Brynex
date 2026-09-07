@@ -28,11 +28,14 @@ class ConciliadorGastosService
 {
     private EmparejadorMovimientos $emparejador;
 
+    private int $diasTolerancia;
+
     public function __construct(
-        private int $diasTolerancia = 2,
+        ?int $diasTolerancia = null,
         private int $toleranciaValor = 0,
     ) {
-        $this->emparejador = new EmparejadorMovimientos($diasTolerancia, $toleranciaValor);
+        $this->diasTolerancia = $diasTolerancia ?? (int) config('banco.dias_tolerancia_gastos', 30);
+        $this->emparejador = new EmparejadorMovimientos($this->diasTolerancia, $toleranciaValor);
     }
 
     /**
@@ -71,7 +74,7 @@ class ConciliadorGastosService
             'gastos' => count($gastos),
             'cruces' => $cruces,
             'por_regla' => $porRegla,
-            'salidas_sin_identificar' => $this->emparejador->idsLibres($movs),
+            'salidas_sin_identificar' => $this->emparejador->idsLibresEnRango($movs, $desde, $hasta),
             'gastos_sin_respaldo' => $this->emparejador->idsLibres($gastos),
         ];
     }

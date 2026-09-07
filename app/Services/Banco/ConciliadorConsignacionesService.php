@@ -81,7 +81,7 @@ class ConciliadorConsignacionesService
             // `ignorado`: contarlos aquí infla la lista de diferencias con
             // plata que no es de ningún cliente.
             'movimientos_sin_identificar' => array_values(
-                array_diff($this->emparejador->idsLibres($movs), $ignorados)
+                array_diff($this->emparejador->idsLibresEnRango($movs, $desde, $hasta), $ignorados)
             ),
             'consignaciones_sin_respaldo' => $this->emparejador->idsLibres($cons),
         ];
