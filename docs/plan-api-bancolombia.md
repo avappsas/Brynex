@@ -28,6 +28,13 @@ Las dos cosas apuntan a lo mismo, y el portal lo avisa en el propio formulario:
 falta la **habilitación** de la cuenta para crear aplicaciones. Se pide a la
 mesa de ayuda; es el único paso que desbloquea el resto.
 
+**Radicado #81429** en el Centro de Ayuda APIs Bancolombia (7-sep-2026, 10:40),
+motivo «Solicito suscripción producto aliado», ambiente Sandbox. Pide la
+habilitación para crear la aplicación y, de paso, las cinco preguntas técnicas
+que no se pueden responder sin documentación — sobre todo si Transactional
+Information exige FUA, porque de eso depende que el extracto pueda consultarse
+desde un cron sin que nadie se autentique.
+
 Ya listo de nuestro lado:
 
 - **Certificado X.509** generado para el mecanismo JWT — RSA 2048, SHA256,
