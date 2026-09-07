@@ -249,8 +249,13 @@
                 <span class="kpi-v">{{ $prestamo->tasa_interes_mensual }}%</span>
             </div>
             <div class="kpi">
-                <span class="kpi-l">Días en mora</span>
-                <span class="kpi-v {{ $dias>=30?'danger':($dias>=25?'warning':'success') }}">{{ $dias }}d</span>
+                {{-- Los días son los del último corte, no los de `dias_mora`: ese
+                     cuenta desde el último abono y se dispara aunque el deudor
+                     esté al día. Mismo criterio que el semáforo del encabezado. --}}
+                <span class="kpi-l">Días vencidos</span>
+                <span class="kpi-v {{ $vencido ? ($diasVencidos > 5 ? 'danger' : 'warning') : 'success' }}">
+                    {{ $vencido ? $diasVencidos . 'd' : 'Al día' }}
+                </span>
             </div>
             <div class="kpi" style="grid-column: span 2;">
                 <span class="kpi-l">Valor Interés Actual</span>
