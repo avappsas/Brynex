@@ -195,6 +195,46 @@ personales, mandar el link en el recordatorio de corte del préstamo.
 
 ---
 
+## 4-bis. Idea aplazada: prestarle una llave de Brygar a un aliado
+
+Planteada el 7-sep-2026, **en pausa hasta que responda el banco**.
+
+La idea: Brygar crea una llave Bre-B adicional (por sucursal, o por aliado) y
+se la presta a un aliado para que sus clientes paguen ahí.
+
+Se puede técnicamente —Bre-B admite varias llaves por titular—, pero la llave
+no cambia el dueño del dinero: **todo cae en la cuenta de Brygar**, así que es
+recaudo por cuenta ajena. Antes de montarlo hay que resolver, y no es una
+decisión de código:
+
+- **Tributario**: esa plata puede leerse como ingreso de Brygar. En régimen
+  simple, los ingresos brutos definen tope y tarifa. Se maneja con contrato de
+  mandato y contabilidad separada, pero lo valida el contador.
+- **SARLAFT**: movimientos de terceros sin el soporte del mandato es lo que el
+  banco marca.
+- **4x1000** dos veces: al entrar y al trasladar al aliado.
+
+Cómo se validaría lo que entró, de más a menos confiable:
+
+1. **Cuenta dedicada por aliado.** Brygar ya tiene 13 cuentas. Una cuenta con
+   su llave por aliado: el extracto de esa cuenta *es* la verdad de lo que
+   entró. Funciona con el módulo tal como está hoy, sin tocar nada.
+2. **Una cuenta con varias llaves.** Depende de un dato que no tenemos:
+   **¿el detalle del movimiento identifica la llave de destino?** Si sí, se
+   guarda esa llave en `banco_movimientos` y el reparto por aliado sale solo.
+   Si no, habría que discriminar por valor y fecha — y con planillas de salario
+   mínimo, todas del mismo monto, ahí la conciliación se vuelve adivinanza.
+   Además exigiría que una cuenta de Brygar reciba pagos de clientes de otro
+   aliado, y hoy `banco_cuentas.aliado_id` asume lo contrario.
+3. **Referencia por factura**, que depende del producto de recaudo.
+
+Pregunta para el banco cuando conteste el #81429:
+
+> ¿El detalle del movimiento identifica la llave Bre-B de destino cuando la
+> cuenta tiene varias llaves registradas?
+
+---
+
 ## 5. Orden sugerido
 
 1. Pedir **A** al banco y conseguir sandbox.
