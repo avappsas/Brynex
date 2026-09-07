@@ -1000,6 +1000,15 @@ class FacturacionController extends Controller
     {
         $aliadoId = session('aliado_id_activo');
 
+        // Una nota demasiado larga no puede costar la factura: la columna solo
+        // guarda 500 caracteres, así que se recorta acá en vez de rechazar todo
+        // el guardado con un error de validación.
+        if ($request->filled('observacion')) {
+            $request->merge([
+                'observacion' => mb_substr((string) $request->input('observacion'), 0, 500),
+            ]);
+        }
+
         $validated = $request->validate([
             'contratos' => 'required|array|min:1',
             'contratos.*' => 'exists:contratos,id',

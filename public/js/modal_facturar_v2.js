@@ -1924,13 +1924,12 @@ const MF = (function () {
         const efect = parse(el('mf-efectivo')?.value);
         const prest = parse(el('mf-prestamo')?.value);
 
-        // Construir descripción para obs_factura
-        const detalles = consignaciones.map((c, i) => {
-            const opt = document.querySelectorAll('.mf-consig-banco')[i];
-            const label = opt?.options[opt.selectedIndex]?.text || 'Banco';
-            return 'C' + (i + 1) + ': ' + label + ' ' + fmt(c.valor) + ' ' + (c.fecha || '');
-        }).join(' | ');
-        const obs = [detalles, el('mf-obs')?.value].filter(Boolean).join(' — ');
+        // La observación es solo la nota del usuario. Antes se le anteponía el
+        // resumen de cada consignación (banco, valor, fecha), pero eso ya vive en
+        // la tabla `consignaciones` — que es de donde el recibo las pinta — y con
+        // siete o más filas el texto pasaba de los 500 caracteres de la columna,
+        // así que el servidor rechazaba la factura entera por una nota vacía.
+        const obs = (el('mf-obs')?.value || '').trim();
 
         // forma_pago simplificada
         let formaPago = 'efectivo';
