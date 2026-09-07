@@ -720,7 +720,8 @@
             <!-- Gráficas de evolución del año -->
             @if(isset($evolucion) && count($evolucion) > 0)
             <div class="glass-card" style="width: 100%;">
-                <h4 style="font-size: 0.82rem; font-weight: 700; color: var(--texto-principal); margin-bottom: 0.6rem;">📈 Entradas vs Salidas {{ $anio }}</h4>
+                <h4 style="font-size: 0.82rem; font-weight: 700; color: var(--texto-principal); margin-bottom: 0.15rem;">📈 Entradas vs Salidas {{ $anio }}</h4>
+                <p style="font-size: 0.62rem; color: var(--texto-secundario); margin-bottom: 0.6rem;">Prestar no cuenta como salida; del préstamo solo entra el interés cobrado.</p>
                 <div style="height:170px; position:relative;">
                     <canvas id="evolucionMovilChart"></canvas>
                 </div>
