@@ -11,6 +11,51 @@ Dos frentes:
 
 ---
 
+## 0. El banco respondió que no (7-sep-2026)
+
+Respuesta al radicado **#81429**, del Centro de Ayuda de APIs:
+
+> Actualmente, nuestras APIs no están orientadas a procesos administrativos
+> internos o de gestión empresarial (como consulta de movimientos bancarios,
+> conciliación, identificación de consignaciones o pagos a proveedores).
+> Nuestro portafolio está enfocado en habilitar productos y servicios
+> financieros transaccionales para clientes finales.
+
+Y sobre el botón:
+
+> Si estás interesado en nuestro producto de botón, para integrarse en ambiente
+> de producción, no es necesario realizar un desarrollo técnico directo ni
+> tampoco consumir la API en sandbox. Actualmente, las vinculaciones
+> disponibles son a través de la pasarela Wompi.
+
+Traducido a decisiones:
+
+- **El extracto por API queda descartado por este canal.** «Transactional
+  Information» no es lo que su nombre sugiere; el API Market público es para
+  cobrarle al cliente final, no para leer la cuenta propia. No insistir por la
+  mesa de ayuda: la respuesta es de portafolio, no de habilitación.
+- **No hay que crear la aplicación ni pelear con el Sandbox.** El error de
+  `/my-apps/create-app` deja de importar: no íbamos a usar esas APIs.
+- **El botón se hace por Wompi**, que es de Bancolombia y tiene tarifas
+  publicadas. Ahí sí hay API con webhook por transacción.
+
+### Lo que queda para conciliar
+
+1. **Extracto descargado de la Sucursal Virtual Empresas.** Es un archivo que
+   Brygar ya puede bajar hoy. El módulo no cambia: la tabla, el cruce y la
+   bandeja son los mismos; solo entra un adaptador que lee el archivo en vez de
+   llamar a un API. Es el camino más corto y no depende de nadie.
+2. **El servicio de reportes o conciliaciones transaccionales del banco.** El
+   propio formulario de soporte lo lista como motivo de caso, así que existe;
+   se contrata con el ejecutivo, no por el API Market.
+3. **Wompi**, para lo que se cobre por link de pago: cada transacción llega con
+   su referencia y su webhook, así que ese canal se concilia solo.
+
+Nada de lo construido se pierde: `BancoApiInterface` ya aísla de dónde salen
+los movimientos, que era justo el punto de tener un adaptador falso.
+
+---
+
 ## 0. Dónde está esto parado (6-sep-2026)
 
 Cuenta creada en el portal y sesión funcionando. Lo que está trabado:
