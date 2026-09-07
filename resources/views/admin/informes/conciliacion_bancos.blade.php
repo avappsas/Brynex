@@ -187,11 +187,18 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .78rem; min-width
 @endif
 
 @foreach($saldosConMov as $sb)
-<div class="banco-card" id="banco-card-{{ $sb['banco']->id }}">
-    {{-- Header sticky del banco --}}
-    <div class="banco-card-sticky" id="banco-header-{{ $sb['banco']->id }}">
+@php
+    // Resumen para el card cerrado: cuántos movimientos y cuántos el banco no respalda.
+    $nMovs = $sb['movimientos']->count();
+    $nSinRespaldo = $sb['movimientos']->filter(fn ($m) => ($m->extracto['estado'] ?? '') === 'sin_respaldo')->count();
+@endphp
+<div class="banco-card" id="banco-card-{{ $sb['banco']->id }}" x-data="{ abierto: {{ $loop->first && $saldosConMov->count() === 1 ? 'true' : 'false' }} }">
+    {{-- Header sticky del banco — abre y cierra la tabla --}}
+    <div class="banco-card-sticky" id="banco-header-{{ $sb['banco']->id }}"
+         @click="abierto = !abierto" style="cursor:pointer" title="Clic para abrir o cerrar">
         <div>
             <div class="banco-nombre">
+                <span x-text="abierto ? '▾' : '▸'" style="color:#94a3b8;font-size:.8rem"></span>
                 🏦
                 {{ $sb['banco']->banco }}
                 @php $nSinB = trim(str_ireplace($sb['banco']->banco, '', $sb['banco']->nombre ?? '')); @endphp
@@ -201,15 +208,24 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .78rem; min-width
             <div class="banco-cuenta">Cta. {{ $sb['banco']->numero_cuenta }}</div>
             @endif
         </div>
-        <div style="text-align:right">
-            <div id="saldo-banco-{{ $sb['banco']->id }}" class="banco-saldo" style="color:{{ $sb['saldo'] >= 0 ? '#1d4ed8' : '#dc2626' }}">
-                {{ $fmt($sb['saldo']) }}
+        <div style="display:flex;align-items:center;gap:1rem">
+            <div style="text-align:right">
+                <div style="font-size:.72rem;color:#64748b;font-weight:600">{{ $nMovs }} movimientos</div>
+                @if($nSinRespaldo)
+                    <div style="font-size:.68rem;color:#dc2626;font-weight:700">⚠️ {{ $nSinRespaldo }} sin respaldo</div>
+                @endif
             </div>
-            <div style="font-size:.62rem;color:#94a3b8">Saldo histórico</div>
+            <div style="text-align:right">
+                <div id="saldo-banco-{{ $sb['banco']->id }}" class="banco-saldo" style="color:{{ $sb['saldo'] >= 0 ? '#1d4ed8' : '#dc2626' }}">
+                    {{ $fmt($sb['saldo']) }}
+                </div>
+                <div style="font-size:.62rem;color:#94a3b8">Saldo histórico</div>
+            </div>
         </div>
     </div>
 
     {{-- Tabla de movimientos (sin overflow-x aqui para que el sticky del thead funcione) --}}
+    <div x-show="abierto" x-cloak>
     <table class="tbl" data-banco-id="{{ $sb['banco']->id }}">
         <thead><tr>
             <th>Tipo</th>
@@ -421,6 +437,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .78rem; min-width
         @endforeach
         </tbody>
     </table>
+    </div>
 </div>
 @endforeach
 

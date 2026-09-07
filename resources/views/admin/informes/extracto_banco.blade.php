@@ -177,7 +177,7 @@
             Entradas sin identificar ({{ $resumen['sin_identificar'] }})
         </button>
         <button class="eb-tab" :class="tab === 'faltantes' && 'activa'" @click="tab = 'faltantes'">
-            Sin respaldo en el banco ({{ $resumen['sin_respaldo'] }})
+            Sin respaldo en el banco ({{ $resumen['sin_respaldo'] + $resumen['gastos_sin_respaldo'] }})
         </button>
         <button class="eb-tab" :class="tab === 'salidas' && 'activa'" @click="tab = 'salidas'">
             Salidas sin identificar ({{ $resumen['salidas_sueltas'] }})
@@ -280,6 +280,36 @@
             el rango consultado no la alcanza. Por eso el cruce automático nunca marca
             «no aparece» solo: esa decisión queda con el nombre de quien la toma.
         </div>
+
+        {{-- El mismo problema, del lado de las salidas --}}
+        <div style="padding:.9rem 1rem .3rem;border-top:1px solid #e2e8f0">
+            <b style="font-size:.8rem;color:#1e293b">Gastos que el banco no reporta ({{ $resumen['gastos_sin_respaldo'] }})</b>
+            <div class="eb-mini">{{ $fmt($resumen['valor_gastos_sin_respaldo']) }} registrados como salida sin un movimiento que los respalde</div>
+        </div>
+        <table class="eb-tabla">
+            <thead>
+                <tr><th>Fecha</th><th>Concepto</th><th>Pagado a</th><th>Planilla</th><th class="eb-num">Valor</th></tr>
+            </thead>
+            <tbody>
+                @forelse ($gastosSinRespaldo as $g)
+                    <tr>
+                        <td>{{ \Carbon\Carbon::parse($g->fecha)->format('d/m/Y') }}</td>
+                        <td>
+                            {{ \App\Models\Gasto::TIPOS[$g->tipo] ?? $g->tipo }}
+                            <div class="eb-mini">{{ \Str::limit($g->descripcion ?: '—', 46) }}</div>
+                        </td>
+                        <td class="eb-mini">{{ $g->pagado_a ?: '—' }}</td>
+                        <td class="eb-mini">{{ $g->numero_planilla ?: '—' }}</td>
+                        <td class="eb-num" style="color:#b91c1c">-{{ $fmt($g->valor) }}</td>
+                    </tr>
+                @empty
+                    <tr><td colspan="5" class="eb-vacia">
+                        <i class="fas fa-circle-check"></i>
+                        Todos los gastos del rango tienen su movimiento en el extracto.
+                    </td></tr>
+                @endforelse
+            </tbody>
+        </table>
     </div>
 
     {{-- ── Salidas del banco que ningún gasto explica ──────────────── --}}

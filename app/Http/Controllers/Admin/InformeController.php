@@ -1882,6 +1882,19 @@ class InformeController extends Controller
             ->get()
             ->keyBy('consignacion_id');
 
+        // Lo mismo para las salidas: qué gastos tienen detrás un movimiento real
+        // del extracto. Se agrega aparte por la misma razón que las entradas —un
+        // pago grande sale partido en varias transferencias.
+        $respaldoGastos = DB::table('banco_movimiento_gasto AS pg')
+            ->join('gastos AS g2', 'g2.id', '=', 'pg.gasto_id')
+            ->where('pg.aliado_id', $aliadoId)
+            ->whereIn('g2.banco_origen_id', $bancoIds)
+            ->whereBetween('g2.fecha', [$inicio, $fin])
+            ->groupBy('pg.gasto_id')
+            ->selectRaw('pg.gasto_id, COUNT(*) AS piezas, MIN(pg.regla) AS regla, MAX(pg.dias_diferencia) AS dias')
+            ->get()
+            ->keyBy('gasto_id');
+
         // Sin extracto cargado, «sin respaldo» no significa nada: hay que poder
         // distinguir «el banco no lo reporta» de «todavía no subieron el mes».
         $hayExtracto = DB::table('banco_movimientos')
@@ -1894,7 +1907,7 @@ class InformeController extends Controller
         // ── 5. Agrupar y transformar por banco ────────────────────────────────
         $consigPorBanco = $todasConsigRaw->groupBy('banco_cuenta_id');
 
-        $saldos = $bancos->map(function ($bc) use ($consigPorBanco, $todasSalidas, $saldosBanco, $anticipos, $respaldoExtracto, $hayExtracto) {
+        $saldos = $bancos->map(function ($bc) use ($consigPorBanco, $todasSalidas, $saldosBanco, $anticipos, $respaldoExtracto, $respaldoGastos, $hayExtracto) {
 
             $extractoCargado = (int) ($hayExtracto[$bc->id] ?? 0) > 0;
 
@@ -1961,7 +1974,7 @@ class InformeController extends Controller
                 ];
             });
 
-            $movSalidas = ($todasSalidas[$bc->id] ?? collect())->map(fn($g) => (object)[
+            $movSalidas = ($todasSalidas[$bc->id] ?? collect())->map(fn ($g) => (object) [
                 'id'               => $g->id,
                 'cs_id'            => null,
                 'fecha'            => $g->fecha,
@@ -1981,9 +1994,9 @@ class InformeController extends Controller
                 'imagen_url'       => $g->imagen_path ? \Storage::url($g->imagen_path) : null,
                 'es_salida'        => true,
                 'es_gasto'         => true,
-                // Las salidas aún no se cruzan contra el extracto: eso es
-                // conciliar gastos, que es otro bloque.
-                'extracto'         => ['estado' => 'no_aplica'],
+                'extracto'         => ($rg = $respaldoGastos[$g->id] ?? null)
+                    ? ['estado' => 'cruzado', 'regla' => $rg->regla, 'piezas' => (int) $rg->piezas, 'dias' => (int) $rg->dias]
+                    : ['estado' => $extractoCargado ? 'sin_respaldo' : 'sin_extracto'],
                 'es_planilla'      => $g->tipo === 'pago_planilla',
                 'referencia'       => $g->numero_planilla ?? null,
             ]);

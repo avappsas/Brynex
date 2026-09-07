@@ -66,6 +66,7 @@ class ExtractoBancoController extends Controller
         $cruzados = $this->cruzados($aliadoId, $cuentaIds, $desde, $hasta);
         $salidasSueltas = $this->salidasSueltas($aliadoId, $cuentaIds, $desde, $hasta);
         $cobrosBanco = $this->cobrosBanco($aliadoId, $cuentaIds, $desde, $hasta);
+        $gastosSinRespaldo = $this->gastosSinRespaldo($aliadoId, $cuentaIds, $desde, $hasta);
 
         $resumen = [
             'sin_identificar' => $sinIdentificar->count(),
@@ -77,13 +78,15 @@ class ExtractoBancoController extends Controller
             'valor_salidas_sueltas' => (int) $salidasSueltas->sum('valor'),
             'cobros_banco' => $cobrosBanco->count(),
             'valor_cobros_banco' => (int) $cobrosBanco->sum('valor'),
+            'gastos_sin_respaldo' => $gastosSinRespaldo->count(),
+            'valor_gastos_sin_respaldo' => (int) $gastosSinRespaldo->sum('valor'),
         ];
 
         $tiposGasto = Gasto::TIPOS;
 
         return view('admin.informes.extracto_banco', compact(
             'cuentas', 'cuentaId', 'desde', 'hasta',
-            'sinIdentificar', 'sinRespaldo', 'cruzados', 'salidasSueltas', 'cobrosBanco', 'tiposGasto', 'resumen'
+            'sinIdentificar', 'sinRespaldo', 'cruzados', 'salidasSueltas', 'cobrosBanco', 'gastosSinRespaldo', 'tiposGasto', 'resumen'
         ));
     }
 
@@ -177,6 +180,32 @@ class ExtractoBancoController extends Controller
             ->orderByDesc('bm.valor')
             ->limit(300)
             ->select('bm.id', 'bm.fecha', 'bm.valor', 'bm.descripcion', 'bm.referencia', 'bm.canal', 'bc.banco')
+            ->get();
+    }
+
+    /**
+     * Gastos registrados que el extracto no reporta.
+     *
+     * El espejo de las consignaciones sin respaldo, del lado de las salidas: un
+     * pago de planilla anotado en BryNex que el banco no muestra. O salió por
+     * otra cuenta, o se registró con otro valor, o no salió.
+     */
+    private function gastosSinRespaldo(int $aliadoId, array $cuentaIds, string $desde, string $hasta)
+    {
+        if ($cuentaIds === []) {
+            return collect();
+        }
+
+        return DB::table('gastos as g')
+            ->leftJoin('banco_movimiento_gasto as p', 'p.gasto_id', '=', 'g.id')
+            ->leftJoin('banco_cuentas as bc', 'bc.id', '=', 'g.banco_origen_id')
+            ->where('g.aliado_id', $aliadoId)
+            ->whereIn('g.banco_origen_id', $cuentaIds)
+            ->whereNull('p.id')
+            ->whereBetween('g.fecha', [$desde, $hasta])
+            ->orderByDesc('g.valor')
+            ->limit(300)
+            ->select('g.id', 'g.fecha', 'g.valor', 'g.tipo', 'g.descripcion', 'g.pagado_a', 'g.numero_planilla', 'bc.banco')
             ->get();
     }
 
