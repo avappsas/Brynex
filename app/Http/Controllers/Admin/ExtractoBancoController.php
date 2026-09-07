@@ -7,6 +7,7 @@ use App\Models\BancoCuenta;
 use App\Models\BancoMovimiento;
 use App\Models\Bitacora;
 use App\Models\Consignacion;
+use App\Models\Gasto;
 use App\Services\Banco\ConciliadorConsignacionesService;
 use App\Services\Banco\ConciliadorGastosService;
 use App\Services\Banco\LectorExtractoBancolombia;
@@ -15,6 +16,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Throwable;
 
 /**
@@ -63,6 +65,7 @@ class ExtractoBancoController extends Controller
         $sinRespaldo = $this->sinRespaldo($aliadoId, $cuentaIds, $desde, $hasta);
         $cruzados = $this->cruzados($aliadoId, $cuentaIds, $desde, $hasta);
         $salidasSueltas = $this->salidasSueltas($aliadoId, $cuentaIds, $desde, $hasta);
+        $cobrosBanco = $this->cobrosBanco($aliadoId, $cuentaIds, $desde, $hasta);
 
         $resumen = [
             'sin_identificar' => $sinIdentificar->count(),
@@ -72,11 +75,15 @@ class ExtractoBancoController extends Controller
             'cruzados' => $cruzados->count(),
             'salidas_sueltas' => $salidasSueltas->count(),
             'valor_salidas_sueltas' => (int) $salidasSueltas->sum('valor'),
+            'cobros_banco' => $cobrosBanco->count(),
+            'valor_cobros_banco' => (int) $cobrosBanco->sum('valor'),
         ];
+
+        $tiposGasto = Gasto::TIPOS;
 
         return view('admin.informes.extracto_banco', compact(
             'cuentas', 'cuentaId', 'desde', 'hasta',
-            'sinIdentificar', 'sinRespaldo', 'cruzados', 'salidasSueltas', 'resumen'
+            'sinIdentificar', 'sinRespaldo', 'cruzados', 'salidasSueltas', 'cobrosBanco', 'tiposGasto', 'resumen'
         ));
     }
 
@@ -170,6 +177,32 @@ class ExtractoBancoController extends Controller
             ->orderByDesc('bm.valor')
             ->limit(300)
             ->select('bm.id', 'bm.fecha', 'bm.valor', 'bm.descripcion', 'bm.referencia', 'bm.canal', 'bc.banco')
+            ->get();
+    }
+
+    /**
+     * Lo que cobró o abonó el banco: 4x1000, cuota de manejo, intereses.
+     *
+     * El cruce los aparta para que no ensucien las diferencias, pero siguen
+     * siendo plata que se movió de verdad. Mientras no queden registrados, el
+     * saldo del libro nunca va a coincidir con el del banco, y por eso se
+     * muestran con la opción de registrarlos.
+     */
+    private function cobrosBanco(int $aliadoId, array $cuentaIds, string $desde, string $hasta)
+    {
+        if ($cuentaIds === []) {
+            return collect();
+        }
+
+        return DB::table('banco_movimientos as bm')
+            ->leftJoin('banco_cuentas as bc', 'bc.id', '=', 'bm.banco_cuenta_id')
+            ->where('bm.aliado_id', $aliadoId)
+            ->whereIn('bm.banco_cuenta_id', $cuentaIds)
+            ->where('bm.estado_conciliacion', BancoMovimiento::CONCILIACION_IGNORADO)
+            ->whereBetween('bm.fecha', [$desde, $hasta])
+            ->orderByDesc('bm.valor')
+            ->limit(300)
+            ->select('bm.id', 'bm.fecha', 'bm.valor', 'bm.tipo', 'bm.descripcion', 'bc.banco')
             ->get();
     }
 
@@ -406,6 +439,155 @@ class ExtractoBancoController extends Controller
         );
 
         return back()->with('success', "Movimiento vinculado con la consignación {$con->id}.");
+    }
+
+    /**
+     * Crea en BryNex el gasto que explica una salida del extracto.
+     *
+     * Es el caso del 4x1000, la cuota de manejo o un pago que nadie registró:
+     * el dinero salió de verdad, así que el libro tiene que tenerlo. Se crea el
+     * gasto —no se modifica ninguno existente— y queda amarrado al movimiento,
+     * con lo cual el saldo del libro se acerca al del banco en ese mismo valor.
+     */
+    public function registrarGasto(Request $request, int $movimientoId)
+    {
+        $datos = $request->validate([
+            'tipo' => ['required', 'string', Rule::in(array_keys(Gasto::TIPOS))],
+            'descripcion' => 'required|string|max:255',
+            'pagado_a' => 'nullable|string|max:255',
+        ]);
+
+        $aliadoId = $this->aliadoId();
+
+        $mov = BancoMovimiento::where('id', $movimientoId)->where('aliado_id', $aliadoId)->first();
+        if (! $mov) {
+            abort(404, 'Ese movimiento no es de este aliado.');
+        }
+        if ($mov->tipo !== BancoMovimiento::TIPO_DEBITO) {
+            return back()->with('error', 'Ese movimiento es una entrada: se registra como consignación, no como gasto.');
+        }
+        if ($mov->gastos()->count() > 0) {
+            return back()->with('error', 'Ese movimiento ya tiene un gasto que lo explica.');
+        }
+
+        DB::transaction(function () use ($mov, $datos, $aliadoId) {
+            $gasto = Gasto::create([
+                'aliado_id' => $aliadoId,
+                'usuario_id' => Auth::id(),
+                'cuadre_id' => null,
+                'fecha' => $mov->fecha,
+                'tipo' => $datos['tipo'],
+                'descripcion' => $datos['descripcion'],
+                'pagado_a' => $datos['pagado_a'] ?? null,
+                'forma_pago' => 'transferencia_bancaria',
+                'banco_origen_id' => $mov->banco_cuenta_id,
+                'valor' => (int) round((float) $mov->valor),
+                'observacion' => 'Registrado desde el extracto del banco (movimiento '.$mov->id.')',
+            ]);
+
+            DB::table('banco_movimiento_gasto')->insert([
+                'aliado_id' => $aliadoId,
+                'banco_movimiento_id' => $mov->id,
+                'gasto_id' => $gasto->id,
+                'valor_aplicado' => (float) $mov->valor,
+                'regla' => 'creado',
+                'dias_diferencia' => 0,
+                'usuario_id' => Auth::id(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $mov->update([
+                'estado_conciliacion' => BancoMovimiento::CONCILIACION_CONCILIADO,
+                'conciliado_por' => Auth::id(),
+                'conciliado_at' => now(),
+            ]);
+
+            Bitacora::registrar(
+                'crear', 'Gasto', (int) $gasto->id,
+                'Gasto creado desde el extracto: '.$datos['descripcion'],
+                ['movimiento' => (int) $mov->id, 'valor' => (float) $mov->valor],
+                $aliadoId
+            );
+        });
+
+        return back()->with('success', 'Gasto registrado y movimiento cuadrado.');
+    }
+
+    /**
+     * Crea en BryNex la consignación que explica una entrada del extracto.
+     *
+     * Sirve para la plata que llegó y nadie registró: un traslado desde otra
+     * cuenta propia, los intereses que abona el banco, un pago que no se
+     * digitó. Queda confirmada de entrada porque viene del extracto: el banco
+     * ya la reportó.
+     */
+    public function registrarEntrada(Request $request, int $movimientoId)
+    {
+        $datos = $request->validate([
+            'tipo' => ['required', Rule::in([
+                Consignacion::TIPO_BANCO_RECIBIDO,
+                Consignacion::TIPO_TRASLADO_EFECTIVO,
+                Consignacion::TIPO_CLIENTE,
+            ])],
+            'observacion' => 'required|string|max:500',
+        ]);
+
+        $aliadoId = $this->aliadoId();
+
+        $mov = BancoMovimiento::where('id', $movimientoId)->where('aliado_id', $aliadoId)->first();
+        if (! $mov) {
+            abort(404, 'Ese movimiento no es de este aliado.');
+        }
+        if ($mov->tipo !== BancoMovimiento::TIPO_CREDITO) {
+            return back()->with('error', 'Ese movimiento es una salida: se registra como gasto, no como consignación.');
+        }
+        if ($mov->consignaciones()->count() > 0) {
+            return back()->with('error', 'Ese movimiento ya tiene una consignación que lo explica.');
+        }
+
+        DB::transaction(function () use ($mov, $datos, $aliadoId) {
+            $consig = Consignacion::create([
+                'aliado_id' => $aliadoId,
+                'banco_cuenta_id' => $mov->banco_cuenta_id,
+                'factura_id' => null,
+                'fecha' => $mov->fecha,
+                'valor' => (int) round((float) $mov->valor),
+                'tipo' => $datos['tipo'],
+                'referencia' => $mov->referencia,
+                'confirmado' => true,
+                'observacion' => $datos['observacion'],
+                'usuario_id' => Auth::id(),
+            ]);
+
+            DB::table('banco_movimiento_consignacion')->insert([
+                'aliado_id' => $aliadoId,
+                'banco_movimiento_id' => $mov->id,
+                'consignacion_id' => $consig->id,
+                'valor_aplicado' => (float) $mov->valor,
+                'regla' => 'creado',
+                'dias_diferencia' => 0,
+                'usuario_id' => Auth::id(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $mov->update([
+                'estado_conciliacion' => BancoMovimiento::CONCILIACION_CONCILIADO,
+                'consignacion_id' => $consig->id,
+                'conciliado_por' => Auth::id(),
+                'conciliado_at' => now(),
+            ]);
+
+            Bitacora::registrar(
+                'crear', 'Consignacion', (int) $consig->id,
+                'Entrada registrada desde el extracto: '.$datos['observacion'],
+                ['movimiento' => (int) $mov->id, 'valor' => (float) $mov->valor],
+                $aliadoId
+            );
+        });
+
+        return back()->with('success', 'Entrada registrada y movimiento cuadrado.');
     }
 
     /** Deshace un cruce. Si la consignación queda sin respaldo, vuelve a pendiente. */

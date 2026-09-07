@@ -653,6 +653,8 @@ Route::middleware('auth')->group(function () {
                 Route::post('/extracto-banco/conciliar', [$eb, 'conciliar'])->name('extracto_banco.conciliar');
                 Route::post('/extracto-banco/movimiento/{id}/vincular', [$eb, 'vincular'])->name('extracto_banco.vincular');
                 Route::post('/extracto-banco/movimiento/{id}/ignorar', [$eb, 'ignorar'])->name('extracto_banco.ignorar');
+                Route::post('/extracto-banco/movimiento/{id}/registrar-gasto', [$eb, 'registrarGasto'])->name('extracto_banco.registrar_gasto');
+                Route::post('/extracto-banco/movimiento/{id}/registrar-entrada', [$eb, 'registrarEntrada'])->name('extracto_banco.registrar_entrada');
                 Route::post('/extracto-banco/vinculo/{id}/deshacer', [$eb, 'desvincular'])->name('extracto_banco.desvincular');
                 Route::post('/extracto-banco/consignacion/{id}/no-aparece', [$eb, 'noAparece'])->name('extracto_banco.no_aparece');
             });

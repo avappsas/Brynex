@@ -182,6 +182,9 @@
         <button class="eb-tab" :class="tab === 'salidas' && 'activa'" @click="tab = 'salidas'">
             Salidas sin identificar ({{ $resumen['salidas_sueltas'] }})
         </button>
+        <button class="eb-tab" :class="tab === 'banco' && 'activa'" @click="tab = 'banco'">
+            Cobros del banco ({{ $resumen['cobros_banco'] }})
+        </button>
         <button class="eb-tab" :class="tab === 'cruzados' && 'activa'" @click="tab = 'cruzados'">
             Cruzadas ({{ $resumen['cruzados'] }})
         </button>
@@ -215,6 +218,9 @@
                         <td style="white-space:nowrap">
                             <button class="eb-accion" @click="abrirVinculo({{ $m->id }}, '{{ $fmt($m->valor) }}', '{{ \Carbon\Carbon::parse($m->fecha)->format('d/m/Y') }}')">
                                 <i class="fas fa-link"></i> Vincular
+                            </button>
+                            <button class="eb-accion" @click="abrirEntrada({{ $m->id }}, '{{ $fmt($m->valor) }}', @js($m->descripcion))">
+                                <i class="fas fa-plus"></i> Registrar
                             </button>
                             <form method="POST" action="{{ route('admin.informes.extracto_banco.ignorar', $m->id) }}" style="display:inline"
                                   onsubmit="return confirm('¿Marcar este movimiento como ajeno al libro?')">
@@ -282,7 +288,7 @@
             <thead>
                 <tr>
                     <th>Fecha</th><th>Descripción</th><th>Cuenta</th>
-                    <th class="eb-num">Valor</th>
+                    <th class="eb-num">Valor</th><th></th>
                 </tr>
             </thead>
             <tbody>
@@ -297,9 +303,14 @@
                         </td>
                         <td class="eb-mini">{{ $s->banco }}</td>
                         <td class="eb-num" style="color:#b91c1c">-{{ $fmt($s->valor) }}</td>
+                        <td style="white-space:nowrap">
+                            <button class="eb-accion" @click="abrirGasto({{ $s->id }}, '{{ $fmt($s->valor) }}', @js($s->descripcion))">
+                                <i class="fas fa-plus"></i> Registrar gasto
+                            </button>
+                        </td>
                     </tr>
                 @empty
-                    <tr><td colspan="4" class="eb-vacia">
+                    <tr><td colspan="5" class="eb-vacia">
                         <i class="fas fa-circle-check"></i>
                         Toda la plata que salió tiene su gasto registrado.
                     </td></tr>
@@ -310,6 +321,48 @@
             Cada una de estas salidas debería tener un gasto que la explique: un pago de
             planilla, un proveedor o un traslado a otra cuenta propia. Registrarlas es lo
             que hace que el saldo del libro vuelva a coincidir con el del banco.
+        </div>
+    </div>
+
+    {{-- ── Lo que cobró o abonó el banco ───────────────────────────── --}}
+    <div class="eb-card" x-show="tab === 'banco'" x-cloak>
+        <table class="eb-tabla">
+            <thead>
+                <tr><th>Fecha</th><th>Concepto</th><th>Cuenta</th><th class="eb-num">Valor</th><th></th></tr>
+            </thead>
+            <tbody>
+                @forelse ($cobrosBanco as $b)
+                    <tr>
+                        <td>{{ \Carbon\Carbon::parse($b->fecha)->format('d/m/Y') }}</td>
+                        <td>{{ $b->descripcion ?: '—' }}</td>
+                        <td class="eb-mini">{{ $b->banco }}</td>
+                        <td class="eb-num" style="color:{{ $b->tipo === 'debito' ? '#b91c1c' : '#15803d' }}">
+                            {{ $b->tipo === 'debito' ? '-' : '+' }}{{ $fmt($b->valor) }}
+                        </td>
+                        <td style="white-space:nowrap">
+                            @if ($b->tipo === 'debito')
+                                <button class="eb-accion" @click="abrirGasto({{ $b->id }}, '{{ $fmt($b->valor) }}', @js($b->descripcion))">
+                                    <i class="fas fa-plus"></i> Registrar gasto
+                                </button>
+                            @else
+                                <button class="eb-accion" @click="abrirEntrada({{ $b->id }}, '{{ $fmt($b->valor) }}', @js($b->descripcion))">
+                                    <i class="fas fa-plus"></i> Registrar entrada
+                                </button>
+                            @endif
+                        </td>
+                    </tr>
+                @empty
+                    <tr><td colspan="5" class="eb-vacia">
+                        <i class="fas fa-building-columns"></i>
+                        El banco no cobró nada en este rango.
+                    </td></tr>
+                @endforelse
+            </tbody>
+        </table>
+        <div class="eb-nota" style="margin:0;border-radius:0">
+            El 4x1000, la cuota de manejo y los intereses son plata que se movió de verdad.
+            Mientras no queden registrados en BryNex, el saldo del libro no va a coincidir
+            con el del banco: el botón crea el gasto o la entrada y deja el movimiento cuadrado.
         </div>
     </div>
 
@@ -358,6 +411,81 @@
                 @endforelse
             </tbody>
         </table>
+    </div>
+
+    {{-- ── Modal: registrar el gasto que falta ─────────────────────── --}}
+    <div class="eb-modal-bg" x-show="modalGasto" x-cloak @click.self="modalGasto = false">
+        <form class="eb-modal" method="POST" :action="urlGasto">
+            @csrf
+            <div class="eb-modal__head">
+                <h3>Registrar el gasto de <span x-text="movValor"></span></h3>
+                <button type="button" class="eb-modal__close" @click="modalGasto = false">&times;</button>
+            </div>
+            <div class="eb-modal__body">
+                <p class="eb-mini" style="margin:0 0 .8rem">
+                    En el extracto: <b x-text="movDesc"></b>
+                </p>
+
+                <label class="eb-mini" style="display:block;margin-bottom:.2rem">Tipo de gasto</label>
+                <select name="tipo" class="eb-input" x-model="tipoGasto" required>
+                    @foreach ($tiposGasto as $clave => $etiqueta)
+                        <option value="{{ $clave }}">{{ $etiqueta }}</option>
+                    @endforeach
+                </select>
+
+                <label class="eb-mini" style="display:block;margin:.7rem 0 .2rem">Descripción</label>
+                <input type="text" name="descripcion" class="eb-input" x-model="descGasto" maxlength="255" required>
+
+                <label class="eb-mini" style="display:block;margin:.7rem 0 .2rem">Pagado a (opcional)</label>
+                <input type="text" name="pagado_a" class="eb-input" maxlength="255">
+
+                <div class="eb-nota">
+                    Se crea un gasto nuevo con la fecha y el valor del extracto, pagado desde
+                    esta cuenta. No se modifica ningún gasto existente, y el saldo del libro
+                    baja en ese valor — que es justo lo que falta para que cuadre con el banco.
+                </div>
+            </div>
+            <div style="display:flex;justify-content:flex-end;gap:.6rem;padding:.9rem 1.2rem;border-top:1px solid #e5e7eb">
+                <button type="button" class="eb-accion" @click="modalGasto = false">Cancelar</button>
+                <button class="eb-btn">Crear gasto</button>
+            </div>
+        </form>
+    </div>
+
+    {{-- ── Modal: registrar la entrada que falta ───────────────────── --}}
+    <div class="eb-modal-bg" x-show="modalEntrada" x-cloak @click.self="modalEntrada = false">
+        <form class="eb-modal" method="POST" :action="urlEntrada">
+            @csrf
+            <div class="eb-modal__head">
+                <h3>Registrar la entrada de <span x-text="movValor"></span></h3>
+                <button type="button" class="eb-modal__close" @click="modalEntrada = false">&times;</button>
+            </div>
+            <div class="eb-modal__body">
+                <p class="eb-mini" style="margin:0 0 .8rem">
+                    En el extracto: <b x-text="movDesc"></b>
+                </p>
+
+                <label class="eb-mini" style="display:block;margin-bottom:.2rem">Qué fue</label>
+                <select name="tipo" class="eb-input" required>
+                    <option value="banco_recibido">Transferencia recibida de otra cuenta</option>
+                    <option value="traslado_efectivo">Traslado de efectivo a la cuenta</option>
+                    <option value="cliente">Pago de cliente (sin factura asociada)</option>
+                </select>
+
+                <label class="eb-mini" style="display:block;margin:.7rem 0 .2rem">Observación</label>
+                <input type="text" name="observacion" class="eb-input" x-model="descGasto" maxlength="500" required>
+
+                <div class="eb-nota">
+                    Queda confirmada de una: viene del extracto, o sea que el banco ya la
+                    reportó. Si en realidad es el pago de una factura, es mejor cerrar esto y
+                    usar «Vincular» para amarrarla a su consignación.
+                </div>
+            </div>
+            <div style="display:flex;justify-content:flex-end;gap:.6rem;padding:.9rem 1.2rem;border-top:1px solid #e5e7eb">
+                <button type="button" class="eb-accion" @click="modalEntrada = false">Cancelar</button>
+                <button class="eb-btn">Crear entrada</button>
+            </div>
+        </form>
     </div>
 
     {{-- ── Modal: vincular a mano ──────────────────────────────────── --}}
@@ -419,6 +547,11 @@
         return {
             tab: 'entradas',
             modal: false,
+            modalGasto: false,
+            modalEntrada: false,
+            movDesc: '',
+            tipoGasto: 'otros',
+            descGasto: '',
             movId: null,
             movValor: '',
             movFecha: '',
@@ -427,7 +560,43 @@
             cargando: false,
 
             get urlVincular() {
-                return '{{ url('admin/informes/extracto-banco/movimiento') }}/' + this.movId + '/vincular';
+                return this.base + '/vincular';
+            },
+            get urlGasto() {
+                return this.base + '/registrar-gasto';
+            },
+            get urlEntrada() {
+                return this.base + '/registrar-entrada';
+            },
+            get base() {
+                return '{{ url('admin/informes/extracto-banco/movimiento') }}/' + this.movId;
+            },
+
+            // El tipo se sugiere leyendo la descripción del banco: casi siempre
+            // acierta y ahorra el clic, pero queda editable.
+            sugerirTipo(desc) {
+                const d = (desc || '').toUpperCase();
+                if (/4X1000|GMF|IVA|CUOTA DE MANEJO|C MANEJO|SERVICIO|COMISION/.test(d)) return 'servicios';
+                if (/ENLACE|SIMPLE OI|COMPENSAR|ASOPAGOS|PLANILLA|SOI/.test(d)) return 'pago_planilla';
+                if (/TRANSFERENCIA/.test(d)) return 'banco_banco';
+                return 'otros';
+            },
+
+            abrirGasto(id, valor, desc) {
+                this.movId = id;
+                this.movValor = valor;
+                this.movDesc = desc || 'sin descripción';
+                this.descGasto = desc || 'Movimiento del extracto';
+                this.tipoGasto = this.sugerirTipo(desc);
+                this.modalGasto = true;
+            },
+
+            abrirEntrada(id, valor, desc) {
+                this.movId = id;
+                this.movValor = valor;
+                this.movDesc = desc || 'sin descripción';
+                this.descGasto = desc || 'Entrada del extracto';
+                this.modalEntrada = true;
             },
 
             abrirVinculo(id, valor, fecha) {

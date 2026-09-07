@@ -76,6 +76,23 @@ class BancoMovimiento extends BaseModel
         )->withPivot('valor_aplicado', 'regla', 'dias_diferencia')->withTimestamps();
     }
 
+    /**
+     * Gastos que este movimiento explica.
+     *
+     * El otro lado del cuadre: igual de muchos-a-muchos que las
+     * consignaciones, porque un pago grande sale partido y una transferencia
+     * puede cubrir dos gastos.
+     */
+    public function gastos()
+    {
+        return $this->belongsToMany(
+            Gasto::class,
+            'banco_movimiento_gasto',
+            'banco_movimiento_id',
+            'gasto_id'
+        )->withPivot('valor_aplicado', 'regla', 'dias_diferencia')->withTimestamps();
+    }
+
     public function conciliador()
     {
         return $this->belongsTo(User::class, 'conciliado_por');
