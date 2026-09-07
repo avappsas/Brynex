@@ -160,6 +160,11 @@
             <div class="eb-kpi__valor">{{ $resumen['sin_respaldo'] }}</div>
             <div class="eb-kpi__pie">{{ $fmt($resumen['valor_sin_respaldo']) }} que el banco no reporta</div>
         </div>
+        <div class="eb-kpi eb-kpi--alerta">
+            <div class="eb-kpi__label">Salió y nadie registró</div>
+            <div class="eb-kpi__valor">{{ $resumen['salidas_sueltas'] }}</div>
+            <div class="eb-kpi__pie">{{ $fmt($resumen['valor_salidas_sueltas']) }} sin un gasto que lo explique</div>
+        </div>
         <div class="eb-kpi eb-kpi--ok">
             <div class="eb-kpi__label">Cruzado</div>
             <div class="eb-kpi__valor">{{ $resumen['cruzados'] }}</div>
@@ -173,6 +178,9 @@
         </button>
         <button class="eb-tab" :class="tab === 'faltantes' && 'activa'" @click="tab = 'faltantes'">
             Sin respaldo en el banco ({{ $resumen['sin_respaldo'] }})
+        </button>
+        <button class="eb-tab" :class="tab === 'salidas' && 'activa'" @click="tab = 'salidas'">
+            Salidas sin identificar ({{ $resumen['salidas_sueltas'] }})
         </button>
         <button class="eb-tab" :class="tab === 'cruzados' && 'activa'" @click="tab = 'cruzados'">
             Cruzadas ({{ $resumen['cruzados'] }})
@@ -265,6 +273,43 @@
             Que una consignación no esté en el extracto puede ser que no entró la plata, o que
             el rango consultado no la alcanza. Por eso el cruce automático nunca marca
             «no aparece» solo: esa decisión queda con el nombre de quien la toma.
+        </div>
+    </div>
+
+    {{-- ── Salidas del banco que ningún gasto explica ──────────────── --}}
+    <div class="eb-card" x-show="tab === 'salidas'" x-cloak>
+        <table class="eb-tabla">
+            <thead>
+                <tr>
+                    <th>Fecha</th><th>Descripción</th><th>Cuenta</th>
+                    <th class="eb-num">Valor</th>
+                </tr>
+            </thead>
+            <tbody>
+                @forelse ($salidasSueltas as $s)
+                    <tr>
+                        <td>{{ \Carbon\Carbon::parse($s->fecha)->format('d/m/Y') }}</td>
+                        <td>
+                            {{ $s->descripcion ?: '—' }}
+                            @if ($s->canal)
+                                <div class="eb-mini">{{ $s->canal }}</div>
+                            @endif
+                        </td>
+                        <td class="eb-mini">{{ $s->banco }}</td>
+                        <td class="eb-num" style="color:#b91c1c">-{{ $fmt($s->valor) }}</td>
+                    </tr>
+                @empty
+                    <tr><td colspan="4" class="eb-vacia">
+                        <i class="fas fa-circle-check"></i>
+                        Toda la plata que salió tiene su gasto registrado.
+                    </td></tr>
+                @endforelse
+            </tbody>
+        </table>
+        <div class="eb-nota" style="margin:0;border-radius:0">
+            Cada una de estas salidas debería tener un gasto que la explique: un pago de
+            planilla, un proveedor o un traslado a otra cuenta propia. Registrarlas es lo
+            que hace que el saldo del libro vuelva a coincidir con el del banco.
         </div>
     </div>
 

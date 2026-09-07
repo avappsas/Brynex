@@ -8,6 +8,7 @@ use App\Models\BancoMovimiento;
 use App\Models\Bitacora;
 use App\Models\Consignacion;
 use App\Services\Banco\ConciliadorConsignacionesService;
+use App\Services\Banco\ConciliadorGastosService;
 use App\Services\Banco\LectorExtractoBancolombia;
 use App\Services\Banco\SincronizadorMovimientosService;
 use Carbon\Carbon;
@@ -61,6 +62,7 @@ class ExtractoBancoController extends Controller
         $sinIdentificar = $this->sinIdentificar($aliadoId, $cuentaIds, $desde, $hasta);
         $sinRespaldo = $this->sinRespaldo($aliadoId, $cuentaIds, $desde, $hasta);
         $cruzados = $this->cruzados($aliadoId, $cuentaIds, $desde, $hasta);
+        $salidasSueltas = $this->salidasSueltas($aliadoId, $cuentaIds, $desde, $hasta);
 
         $resumen = [
             'sin_identificar' => $sinIdentificar->count(),
@@ -68,11 +70,13 @@ class ExtractoBancoController extends Controller
             'sin_respaldo' => $sinRespaldo->count(),
             'valor_sin_respaldo' => (int) $sinRespaldo->sum('valor'),
             'cruzados' => $cruzados->count(),
+            'salidas_sueltas' => $salidasSueltas->count(),
+            'valor_salidas_sueltas' => (int) $salidasSueltas->sum('valor'),
         ];
 
         return view('admin.informes.extracto_banco', compact(
             'cuentas', 'cuentaId', 'desde', 'hasta',
-            'sinIdentificar', 'sinRespaldo', 'cruzados', 'resumen'
+            'sinIdentificar', 'sinRespaldo', 'cruzados', 'salidasSueltas', 'resumen'
         ));
     }
 
@@ -138,6 +142,34 @@ class ExtractoBancoController extends Controller
                     ))
                 END AS titular
             ")
+            ->get();
+    }
+
+    /**
+     * Salidas del banco que ningún gasto explica.
+     *
+     * El otro lado del cuadre: plata que salió de la cuenta y no está
+     * registrada como gasto. Suelen ser pagos al operador de planilla o
+     * traslados a otra cuenta propia que nadie anotó.
+     */
+    private function salidasSueltas(int $aliadoId, array $cuentaIds, string $desde, string $hasta)
+    {
+        if ($cuentaIds === []) {
+            return collect();
+        }
+
+        return DB::table('banco_movimientos as bm')
+            ->leftJoin('banco_movimiento_gasto as p', 'p.banco_movimiento_id', '=', 'bm.id')
+            ->leftJoin('banco_cuentas as bc', 'bc.id', '=', 'bm.banco_cuenta_id')
+            ->where('bm.aliado_id', $aliadoId)
+            ->whereIn('bm.banco_cuenta_id', $cuentaIds)
+            ->where('bm.tipo', BancoMovimiento::TIPO_DEBITO)
+            ->where('bm.estado_conciliacion', BancoMovimiento::CONCILIACION_PENDIENTE)
+            ->whereNull('p.id')
+            ->whereBetween('bm.fecha', [$desde, $hasta])
+            ->orderByDesc('bm.valor')
+            ->limit(300)
+            ->select('bm.id', 'bm.fecha', 'bm.valor', 'bm.descripcion', 'bm.referencia', 'bm.canal', 'bc.banco')
             ->get();
     }
 
@@ -241,6 +273,14 @@ class ExtractoBancoController extends Controller
             true
         );
 
+        // Y las salidas contra los gastos: es la otra mitad del extracto.
+        $cruceGastos = (new ConciliadorGastosService)->conciliar(
+            $cuenta,
+            Carbon::parse($r['desde']),
+            Carbon::parse($r['hasta']),
+            true
+        );
+
         Bitacora::registrar(
             'cargar_extracto', 'BancoMovimiento', (int) $cuenta->id,
             "Extracto cargado ({$r['desde']} a {$r['hasta']}): {$r['nuevos']} movimientos nuevos, {$cruce['confirmadas']} consignaciones confirmadas",
@@ -255,7 +295,8 @@ class ExtractoBancoController extends Controller
 
         $aviso = "Extracto de {$r['desde']} a {$r['hasta']}: {$r['nuevos']} movimientos nuevos"
             .($r['repetidos'] ? " ({$r['repetidos']} ya estaban)" : '')
-            .'. Se cruzaron '.count($cruce['cruces'])." y quedaron confirmadas {$cruce['confirmadas']} consignaciones.";
+            .'. Entradas: '.count($cruce['cruces'])." cruzadas, {$cruce['confirmadas']} consignaciones confirmadas."
+            .' Salidas: '.count($cruceGastos['cruces']).' cruzadas contra gastos.';
 
         // El propio archivo dice cuánto debía sumar; si no cuadra llegó
         // recortado y más vale decirlo que dejar medio mes sin conciliar.
@@ -276,13 +317,19 @@ class ExtractoBancoController extends Controller
 
         $cruces = 0;
         $confirmadas = 0;
+        $crucesSalidas = 0;
 
         try {
-            $servicio = new ConciliadorConsignacionesService;
+            $entradas = new ConciliadorConsignacionesService;
+            $salidas = new ConciliadorGastosService;
+
             foreach ($cuentas as $cuenta) {
-                $r = $servicio->conciliar($cuenta, Carbon::parse($desde), Carbon::parse($hasta), true);
+                $r = $entradas->conciliar($cuenta, Carbon::parse($desde), Carbon::parse($hasta), true);
                 $cruces += count($r['cruces']);
                 $confirmadas += $r['confirmadas'];
+
+                $g = $salidas->conciliar($cuenta, Carbon::parse($desde), Carbon::parse($hasta), true);
+                $crucesSalidas += count($g['cruces']);
             }
         } catch (Throwable $e) {
             return back()->with('error', 'No se pudo conciliar: '.$e->getMessage());
@@ -295,7 +342,8 @@ class ExtractoBancoController extends Controller
             $this->aliadoId()
         );
 
-        return back()->with('success', "$cruces cruces nuevos y $confirmadas consignaciones confirmadas.");
+        return back()->with('success', "Entradas: $cruces cruces nuevos y $confirmadas consignaciones confirmadas. "
+            ."Salidas: $crucesSalidas cruzadas contra gastos.");
     }
 
     /**

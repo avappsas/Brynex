@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\BancoCuenta;
 use App\Models\Bitacora;
 use App\Services\Banco\ConciliadorConsignacionesService;
+use App\Services\Banco\ConciliadorGastosService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Throwable;
@@ -72,12 +73,14 @@ class BancoConciliar extends Command
         $this->newLine();
 
         $servicio = new ConciliadorConsignacionesService($dias);
+        $servicioGastos = new ConciliadorGastosService($dias);
         $filas = [];
         $fallos = 0;
 
         foreach ($cuentas as $cuenta) {
             try {
                 $r = $servicio->conciliar($cuenta, $desde, $hasta, $ejecutar);
+                $g = $servicioGastos->conciliar($cuenta, $desde, $hasta, $ejecutar);
 
                 $filas[] = [
                     $cuenta->id,
@@ -88,6 +91,8 @@ class BancoConciliar extends Command
                     $r['confirmadas'],
                     count($r['movimientos_sin_identificar']),
                     count($r['consignaciones_sin_respaldo']),
+                    count($g['cruces']),
+                    count($g['salidas_sin_identificar']),
                     $r['ignorados'],
                 ];
 
@@ -118,7 +123,7 @@ class BancoConciliar extends Command
 
         if ($filas !== []) {
             $this->table(
-                ['Cta', 'Cuenta', 'Movs', 'Consig', 'Cruces', 'Confirm.', 'Sin ident.', 'Sin respaldo', 'Ignorados'],
+                ['Cta', 'Cuenta', 'Entradas', 'Consig', 'Cruces', 'Confirm.', 'Sin ident.', 'Sin respaldo', 'Sal. cruz.', 'Sal. s/ident.', 'Ignorados'],
                 $filas
             );
             $this->line('  «Sin respaldo» son consignaciones que el banco no reporta. NO se marcan');
