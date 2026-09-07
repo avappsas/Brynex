@@ -117,14 +117,103 @@ class FinanzasAlertaService
 
     /**
      * Obtiene la lista de préstamos activos que se encuentran en mora.
+     *
+     * Los que ya recibieron hoy el recordatorio o el cobro por WhatsApp se
+     * excluyen: el card es una lista de pendientes por gestionar, y un deudor
+     * al que ya se le escribió hoy no vuelve a la fila hasta mañana.
      */
     public function getPrestamosEnMora(int $userId)
     {
-        return Prestamo::activos()
+        $prestamos = Prestamo::activos()
             ->where('user_id', $userId)
             ->where('alertas_activas', true)
             ->where('estado', 'mora')
             ->get();
+
+        if ($prestamos->isEmpty()) {
+            return $prestamos;
+        }
+
+        $yaNotificados = $this->contactosConMensajeDeCobroHoy($userId, $prestamos);
+
+        if (empty($yaNotificados)) {
+            return $prestamos;
+        }
+
+        return $prestamos->reject(function ($p) use ($yaNotificados) {
+            $numero = self::normalizarCelular($p->telefono_deudor);
+
+            return $numero && in_array($numero, $yaNotificados, true);
+        })->values();
+    }
+
+    /**
+     * Números (ya normalizados) de los deudores a los que hoy se les envió un
+     * mensaje de cobro o recordatorio por WhatsApp.
+     *
+     * Una sola consulta a la base principal para toda la lista: el accessor
+     * `ultimo_mensaje_cobro` del modelo hace tres consultas por préstamo y a
+     * ~250 ms cada una eso se siente en el dashboard.
+     */
+    private function contactosConMensajeDeCobroHoy(int $userId, $prestamos): array
+    {
+        $numeros = $prestamos
+            ->map(fn ($p) => self::normalizarCelular($p->telefono_deudor))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if (empty($numeros)) {
+            return [];
+        }
+
+        // El préstamo vive en la conexión `finanzas`, donde no existe `users`.
+        $user = \App\Models\User::find($userId);
+        $aliadoId = $user?->aliado_id;
+
+        if (! $aliadoId) {
+            return [];
+        }
+
+        return \App\Models\WhatsappMensaje::query()
+            ->join('whatsapp_conversaciones', 'whatsapp_conversaciones.id', '=', 'whatsapp_mensajes.conversacion_id')
+            ->where('whatsapp_conversaciones.aliado_id', $aliadoId)
+            ->whereIn('whatsapp_conversaciones.wa_contact_id', $numeros)
+            ->where('whatsapp_mensajes.direccion', 'saliente')
+            ->whereDate('whatsapp_mensajes.created_at', Carbon::today())
+            // Mismo criterio que `Prestamo::ultimo_mensaje_cobro`: una charla
+            // cualquiera del chat no cuenta como gestión del préstamo.
+            ->where(function ($q) {
+                $q->where('whatsapp_mensajes.contenido', 'like', '%préstamo%')
+                    ->orWhere('whatsapp_mensajes.contenido', 'like', '%prestamo%')
+                    ->orWhere('whatsapp_mensajes.contenido', 'like', '%interes%')
+                    ->orWhere('whatsapp_mensajes.contenido', 'like', '%corte%')
+                    ->orWhere('whatsapp_mensajes.contenido', 'like', '%cobro%');
+            })
+            ->pluck('whatsapp_conversaciones.wa_contact_id')
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Normaliza un celular al formato con el que se guardan los contactos de
+     * WhatsApp (solo dígitos, con indicativo 57 cuando trae 10).
+     */
+    private static function normalizarCelular(?string $celular): ?string
+    {
+        if (! $celular) {
+            return null;
+        }
+
+        $numero = preg_replace('/[^0-9]/', '', $celular);
+
+        if ($numero === '') {
+            return null;
+        }
+
+        return strlen($numero) === 10 ? '57'.$numero : $numero;
     }
 
     // ─────────────────────────────────────────────────────────────
