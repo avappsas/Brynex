@@ -1235,6 +1235,7 @@ Route::middleware('auth')->group(function () {
             Route::get('/consolidado', [$ns, 'apiConsolidado'])->name('consolidado');
             Route::get('/cuentas', [$ns, 'apiCuentas'])->name('cuentas');
             Route::get('/alertas', [$ns, 'apiAlertas'])->name('alertas');
+            Route::get('/intereses-detalle', [$ns, 'apiInteresesDetalle'])->name('intereses-detalle');
         });
 
         // Cuentas / Bolsillos

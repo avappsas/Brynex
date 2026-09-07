@@ -218,4 +218,81 @@ class FinanzasDashboardController extends Controller
             'gastos_faltantes' => $gastosFaltantes,
         ]);
     }
+
+    /**
+     * GET /finanzas/api/intereses-detalle?anio&mes&tipo=cobrados|causados
+     *
+     * Detalle que hay detrás de los dos cards de intereses del mes: de quién
+     * entró la plata (cobrados) o a quién se le liquidó el ciclo (causados).
+     * Son exactamente los mismos movimientos que suma `getResumenMensual`.
+     */
+    public function apiInteresesDetalle(Request $request): JsonResponse
+    {
+        $user = Auth::user();
+        $anio = (int) $request->input('anio', now()->year);
+        $mes = (int) $request->input('mes', now()->month);
+        $tipo = $request->input('tipo') === 'causados' ? 'causados' : 'cobrados';
+
+        $tiposMovimiento = $tipo === 'causados'
+            ? ['interes_mensual', 'interes_proporcional']
+            : ['abono_interes', 'pago_total'];
+
+        $movimientos = DB::connection('finanzas')
+            ->table('finanzas_prestamo_movimientos as m')
+            ->join('finanzas_prestamos as p', 'p.id', '=', 'm.prestamo_id')
+            ->leftJoin('finanzas_cuentas as c', 'c.id', '=', 'm.cuenta_id')
+            ->where('p.user_id', $user->id)
+            ->whereYear('m.fecha', $anio)
+            ->whereMonth('m.fecha', $mes)
+            ->whereIn('m.tipo', $tiposMovimiento)
+            ->orderBy('m.fecha')
+            ->orderBy('m.id')
+            ->get([
+                'm.id',
+                'm.tipo',
+                'm.fecha',
+                'm.monto',
+                'm.dias_periodo',
+                'm.observacion',
+                'p.id as prestamo_id',
+                'p.nombre_deudor',
+                'p.es_cuenta_corriente',
+                'p.cc_cliente_id',
+                'c.nombre as cuenta',
+            ]);
+
+        $etiquetas = [
+            'interes_mensual' => 'Interés del ciclo',
+            'interes_proporcional' => 'Interés proporcional',
+            'abono_interes' => 'Abono a interés',
+            'pago_total' => 'Pago total',
+        ];
+
+        $filas = $movimientos->map(fn ($m) => [
+            'id' => (int) $m->id,
+            'fecha' => \Carbon\Carbon::parse($m->fecha)->format('d/m/Y'),
+            'deudor' => $m->nombre_deudor,
+            'concepto' => $etiquetas[$m->tipo] ?? $m->tipo,
+            'monto' => (float) $m->monto,
+            'dias_periodo' => $m->dias_periodo ? (int) $m->dias_periodo : null,
+            'observacion' => $m->observacion,
+            'cuenta' => $m->cuenta,
+            'es_cuenta_corriente' => (bool) $m->es_cuenta_corriente,
+            // Un trabajo de cuenta corriente no tiene ficha propia: la vista es
+            // la del cliente, con todos sus trabajos.
+            'url_ficha' => $m->es_cuenta_corriente
+                ? ($m->cc_cliente_id
+                    ? route('finanzas.cuenta-corriente.show', $m->cc_cliente_id)
+                    : route('finanzas.cuenta-corriente.index'))
+                : route('finanzas.prestamos.show', $m->prestamo_id),
+        ])->values();
+
+        return response()->json([
+            'tipo' => $tipo,
+            'anio' => $anio,
+            'mes' => $mes,
+            'total' => round((float) $filas->sum('monto'), 2),
+            'movimientos' => $filas,
+        ]);
+    }
 }

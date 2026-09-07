@@ -6,7 +6,7 @@
 @section('contenido')
 @include('finanzas.partials._responsive_fin')
 
-<div class="finanzas-container" x-data="{ openGastoRapido: false, openEntradaRapida: false, openConsolidadoGlobal: false }">
+<div class="finanzas-container" x-data="{ openGastoRapido: false, openEntradaRapida: false, openConsolidadoGlobal: false, openIntereses: false }">
 
     @component('finanzas.partials._header_banner', [
         'titulo' => '💰 Mi Contabilidad Privada',
@@ -189,6 +189,30 @@
         </div>
     </div>
 
+    {{-- Modal Detalle de Intereses → datos por /api/intereses-detalle --}}
+    <div x-show="openIntereses"
+         x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-150"  x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
+         x-cloak class="modal-overlay-bx" @click.self="openIntereses = false"
+         @abrir-intereses.window="openIntereses = true">
+        <div class="modal-box-bx" style="max-width:700px;border-radius:16px;">
+            <div class="modal-head-bx" id="intdet-head" style="background:linear-gradient(135deg,#065f46,#047857);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:1.25rem;border-bottom:1px solid #cbd5e1;">
+                <div>
+                    <h3 id="intdet-titulo" style="color:#fff;margin:0;font-size:1.15rem;">💰 Intereses cobrados</h3>
+                    <p id="intdet-sub" style="margin:2px 0 0;font-size:0.75rem;color:rgba(255,255,255,0.8);">{{ ucfirst(\Carbon\Carbon::create()->month($mes)->locale('es')->monthName) }} {{ $anio }}</p>
+                </div>
+                <button @click="openIntereses = false" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:rgba(255,255,255,0.7);">&times;</button>
+            </div>
+            <div class="modal-body-bx" style="padding:1.25rem;max-height:460px;overflow-y:auto;background:#f8fafc;">
+                <div id="intdet-body" style="font-size:0.8rem;color:#64748b;">Cargando…</div>
+            </div>
+            <div class="modal-foot-bx" style="display:flex;justify-content:space-between;align-items:center;padding:1rem;border-top:1px solid #cbd5e1;background:#f8fafc;">
+                <strong id="intdet-total" style="font-size:0.9rem;color:#0f172a;"></strong>
+                <button @click="openIntereses = false" style="padding:0.5rem 1.25rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.8rem;font-weight:600;cursor:pointer;background:#fff;color:#475569;">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
 </div>
 @endsection
 
@@ -268,13 +292,16 @@ async function cargarResumen(){
                     ${k.change!=null?`<span class="kpi-change ${k.change>=0?'pos':'neg'}">${k.change>=0?'▲':'▼'} ${Math.abs(k.change).toFixed(1)}% vs mes ant.</span>`:''}
                 </div>
             </div>`).join('');
+        // Ambos cards abren el mismo modal con el detalle movimiento por movimiento.
         $('intereses-row').innerHTML=`
-            <div style="flex:1;min-width:220px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:0.6rem 1rem;display:flex;justify-content:space-between;align-items:center;">
-                <span style="font-size:0.72rem;font-weight:700;color:#92400e;text-transform:uppercase;">📈 Intereses causados (mes)</span>
+            <div onclick="verInteresesDetalle('causados')" title="Ver a quién se le liquidó el ciclo este mes"
+                 style="flex:1;min-width:220px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:0.6rem 1rem;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+                <span style="font-size:0.72rem;font-weight:700;color:#92400e;text-transform:uppercase;">📈 Intereses causados (mes) 🔍</span>
                 <strong style="color:#92400e;font-size:1rem;">${fmt(r.intereses_causados??0)}</strong>
             </div>
-            <div style="flex:1;min-width:220px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:0.6rem 1rem;display:flex;justify-content:space-between;align-items:center;">
-                <span style="font-size:0.72rem;font-weight:700;color:#166534;text-transform:uppercase;">💰 Intereses cobrados (mes)</span>
+            <div onclick="verInteresesDetalle('cobrados')" title="Ver de quién entró la plata este mes"
+                 style="flex:1;min-width:220px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:0.6rem 1rem;display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+                <span style="font-size:0.72rem;font-weight:700;color:#166534;text-transform:uppercase;">💰 Intereses cobrados (mes) 🔍</span>
                 <strong style="color:#166534;font-size:1rem;">${fmt(r.intereses_cobrados??0)}</strong>
             </div>`;
         hide('kpis-skeleton'); show('kpis-real');
@@ -380,6 +407,51 @@ async function cargarAlertas(){
         if(html){sec.innerHTML=html; sec.style.display='';}
     }catch(e){}
 }
+
+// ── 4b. Detalle de intereses del mes (modal) ──────────────────
+const INT_ESTILOS={
+    cobrados:{titulo:'💰 Intereses cobrados',head:'linear-gradient(135deg,#065f46,#047857)',color:'#166534',
+              vacio:'Este mes todavía no ha entrado ningún pago de intereses.'},
+    causados:{titulo:'📈 Intereses causados',head:'linear-gradient(135deg,#92400e,#b45309)',color:'#92400e',
+              vacio:'Este mes todavía no se ha liquidado ningún ciclo de interés.'}
+};
+window.verInteresesDetalle=async function(tipo){
+    const est=INT_ESTILOS[tipo]??INT_ESTILOS.cobrados;
+    $('intdet-titulo').textContent=est.titulo;
+    $('intdet-head').style.background=est.head;
+    $('intdet-body').innerHTML='<div style="color:#94a3b8;padding:1rem;text-align:center;">Cargando…</div>';
+    $('intdet-total').textContent='';
+    window.dispatchEvent(new CustomEvent('abrir-intereses'));
+    try{
+        const d=await get(`${BASE}/intereses-detalle?anio=${ANIO}&mes=${MES}&tipo=${tipo}`);
+        if(d.movimientos.length===0){
+            $('intdet-body').innerHTML=`<div style="color:#94a3b8;padding:1.5rem;text-align:center;">${est.vacio}</div>`;
+            $('intdet-total').textContent='Total: '+fmt(0);
+            return;
+        }
+        $('intdet-body').innerHTML=`
+            <table style="width:100%;border-collapse:collapse;font-size:0.78rem;">
+                <thead><tr style="border-bottom:2px solid #e2e8f0;color:#64748b;text-align:left;">
+                    <th style="padding:0.4rem;font-weight:700;">Fecha</th>
+                    <th style="padding:0.4rem;font-weight:700;">Deudor</th>
+                    <th style="padding:0.4rem;font-weight:700;">Concepto</th>
+                    <th style="padding:0.4rem;text-align:right;font-weight:700;">Monto</th>
+                </tr></thead>
+                <tbody>${d.movimientos.map(m=>`
+                    <tr style="border-bottom:1px solid #f1f5f9;">
+                        <td style="padding:0.45rem;color:#64748b;white-space:nowrap;">${m.fecha}</td>
+                        <td style="padding:0.45rem;"><a href="${m.url_ficha}" style="font-weight:700;color:#334155;text-decoration:none;">${m.deudor}</a>
+                            ${m.es_cuenta_corriente?'<span style="font-size:0.62rem;color:#6b21a8;background:#f3e8ff;padding:1px 5px;border-radius:4px;margin-left:4px;">cuenta corriente</span>':''}</td>
+                        <td style="padding:0.45rem;color:#475569;">${m.concepto}${m.dias_periodo?` <span style="color:#94a3b8;">(${m.dias_periodo} días)</span>`:''}
+                            ${m.cuenta?`<div style="font-size:0.66rem;color:#94a3b8;">→ ${m.cuenta}</div>`:''}</td>
+                        <td style="padding:0.45rem;text-align:right;font-weight:700;color:${est.color};white-space:nowrap;">${fmt(m.monto)}</td>
+                    </tr>`).join('')}</tbody>
+            </table>`;
+        $('intdet-total').textContent=`Total (${d.movimientos.length} movimiento${d.movimientos.length===1?'':'s'}): ${fmt(d.total)}`;
+    }catch(e){
+        $('intdet-body').innerHTML='<div style="color:#ef4444;padding:1rem;">Error cargando el detalle.</div>';
+    }
+};
 
 // ── 5. Consolidado (solo al abrir modal) ──────────────────────
 window.cargarConsolidado=async function(){
