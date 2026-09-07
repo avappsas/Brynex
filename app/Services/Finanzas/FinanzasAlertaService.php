@@ -515,7 +515,7 @@ class FinanzasAlertaService
             ->pluck('total', 'mes');
 
         $meses          = [];
-        $liquidezAcumulada = 0.00;
+        $gananciaAcumulada = 0.00;
         $mesLimite      = ($anio == now()->year) ? now()->month : 12;
 
         for ($m = 1; $m <= $mesLimite; $m++) {
@@ -523,7 +523,11 @@ class FinanzasAlertaService
             $salidas  = (float) ($salidasMes[$m] ?? 0);
             $prestado = (float) ($prestadoMes[$m] ?? 0);
             $invertido = (float) ($invertidoMes[$m] ?? 0);
-            $liquidezAcumulada += ($entradas - $salidas - $prestado - $invertido);
+            // Lo ganado en el año, no la plata en la mano: prestar e invertir no
+            // restan (la plata sigue siendo del dueño) y el capital que vuelve
+            // tampoco suma, porque nunca fue un ingreso. Mismos números que las
+            // barras de Entradas vs Egresos, acumulados.
+            $gananciaAcumulada += ($entradas - $salidas);
 
             $meses[] = [
                 'mes'                  => $m,
@@ -534,7 +538,7 @@ class FinanzasAlertaService
                 'invertido'            => round($invertido, 2),
                 'intereses_causados'   => round((float) ($causadosMes[$m] ?? 0), 2),
                 'intereses_cobrados'   => round((float) ($cobradosMes[$m] ?? 0), 2),
-                'liquidez_acumulada'   => round($liquidezAcumulada, 2),
+                'ganancia_acumulada'   => round($gananciaAcumulada, 2),
             ];
         }
 

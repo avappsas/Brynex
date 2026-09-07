@@ -101,9 +101,10 @@
                 </div>
             </div>
 
-            {{-- Gráfica liquidez --}}
+            {{-- Gráfica de ganancia acumulada --}}
             <div class="chart-container-card" style="margin-top:1.25rem;">
-                <h3>💵 Evolución de Liquidez {{ $anio }} (Acumulado del año)</h3>
+                <h3 style="margin-bottom:0.35rem;">💰 Ganancia acumulada {{ $anio }}</h3>
+                <p style="font-size:0.7rem;color:#94a3b8;margin:-0.5rem 0 0.75rem;">Lo que llevas ganado en el año: entradas menos gastos, mes tras mes.</p>
                 <div style="height:220px;position:relative;">
                     <div class="sk-chart" id="liq-sk"></div>
                     <canvas id="liquidezChart" style="display:none;"></canvas>
@@ -357,7 +358,7 @@ async function cargarEvolucion(){
         new Chart($('liquidezChart').getContext('2d'),{
             type:'line',
             data:{labels:ev.map(d=>d.label),datasets:[
-                {label:'Liquidez acumulada',data:ev.map(d=>d.liquidez_acumulada),borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,0.12)',fill:true,tension:0.3}
+                {label:'Ganancia acumulada',data:ev.map(d=>d.ganancia_acumulada),borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,0.12)',fill:true,tension:0.3}
             ]},
             options:{responsive:true,maintainAspectRatio:false,
                 plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:10}}}},
