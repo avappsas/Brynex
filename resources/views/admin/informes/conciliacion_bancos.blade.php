@@ -10,8 +10,16 @@ $saldosConMov = $saldos->filter(fn($sb) => $sb['movimientos']->isNotEmpty());
 
 @section('contenido')
 <style>
-/* ── Header de la página (NO sticky — el navbar no es fixed) ── */
+/* ── Header de la página — se queda arriba para tener los filtros a mano ──
+   Con los bancos plegados la página es corta, pero al abrir uno los filtros se
+   iban del viewport y había que subir a buscarlos. El resto de los sticky
+   (header de cada banco y thead) cuelgan de su altura, que el JS mide y publica
+   en --bk-top: el header envuelve en dos líneas en pantallas angostas, así que
+   la altura no se puede quemar. */
 .bk-page-header {
+    position: sticky;
+    top: 0;
+    z-index: 95;
     background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
     border-radius: 14px;
     color: #fff;
@@ -57,7 +65,7 @@ $saldosConMov = $saldos->filter(fn($sb) => $sb['movimientos']->isNotEmpty());
 /* Header sticky del banco — se pega al top del viewport al hacer scroll */
 .banco-card-sticky {
     position: sticky;
-    top: 0;
+    top: var(--bk-top, 0px);
     z-index: 90;
     background: #fff;
     border-bottom: 2px solid #e2e8f0;
@@ -1096,17 +1104,27 @@ function initDragScroll(wrapper) {
 // ── Ajustar top del <thead> al tamaño real del header del banco ──
 (function ajustarTheadTop() {
     function recalcular() {
+        // El header de la página también es sticky: todo lo demás se apila
+        // debajo de él, y su altura cambia cuando los filtros envuelven.
+        const pageHeader = document.querySelector('.bk-page-header');
+        const topPagina  = pageHeader ? pageHeader.offsetHeight : 0;
+        document.documentElement.style.setProperty('--bk-top', topPagina + 'px');
+
         document.querySelectorAll('.banco-card').forEach(card => {
             const stickyH = card.querySelector('.banco-card-sticky');
             const ths     = card.querySelectorAll('thead th');
             if (!stickyH || !ths.length) return;
             const alturaHeader = stickyH.offsetHeight;
-            ths.forEach(th => th.style.top = alturaHeader + 'px');
+            ths.forEach(th => th.style.top = (topPagina + alturaHeader) + 'px');
         });
     }
-    // Calcular al cargar y también si cambia el tamaño de ventana
+    // Calcular al cargar, al cambiar el tamaño de ventana, y cuando se abre o
+    // cierra un banco (el thead recién ahí conoce su posición real).
     recalcular();
     window.addEventListener('resize', recalcular);
+    document.addEventListener('click', e => {
+        if (e.target.closest('.banco-card-sticky')) setTimeout(recalcular, 60);
+    });
 })();
 const wr1 = document.getElementById('modal-estado-img-wrapper');
 const wr2 = document.getElementById('modal-img-wrapper');
