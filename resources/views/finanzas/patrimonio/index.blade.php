@@ -140,12 +140,19 @@
                         <input type="number" name="valor_actual" placeholder="Ej: 43000000" class="form-input-bx" min="0">
                     </div>
                     
-                    {{-- Registrar gasto check --}}
-                    <div style="display:flex; align-items:center; gap:0.5rem; margin-top:1rem;">
-                        <input type="checkbox" name="registrar_gasto" value="1" id="gasto_check" style="cursor:pointer; width:16px; height:16px;">
-                        <label for="gasto_check" style="font-size:0.8rem; font-weight:600; color:#475569; cursor:pointer;">
-                            ¿Registrar compra en gastos del mes actual?
-                        </label>
+                    {{-- De dónde sale la plata --}}
+                    <div class="form-group-bx" style="margin-top:1rem;">
+                        <label class="form-label-bx">¿De dónde salió la plata?</label>
+                        <select name="cuenta_id" class="form-select-bx">
+                            <option value="">No registrar salida — ya tenía este bien</option>
+                            @foreach($cuentas as $cuenta)
+                                <option value="{{ $cuenta->id }}">{{ $cuenta->icono ?? '💳' }} {{ $cuenta->nombre }}</option>
+                            @endforeach
+                        </select>
+                        <small style="display:block; font-size:0.7rem; color:#64748b; margin-top:0.25rem;">
+                            La compra baja el saldo de esa cuenta, pero no cuenta como gasto del mes:
+                            el bien queda y se puede vender.
+                        </small>
                     </div>
 
                     <div class="form-group-bx" style="margin-top:1rem;">

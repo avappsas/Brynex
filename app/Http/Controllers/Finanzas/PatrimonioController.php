@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\DB;
 class PatrimonioController extends Controller
 {
     use \App\Http\Controllers\Finanzas\Concerns\InvalidaFinanzasCache;
+    use \App\Http\Controllers\Finanzas\Concerns\ResuelveCuenta;
+
     public function __construct()
     {
         $this->middleware('auth');
@@ -32,7 +34,9 @@ class PatrimonioController extends Controller
         $valorTotalPatrimonio = $patrimonios->where('activo', true)->sum('valor_compra');
         $valorTotalActual = $patrimonios->where('activo', true)->sum->valor_estimado;
 
-        return view('finanzas.patrimonio.index', compact('patrimonios', 'valorTotalPatrimonio', 'valorTotalActual'));
+        $cuentas = \App\Models\Finanzas\Cuenta::where('user_id', Auth::id())->activas()->orderBy('orden')->get();
+
+        return view('finanzas.patrimonio.index', compact('patrimonios', 'valorTotalPatrimonio', 'valorTotalActual', 'cuentas'));
     }
 
     /**
@@ -49,7 +53,7 @@ class PatrimonioController extends Controller
             'fecha_adquisicion' => 'required|date',
             'valor_actual' => 'nullable|numeric|min:0',
             'observaciones' => 'nullable|string',
-            'registrar_gasto' => 'nullable|boolean', // Si desea crear la salida en gastos automáticamente
+            'cuenta_id' => 'nullable|integer', // De dónde salió la plata; vacío = bien que ya tenía
         ]);
 
         $user = Auth::user();
@@ -72,26 +76,23 @@ class PatrimonioController extends Controller
                 'observaciones' => $request->observaciones,
             ]);
 
-            // Si desea registrar automáticamente como gasto del mes
-            if ($request->has('registrar_gasto') && $request->registrar_gasto) {
-                // Obtener o crear categoría correspondiente
-                $categoriaNombre = match ($request->categoria) {
-                    'inmueble' => 'Apartamento',
-                    'vehiculo' => 'empresa', // o gasolina/impuestos
-                    default => 'Otros',
-                };
-
-                $categoria = CategoriaGasto::where('user_id', $user->id)
-                    ->where('nombre', $categoriaNombre)
-                    ->first();
-                $catId = $categoria ? $categoria->id : 1;
+            // La compra sale de una cuenta: la plata deja el bolsillo aunque el
+            // bien se quede. Se guarda como gasto marcado `es_patrimonio`, que es
+            // lo que hace que baje el saldo sin contar como gasto del mes.
+            // Sin cuenta (un bien que ya se tenía) no hay salida que registrar.
+            if ($request->filled('cuenta_id')) {
+                $categoria = CategoriaGasto::firstOrCreate(
+                    ['user_id' => $user->id, 'nombre' => 'Otros'],
+                    ['icono' => '📁', 'orden' => 99]
+                );
 
                 Gasto::create([
                     'user_id' => $user->id,
-                    'categoria_id' => $catId,
+                    'categoria_id' => $categoria->id,
+                    'cuenta_id' => $this->resolverCuenta($request->cuenta_id),
                     'fecha' => $request->fecha_adquisicion,
                     'monto' => $request->valor_compra,
-                    'descripcion' => "Adquisición de patrimonio: {$request->nombre}",
+                    'descripcion' => "Compra de patrimonio: {$request->nombre}",
                     'tipo_movimiento' => 'gasto',
                     'es_patrimonio' => true,
                     'patrimonio_id' => $patrimonio->id,
