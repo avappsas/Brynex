@@ -64,7 +64,50 @@ class FacturacionController extends Controller
         return view('admin.facturacion.empresa', array_merge($datos, [
             'mes' => $mes,
             'anio' => $anio,
+            'retiradosPrevios' => $this->retiradosPreviosEmpresa(
+                $empresaId, $aliadoId, $datos['contratos']->pluck('cedula')
+            ),
         ]));
+    }
+
+    /**
+     * Gente que estuvo con la empresa y ya no sale en la tabla del período.
+     *
+     * Una fila por persona —la de su último retiro—, porque la misma cédula
+     * puede haber entrado y salido varias veces y la lista es para saber quién
+     * estuvo, no cuántas veces. Quien ya aparece arriba no se repite acá: puede
+     * tener un retiro viejo y un contrato vigente al mismo tiempo.
+     *
+     * Va aparte de getDatosEmpresaPeriodo() a propósito: esa la comparte el
+     * Excel, que no lleva esta lista y no tiene por qué pagar la consulta.
+     */
+    private function retiradosPreviosEmpresa(int $empresaId, int $aliadoId, $cedulasVisibles)
+    {
+        return DB::table('contratos as ct')
+            ->join('clientes as cl', function ($j) use ($aliadoId) {
+                $j->on('cl.cedula', '=', 'ct.cedula')->where('cl.aliado_id', $aliadoId);
+            })
+            ->leftJoin('razones_sociales as rs', 'rs.id', '=', 'ct.razon_social_id')
+            ->where('ct.aliado_id', $aliadoId)
+            ->where('cl.cod_empresa', $empresaId)
+            ->where('ct.estado', 'retirado')
+            ->when(
+                $cedulasVisibles->isNotEmpty(),
+                fn ($q) => $q->whereNotIn('ct.cedula', $cedulasVisibles)
+            )
+            // DESC deja los retiros sin fecha de últimos, que es donde estorban
+            // menos: son fichas viejas sin la fecha diligenciada.
+            ->orderByDesc('ct.fecha_retiro')
+            ->orderByDesc('ct.id')
+            ->get([
+                'ct.id', 'ct.cedula', 'ct.fecha_ingreso', 'ct.fecha_retiro',
+                'cl.id as cliente_id', 'cl.tipo_doc', 'cl.primer_nombre', 'cl.primer_apellido',
+                'rs.razon_social',
+            ])
+            // La misma cédula puede tener más de una ficha de cliente y el join
+            // la duplicaría; el unique cubre eso y el «una fila por persona».
+            ->unique('cedula')
+            ->values();
     }
 
     /**
