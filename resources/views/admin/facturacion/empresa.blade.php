@@ -929,18 +929,18 @@ document.addEventListener('DOMContentLoaded', function() {
      caro. Una fila por persona: la de su último retiro, que la misma cédula
      puede haber entrado y salido varias veces.
 
-     El desplegable va fuera de la fila, para ocupar todo el ancho sin empujar
-     las tarjetas de saldo hacia abajo.
+     La lista sale en un modal (ver más abajo), no bajo la tabla: es larga y
+     abajo empujaba las tarjetas de saldo fuera de la pantalla.
 --}}
 <div style="display:flex;align-items:flex-start;gap:.6rem;flex-wrap:wrap;margin-top:.55rem;">
 @if($retiradosPrevios->isNotEmpty())
-    <button type="button" onclick="toggleRetirados()" id="btn-retirados"
+    <button type="button" onclick="abrirRetirados()" id="btn-retirados"
         style="background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:.5rem .9rem;display:inline-flex;align-items:center;gap:.5rem;cursor:pointer;font-family:inherit;font-size:.75rem;font-weight:700;color:#475569;transition:background .15s,border-color .15s;"
         onmouseover="this.style.background='#f8fafc';this.style.borderColor='#cbd5e1';"
         onmouseout="this.style.background='#fff';this.style.borderColor='#e2e8f0';">
         &#128683; Retirados de la empresa
         <span style="background:#f1f5f9;color:#64748b;border-radius:999px;padding:.1rem .45rem;font-size:.7rem;font-weight:800;">{{ $retiradosPrevios->count() }}</span>
-        <span id="btn-retirados-flecha" style="color:#94a3b8;font-size:.7rem;">&#9662;</span>
+        <span style="color:#94a3b8;font-size:.9rem;">&rsaquo;</span>
     </button>
 @endif
 
@@ -1007,55 +1007,86 @@ document.addEventListener('DOMContentLoaded', function() {
 @endif
 </div>
 
+{{-- ═══ MODAL: RETIRADOS DE LA EMPRESA ══════════════════════════════
+     En modal y no desplegado bajo la tabla: la lista es larga y abajo
+     empujaba todo lo demás fuera de la pantalla. Mismo patrón que el
+     detalle de saldo (overlay, Escape y clic afuera para cerrar).
+--}}
 @if($retiradosPrevios->isNotEmpty())
 @php
     $fmtFechaRet = fn ($f) => $f ? \Illuminate\Support\Carbon::parse($f)->format('d/m/Y') : '—';
 @endphp
-<div id="panel-retirados" style="display:none;margin-top:.55rem;background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
-        <div style="padding:.5rem .9rem;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:.7rem;color:#64748b;">
-            Estuvieron con {{ $empresa->empresa }} y no aparecen en {{ $meses[$mes] }} de {{ $anio }}.
-            De cada persona se muestra su último retiro.
+<div id="ret-overlay" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.65);backdrop-filter:blur(4px);z-index:2100;align-items:center;justify-content:center;padding:.75rem;"
+     onclick="if(event.target.id==='ret-overlay') cerrarRetirados()">
+    <div style="background:#fff;border-radius:18px;width:min(820px,98vw);max-height:92vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 32px 100px rgba(0,0,0,.35);">
+
+        <div style="background:linear-gradient(135deg,#334155 0%,#64748b 100%);padding:.9rem 1.3rem;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:.8rem;">
+                <div style="width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:1.2rem;">&#128683;</div>
+                <div>
+                    <h2 style="font-size:.95rem;font-weight:800;color:#fff;margin:0;">Retirados de la empresa</h2>
+                    <p style="font-size:.68rem;color:rgba(255,255,255,.8);margin:0;">{{ $empresa->empresa }} · {{ $retiradosPrevios->count() }} {{ $retiradosPrevios->count() === 1 ? 'persona' : 'personas' }}</p>
+                </div>
+            </div>
+            <button type="button" onclick="cerrarRetirados()"
+                style="width:28px;height:28px;border-radius:7px;border:none;cursor:pointer;background:rgba(255,255,255,.1);color:rgba(255,255,255,.85);font-size:.95rem;">&times;</button>
         </div>
-        <div style="overflow-x:auto;max-height:420px;overflow-y:auto;">
+
+        <div style="background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:.55rem 1.3rem;font-size:.7rem;color:#64748b;flex-shrink:0;">
+            Estuvieron con la empresa y no aparecen en {{ $meses[$mes] }} de {{ $anio }}.
+            De cada persona se muestra su último contrato retirado.
+        </div>
+
+        <div style="flex:1;overflow-y:auto;min-height:0;">
             <table style="width:100%;border-collapse:collapse;">
                 <thead>
-                    <tr style="background:#f8fafc;position:sticky;top:0;">
-                        <th style="text-align:left;padding:.4rem .9rem;font-size:.68rem;color:#64748b;font-weight:800;border-bottom:1px solid #e2e8f0;">DOCUMENTO</th>
-                        <th style="text-align:left;padding:.4rem .5rem;font-size:.68rem;color:#64748b;font-weight:800;border-bottom:1px solid #e2e8f0;">NOMBRE</th>
-                        <th style="text-align:left;padding:.4rem .5rem;font-size:.68rem;color:#64748b;font-weight:800;border-bottom:1px solid #e2e8f0;">RAZÓN SOCIAL</th>
-                        <th style="text-align:center;padding:.4rem .5rem;font-size:.68rem;color:#64748b;font-weight:800;border-bottom:1px solid #e2e8f0;">INGRESO</th>
-                        <th style="text-align:center;padding:.4rem .9rem;font-size:.68rem;color:#64748b;font-weight:800;border-bottom:1px solid #e2e8f0;">RETIRO</th>
+                    <tr>
+                        <th style="text-align:left;padding:.5rem 1.3rem;font-size:.6rem;color:#475569;font-weight:800;text-transform:uppercase;background:#fff;border-bottom:1.5px solid #e2e8f0;position:sticky;top:0;z-index:5;">Documento</th>
+                        <th style="text-align:left;padding:.5rem .6rem;font-size:.6rem;color:#475569;font-weight:800;text-transform:uppercase;background:#fff;border-bottom:1.5px solid #e2e8f0;position:sticky;top:0;z-index:5;">Nombre</th>
+                        <th style="text-align:left;padding:.5rem .6rem;font-size:.6rem;color:#475569;font-weight:800;text-transform:uppercase;background:#fff;border-bottom:1.5px solid #e2e8f0;position:sticky;top:0;z-index:5;">Razón social</th>
+                        <th style="text-align:center;padding:.5rem .6rem;font-size:.6rem;color:#475569;font-weight:800;text-transform:uppercase;background:#fff;border-bottom:1.5px solid #e2e8f0;position:sticky;top:0;z-index:5;">Ingreso</th>
+                        <th style="text-align:center;padding:.5rem 1.3rem;font-size:.6rem;color:#475569;font-weight:800;text-transform:uppercase;background:#fff;border-bottom:1.5px solid #e2e8f0;position:sticky;top:0;z-index:5;">Retiro</th>
                     </tr>
                 </thead>
                 <tbody>
                     @foreach($retiradosPrevios as $ret)
                     @php $nombreRet = trim(($ret->primer_nombre ?? '').' '.($ret->primer_apellido ?? '')) ?: '—'; @endphp
                     <tr style="border-bottom:1px solid #f1f5f9;">
-                        <td style="font-family:monospace;font-size:.73rem;padding:.35rem .9rem;white-space:nowrap;">
+                        <td style="font-family:monospace;font-size:.73rem;padding:.4rem 1.3rem;white-space:nowrap;">
                             @if($ret->tipo_doc)<span style="color:#94a3b8;font-weight:700;">{{ $ret->tipo_doc }}</span> @endif{{ $ret->cedula }}
                         </td>
-                        <td style="font-size:.75rem;padding:.35rem .5rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                            <a href="{{ route('admin.contratos.edit', $ret->id) }}?back={{ urlencode(url()->current()) }}"
-                               title="Abrir el contrato retirado"
+                        <td style="font-size:.75rem;padding:.4rem .6rem;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                            @if($ret->cliente_id)
+                            <a href="{{ route('admin.clientes.edit', $ret->cliente_id) }}"
+                               title="Ver cliente"
                                style="color:#1d4ed8;text-decoration:none;font-weight:600;"
                                onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">{{ $nombreRet }}</a>
+                            @else
+                            {{ $nombreRet }}
+                            @endif
                         </td>
-                        <td style="font-size:.7rem;color:#64748b;padding:.35rem .5rem;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ $ret->razon_social ?? '—' }}">{{ $ret->razon_social ?? '—' }}</td>
-                        <td style="font-size:.72rem;color:#475569;padding:.35rem .5rem;text-align:center;white-space:nowrap;">{{ $fmtFechaRet($ret->fecha_ingreso) }}</td>
-                        <td style="font-size:.72rem;color:#b91c1c;font-weight:600;padding:.35rem .9rem;text-align:center;white-space:nowrap;">{{ $fmtFechaRet($ret->fecha_retiro) }}</td>
+                        <td style="font-size:.7rem;color:#64748b;padding:.4rem .6rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ $ret->razon_social ?? '—' }}">{{ $ret->razon_social ?? '—' }}</td>
+                        <td style="font-size:.72rem;color:#475569;padding:.4rem .6rem;text-align:center;white-space:nowrap;">{{ $fmtFechaRet($ret->fecha_ingreso) }}</td>
+                        <td style="font-size:.72rem;color:#b91c1c;font-weight:600;padding:.4rem 1.3rem;text-align:center;white-space:nowrap;">{{ $fmtFechaRet($ret->fecha_retiro) }}</td>
                     </tr>
                     @endforeach
                 </tbody>
             </table>
         </div>
+    </div>
 </div>
 <script>
-function toggleRetirados() {
-    const panel = document.getElementById('panel-retirados');
-    const abierto = panel.style.display !== 'none';
-    panel.style.display = abierto ? 'none' : 'block';
-    document.getElementById('btn-retirados-flecha').innerHTML = abierto ? '&#9662;' : '&#9652;';
+function abrirRetirados() {
+    document.getElementById('ret-overlay').style.display = 'flex';
 }
+function cerrarRetirados() {
+    document.getElementById('ret-overlay').style.display = 'none';
+}
+document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Escape') return;
+    const ov = document.getElementById('ret-overlay');
+    if (ov && ov.style.display === 'flex') cerrarRetirados();
+});
 </script>
 @endif
 

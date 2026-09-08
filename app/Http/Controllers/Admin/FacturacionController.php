@@ -100,7 +100,7 @@ class FacturacionController extends Controller
             ->orderByDesc('ct.fecha_retiro')
             ->orderByDesc('ct.id')
             ->get([
-                'ct.id', 'ct.cedula', 'ct.fecha_ingreso', 'ct.fecha_retiro',
+                'ct.cedula', 'ct.fecha_ingreso', 'ct.fecha_retiro',
                 'cl.id as cliente_id', 'cl.tipo_doc', 'cl.primer_nombre', 'cl.primer_apellido',
                 'rs.razon_social',
             ])
