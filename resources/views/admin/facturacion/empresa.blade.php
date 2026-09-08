@@ -933,13 +933,13 @@ document.addEventListener('DOMContentLoaded', function() {
      abajo empujaba las tarjetas de saldo fuera de la pantalla.
 --}}
 <div style="display:flex;align-items:flex-start;gap:.6rem;flex-wrap:wrap;margin-top:.55rem;">
-@if($retiradosPrevios->isNotEmpty())
+@if($retiradosPreviosTotal > 0)
     <button type="button" onclick="abrirRetirados()" id="btn-retirados"
         style="background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:.5rem .9rem;display:inline-flex;align-items:center;gap:.5rem;cursor:pointer;font-family:inherit;font-size:.75rem;font-weight:700;color:#475569;transition:background .15s,border-color .15s;"
         onmouseover="this.style.background='#f8fafc';this.style.borderColor='#cbd5e1';"
         onmouseout="this.style.background='#fff';this.style.borderColor='#e2e8f0';">
         &#128683; Retirados de la empresa
-        <span style="background:#f1f5f9;color:#64748b;border-radius:999px;padding:.1rem .45rem;font-size:.7rem;font-weight:800;">{{ $retiradosPrevios->count() }}</span>
+        <span style="background:#f1f5f9;color:#64748b;border-radius:999px;padding:.1rem .45rem;font-size:.7rem;font-weight:800;">{{ $retiradosPreviosTotal }}</span>
         <span style="color:#94a3b8;font-size:.9rem;">&rsaquo;</span>
     </button>
 @endif
@@ -1011,11 +1011,12 @@ document.addEventListener('DOMContentLoaded', function() {
      En modal y no desplegado bajo la tabla: la lista es larga y abajo
      empujaba todo lo demás fuera de la pantalla. Mismo patrón que el
      detalle de saldo (overlay, Escape y clic afuera para cerrar).
+
+     Las filas se piden al abrirlo, no al cargar la página: hay empresas con
+     casi mil retirados —dos segundos de consulta y otro tanto de HTML— que
+     casi nadie abre. Del servidor solo baja el número para el botón.
 --}}
-@if($retiradosPrevios->isNotEmpty())
-@php
-    $fmtFechaRet = fn ($f) => $f ? \Illuminate\Support\Carbon::parse($f)->format('d/m/Y') : '—';
-@endphp
+@if($retiradosPreviosTotal > 0)
 <div id="ret-overlay" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.65);backdrop-filter:blur(4px);z-index:2100;align-items:center;justify-content:center;padding:.75rem;"
      onclick="if(event.target.id==='ret-overlay') cerrarRetirados()">
     <div style="background:#fff;border-radius:18px;width:min(820px,98vw);max-height:92vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 32px 100px rgba(0,0,0,.35);">
@@ -1025,7 +1026,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div style="width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:1.2rem;">&#128683;</div>
                 <div>
                     <h2 style="font-size:.95rem;font-weight:800;color:#fff;margin:0;">Retirados de la empresa</h2>
-                    <p style="font-size:.68rem;color:rgba(255,255,255,.8);margin:0;">{{ $empresa->empresa }} · {{ $retiradosPrevios->count() }} {{ $retiradosPrevios->count() === 1 ? 'persona' : 'personas' }}</p>
+                    <p style="font-size:.68rem;color:rgba(255,255,255,.8);margin:0;">{{ $empresa->empresa }} · {{ $retiradosPreviosTotal }} {{ $retiradosPreviosTotal === 1 ? 'persona' : 'personas' }}</p>
                 </div>
             </div>
             <button type="button" onclick="cerrarRetirados()"
@@ -1038,6 +1039,7 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
 
         <div style="flex:1;overflow-y:auto;min-height:0;">
+            <div id="ret-aviso" style="padding:1.6rem;text-align:center;color:#64748b;font-size:.78rem;">Cargando…</div>
             <table style="width:100%;border-collapse:collapse;">
                 <thead>
                     <tr>
@@ -1048,45 +1050,96 @@ document.addEventListener('DOMContentLoaded', function() {
                         <th style="text-align:center;padding:.5rem 1.3rem;font-size:.6rem;color:#475569;font-weight:800;text-transform:uppercase;background:#fff;border-bottom:1.5px solid #e2e8f0;position:sticky;top:0;z-index:5;">Retiro</th>
                     </tr>
                 </thead>
-                <tbody>
-                    @foreach($retiradosPrevios as $ret)
-                    @php $nombreRet = trim(($ret->primer_nombre ?? '').' '.($ret->primer_apellido ?? '')) ?: '—'; @endphp
-                    <tr style="border-bottom:1px solid #f1f5f9;">
-                        <td style="font-family:monospace;font-size:.73rem;padding:.4rem 1.3rem;white-space:nowrap;">
-                            @if($ret->tipo_doc)<span style="color:#94a3b8;font-weight:700;">{{ $ret->tipo_doc }}</span> @endif{{ $ret->cedula }}
-                        </td>
-                        <td style="font-size:.75rem;padding:.4rem .6rem;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                            @if($ret->cliente_id)
-                            <a href="{{ route('admin.clientes.edit', $ret->cliente_id) }}"
-                               title="Ver cliente"
-                               style="color:#1d4ed8;text-decoration:none;font-weight:600;"
-                               onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">{{ $nombreRet }}</a>
-                            @else
-                            {{ $nombreRet }}
-                            @endif
-                        </td>
-                        <td style="font-size:.7rem;color:#64748b;padding:.4rem .6rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ $ret->razon_social ?? '—' }}">{{ $ret->razon_social ?? '—' }}</td>
-                        <td style="font-size:.72rem;color:#475569;padding:.4rem .6rem;text-align:center;white-space:nowrap;">{{ $fmtFechaRet($ret->fecha_ingreso) }}</td>
-                        <td style="font-size:.72rem;color:#b91c1c;font-weight:600;padding:.4rem 1.3rem;text-align:center;white-space:nowrap;">{{ $fmtFechaRet($ret->fecha_retiro) }}</td>
-                    </tr>
-                    @endforeach
-                </tbody>
+                <tbody id="ret-tbody"></tbody>
             </table>
         </div>
     </div>
 </div>
 <script>
-function abrirRetirados() {
-    document.getElementById('ret-overlay').style.display = 'flex';
-}
-function cerrarRetirados() {
-    document.getElementById('ret-overlay').style.display = 'none';
-}
-document.addEventListener('keydown', function(e) {
-    if (e.key !== 'Escape') return;
-    const ov = document.getElementById('ret-overlay');
-    if (ov && ov.style.display === 'flex') cerrarRetirados();
-});
+(function () {
+    const URL_RETIRADOS = "{{ route('admin.facturacion.empresa.retirados', $empresa->id) }}?mes={{ $mes }}&anio={{ $anio }}";
+    let cargados = false;
+
+    // Las celdas se arman con textContent y no con innerHTML: los nombres y las
+    // razones sociales los escribe el usuario y no tienen por qué ser HTML.
+    function celda(texto, estilo) {
+        const td = document.createElement('td');
+        td.style.cssText = estilo;
+        td.textContent = texto || '—';
+        return td;
+    }
+
+    function fila(p) {
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid #f1f5f9';
+
+        const doc = celda('', 'font-family:monospace;font-size:.73rem;padding:.4rem 1.3rem;white-space:nowrap;');
+        if (p.tipo_doc) {
+            const t = document.createElement('span');
+            t.style.cssText = 'color:#94a3b8;font-weight:700;';
+            t.textContent = p.tipo_doc + ' ';
+            doc.appendChild(t);
+        }
+        doc.appendChild(document.createTextNode(p.cedula ?? ''));
+        tr.appendChild(doc);
+
+        const tdNom = celda('', 'font-size:.75rem;padding:.4rem .6rem;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;');
+        if (p.cliente_url) {
+            const a = document.createElement('a');
+            a.href = p.cliente_url;
+            a.title = 'Ver cliente';
+            a.style.cssText = 'color:#1d4ed8;text-decoration:none;font-weight:600;';
+            a.textContent = p.nombre;
+            a.onmouseover = () => a.style.textDecoration = 'underline';
+            a.onmouseout  = () => a.style.textDecoration = 'none';
+            tdNom.appendChild(a);
+        } else {
+            tdNom.textContent = p.nombre;
+        }
+        tr.appendChild(tdNom);
+
+        const rs = celda(p.razon_social, 'font-size:.7rem;color:#64748b;padding:.4rem .6rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;');
+        rs.title = p.razon_social || '—';
+        tr.appendChild(rs);
+
+        tr.appendChild(celda(p.ingreso, 'font-size:.72rem;color:#475569;padding:.4rem .6rem;text-align:center;white-space:nowrap;'));
+        tr.appendChild(celda(p.retiro,  'font-size:.72rem;color:#b91c1c;font-weight:600;padding:.4rem 1.3rem;text-align:center;white-space:nowrap;'));
+        return tr;
+    }
+
+    function cargar() {
+        const aviso = document.getElementById('ret-aviso');
+        const tbody = document.getElementById('ret-tbody');
+        aviso.textContent = 'Cargando…';
+        aviso.style.display = '';
+
+        fetch(URL_RETIRADOS, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+            .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
+            .then(d => {
+                tbody.textContent = '';
+                (d.retirados || []).forEach(p => tbody.appendChild(fila(p)));
+                aviso.style.display = 'none';
+                cargados = true;
+            })
+            .catch(e => {
+                // Sin cargados=true: al volver a abrir se reintenta.
+                aviso.textContent = 'No se pudo cargar la lista (' + e.message + '). Cierra y vuelve a abrir para reintentar.';
+            });
+    }
+
+    window.abrirRetirados = function () {
+        document.getElementById('ret-overlay').style.display = 'flex';
+        if (!cargados) cargar();
+    };
+    window.cerrarRetirados = function () {
+        document.getElementById('ret-overlay').style.display = 'none';
+    };
+    document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Escape') return;
+        const ov = document.getElementById('ret-overlay');
+        if (ov && ov.style.display === 'flex') cerrarRetirados();
+    });
+})();
 </script>
 @endif
 

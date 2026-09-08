@@ -476,6 +476,7 @@ Route::middleware('auth')->group(function () {
             Route::get('empresa/{id}', [$fc, 'empresa'])->name('empresa');
             Route::get('empresa/{id}/exportar', [$fc, 'exportarEmpresaExcel'])->name('empresa.exportar')->middleware('permiso:facturacion.exportar');
             Route::get('empresa/{id}/historial', [$fc, 'historialEmpresa'])->name('empresa.historial');
+            Route::get('empresa/{id}/retirados', [$fc, 'retiradosEmpresa'])->name('empresa.retirados');
             Route::get('empresa/{id}/editar', [$fc, 'editEmpresa'])->name('empresa.edit')->middleware('permiso:facturacion.editar');
             Route::put('empresa/{id}/editar', [$fc, 'updateEmpresa'])->name('empresa.update')->middleware('permiso:facturacion.editar');
             Route::post('facturar', [$fc, 'facturar'])->name('facturar')->middleware('permiso:facturacion.generar');

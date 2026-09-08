@@ -64,10 +64,62 @@ class FacturacionController extends Controller
         return view('admin.facturacion.empresa', array_merge($datos, [
             'mes' => $mes,
             'anio' => $anio,
-            'retiradosPrevios' => $this->retiradosPreviosEmpresa(
+            // Solo el número: la lista se pide al abrir el modal. En una empresa
+            // con años de historia son cientos de filas que casi nadie mira.
+            'retiradosPreviosTotal' => $this->contarRetiradosPrevios(
                 $empresaId, $aliadoId, $datos['contratos']->pluck('cedula')
             ),
         ]));
+    }
+
+    /**
+     * La lista de retirados para el modal, pedida al abrirlo.
+     *
+     * Recalcula acá quiénes están a la vista en el período —solo las cédulas,
+     * que es una consulta— en vez de recibirlas del navegador: lo que llega
+     * del cliente no manda sobre qué se le muestra.
+     */
+    public function retiradosEmpresa(Request $request, int $empresaId)
+    {
+        $aliadoId = session('aliado_id_activo');
+        $mes = (int) $request->get('mes', now()->month);
+        $anio = (int) $request->get('anio', now()->year);
+
+        // findOrFail scopeado: sin el where por aliado, el id de la URL abriría
+        // la empresa de cualquier otro.
+        Empresa::where('aliado_id', $aliadoId)->findOrFail($empresaId);
+
+        $cedulasEmpresa = DB::table('clientes')
+            ->where('aliado_id', $aliadoId)
+            ->where('cod_empresa', $empresaId)
+            ->pluck('cedula');
+
+        $cedulasVisibles = $this->contratosDelPeriodo($aliadoId, $cedulasEmpresa, $mes, $anio)
+            ->pluck('cedula');
+
+        $retirados = $this->retiradosPreviosEmpresa($empresaId, $aliadoId, $cedulasVisibles)
+            ->map(fn ($r) => [
+                'tipo_doc' => $r->tipo_doc,
+                'cedula' => $r->cedula,
+                'nombre' => trim(($r->primer_nombre ?? '').' '.($r->primer_apellido ?? '')) ?: '—',
+                'cliente_url' => $r->cliente_id ? route('admin.clientes.edit', $r->cliente_id) : null,
+                'razon_social' => $r->razon_social ?: '—',
+                'ingreso' => $r->fecha_ingreso ? \Illuminate\Support\Carbon::parse($r->fecha_ingreso)->format('d/m/Y') : '—',
+                'retiro' => $r->fecha_retiro ? \Illuminate\Support\Carbon::parse($r->fecha_retiro)->format('d/m/Y') : '—',
+            ])
+            ->values();
+
+        return response()->json(['ok' => true, 'retirados' => $retirados]);
+    }
+
+    /**
+     * Cuántas personas trae esa lista, sin traérsela.
+     */
+    private function contarRetiradosPrevios(int $empresaId, int $aliadoId, $cedulasVisibles): int
+    {
+        return (int) $this->queryRetiradosPrevios($empresaId, $aliadoId, $cedulasVisibles)
+            ->distinct()
+            ->count('ct.cedula');
     }
 
     /**
@@ -83,18 +135,7 @@ class FacturacionController extends Controller
      */
     private function retiradosPreviosEmpresa(int $empresaId, int $aliadoId, $cedulasVisibles)
     {
-        return DB::table('contratos as ct')
-            ->join('clientes as cl', function ($j) use ($aliadoId) {
-                $j->on('cl.cedula', '=', 'ct.cedula')->where('cl.aliado_id', $aliadoId);
-            })
-            ->leftJoin('razones_sociales as rs', 'rs.id', '=', 'ct.razon_social_id')
-            ->where('ct.aliado_id', $aliadoId)
-            ->where('cl.cod_empresa', $empresaId)
-            ->where('ct.estado', 'retirado')
-            ->when(
-                $cedulasVisibles->isNotEmpty(),
-                fn ($q) => $q->whereNotIn('ct.cedula', $cedulasVisibles)
-            )
+        return $this->queryRetiradosPrevios($empresaId, $aliadoId, $cedulasVisibles)
             // DESC deja los retiros sin fecha de últimos, que es donde estorban
             // menos: son fichas viejas sin la fecha diligenciada.
             ->orderByDesc('ct.fecha_retiro')
@@ -111,26 +152,38 @@ class FacturacionController extends Controller
     }
 
     /**
-     * Obtiene y pre-calcula los datos de facturación para los contratos de una empresa en un período dado.
+     * El tronco de esa consulta, que comparten la lista y el conteo.
      */
-    private function getDatosEmpresaPeriodo(int $empresaId, int $mes, int $anio, int $aliadoId): array
+    private function queryRetiradosPrevios(int $empresaId, int $aliadoId, $cedulasVisibles)
     {
-        $empresa = Empresa::where('aliado_id', $aliadoId)->findOrFail($empresaId);
+        return DB::table('contratos as ct')
+            ->join('clientes as cl', function ($j) use ($aliadoId) {
+                $j->on('cl.cedula', '=', 'ct.cedula')->where('cl.aliado_id', $aliadoId);
+            })
+            ->leftJoin('razones_sociales as rs', 'rs.id', '=', 'ct.razon_social_id')
+            ->where('ct.aliado_id', $aliadoId)
+            ->where('cl.cod_empresa', $empresaId)
+            ->where('ct.estado', 'retirado')
+            ->when(
+                $cedulasVisibles->isNotEmpty(),
+                fn ($q) => $q->whereNotIn('ct.cedula', $cedulasVisibles)
+            );
+    }
 
-        // Pre-cargar configuración global en 1 query (evita N+1 en calcularCotizacion)
-        \App\Models\ConfiguracionBrynex::precargar();
-
-        // Traer todos los contratos vigentes cuyos clientes pertenecen a esta empresa
-        $cedulasEmpresa = DB::table('clientes')
-            ->where('aliado_id', $aliadoId)
-            ->where('cod_empresa', $empresaId)
-            ->pluck('cedula');
-
-        // Retirados visibles en este período
+    /**
+     * Los contratos que la planilla del período muestra: los que siguen
+     * activos y los retiros que todavía se facturan ese mes.
+     *
+     * Vive aparte porque también hace falta saber a quién NO repetir en la
+     * lista de retirados, y ahí solo se necesitan las cédulas: pedir la
+     * planilla entera para eso costaría el cálculo completo de cotizaciones.
+     */
+    private function contratosDelPeriodo(int $aliadoId, $cedulasEmpresa, int $mes, int $anio)
+    {
         $mesAnterior = $mes === 1 ? 12 : $mes - 1;
         $anioAnterior = $mes === 1 ? $anio - 1 : $anio;
 
-        $contratos = Contrato::where('aliado_id', $aliadoId)
+        return Contrato::where('aliado_id', $aliadoId)
             ->whereIn('cedula', $cedulasEmpresa)
             ->where(function ($q) use ($mes, $anio, $mesAnterior, $anioAnterior) {
                 $q->whereIn('estado', ['vigente', 'activo'])
@@ -165,7 +218,31 @@ class FacturacionController extends Controller
                                     });
                             });
                     });
-            })
+            });
+    }
+
+    /**
+     * Obtiene y pre-calcula los datos de facturación para los contratos de una empresa en un período dado.
+     */
+    private function getDatosEmpresaPeriodo(int $empresaId, int $mes, int $anio, int $aliadoId): array
+    {
+        $empresa = Empresa::where('aliado_id', $aliadoId)->findOrFail($empresaId);
+
+        // Pre-cargar configuración global en 1 query (evita N+1 en calcularCotizacion)
+        \App\Models\ConfiguracionBrynex::precargar();
+
+        // Traer todos los contratos vigentes cuyos clientes pertenecen a esta empresa
+        $cedulasEmpresa = DB::table('clientes')
+            ->where('aliado_id', $aliadoId)
+            ->where('cod_empresa', $empresaId)
+            ->pluck('cedula');
+
+        // El período anterior lo usa también el chequeo de facturas faltantes,
+        // más abajo; contratosDelPeriodo() lo calcula por su cuenta.
+        $mesAnterior = $mes === 1 ? 12 : $mes - 1;
+        $anioAnterior = $mes === 1 ? $anio - 1 : $anio;
+
+        $contratos = $this->contratosDelPeriodo($aliadoId, $cedulasEmpresa, $mes, $anio)
             ->with([
                 'cliente', 'tipoModalidad', 'razonSocial', 'eps', 'arl', 'pension', 'caja', 'asesor',
                 'plan',
