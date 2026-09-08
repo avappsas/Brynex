@@ -39,18 +39,8 @@ class TareaController extends Controller
             ->where('aliado_id', $alidoId);
 
         // Filtros
-        if ($request->filled('encargado_id')) {
-            $query->where('encargado_id', $request->encargado_id);
-        }
-        if ($request->filled('tipo')) {
-            $query->where('tipo', $request->tipo);
-        }
-        if ($request->filled('estado')) {
-            $query->where('estado', $request->estado);
-        }
-        if ($request->filled('cedula')) {
-            $query->where('cedula', 'like', '%'.$request->cedula.'%');
-        }
+        $this->filtrosComunes($query, $request, 'tareas');
+
         // Empresa del cliente (clientes.cod_empresa). La tarea guarda la cédula,
         // así que se resuelve con una subconsulta scopeada por aliado: la
         // relación cliente() cruza solo por cédula y no filtra por aliado.
@@ -61,19 +51,6 @@ class TareaController extends Controller
                     ->where('aliado_id', $alidoId)
                     ->where('cod_empresa', $request->empresa_id);
             });
-        }
-        // Filtro semáforo
-        if ($request->filled('semaforo')) {
-            $hoy = now()->toDateString();
-            if ($request->semaforo === 'urgente') {
-                $query->where('estado', '!=', 'cerrada')
-                    ->where(function ($q) use ($hoy) {
-                        $q->where('fecha_limite', '<=', $hoy)
-                            ->orWhereNull('fecha_limite');
-                    });
-            } elseif ($request->semaforo === 'en_espera') {
-                $query->where('estado', 'en_espera')->where('fecha_alerta', '<=', $hoy);
-            }
         }
 
         // Orden: si el usuario hizo clic en un encabezado manda su criterio;
@@ -161,12 +138,13 @@ class TareaController extends Controller
         $epsList = DB::table('eps')->orderBy('nombre')->get(['id', 'nombre']);
 
         // Empresas para el filtro: solo las que tienen algún cliente con tarea
-        // visible en la tabla. Se aplica la misma regla de cerradas que la
-        // consulta principal: si no, aparecen empresas cuya única tarea está
-        // cerrada y elegirlas deja la tabla vacía sin explicación.
+        // visible en la tabla. Corren los mismos filtros de la consulta
+        // principal —encargado, tipo, estado, semáforo, cédula y la regla de
+        // cerradas—: si no, la lista ofrece empresas que solo tienen tareas de
+        // otro encargado y elegirlas deja la tabla vacía sin explicación.
         // Con joins y no con IN anidados: el IN sobre las cédulas de tareas
         // tardaba ~1.8 s contra los ~0.3 s de esta versión.
-        $empresasDisponibles = DB::table('tareas as t')
+        $empresasQuery = DB::table('tareas as t')
             ->join('clientes as c', function ($j) use ($alidoId) {
                 $j->on('c.cedula', '=', 't.cedula')->where('c.aliado_id', $alidoId);
             })
@@ -174,15 +152,78 @@ class TareaController extends Controller
             ->where('t.aliado_id', $alidoId)
             ->whereNull('t.deleted_at')
             ->where('e.aliado_id', $alidoId)
-            ->when(! $mostrarCerradas, fn ($q) => $q->where('t.estado', '!=', 'cerrada'))
+            ->when(! $mostrarCerradas, fn ($q) => $q->where('t.estado', '!=', 'cerrada'));
+
+        $this->filtrosComunes($empresasQuery, $request, 't');
+
+        $empresasDisponibles = $empresasQuery
             ->distinct()
             ->orderBy('e.empresa')
             ->get(['e.id', 'e.empresa']);
+
+        // La empresa que está filtrada se queda en la lista aunque los otros
+        // filtros la dejen fuera: el buscador muestra el nombre de la que
+        // encontró en esta lista, y sin ella se vería vacío —como si no
+        // hubiera filtro— con la tabla igual sin filas.
+        if ($request->filled('empresa_id') && ! $empresasDisponibles->contains('id', $request->empresa_id)) {
+            $empresaFiltrada = DB::table('empresas')
+                ->where('aliado_id', $alidoId)
+                ->where('id', $request->empresa_id)
+                ->first(['id', 'empresa']);
+
+            if ($empresaFiltrada) {
+                $empresasDisponibles = $empresasDisponibles
+                    ->push($empresaFiltrada)
+                    ->sortBy('empresa')
+                    ->values();
+            }
+        }
 
         return view('admin.tareas.index', compact(
             'tareas', 'resumenEstados', 'resumenTipos', 'vencidas',
             'trabajadores', 'razonesSociales', 'epsList', 'empresasDisponibles'
         ));
+    }
+
+    /**
+     * Filtros que comparten la tabla y la lista de empresas del buscador.
+     *
+     * `$t` es el prefijo de la tabla porque la consulta principal la nombra
+     * `tareas` y la de empresas la aliasa `t`; sin él, con los joins de por
+     * medio, SQL Server no sabe de qué columna se habla.
+     *
+     * El filtro de empresa queda fuera a propósito: es el que arma esa misma
+     * lista, y aplicarlo la dejaría con una sola opción para escoger.
+     *
+     * @param  \Illuminate\Database\Query\Builder|\Illuminate\Database\Eloquent\Builder  $query
+     */
+    private function filtrosComunes($query, Request $request, string $t): void
+    {
+        if ($request->filled('encargado_id')) {
+            $query->where($t.'.encargado_id', $request->encargado_id);
+        }
+        if ($request->filled('tipo')) {
+            $query->where($t.'.tipo', $request->tipo);
+        }
+        if ($request->filled('estado')) {
+            $query->where($t.'.estado', $request->estado);
+        }
+        if ($request->filled('cedula')) {
+            $query->where($t.'.cedula', 'like', '%'.$request->cedula.'%');
+        }
+        if ($request->filled('semaforo')) {
+            $hoy = now()->toDateString();
+            if ($request->semaforo === 'urgente') {
+                $query->where($t.'.estado', '!=', 'cerrada')
+                    ->where(function ($q) use ($hoy, $t) {
+                        $q->where($t.'.fecha_limite', '<=', $hoy)
+                            ->orWhereNull($t.'.fecha_limite');
+                    });
+            } elseif ($request->semaforo === 'en_espera') {
+                $query->where($t.'.estado', 'en_espera')
+                    ->where($t.'.fecha_alerta', '<=', $hoy);
+            }
+        }
     }
 
     // ── STORE ───────────────────────────────────────────────────────────────
