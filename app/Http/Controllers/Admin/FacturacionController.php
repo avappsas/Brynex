@@ -23,6 +23,16 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class FacturacionController extends Controller
 {
+    /**
+     * Cuánto puede faltar en una factura marcada PAGADA antes de rechazarla.
+     * Cubre al cliente que redondea hacia abajo ($563.000 sobre $563.047); por
+     * encima de esto es plata que alguien tiene que cobrar, y la factura debe
+     * guardarse como PRÉSTAMO o con el pago completo. El faltante tolerado
+     * igual queda como cartera del cliente (saldo_proximo negativo) y reaparece
+     * al facturar el mes siguiente.
+     */
+    private const TOLERANCIA_PAGO = 2000;
+
     // ─── Listado de empresas ─────────────────────────────────────────
     public function index(Request $request)
     {
@@ -1586,9 +1596,27 @@ class FacturacionController extends Controller
             ], 422);
         }
 
+        // ── Saldo a favor que el lote trae de meses anteriores ─────────────
+        // Es lo único que justifica que una factura PAGADA quede con saldo
+        // negativo: el cliente pagó de más antes y ahora abona menos. Se usa
+        // como tolerancia en la guarda de pago incompleto del final de la
+        // transacción. En empresa el crédito ya viene calculado arriba.
+        if ($empresaId) {
+            $favorPrevioLote = $saldoEmpresaAplicar;
+        } else {
+            $favorPrevioLote = max(0, (int) Factura::where('aliado_id', $aliadoId)
+                ->whereIn('contrato_id', $validated['contratos'])
+                ->whereNull('empresa_id')
+                ->whereIn('estado', ['pagada', 'prestamo', 'abono'])
+                ->whereNotNull('saldo_proximo')
+                ->where(fn ($q) => $q->where('anio', '<', $anio)
+                    ->orWhere(fn ($q2) => $q2->where('anio', $anio)->where('mes', '<', $mes)))
+                ->sum('saldo_proximo'));
+        }
+
         DB::transaction(function () use (
             $validated, $aliadoId, $np, $mes, $anio,
-            $esMasivo,
+            $esMasivo, $favorPrevioLote,
             &$facturasCreadas, &$omitidos, &$nPlanosPorRS,
             $totalPagoConsig, $totalPagoEfectivo, $totalPagoPrestamo,
             $totalAnticipo, $anticiposSeleccionados,
@@ -2405,6 +2433,31 @@ class FacturacionController extends Controller
                     }
                     $aplicado = $ant->aplicarAFactura($facturaAnticipo, $pendienteAplicar);
                     $pendienteAplicar -= $aplicado;
+                }
+            }
+
+            // ── Una factura PAGADA tiene que estar pagada ──────────────────
+            // saldo_proximo ya dice cuánto falta (pagado - total) en todos los
+            // caminos: normal, par afiliación+planilla y retiro facturable. Si
+            // el lote queda debiendo más de lo que el cliente traía a favor, la
+            // factura saldría verde con una deuda que no es préstamo: no entra a
+            // /admin/prestamos, nadie la cobra, y solo reaparece el mes siguiente
+            // como "cartera pendiente" (caso Daniel Arroyave, jul-2026: $563.047
+            // marcados pagados con $0 en efectivo y $0 en consignación).
+            // Se valida aquí, al final de la transacción, para que el rollback
+            // deshaga facturas, planos, anticipos y número de recibo.
+            if ($validated['estado'] === Factura::ESTADO_PAGADA && ! empty($facturasCreadas)) {
+                $creadas = Factura::whereIn('id', $facturasCreadas)->get();
+                $faltante = max(0, -(int) $creadas->sum('saldo_proximo') - $favorPrevioLote);
+                if ($faltante > self::TOLERANCIA_PAGO) {
+                    throw new \App\Exceptions\PagoIncompletoException(
+                        totalLote: (int) $creadas->sum('total'),
+                        pagadoLote: (int) $creadas->sum(fn ($f) => (int) $f->valor_efectivo
+                            + (int) $f->valor_consignado
+                            + (int) $f->anticipo_aplicado),
+                        saldoFavor: $favorPrevioLote,
+                        faltante: $faltante,
+                    );
                 }
             }
         });
@@ -4206,6 +4259,23 @@ class FacturacionController extends Controller
 
         // ── Saldo previo del cliente ────────────────────────────────────
         $saldo = Factura::saldoClienteMesPrevio($aliadoId, $cedula, $mes, $anio);
+
+        // Y el candado en el otro sentido: marcado PAGADA sin el dinero
+        // registrado, el faltante queda escondido en saldo_proximo — no es
+        // préstamo, no lo cobra nadie. Solo el saldo a favor previo justifica
+        // pagar de menos.
+        if ($validated['estado'] === Factura::ESTADO_PAGADA) {
+            $favor = (int) ($saldo['a_favor'] ?? 0);
+            $faltante = $total - (int) $totalConsig - $totalEfectivo - $favor;
+            if ($faltante > self::TOLERANCIA_PAGO) {
+                throw new \App\Exceptions\PagoIncompletoException(
+                    totalLote: (int) $total,
+                    pagadoLote: (int) $totalConsig + $totalEfectivo,
+                    saldoFavor: $favor,
+                    faltante: $faltante,
+                );
+            }
+        }
 
         // Fecha del recibo: la de la consignación si el pago es solo banco
         $fechaPagoRecibo = $this->_fechaPagoRecibo($validated['forma_pago'], $consignacionesData);

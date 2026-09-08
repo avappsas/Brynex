@@ -38,6 +38,10 @@ const MF = (function () {
     let _totalAfil = 0;            // costo afiliación
     let _saldoFavor = 0;
     let _saldoPendiente = 0;
+    let _pendienteActual = 0;      // lo que falta por registrar en el pago (lo pinta recalc)
+    // Lo que puede faltar en una factura PAGADA sin rechazarla: el cliente que
+    // redondea hacia abajo. Debe coincidir con FacturacionController::TOLERANCIA_PAGO.
+    const TOLERANCIA_PAGO = 2000;
     let _modo = 'individual';      // 'individual' | 'masivo'
     let _esRetiro = false;         // si el usuario marcó retiro en este período
     let _mora = 0;                 // mora pre-calculada por el servidor (editable)
@@ -1388,6 +1392,7 @@ const MF = (function () {
         const diferencia    = totalBruto - _saldoFavor - totalAnticipo - consigs - efect - prest;
         const pendiente     = Math.max(0, diferencia);
         const excedente     = diferencia < 0 ? Math.abs(diferencia) : 0; // saldo a favor generado por overpayment
+        _pendienteActual    = pendiente;  // lo lee la guarda de "pagada sin plata" al guardar
 
         const pEl = el('mf-pendiente');
         if (pEl) {
@@ -1944,6 +1949,28 @@ const MF = (function () {
             alert('🚫 Marcaste la factura como PRÉSTAMO pero el campo Préstamo quedó en $0.\n\n'
                 + 'Escribe cuánto queda debiendo el cliente, o cambia el estado a Pagada.');
             el('mf-prestamo')?.focus();
+            return;
+        }
+
+        // Pagada sin la plata completa: el rojo del "Saldo pendiente" era solo
+        // informativo y la factura se guardaba igual, con la deuda escondida en
+        // saldo_proximo — ni préstamo, ni cartera que alguien cobre. El backend
+        // también lo rechaza (PagoIncompletoException); aquí se avisa sin viaje.
+        if (el('mf-estado')?.value === 'pagada' && _pendienteActual > TOLERANCIA_PAGO) {
+            alert('🚫 La factura está marcada como PAGADA pero faltan ' + fmt(_pendienteActual) + ' por registrar.\n\n'
+                + 'Agrega la consignación o el efectivo que recibiste, o cambia el estado a PRÉSTAMO '
+                + 'por lo que queda debiendo (así entra al módulo de Préstamos y alguien lo cobra).');
+            (totalConsig === 0 && efect === 0 ? el('mf-efectivo') : el('mf-estado'))?.focus();
+            return;
+        }
+
+        // Plata en el campo Préstamo con la factura marcada Pagada: el valor no
+        // cuenta como pago (saldo_proximo no lo suma) y es_prestamo queda en
+        // false, así que la deuda no aparece por ningún lado.
+        if (el('mf-estado')?.value === 'pagada' && prest > 0) {
+            alert('🚫 Escribiste ' + fmt(prest) + ' en Préstamo pero la factura está marcada como PAGADA.\n\n'
+                + 'Cambia el estado a PRÉSTAMO para que la deuda entre al módulo de Préstamos.');
+            el('mf-estado')?.focus();
             return;
         }
 
