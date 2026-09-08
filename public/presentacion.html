@@ -369,6 +369,8 @@ h2.tit{ font-size:clamp(27px,4.1vw,45px); font-variation-settings:'wdth' 100,'op
 }
 .fl{ color:var(--tinta-3); font-size:20px }
 
+
+
 /* ── Portada ───────────────────────────────────────────────── */
 .portada .logo{ display:flex; align-items:center; gap:16px; margin-bottom:42px }
 .portada .logo svg{ width:54px; height:54px }
@@ -557,12 +559,11 @@ tbody tr:hover{ background:var(--fondo) }
 <section class="lamina marina portada" data-tit="Portada">
   <div class="marco">
     <div class="logo sube">
-      <svg viewBox="0 0 64 64" role="img" aria-label="BryNex">
-        <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="#93c5fd"/><stop offset="55%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#1e40af"/>
-        </linearGradient></defs>
-        <path d="M32 3 58 18v28L32 61 6 46V18Z" fill="none" stroke="url(#lg)" stroke-width="3.2" stroke-linejoin="round"/>
-        <path d="M25 20h11a8 8 0 0 1 0 16h-11Zm0 16h12a8 8 0 0 1 0 8H25Z" fill="url(#lg)"/>
+      <svg viewBox="0 0 64 56" style="height:58px;width:auto" role="img" aria-label="BryNex">
+        <circle cx="32" cy="10" r="4.6" fill="#93c5fd"/>
+        <path d="M17 21c7-6 23-6 30 0" fill="none" stroke="#93c5fd" stroke-width="4" stroke-linecap="round"/>
+        <path d="M32 17v10" fill="none" stroke="#93c5fd" stroke-width="4" stroke-linecap="round"/>
+        <path d="M32 36c-5-9-18-9-18 0s13 9 18 0c5-9 18-9 18 0s-13 9-18 0Z" fill="none" stroke="#58a6ff" stroke-width="4" stroke-linejoin="round"/>
       </svg>
       <div>
         <div class="nom">Bry<em>Nex</em></div>
@@ -588,12 +589,12 @@ tbody tr:hover{ background:var(--fondo) }
     información capturada en la primera etapa se propaga a las siguientes sin volver a registrarla.</p>
 
     <div class="ciclo sube" style="margin-top:38px">
-      <div class="et"><span class="n">01</span><div style="display:flex;align-items:center;gap:9px"><svg class="ico p"><use href="#i-megafono"/></svg><h4>Captar</h4></div><p>Página propia, cotizador público y campañas por WhatsApp.</p></div>
-      <div class="et"><span class="n">02</span><div style="display:flex;align-items:center;gap:9px"><svg class="ico p"><use href="#i-cedula"/></svg><h4>Afiliar</h4></div><p>La cédula trae los datos, la ARL se afilia sola, el radicado se sigue.</p></div>
-      <div class="et"><span class="n">03</span><div style="display:flex;align-items:center;gap:9px"><svg class="ico p"><use href="#i-planilla"/></svg><h4>Liquidar</h4></div><p>La planilla del mes, en el formato de cada operador o por conexión directa.</p></div>
-      <div class="et"><span class="n">04</span><div style="display:flex;align-items:center;gap:9px"><svg class="ico p"><use href="#i-factura"/></svg><h4>Facturar</h4></div><p>Una factura por persona, con mora y anticipos, y su versión electrónica.</p></div>
-      <div class="et"><span class="n">05</span><div style="display:flex;align-items:center;gap:9px"><svg class="ico p"><use href="#i-billete"/></svg><h4>Cobrar</h4></div><p>Cartera con encargado, cobro masivo y cuadre diario de caja.</p></div>
-      <div class="et"><span class="n">06</span><div style="display:flex;align-items:center;gap:9px"><svg class="ico p"><use href="#i-medico"/></svg><h4>Atender</h4></div><p>Incapacidades, trámites y un asistente que contesta con datos reales.</p></div>
+      <div class="et"><span class="n">01</span><div style="display:flex;align-items:center;gap:9px"><svg class="ico p"><use href="#i-megafono"/></svg><h4>Captar</h4></div><p>Sitio web propio, cotizador público y campañas por WhatsApp.</p></div>
+      <div class="et"><span class="n">02</span><div style="display:flex;align-items:center;gap:9px"><svg class="ico p"><use href="#i-cedula"/></svg><h4>Afiliar</h4></div><p>Consulta del registro oficial, afiliación a la ARL y seguimiento del radicado.</p></div>
+      <div class="et"><span class="n">03</span><div style="display:flex;align-items:center;gap:9px"><svg class="ico p"><use href="#i-planilla"/></svg><h4>Liquidar</h4></div><p>Planilla del período en el formato de cada operador o por conexión directa.</p></div>
+      <div class="et"><span class="n">04</span><div style="display:flex;align-items:center;gap:9px"><svg class="ico p"><use href="#i-factura"/></svg><h4>Facturar</h4></div><p>Una factura por afiliado, con mora y anticipos, y su versión electrónica.</p></div>
+      <div class="et"><span class="n">05</span><div style="display:flex;align-items:center;gap:9px"><svg class="ico p"><use href="#i-billete"/></svg><h4>Cobrar</h4></div><p>Cartera con responsable asignado, cobro masivo y cierre diario de caja.</p></div>
+      <div class="et"><span class="n">06</span><div style="display:flex;align-items:center;gap:9px"><svg class="ico p"><use href="#i-medico"/></svg><h4>Atender</h4></div><p>Incapacidades, trámites y un asistente que responde con datos del sistema.</p></div>
     </div>
 
     <dl class="cifras sube">
@@ -1143,9 +1144,11 @@ tbody tr:hover{ background:var(--fondo) }
 <section class="lamina marina fin" data-tit="Cierre">
   <div class="marco">
     <div class="sube" style="display:flex;justify-content:center;margin-bottom:34px">
-      <svg viewBox="0 0 64 64" style="width:56px;height:56px" role="img" aria-label="BryNex">
-        <path d="M32 3 58 18v28L32 61 6 46V18Z" fill="none" stroke="url(#lg)" stroke-width="3.2" stroke-linejoin="round"/>
-        <path d="M25 20h11a8 8 0 0 1 0 16h-11Zm0 16h12a8 8 0 0 1 0 8H25Z" fill="url(#lg)"/>
+      <svg viewBox="0 0 64 56" style="height:56px;width:auto" role="img" aria-label="BryNex">
+        <circle cx="32" cy="10" r="4.6" fill="#93c5fd"/>
+        <path d="M17 21c7-6 23-6 30 0" fill="none" stroke="#93c5fd" stroke-width="4" stroke-linecap="round"/>
+        <path d="M32 17v10" fill="none" stroke="#93c5fd" stroke-width="4" stroke-linecap="round"/>
+        <path d="M32 36c-5-9-18-9-18 0s13 9 18 0c5-9 18-9 18 0s-13 9-18 0Z" fill="none" stroke="#58a6ff" stroke-width="4" stroke-linejoin="round"/>
       </svg>
     </div>
     <h2 class="sube">Una plataforma para la totalidad del ciclo operativo.</h2>
@@ -1160,9 +1163,12 @@ tbody tr:hover{ background:var(--fondo) }
 
 <div class="chrome">
   <div class="marca-mini">
-    <svg viewBox="0 0 64 64" aria-hidden="true">
-      <path d="M32 3 58 18v28L32 61 6 46V18Z" fill="none" stroke="url(#lg)" stroke-width="4" stroke-linejoin="round"/>
-    </svg>
+    <svg viewBox="0 0 64 56" style="height:26px;width:auto" aria-hidden="true">
+        <circle cx="32" cy="10" r="4.6" fill="#1e40af"/>
+        <path d="M17 21c7-6 23-6 30 0" fill="none" stroke="#1e40af" stroke-width="4" stroke-linecap="round"/>
+        <path d="M32 17v10" fill="none" stroke="#1e40af" stroke-width="4" stroke-linecap="round"/>
+        <path d="M32 36c-5-9-18-9-18 0s13 9 18 0c5-9 18-9 18 0s-13 9-18 0Z" fill="none" stroke="#2563eb" stroke-width="4" stroke-linejoin="round"/>
+      </svg>
     <span>Bry<em>Nex</em></span>
   </div>
   <div class="puntos" id="puntos" role="tablist" aria-label="Ir a una lámina"></div>
