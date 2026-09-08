@@ -81,7 +81,7 @@
              contra los contratos de todos los aliados, no es un dato de esta
              ficha. Desde aquí se llega directo a la fila de esta empresa —solo
              para quien pueda abrir esa pantalla, que es de BryNex. --}}
-        @if($rs->arl_poliza && auth()->user()?->can('brynex_cierre.ver'))
+        @if($rs?->arl_poliza && auth()->user()?->can('brynex_cierre.ver'))
         <a href="{{ route('brynex.conciliacion_arl') }}#empresa-{{ preg_replace('/\D/', '', (string) $rs->nit) }}"
            class="btn-claves" style="text-decoration:none;display:inline-block;"
            title="Comparar los afiliados de esta póliza en ARL Sura contra los contratos vigentes de BryNex">
