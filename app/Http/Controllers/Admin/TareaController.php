@@ -57,7 +57,7 @@ class TareaController extends Controller
         // si no, el orden por urgencia de siempre (rojo > naranja > amarillo >
         // verde > cerradas).
         $orden = $request->get('orden');
-        $dir = strtolower($request->get('dir')) === 'desc' ? 'desc' : 'asc';
+        $dir = strtolower((string) $request->get('dir')) === 'desc' ? 'desc' : 'asc';
 
         if (isset(self::ORDENES[$orden])) {
             $columna = self::ORDENES[$orden];

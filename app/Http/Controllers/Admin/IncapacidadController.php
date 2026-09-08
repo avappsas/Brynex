@@ -215,7 +215,7 @@ class IncapacidadController extends Controller
         // Con clic en un encabezado manda el criterio del usuario; sin él, el
         // de siempre: primero las que aún requieren gestión, luego por fecha.
         $orden = $request->get('orden');
-        $dir = strtolower($request->get('dir')) === 'desc' ? 'desc' : 'asc';
+        $dir = strtolower((string) $request->get('dir')) === 'desc' ? 'desc' : 'asc';
 
         if ($orden === 'cliente') {
             // El nombre no vive en incapacidades: subconsulta correlacionada a
