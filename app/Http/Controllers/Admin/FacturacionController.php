@@ -3191,30 +3191,30 @@ class FacturacionController extends Controller
         // Interruptor por aliado en Configuración → Parámetros Especiales.
         $reciboDoble = (bool) \App\Models\Aliado::where('id', $aliadoId)->value('recibo_doble_copia');
 
-        // Saldo anterior acumulado, para el desglose de la copia EMPRESA.
-        // No existe una columna con este dato: es la SUMA de los saldo_proximo
-        // de las facturas ANTERIORES a esta (ver Factura::saldoClienteMesPrevio).
+        // Saldo anterior acumulado. No existe una columna con este dato: es la
+        // SUMA de los saldo_proximo de las facturas ANTERIORES a esta (ver
+        // Factura::saldoClienteMesPrevio).
         //   negativo → el cliente venía debiendo   positivo → traía saldo a favor
-        $saldoAnterior = 0;
-        if ($reciboDoble) {
-            $qSaldo = Factura::where('aliado_id', $aliadoId)
-                ->whereIn('estado', ['pagada', 'prestamo', 'abono'])
-                ->whereNotNull('saldo_proximo')
-                ->where('id', '!=', $factura->id)
-                ->where(fn ($q) => $q->where('anio', '<', $factura->anio)
-                    ->orWhere(fn ($q2) => $q2->where('anio', $factura->anio)
-                        ->where('mes', '<', $factura->mes)));
+        // Antes solo se calculaba con la doble copia activa, así que en los
+        // aliados que no la usan (todos menos GiMave) el cliente no veía si
+        // quedaba debiendo: la deuda solo aparecía un mes después, al facturar.
+        $qSaldo = Factura::where('aliado_id', $aliadoId)
+            ->whereIn('estado', ['pagada', 'prestamo', 'abono'])
+            ->whereNotNull('saldo_proximo')
+            ->where('id', '!=', $factura->id)
+            ->where(fn ($q) => $q->where('anio', '<', $factura->anio)
+                ->orWhere(fn ($q2) => $q2->where('anio', $factura->anio)
+                    ->where('mes', '<', $factura->mes)));
 
-            if ($factura->empresa_id) {
-                // Facturación de empresa: el saldo se lleva por empresa_id
-                $qSaldo->where('empresa_id', $factura->empresa_id);
-            } else {
-                // Individual: por cédula y sin mezclar con facturas de empresa
-                $qSaldo->where('cedula', $factura->cedula)->whereNull('empresa_id');
-            }
-
-            $saldoAnterior = (int) $qSaldo->sum('saldo_proximo');
+        if ($factura->empresa_id) {
+            // Facturación de empresa: el saldo se lleva por empresa_id
+            $qSaldo->where('empresa_id', $factura->empresa_id);
+        } else {
+            // Individual: por cédula y sin mezclar con facturas de empresa
+            $qSaldo->where('cedula', $factura->cedula)->whereNull('empresa_id');
         }
+
+        $saldoAnterior = (int) $qSaldo->sum('saldo_proximo');
 
         // Planillas ya pagadas al operador dentro del recibo (el lote completo).
         // El modal de anulación las muestra: anular aquí deja esos planos sin

@@ -423,6 +423,13 @@ $tSS = $tEps + $tArl + $tPen + $tCaj + $tParaf;
 
 </div>
 @endunless
+{{-- ESTADO DE CUENTA — si quedó debiendo o a favor (copia cliente) --}}
+@unless($esCopiaEmp)
+<div style="margin:.7rem .85rem 0;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden">
+    @include('admin.facturacion._recibo_saldo_cliente')
+</div>
+@endunless
+
 {{-- NOTA LEGAL — es un aviso para el cliente, no va en la copia empresa --}}
 @if(!$esCopiaEmp)
 <div style="margin:.7rem .85rem 0;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:.5rem .85rem;font-size:.68rem;color:#92400e;line-height:1.5">
@@ -1154,6 +1161,9 @@ $fpLabel = match($factura->forma_pago ?? '') {
     </div>
     @endif
 </div>
+
+{{-- ESTADO DE CUENTA — si quedó debiendo o a favor (copia cliente) --}}
+@include('admin.facturacion._recibo_saldo_cliente')
 @endunless
 
 {{-- DESGLOSE EMPRESA (solo en la copia de la empresa) --}}
