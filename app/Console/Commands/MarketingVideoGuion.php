@@ -28,7 +28,8 @@ class MarketingVideoGuion extends Command
     protected $signature = 'marketing:video-guion
         {guion=mejorar-cotizacion : Nombre del guion a usar}
         {--aliado=brygar : Slug del aliado}
-        {--listar : Solo muestra los guiones disponibles}';
+        {--listar : Solo muestra los guiones disponibles}
+        {--calidad=lite : lite (USD 0,05/s) o standard (USD 0,40/s, imagen bastante mejor)}';
 
     protected $description = 'Genera un video largo siguiendo un guion escena por escena';
 
@@ -268,6 +269,48 @@ class MarketingVideoGuion extends Command
                 .'el trámite.'."\n\n"
                 .'📲 Escríbenos y te contamos cómo retomar.',
         ],
+        // El cruce de las dos cosas que mejor funcionan: el público de asesores —7 veces más
+        // barato por conversación que el de clientes— y el mensaje de "te mejoramos cualquier
+        // cotización", que fue el mejor ángulo del lado de clientes. Le habla a la oficina o
+        // agencia que YA afilia y hoy paga de más, no al independiente suelto.
+        'empresas' => [
+            'tema' => 'empresas y oficinas que ya afilian clientes a seguridad social: les mejoramos la cotización y las condiciones de asesor',
+            'titulo' => '¿Tu empresa ya afilia clientes? Te mejoramos lo que pagas hoy',
+            'escenas' => [
+                'Vertical 9:16 cinematic shot. A Colombian woman in her 30s in a small office reviews a '
+                .'printed quote at her desk with a doubtful frown, pen in hand, a second folder open '
+                .'beside her. Soft window light, handheld camera, shallow depth of field. Ambient office '
+                .'sounds only. No text on screen, nobody speaks.',
+
+                'CAPTURAS',
+
+                'Vertical 9:16 cinematic shot. The same Colombian woman, now relaxed and confident, '
+                .'shakes hands with a client across her desk while a coworker works in the background. '
+                .'Bright natural light, medium shot, shallow depth of field. Ambient sounds only. '
+                .'No text on screen, nobody speaks.',
+            ],
+            'capturas' => [
+                ['archivo' => '11-modulos.png', 'modo' => 'ancho', 'zoom' => 1.1, 'arriba' => 0.25],
+                ['archivo' => '12-cobros.png', 'modo' => 'ancho', 'zoom' => 1.1, 'arriba' => 0.3],
+                ['archivo' => '13-tendencia.png', 'modo' => 'ancho', 'zoom' => 1.1, 'arriba' => 0.5],
+            ],
+            'frases' => [
+                '¿Tu empresa ya afilia clientes?',
+                'Te mejoramos lo que pagas hoy',
+                'Mándanos tu cotización',
+            ],
+            'narracion' => 'Si tu empresa o tu oficina ya afilia clientes a seguridad social, en BRYGAR te '
+                .'mejoramos lo que estás pagando hoy: mejores tarifas por afiliación y por administración '
+                .'mensual, con garantía, respaldo y todo verificable. La operación la hacemos nosotros. '
+                .'Mándanos tu cotización actual y te decimos cuánto te ahorras. Escríbenos ya.',
+            'copy' => '¿Tu empresa u oficina ya afilia clientes a seguridad social? Te mejoramos lo que estás '
+                .'pagando hoy: mejores tarifas por afiliación y por administración mensual, con garantía, '
+                .'respaldo y todo verificable.'."\n\n"
+                .'Y la operación la hacemos nosotros: afiliaciones al instante, planillas pagadas por API '
+                .'(sin subir archivos a ningún operador), cobros automáticos por WhatsApp e incapacidades, '
+                .'con una plataforma para que sigas a tus clientes.'."\n\n"
+                .'📲 Mándanos tu cotización actual al '.self::WHATSAPP_ASESORES.' y te decimos cuánto te ahorras.',
+        ],
     ];
 
     public function handle(): int
@@ -302,7 +345,13 @@ class MarketingVideoGuion extends Command
         }
 
         $config = AutopilotConfig::paraAliado($aliado->id);
-        $modelo = $config->modeloVideo();
+
+        // El piloto diario usa lite porque son piezas de 8s y salen a diario. Para una pieza
+        // que se va a pautar semanas vale la pena el standard: ocho veces más caro por
+        // segundo, pero la diferencia de imagen se nota en pantalla completa.
+        $modelo = $this->option('calidad') === 'standard'
+            ? VeoVideoGenerator::MODELO_STANDARD
+            : $config->modeloVideo();
         $duracion = count($guion['escenas']) * 8;
         $escenasVeo = count(array_filter($guion['escenas'], fn ($e) => $e !== 'CAPTURAS'));
 
