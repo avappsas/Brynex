@@ -1553,8 +1553,8 @@
                         
                         {{-- Balance / Liquidez Global --}}
                         <div style="display:flex; justify-content:space-between; align-items:center; background:var(--azul-vivo-bg); border:1px solid var(--azul-vivo); padding:1rem; border-radius:14px; margin-top:0.5rem;">
-                            <span style="font-weight:700; font-size:0.88rem; color:#fff;">Liquidez Global</span>
-                            <span style="font-weight:800; font-size:1.05rem; color:#fff;">${{ number_format($consolidado['liquidez_global'] ?? 0, 0, ',', '.') }} COP</span>
+                            <span style="font-weight:700; font-size:0.88rem; color:#fff;">Total de lo que tienes</span>
+                            <span style="font-weight:800; font-size:1.05rem; color:#fff;">${{ number_format($consolidado['total_activos'] ?? 0, 0, ',', '.') }} COP</span>
                         </div>
 
                     </div>

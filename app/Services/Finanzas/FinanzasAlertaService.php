@@ -654,7 +654,12 @@ class FinanzasAlertaService
             ->whereIn('tipo_movimiento', ['gasto', 'prestamo', 'inversion'])
             ->sum('monto');
 
-        $liquidezPersonal = $totalEntradasHistorico - $salidasTotal;
+        // La liquidez es lo que hay en las cuentas, no la resta de seis años de
+        // entradas y salidas: ese cálculo arrastraba movimientos sin cuenta y
+        // criterios viejos, y daba una cifra que no correspondía a ninguna plata.
+        // Desde el corte de saldos de sep-2026 cada cuenta tiene lo que de verdad
+        // tiene, así que sumarlas es la respuesta directa.
+        $liquidezPersonal = (float) \App\Models\Finanzas\Cuenta::conSaldos($userId)->sum('saldo_actual');
 
         // 2. INVERSIONES (Cripto)
         $inversionesCripto = (float) \App\Models\Finanzas\Inversion::where('user_id', $userId)
@@ -718,6 +723,9 @@ class FinanzasAlertaService
             'proyectos'             => $proyectosLista->toArray(),
             'total_saldo_proyectos' => $totalSaldoProyectos,
             'liquidez_global'       => $liquidezGlobal,
+            // Todo lo que tiene, en un solo número: lo líquido, lo que está
+            // prestado, lo que vale en bienes y lo que está en cripto.
+            'total_activos'         => $liquidezPersonal + $prestamosCartera + $patrimonioTotal + $inversionesCripto,
         ];
     }
 }

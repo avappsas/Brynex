@@ -510,10 +510,10 @@ window.cargarConsolidado=async function(){
             <div style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border-radius:12px;padding:1.25rem;box-shadow:0 10px 15px -3px rgba(16,185,129,0.2);">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
                     <div>
-                        <span style="display:block;font-size:0.75rem;font-weight:700;color:rgba(255,255,255,0.85);text-transform:uppercase;letter-spacing:0.5px;">💰 Liquidez Global Requerida</span>
-                        <span style="font-size:0.65rem;color:rgba(255,255,255,0.75);display:block;margin-top:2px;">(Liquidez Personal + Saldo Disponible en Proyectos)</span>
+                        <span style="display:block;font-size:0.75rem;font-weight:700;color:rgba(255,255,255,0.85);text-transform:uppercase;letter-spacing:0.5px;">💰 Total de lo que tienes</span>
+                        <span style="font-size:0.65rem;color:rgba(255,255,255,0.75);display:block;margin-top:2px;">Liquidez + prestado + patrimonio + cripto</span>
                     </div>
-                    <span style="font-size:1.5rem;font-weight:950;color:#fff;">${fmt(c.liquidez_global)}</span>
+                    <span style="font-size:1.5rem;font-weight:950;color:#fff;">${fmt(c.total_activos)}</span>
                 </div>
             </div>`;
         hide('consolidado-skeleton'); show('consolidado-real');
