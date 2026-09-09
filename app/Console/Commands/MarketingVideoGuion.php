@@ -316,7 +316,7 @@ class MarketingVideoGuion extends Command
         // las láminas NO se muestran: son apaisadas y en un Reel vertical quedan ilegibles.
         // Lo que se ve son escenas del oficio y las capturas del panel real.
         'funcionalidades' => [
-            'tema' => 'qué hace la plataforma: consulta del registro oficial, afiliación a riesgos en un paso, planillas por API y cobros por WhatsApp',
+            'tema' => 'funcionalidades de la plataforma: registro oficial, ARL en un paso, planillas por API y cobros por WhatsApp',
             'titulo' => 'Ocho procesos que se ejecutan solos, en una sola plataforma',
             'escenas' => [
                 'Vertical 9:16 cinematic shot. Close on the hands of a Colombian office worker typing an ID '
