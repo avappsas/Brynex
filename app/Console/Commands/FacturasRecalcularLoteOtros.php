@@ -28,6 +28,7 @@ class FacturasRecalcularLoteOtros extends Command
                             {numero : numero_factura del lote}
                             {--otros=0        : Valor de "Otros planilla" del lote (el del modal)}
                             {--otros-admon=0  : Valor de "Otros admón" del lote}
+                            {--otros-fuera    : Los "otros" ya guardados en la factura NO están dentro del total: se suman tal cual, sin repartir}
                             {--dry-run        : Mostrar el recálculo sin escribir}
                             {--force          : Aplicar sin preguntar (para correrlo sin terminal interactiva)}';
 
@@ -55,14 +56,27 @@ class FacturasRecalcularLoteOtros extends Command
         }
 
         // Costo propio de cada factura: lo que vale sin los "otros" del lote.
+        // Con --otros-fuera el total guardado YA es ese costo limpio, porque los
+        // "otros" nunca se le sumaron (factura de Alfredo Martinez, ago-2026:
+        // $99.000 cobrados al cliente que quedaron fuera del total y volvieron
+        // como saldo a favor). Ahí no hay nada que repartir: cada factura
+        // conserva los suyos y se le suman al total.
+        $otrosFuera = (bool) $this->option('otros-fuera');
         $pesos = [];
         foreach ($facturas as $f) {
-            $pesos[$f->id] = max(0, (int) $f->total - (int) $f->otros - (int) $f->otros_admon);
+            $pesos[$f->id] = $otrosFuera
+                ? max(0, (int) $f->total)
+                : max(0, (int) $f->total - (int) $f->otros - (int) $f->otros_admon);
         }
         $base = array_sum($pesos);
 
-        $otrosNuevos = $this->repartir($otrosLote, $pesos, $base);
-        $otrosAdmonNuevos = $this->repartir($otrosAdmonLote, $pesos, $base);
+        if ($otrosFuera) {
+            $otrosNuevos = $facturas->pluck('otros', 'id')->map(fn ($v) => (int) $v)->all();
+            $otrosAdmonNuevos = $facturas->pluck('otros_admon', 'id')->map(fn ($v) => (int) $v)->all();
+        } else {
+            $otrosNuevos = $this->repartir($otrosLote, $pesos, $base);
+            $otrosAdmonNuevos = $this->repartir($otrosAdmonLote, $pesos, $base);
+        }
 
         $totalesNuevos = [];
         foreach ($pesos as $id => $peso) {
@@ -101,7 +115,11 @@ class FacturasRecalcularLoteOtros extends Command
         $this->table(['factura', 'cédula', 'otros', 'total', 'consignado', 'saldo'], $filas);
 
         $this->line('Total lote:   '.$facturas->sum('total').' → '.$baseTotal);
-        $this->line('Otros lote:   '.($facturas->sum('otros') + $facturas->sum('otros_admon')).' → '.($otrosLote + $otrosAdmonLote));
+        $otrosDespues = $otrosFuera
+            ? array_sum($otrosNuevos) + array_sum($otrosAdmonNuevos)
+            : $otrosLote + $otrosAdmonLote;
+        $this->line('Otros lote:   '.($facturas->sum('otros') + $facturas->sum('otros_admon')).' → '.$otrosDespues
+            .($otrosFuera ? '  (los mismos, ahora dentro del total)' : ''));
         $this->line('Pagado lote:  '.($pagoConsig + $pagoEfectivo + $pagoPrestamo + $pagoAnticipo).' (sin cambio)');
         $this->line('Saldo lote:   '.$facturas->sum('saldo_proximo').' → '.($pagoConsig + $pagoEfectivo + $pagoPrestamo + $pagoAnticipo - $baseTotal));
 
