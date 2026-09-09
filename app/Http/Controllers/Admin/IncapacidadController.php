@@ -144,7 +144,7 @@ class IncapacidadController extends Controller
         $query = Incapacidad::with([
             'quienRecibe:id,nombre',
             'latestGestion',
-            'prorrogas:id,incapacidad_padre_id,estado,valor_esperado', // para calcular valor pendiente
+            'prorrogas:id,incapacidad_padre_id,fecha_inicio,numero_proroga,estado,valor_esperado', // para calcular valor pendiente
         ])
             ->withCount('prorrogas')
             ->where('aliado_id', $alidoId)
@@ -705,6 +705,11 @@ class IncapacidadController extends Controller
                 $q->where('i.id', $padreId)->orWhere('i.incapacidad_padre_id', $padreId);
             })
             ->whereNull('i.deleted_at')
+            // Cronológico, no por `numero_proroga`: el número es el orden en
+            // que se registraron y una prórroga vieja puede haberse cargado
+            // después de una más reciente. El original va siempre de primero.
+            ->orderByRaw('CASE WHEN i.incapacidad_padre_id IS NULL THEN 0 ELSE 1 END')
+            ->orderBy('i.fecha_inicio')
             ->orderBy('i.numero_proroga')
             ->select(
                 'i.*',
@@ -2339,6 +2344,8 @@ class IncapacidadController extends Controller
         $familia = Incapacidad::where(function ($q) use ($padreId) {
             $q->where('id', $padreId)->orWhere('incapacidad_padre_id', $padreId);
         })->whereNull('deleted_at')
+            ->orderByRaw('CASE WHEN incapacidad_padre_id IS NULL THEN 0 ELSE 1 END')
+            ->orderBy('fecha_inicio')
             ->orderBy('numero_proroga')
             ->get(['id', 'numero_proroga', 'incapacidad_padre_id', 'fecha_inicio', 'fecha_terminacion',
                 'dias_incapacidad', 'numero_radicado', 'fecha_radicado', 'estado', 'estado_pago', 'valor_esperado']);

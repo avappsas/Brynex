@@ -192,10 +192,18 @@ class Incapacidad extends BaseModel
         return $this->belongsTo(Incapacidad::class, 'incapacidad_padre_id');
     }
 
-    /** Prórrogas de esta incapacidad (solo hijas directas) */
+    /**
+     * Prórrogas de esta incapacidad (solo hijas directas).
+     *
+     * Ordenadas por fecha de inicio y no por `numero_proroga`: el número es el
+     * orden en que se registraron, que no siempre es el orden en que ocurrieron
+     * (una prórroga vieja se puede cargar después de una más reciente). El
+     * listado debe leerse como la línea de tiempo del paciente.
+     */
     public function prorrogas(): HasMany
     {
         return $this->hasMany(Incapacidad::class, 'incapacidad_padre_id')
+                    ->orderBy('fecha_inicio')
                     ->orderBy('numero_proroga');
     }
 
