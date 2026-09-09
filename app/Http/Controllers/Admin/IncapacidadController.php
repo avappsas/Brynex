@@ -557,6 +557,13 @@ class IncapacidadController extends Controller
             alidoId: $alidoId
         );
 
+        // Si nace dentro de una familia, el número lo fija la fecha y no el
+        // orden de captura: una prórroga vieja registrada de último se numera
+        // donde le toca y corre a las que venían después.
+        if ($padreId) {
+            $this->renumerarProrrogas((int) $padreId);
+        }
+
         // Si la petición es AJAX/JSON, retornar JSON para que el frontend abra el modal de documentos
         if ($request->expectsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
             return response()->json([
@@ -644,6 +651,13 @@ class IncapacidadController extends Controller
             if ($valorViejo !== $valorNuevo) {
                 $cambios[$campo] = ['old' => $valorViejo, 'new' => $valorNuevo];
             }
+        }
+
+        // Corregir la fecha de inicio puede cambiar el lugar de esta prórroga en
+        // la línea de tiempo: la familia se renumera para que el número siga
+        // leyéndose en orden.
+        if (isset($cambios['fecha_inicio'])) {
+            $this->renumerarProrrogas((int) ($inc->incapacidad_padre_id ?? $inc->id));
         }
 
         if (! empty($cambios)) {
@@ -2010,12 +2024,16 @@ class IncapacidadController extends Controller
                 'prorroga' => true,
             ]);
 
-            // Si venía de otra familia, esa queda con un hueco en la numeración.
+            // La familia que la recibe se renumera por fecha: entra donde le
+            // toque, no al final. Y si venía de otra, esa queda con un hueco.
+            $this->renumerarProrrogas($padre->id);
+
             if ($padreAnterior) {
                 $this->renumerarProrrogas($padreAnterior);
             }
         });
 
+        $numProrroga = (int) $hija->refresh()->numero_proroga;
         $valorDespues = $yaPagada ? $valorAntes : (float) $hija->calcularValorEsperado(persistir: true);
 
         Bitacora::registrar(
@@ -2123,25 +2141,16 @@ class IncapacidadController extends Controller
     }
 
     /**
-     * Deja la numeración de las prórrogas de un padre en 1..N sin huecos.
+     * Deja la numeración de las prórrogas de un padre en 1..N por fecha.
      *
-     * Se llama después de sacar una del medio (desligar, o mover a otra
-     * familia): si no, quedan una "1" y una "3" y el modal de la familia
-     * muestra una prórroga 2 que no existe.
+     * Se llama cada vez que la familia cambia de forma —alta, unión, desligue
+     * o edición de la fecha de inicio— para que el número no quede cruzado
+     * contra las fechas ni con huecos. La lógica vive en el modelo porque el
+     * comando `incapacidades:renumerar-prorrogas` usa la misma.
      */
     private function renumerarProrrogas(int $padreId): void
     {
-        $hermanas = Incapacidad::where('incapacidad_padre_id', $padreId)
-            ->orderBy('numero_proroga')
-            ->orderBy('id')
-            ->get();
-
-        foreach ($hermanas as $i => $hermana) {
-            $nuevo = $i + 1;
-            if ((int) $hermana->numero_proroga !== $nuevo) {
-                $hermana->update(['numero_proroga' => $nuevo]);
-            }
-        }
+        Incapacidad::renumerarFamilia($padreId);
     }
 
     // ── CREAR PRÓRROGA ───────────────────────────────────────────────────────
@@ -2198,6 +2207,12 @@ class IncapacidadController extends Controller
         ]);
 
         $prorroga->calcularValorEsperado(persistir: true);
+
+        // El `count() + 1` de arriba solo sirve para nacer con un número: el
+        // definitivo lo da la fecha, que puede ser anterior a la de una
+        // prórroga ya registrada.
+        $this->renumerarProrrogas($padreId);
+        $numProrroga = (int) $prorroga->refresh()->numero_proroga;
 
         Bitacora::registrar(
             accion: 'created',

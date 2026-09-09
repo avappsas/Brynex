@@ -207,6 +207,50 @@ class Incapacidad extends BaseModel
                     ->orderBy('numero_proroga');
     }
 
+    /**
+     * Renumera las prórrogas de una familia como 1..N por fecha de inicio.
+     *
+     * El número es la etiqueta con la que el usuario nombra cada prórroga en el
+     * modal, en los documentos y por teléfono con la EPS, así que tiene que
+     * leerse como la línea de tiempo: la prórroga 2 empieza después de la 1.
+     * Antes se asignaba con un `count() + 1` al crear, que es el orden en que
+     * se registraron: cargar una prórroga vieja después de una más reciente
+     * dejaba la numeración cruzada contra las fechas.
+     *
+     * Escribe con el query builder a propósito: renumerar es contabilidad
+     * interna de la familia, no una gestión sobre la incapacidad, y no debe
+     * mover `updated_at` ni disparar eventos del modelo.
+     *
+     * @return array<int,array{id:int,antes:int,despues:int}> solo lo que cambió
+     */
+    public static function renumerarFamilia(int $padreId): array
+    {
+        $hermanas = static::where('incapacidad_padre_id', $padreId)
+            ->orderBy('fecha_inicio')
+            ->orderBy('id')          // empate de fechas: manda la que entró primero
+            ->get(['id', 'numero_proroga']);
+
+        $cambios = [];
+
+        foreach ($hermanas as $i => $hermana) {
+            $nuevo = $i + 1;
+            if ((int) $hermana->numero_proroga === $nuevo) {
+                continue;
+            }
+
+            DB::table('incapacidades')->where('id', $hermana->id)
+                ->update(['numero_proroga' => $nuevo]);
+
+            $cambios[] = [
+                'id' => (int) $hermana->id,
+                'antes' => (int) $hermana->numero_proroga,
+                'despues' => $nuevo,
+            ];
+        }
+
+        return $cambios;
+    }
+
     /** Todas las gestiones (con cambio de estado y seguimiento) */
     public function gestiones(): HasMany
     {
