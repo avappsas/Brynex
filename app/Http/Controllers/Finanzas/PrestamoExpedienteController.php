@@ -359,7 +359,6 @@ class PrestamoExpedienteController extends Controller
             'plazo_meses' => 'required|integer|min:1|max:120',
             'fecha_desembolso' => 'required|date',
             'dias_mora_alerta' => 'required|integer|min:1',
-            'pagare_factor' => 'required|integer|in:2,3',
             'descripcion' => 'nullable|string|max:255',
             'observaciones' => 'nullable|string',
         ], [
@@ -379,6 +378,10 @@ class PrestamoExpedienteController extends Controller
             404
         );
 
+        // El pagaré se llena hasta el doble del capital. Un tope mayor cubre
+        // intereses y costas que nunca van a llegar a esa cifra, y un título
+        // desproporcionado es lo primero que el deudor discute.
+        $datos['pagare_factor'] = 2;
         $datos['tasa_en_blanco'] = $request->boolean('tasa_en_blanco');
         $datos['tiene_codeudor'] = $request->boolean('tiene_codeudor');
         $datos['tiene_prenda'] = $request->boolean('tiene_prenda');

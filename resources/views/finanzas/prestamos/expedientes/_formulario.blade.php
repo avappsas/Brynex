@@ -16,10 +16,9 @@
           codeudor: {{ old('tiene_codeudor', $exp->tiene_codeudor ?? false) ? 'true' : 'false' }},
           prenda: {{ old('tiene_prenda', $exp->tiene_prenda ?? false) ? 'true' : 'false' }},
           monto: {{ (float) $v('monto', 0) }},
-          factor: {{ (int) $v('pagare_factor', 2) }},
           tasa: {{ (float) $v('tasa_interes_mensual', 2.1) }},
           enBlanco: {{ old('tasa_en_blanco', $exp->tasa_en_blanco ?? false) ? 'true' : 'false' }},
-          get tope() { return this.monto * this.factor },
+          get tope() { return this.monto * 2 },
           get interes() { return Math.round(this.monto * this.tasa / 100) },
           pesos(n) { return '$' + (n || 0).toLocaleString('es-CO', { maximumFractionDigits: 0 }) }
       }">
@@ -245,13 +244,6 @@
             <label class="form-label-bx">Días límite de pago (mora)</label>
             <input type="number" name="dias_mora_alerta" value="{{ $v('dias_mora_alerta', 30) }}" class="form-input-bx" required min="1">
         </div>
-        <div class="form-group-bx" style="flex:1;">
-            <label class="form-label-bx">Tope del pagaré</label>
-            <select name="pagare_factor" x-model.number="factor" class="form-select-bx">
-                <option value="2" @selected((int) $v('pagare_factor', 2) === 2)>2 veces el monto</option>
-                <option value="3" @selected((int) $v('pagare_factor', 2) === 3)>3 veces el monto</option>
-            </select>
-        </div>
     </div>
 
     <label style="display:flex; align-items:center; gap:0.5rem; margin-top:0.9rem; cursor:pointer; font-size:0.82rem; font-weight:600; color:#475569;">
@@ -268,7 +260,7 @@
 
     <div style="margin-top:0.9rem; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:0.75rem 0.9rem; font-size:0.78rem; color:#166534;">
         Interés mensual sobre el saldo inicial: <strong x-text="pesos(interes)"></strong> ·
-        Tope máximo del pagaré: <strong x-text="pesos(tope)"></strong>
+        Tope máximo del pagaré: <strong x-text="pesos(tope)"></strong> (el doble del capital)
     </div>
 
     <div style="display:flex; gap:1rem; margin-top:0.9rem;">
