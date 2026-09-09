@@ -28,6 +28,7 @@
                 </a>
             </div>
             
+            <a href="{{ route('finanzas.expedientes.index') }}" class="btn-fin-link">📄 Préstamos Formales</a>
             <a href="{{ route('finanzas.cuenta-corriente.index') }}" class="btn-fin-link success">💼 Cuenta Corriente (Servicios)</a>
             <a href="{{ route('finanzas.prestamos.create') }}" class="btn-fin success">
                 ➕ Nuevo Préstamo

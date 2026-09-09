@@ -1221,6 +1221,7 @@ Route::middleware('auth')->group(function () {
         $gas = \App\Http\Controllers\Finanzas\GastoController::class;
         $pre = \App\Http\Controllers\Finanzas\PrestamoController::class;
         $cc = \App\Http\Controllers\Finanzas\CuentaCorrienteController::class;
+        $expd = \App\Http\Controllers\Finanzas\PrestamoExpedienteController::class;
         $inv = \App\Http\Controllers\Finanzas\InversionController::class;
         $pat = \App\Http\Controllers\Finanzas\PatrimonioController::class;
         $pro = \App\Http\Controllers\Finanzas\ProyectoController::class;
@@ -1322,6 +1323,20 @@ Route::middleware('auth')->group(function () {
         Route::delete('/prestamos-pago/{movimiento}', [$pre, 'destroyPago'])->name('prestamos.pago.destroy');
         Route::get('/prestamos/{prestamo}/soporte', [$pre, 'descargarSoporte'])->name('prestamos.descargar-soporte');
         Route::get('/prestamos-movimiento/{movimiento}/soporte', [$pre, 'descargarSoporteMovimiento'])->name('prestamos.movimiento.descargar-soporte');
+
+        // Préstamos formales: expediente legal, documentos para firmar y
+        // desembolso. Mientras no se desembolsa no hay préstamo ni egreso.
+        Route::get('/expedientes', [$expd, 'index'])->name('expedientes.index');
+        Route::post('/expedientes', [$expd, 'store'])->name('expedientes.store');
+        Route::get('/expedientes/{expediente}', [$expd, 'show'])->whereNumber('expediente')->name('expedientes.show');
+        Route::get('/expedientes/{expediente}/editar', [$expd, 'edit'])->whereNumber('expediente')->name('expedientes.edit');
+        Route::put('/expedientes/{expediente}', [$expd, 'update'])->whereNumber('expediente')->name('expedientes.update');
+        Route::get('/expedientes/{expediente}/documentos/{formato?}', [$expd, 'descargarDocumentos'])->whereNumber('expediente')->whereIn('formato', ['pdf', 'word'])->name('expedientes.documentos');
+        Route::get('/expedientes/{expediente}/firmados', [$expd, 'descargarFirmados'])->whereNumber('expediente')->name('expedientes.firmados');
+        Route::post('/expedientes/{expediente}/firma', [$expd, 'registrarFirma'])->whereNumber('expediente')->name('expedientes.firma');
+        Route::post('/expedientes/{expediente}/desembolsar', [$expd, 'desembolsar'])->whereNumber('expediente')->name('expedientes.desembolsar');
+        Route::post('/expedientes/{expediente}/anular', [$expd, 'anular'])->whereNumber('expediente')->name('expedientes.anular');
+        Route::post('/prestamistas/{prestamista?}', [$expd, 'guardarPrestamista'])->whereNumber('prestamista')->name('prestamistas.guardar');
 
         // Inversiones
         Route::get('/inversiones', [$inv, 'index'])->name('inversiones.index');

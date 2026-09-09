@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Storage;
 class PrestamoController extends Controller
 {
     use \App\Http\Controllers\Finanzas\Concerns\InvalidaFinanzasCache;
+    use \App\Http\Controllers\Finanzas\Concerns\RegistraPrestamo;
     use \App\Http\Controllers\Finanzas\Concerns\ResuelveCuenta;
     use DetectaDispositivoMovil;
 
@@ -67,7 +68,15 @@ class PrestamoController extends Controller
     {
         $cuentas = \App\Models\Finanzas\Cuenta::where('user_id', Auth::id())->activas()->orderBy('orden')->get();
 
-        return view('finanzas.prestamos.create', compact('cuentas'));
+        // El formulario ofrece además el préstamo formal, que arranca con el
+        // mutuante a cuyo nombre salen los documentos.
+        $prestamistas = \App\Models\Finanzas\Prestamista::where('user_id', Auth::id())
+            ->activos()
+            ->orderByDesc('por_defecto')
+            ->orderBy('nombre')
+            ->get();
+
+        return view('finanzas.prestamos.create', compact('cuentas', 'prestamistas'));
     }
 
     /**
@@ -91,15 +100,13 @@ class PrestamoController extends Controller
             'soporte' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:10240', // 10MB max
         ]);
 
-        $user = Auth::user();
         $soportePath = null;
 
         if ($request->hasFile('soporte')) {
             $soportePath = $request->file('soporte')->store('finanzas/prestamos', 'local');
         }
 
-        $prestamo = Prestamo::create([
-            'user_id' => $user->id,
+        $this->crearPrestamoConDesembolso([
             'nombre_deudor' => $request->nombre_deudor,
             'cedula_deudor' => $request->cedula_deudor,
             'telefono_deudor' => $request->telefono_deudor,
@@ -112,46 +119,12 @@ class PrestamoController extends Controller
             // liquidación depende del respaldo sobre `fecha_desembolso`.
             'dia_cobro' => (int) \Carbon\Carbon::parse($request->fecha_desembolso)->day,
             'saldo_actual' => $request->monto_original,
-            'estado' => 'activo',
             'dias_mora_alerta' => $request->dias_mora_alerta,
             'alertas_activas' => $request->has('alertas_activas') ? (bool) $request->alertas_activas : true,
             'soporte_path' => $soportePath,
             'descripcion' => $request->descripcion,
             'observaciones' => $request->observaciones,
-            'es_cuenta_corriente' => false,
-        ]);
-
-        // Registrar el movimiento de desembolso inicial en el historial
-        $this->liquidacionService->registrarDesembolso($prestamo);
-
-        // Asegurar la existencia de la categoría "Otros" para asociar el egreso del préstamo
-        $categoriaOtros = CategoriaGasto::where('user_id', $user->id)->where('nombre', 'Otros')->first();
-        if (! $categoriaOtros) {
-            $categoriaOtros = CategoriaGasto::create([
-                'user_id' => $user->id,
-                'nombre' => 'Otros',
-                'icono' => '📁',
-                'orden' => 99,
-            ]);
-        }
-        $catId = $categoriaOtros->id;
-
-        Gasto::create([
-            'user_id' => $user->id,
-            'categoria_id' => $catId,
-            'cuenta_id' => $this->resolverCuenta($request->cuenta_id),
-            'fecha' => $request->fecha_desembolso,
-            'monto' => $request->monto_original,
-            'descripcion' => "Préstamo otorgado a: {$request->nombre_deudor}",
-            'tipo_movimiento' => 'prestamo',
-            'es_patrimonio' => false,
-            'patrimonio_id' => null,
-        ]);
-
-        $this->invalidarCacheFinanzas(
-            (int) date('Y', strtotime($request->fecha_desembolso)),
-            (int) date('n', strtotime($request->fecha_desembolso))
-        );
+        ], $request->cuenta_id);
 
         return redirect()->route('finanzas.prestamos.index')->with('success', 'Préstamo registrado y salida creada con éxito.');
     }

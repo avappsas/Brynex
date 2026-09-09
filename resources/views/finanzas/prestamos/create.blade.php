@@ -5,7 +5,7 @@
 
 @section('contenido')
 @include('finanzas.partials._responsive_fin')
-<div class="finanzas-container" style="max-width: 600px;">
+<div class="finanzas-container" x-data="{ formal: {{ old('deudor_nombre') || $errors->any() ? 'true' : 'false' }} }" :style="formal ? 'max-width: 1000px' : 'max-width: 600px'" style="max-width: 600px;">
 
     {{-- Breadcrumb --}}
     <div class="fin-top-bar">
@@ -28,8 +28,21 @@
         </div>
     </div>
 
-    {{-- Formulario --}}
-    <div class="card-formulario-bx">
+    {{-- Tipo de préstamo. El formal no crea préstamo todavía: abre un
+         expediente, imprime los documentos y espera la firma. --}}
+    <div class="tipo-prestamo-bx">
+        <button type="button" @click="formal = false" :class="{ 'activo': ! formal }" class="tipo-opcion-bx">
+            <strong>🤝 De confianza</strong>
+            <span>Un registro rápido: nombre, monto y tasa. Sin papeles.</span>
+        </button>
+        <button type="button" @click="formal = true" :class="{ 'activo': formal }" class="tipo-opcion-bx">
+            <strong>📄 Formal, con documentos</strong>
+            <span>Contrato de mutuo, pagaré y carta de instrucciones para firmar antes de entregar la plata.</span>
+        </button>
+    </div>
+
+    {{-- Formulario simple --}}
+    <div class="card-formulario-bx" x-show="! formal">
         <form action="{{ route('finanzas.prestamos.store') }}" method="POST" enctype="multipart/form-data">
             @csrf
             
@@ -131,6 +144,19 @@
                 <button type="submit" class="btn-guardar-bx">💾 Guardar Préstamo</button>
             </div>
         </form>
+    </div>
+
+    {{-- Formulario formal: abre el expediente, no el préstamo --}}
+    <div class="card-formulario-bx" x-show="formal" x-cloak>
+        <div style="background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; padding:0.75rem 1rem; border-radius:9px; margin-bottom:1.25rem; font-size:0.78rem;">
+            Al guardar <strong>no sale plata todavía</strong>: se crea el expediente y se generan los documentos.
+            El préstamo nace, y la cuenta se descuenta, cuando registres el desembolso después de la firma.
+        </div>
+        @include('finanzas.prestamos.expedientes._formulario', [
+            'accion' => route('finanzas.expedientes.store'),
+            'metodo' => 'POST',
+            'prestamistas' => $prestamistas,
+        ])
     </div>
 
 </div>
@@ -276,6 +302,41 @@ textarea.form-input-bx {
 }
 .btn-guardar-bx:active {
     transform: translateY(0);
+}
+
+/* Selector entre el préstamo de confianza y el formal con documentos */
+.tipo-prestamo-bx {
+    display: flex;
+    gap: 0.75rem;
+    margin: 1.25rem 0;
+    flex-wrap: wrap;
+}
+.tipo-opcion-bx {
+    flex: 1;
+    min-width: 240px;
+    text-align: left;
+    padding: 0.85rem 1rem;
+    border-radius: 12px;
+    border: 2px solid #e2e8f0;
+    background: #ffffff;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.tipo-opcion-bx strong {
+    display: block;
+    font-size: 0.88rem;
+    color: #0f172a;
+    margin-bottom: 0.2rem;
+}
+.tipo-opcion-bx span {
+    font-size: 0.74rem;
+    color: #64748b;
+    line-height: 1.35;
+}
+.tipo-opcion-bx.activo {
+    border-color: #f59e0b;
+    background: #fffbeb;
+    box-shadow: 0 4px 10px -4px rgba(217, 119, 6, 0.35);
 }
 </style>
 @endpush
