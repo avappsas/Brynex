@@ -129,7 +129,6 @@ class ExpedienteDocumentosService
         $suscripcion = $suscripcion instanceof Carbon ? $suscripcion->copy() : Carbon::parse($suscripcion);
 
         $tasa = (float) $expediente->tasa_interes_mensual;
-        $efectivaAnual = (pow(1 + ($tasa / 100), 12) - 1) * 100;
 
         return [
             'exp' => $expediente,
@@ -145,7 +144,6 @@ class ExpedienteDocumentosService
             'plazoLetras' => NumeroALetras::conCifra($expediente->plazo_meses),
             'tasaLetras' => NumeroALetras::porcentaje($tasa),
             'tasaCorta' => rtrim(rtrim(number_format($tasa, 3, ',', ''), '0'), ',').'%',
-            'tasaEa' => number_format($efectivaAnual, 2, ',', '.'),
         ];
     }
 
