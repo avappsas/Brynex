@@ -70,7 +70,14 @@ class FacturasRecalcularLoteOtros extends Command
         }
         $base = array_sum($pesos);
 
-        if ($otrosFuera) {
+        if ($otrosFuera && ($otrosLote > 0 || $otrosAdmonLote > 0)) {
+            // Los "otros" quedaron copiados enteros en cada factura del lote: el
+            // valor del lote se cobra UNA vez, repartido sobre los totales
+            // actuales (que no lo incluyen). Sumar lo guardado factura por
+            // factura multiplicaria el cobro por el numero de facturas.
+            $otrosNuevos = $this->repartir($otrosLote, $pesos, $base);
+            $otrosAdmonNuevos = $this->repartir($otrosAdmonLote, $pesos, $base);
+        } elseif ($otrosFuera) {
             $otrosNuevos = $facturas->pluck('otros', 'id')->map(fn ($v) => (int) $v)->all();
             $otrosAdmonNuevos = $facturas->pluck('otros_admon', 'id')->map(fn ($v) => (int) $v)->all();
         } else {
