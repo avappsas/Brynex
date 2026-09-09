@@ -311,44 +311,57 @@ class MarketingVideoGuion extends Command
                 .'con una plataforma para que sigas a tus clientes.'."\n\n"
                 .'📲 Mándanos tu cotización actual al '.self::WHATSAPP_ASESORES.' y te decimos cuánto te ahorras.',
         ],
-        // Video de producto: qué hace la plataforma. No lleva ninguna escena de Veo — son las
-        // láminas de brynex.co/presentacion.html, que ya están diseñadas y dicen las cifras
-        // reales (41 módulos, 642 pantallas, 7 entidades conectadas). Costo de generación: $0.
-        //
-        // Las láminas son apaisadas: van en modo 'ancho' sobre el azul de la presentación, que
-        // es como se ven en la web. Recortarlas para llenar el cuadro partiría las tarjetas.
+        // Video de producto: qué hace la plataforma. El contenido sale de las láminas de
+        // brynex.co/presentacion.html —las cifras y los ocho procesos son los de ahí—, pero
+        // las láminas NO se muestran: son apaisadas y en un Reel vertical quedan ilegibles.
+        // Lo que se ve son escenas del oficio y las capturas del panel real.
         'funcionalidades' => [
-            'tema' => 'qué hace la plataforma de BryNex: automatizaciones, APIs, cobros por WhatsApp y conciliación',
-            'titulo' => 'BryNex: ocho procesos que se ejecutan solos',
-            'escenas' => ['CAPTURAS', 'CAPTURAS', 'CAPTURAS'],
-            // Modo 'alto', no 'ancho': encajar una lámina apaisada entera en el cuadro vertical
-            // la deja en una franja del alto de un dedo, ilegible en un teléfono. Se escala a
-            // todo el alto y el recorte recorre la lámina de izquierda a derecha, que es como
-            // se leen: el titular primero y las tarjetas después.
+            'tema' => 'qué hace la plataforma: consulta del registro oficial, afiliación a riesgos en un paso, planillas por API y cobros por WhatsApp',
+            'titulo' => 'Ocho procesos que se ejecutan solos, en una sola plataforma',
+            'escenas' => [
+                'Vertical 9:16 cinematic shot. Close on the hands of a Colombian office worker typing an ID '
+                .'number on a keyboard, a computer screen glowing in front of her, a coffee cup beside the '
+                .'desk. Soft morning office light, shallow depth of field, camera slowly pushing in. '
+                .'Ambient office sounds only. No text on screen, nobody speaks.',
+
+                'CAPTURAS',
+
+                'Vertical 9:16 cinematic shot. Close on the hands of a Colombian man holding a phone on a '
+                .'work desk, a message notification lighting up the screen, papers neatly stacked aside. '
+                .'Warm indoor light, shallow depth of field. Ambient sounds only. No text on screen, '
+                .'nobody speaks.',
+
+                'Vertical 9:16 cinematic shot. A small Colombian office at the end of the day, two coworkers '
+                .'at their desks working calmly, no paper piles anywhere, warm late afternoon light through '
+                .'a window. Medium wide shot, shallow depth of field. Ambient sounds only. No text on '
+                .'screen, nobody speaks.',
+            ],
+            // Las del panel real, que en vertical se leen; las láminas de la presentación no.
             'capturas' => [
-                [['archivo' => '22-ciclo.png', 'desde' => 0.0, 'hasta' => 0.95, 'arriba' => 0.5]],
-                [['archivo' => '21-automatizaciones.png', 'desde' => 0.0, 'hasta' => 0.95, 'arriba' => 0.5]],
-                [
-                    ['archivo' => '23-whatsapp.png', 'desde' => 0.0, 'hasta' => 0.9, 'arriba' => 0.5],
-                    ['archivo' => '24-cartera.png', 'desde' => 0.1, 'hasta' => 1.0, 'arriba' => 0.5],
-                ],
+                ['archivo' => '11-modulos.png', 'modo' => 'ancho', 'zoom' => 1.1, 'arriba' => 0.25],
+                ['archivo' => '12-cobros.png', 'modo' => 'ancho', 'zoom' => 1.1, 'arriba' => 0.3],
+                ['archivo' => '13-tendencia.png', 'modo' => 'ancho', 'zoom' => 1.1, 'arriba' => 0.5],
             ],
             'frases' => [
-                'Seis etapas, una sola plataforma',
-                'Ocho procesos automáticos',
+                'El documento trae los datos',
+                'Planillas por API',
                 'Cobros por WhatsApp',
+                'Todo en una sola plataforma',
             ],
-            'narracion' => 'BryNex es el back office completo de una agremiadora: seis etapas operativas en una '
-                .'sola plataforma, cuarenta y un módulos y siete entidades conectadas. '
-                .'Ocho procesos se ejecutan solos: consulta del registro oficial, afiliación a riesgos, '
-                .'liquidación de planillas por API, verificación en salud, facturación electrónica ante la DIAN, '
-                .'cobros por WhatsApp con número propio, asistente conversacional y conciliación bancaria. '
-                .'Todo con la trazabilidad de lo enviado, incluidos los intentos fallidos.',
-            'copy' => 'BryNex es el back office completo de una agremiadora: 41 módulos, 642 pantallas y 7 '
-                .'entidades conectadas, en una sola plataforma.'."\n\n"
-                .'Ocho procesos se ejecutan solos: consulta del registro oficial, afiliación a riesgos, '
-                .'liquidación de planillas por API, verificación en salud, facturación electrónica ante la DIAN, '
-                .'mensajería de WhatsApp con número propio, asistente conversacional y conciliación bancaria.'."\n\n"
+            'narracion' => 'BRYGAR no trabaja con un software cualquiera: usa BRYNEX punto co, el back office '
+                .'completo de una agremiadora. Ocho procesos se ejecutan solos. El documento del cliente trae '
+                .'sus datos del registro oficial, sin digitar. La afiliación a riesgos sale en un paso, con '
+                .'carné en PDF. Las planillas se liquidan por API y vuelven numeradas con su enlace de pago. '
+                .'Y los cobros salen por WhatsApp con número propio. Escríbenos y te mostramos la plataforma.',
+            'copy' => 'BRYGAR opera sobre BRYNEX.co: 41 módulos, 7 entidades conectadas y ocho procesos que se '
+                .'ejecutan solos.'."\n\n"
+                .'• El documento del cliente recupera nombres, EPS y fondo de pensiones del registro oficial.'."\n"
+                .'• Afiliación a riesgos en un solo paso, con carné y soporte en PDF.'."\n"
+                .'• Liquidación de planillas por API: vuelven numeradas y con enlace de pago.'."\n"
+                .'• Verificación en salud ante la fuente oficial.'."\n"
+                .'• Facturación electrónica en lote ante la DIAN, cada factura con su acuse.'."\n"
+                .'• Cobros por WhatsApp con número propio y asistente que responde con datos del sistema.'."\n"
+                .'• Conciliación bancaria: cruce del extracto contra el libro.'."\n\n"
                 .'📲 Escríbenos al '.self::WHATSAPP_ASESORES.' y te mostramos la plataforma.',
         ],
     ];
