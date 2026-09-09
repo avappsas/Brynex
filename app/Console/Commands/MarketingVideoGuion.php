@@ -321,12 +321,16 @@ class MarketingVideoGuion extends Command
             'tema' => 'qué hace la plataforma de BryNex: automatizaciones, APIs, cobros por WhatsApp y conciliación',
             'titulo' => 'BryNex: ocho procesos que se ejecutan solos',
             'escenas' => ['CAPTURAS', 'CAPTURAS', 'CAPTURAS'],
+            // Modo 'alto', no 'ancho': encajar una lámina apaisada entera en el cuadro vertical
+            // la deja en una franja del alto de un dedo, ilegible en un teléfono. Se escala a
+            // todo el alto y el recorte recorre la lámina de izquierda a derecha, que es como
+            // se leen: el titular primero y las tarjetas después.
             'capturas' => [
-                [['archivo' => '22-ciclo.png', 'modo' => 'ancho', 'fondo' => '0xeef2f7']],
-                [['archivo' => '21-automatizaciones.png', 'modo' => 'ancho', 'fondo' => '0x0d1b3e']],
+                [['archivo' => '22-ciclo.png', 'desde' => 0.0, 'hasta' => 0.95, 'arriba' => 0.5]],
+                [['archivo' => '21-automatizaciones.png', 'desde' => 0.0, 'hasta' => 0.95, 'arriba' => 0.5]],
                 [
-                    ['archivo' => '23-whatsapp.png', 'modo' => 'ancho', 'fondo' => '0xeef2f7'],
-                    ['archivo' => '24-cartera.png', 'modo' => 'ancho', 'fondo' => '0xeef2f7'],
+                    ['archivo' => '23-whatsapp.png', 'desde' => 0.0, 'hasta' => 0.9, 'arriba' => 0.5],
+                    ['archivo' => '24-cartera.png', 'desde' => 0.1, 'hasta' => 1.0, 'arriba' => 0.5],
                 ],
             ],
             'frases' => [
