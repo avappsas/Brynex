@@ -29,7 +29,7 @@
 <p>Renunci{{ $exp->tiene_codeudor ? 'amos' : 'o' }} expresamente a la presentación para el pago, al aviso de rechazo, al protesto y a los requerimientos privados o judiciales para la constitución en mora, de conformidad con los artículos 787 y siguientes del Código de Comercio y el artículo 422 del Código General del Proceso.</p>
 
 <h3>{{ $exp->tiene_codeudor ? 'SÉPTIMO' : 'SEXTO' }}. GASTOS.</h3>
-<p>Serán de {{ $exp->tiene_codeudor ? 'nuestro' : 'mi' }} cargo los gastos de cobranza judicial y extrajudicial, incluidos los honorarios de abogado, que se fijan en el diez por ciento (10%) del valor total de la obligación exigible.</p>
+<p>Serán de {{ $exp->tiene_codeudor ? 'nuestro' : 'mi' }} cargo los gastos de cobranza judicial y extrajudicial, incluidos los honorarios de abogado, <strong>efectivamente causados y acreditados, sin que excedan el veinte por ciento (20%) del valor total de la obligación exigible</strong>.</p>
 
 <p>El presente pagaré presta mérito ejecutivo y se suscribe en la ciudad de {{ $exp->ciudad }}, {{ $fechaLarga }}.</p>
 
