@@ -18,6 +18,7 @@
           monto: {{ (float) $v('monto', 0) }},
           factor: {{ (int) $v('pagare_factor', 2) }},
           tasa: {{ (float) $v('tasa_interes_mensual', 2.1) }},
+          enBlanco: {{ old('tasa_en_blanco', $exp->tasa_en_blanco ?? false) ? 'true' : 'false' }},
           get tope() { return this.monto * this.factor },
           get interes() { return Math.round(this.monto * this.tasa / 100) },
           pesos(n) { return '$' + (n || 0).toLocaleString('es-CO', { maximumFractionDigits: 0 }) }
@@ -252,6 +253,18 @@
             </select>
         </div>
     </div>
+
+    <label style="display:flex; align-items:center; gap:0.5rem; margin-top:0.9rem; cursor:pointer; font-size:0.82rem; font-weight:600; color:#475569;">
+        <input type="hidden" name="tasa_en_blanco" value="0">
+        <input type="checkbox" name="tasa_en_blanco" value="1" x-model="enBlanco" style="width:16px; height:16px; cursor:pointer;">
+        Imprimir los documentos con la tasa en blanco, para escribirla a mano
+    </label>
+    <p x-show="enBlanco" x-cloak style="margin:0.4rem 0 0 0; font-size:0.74rem; color:#92400e; background:#fffbeb; border:1px solid #fde68a; padding:0.5rem 0.7rem; border-radius:8px;">
+        Salen en blanco el porcentaje y el interés mensual en pesos, en los cuatro documentos.
+        Llénalos a mano <strong>antes de firmar</strong> y que las partes rubriquen esa página:
+        un contrato firmado con el interés en blanco es fácil de discutir después.
+        El sistema sigue liquidando con la tasa que escribiste arriba.
+    </p>
 
     <div style="margin-top:0.9rem; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:0.75rem 0.9rem; font-size:0.78rem; color:#166534;">
         Interés mensual sobre el saldo inicial: <strong x-text="pesos(interes)"></strong> ·

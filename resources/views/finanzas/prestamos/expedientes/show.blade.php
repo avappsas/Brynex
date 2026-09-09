@@ -88,6 +88,13 @@
             Imprime, firma con huella y escanea todo en un solo PDF. La hoja de documentos requeridos dice qué más recoger.
         </p>
 
+        @if($exp->tasa_en_blanco)
+            <div style="background:#fffbeb; border:1px solid #fde68a; color:#92400e; padding:0.6rem 0.8rem; border-radius:9px; font-size:0.78rem; margin-bottom:0.9rem;">
+                ✍️ Estos documentos salen con <strong>la tasa y el interés mensual en blanco</strong>. Escríbelos a mano antes de firmar.
+                El sistema liquidará al {{ rtrim(rtrim(number_format($exp->tasa_interes_mensual, 3, ',', ''), '0'), ',') }}% mensual.
+            </div>
+        @endif
+
         <div style="display:flex; gap:0.6rem; flex-wrap:wrap; margin-bottom:0.9rem;">
             <a href="{{ route('finanzas.expedientes.documentos', [$exp->id, 'pdf']) }}" class="btn-guardar-bx" style="text-decoration:none; display:inline-flex; align-items:center;">📥 Descargar todo en PDF</a>
             <a href="{{ route('finanzas.expedientes.documentos', [$exp->id, 'word']) }}" class="btn-cancelar-bx">📝 Todo en Word</a>

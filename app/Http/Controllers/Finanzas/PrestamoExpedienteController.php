@@ -355,6 +355,7 @@ class PrestamoExpedienteController extends Controller
 
             'monto' => 'required|numeric|min:1',
             'tasa_interes_mensual' => 'required|numeric|min:0|max:100',
+            'tasa_en_blanco' => 'nullable|boolean',
             'plazo_meses' => 'required|integer|min:1|max:120',
             'fecha_desembolso' => 'required|date',
             'dias_mora_alerta' => 'required|integer|min:1',
@@ -378,6 +379,7 @@ class PrestamoExpedienteController extends Controller
             404
         );
 
+        $datos['tasa_en_blanco'] = $request->boolean('tasa_en_blanco');
         $datos['tiene_codeudor'] = $request->boolean('tiene_codeudor');
         $datos['tiene_prenda'] = $request->boolean('tiene_prenda');
 

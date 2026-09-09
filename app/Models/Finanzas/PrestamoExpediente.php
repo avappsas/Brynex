@@ -49,7 +49,7 @@ class PrestamoExpediente extends BaseFinanzasModel
         'tiene_prenda', 'prenda_placa', 'prenda_clase', 'prenda_marca', 'prenda_linea',
         'prenda_modelo', 'prenda_color', 'prenda_motor', 'prenda_chasis', 'prenda_matricula',
         'prenda_avaluo', 'prenda_propietario', 'prenda_propietario_cedula',
-        'monto', 'tasa_interes_mensual', 'plazo_meses', 'fecha_desembolso', 'fecha_vencimiento',
+        'monto', 'tasa_interes_mensual', 'tasa_en_blanco', 'plazo_meses', 'fecha_desembolso', 'fecha_vencimiento',
         'dia_cobro', 'dias_mora_alerta', 'pagare_factor', 'pagare_tope',
         'fecha_firma', 'documentos_path', 'descripcion', 'observaciones',
     ];
@@ -60,6 +60,7 @@ class PrestamoExpediente extends BaseFinanzasModel
         'prestamo_id' => 'integer',
         'tiene_codeudor' => 'boolean',
         'tiene_prenda' => 'boolean',
+        'tasa_en_blanco' => 'boolean',
         'monto' => 'float',
         'tasa_interes_mensual' => 'float',
         'plazo_meses' => 'integer',

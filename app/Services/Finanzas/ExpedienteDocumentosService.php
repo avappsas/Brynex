@@ -32,6 +32,11 @@ class ExpedienteDocumentosService
         'DÉCIMA NOVENA', 'VIGÉSIMA',
     ];
 
+    /** Espacios para llenar a mano cuando la tasa se deja en blanco. */
+    private const LINEA_LARGA = '________________________________';
+
+    private const LINEA_CORTA = '________';
+
     private const TITULOS = [
         'contrato' => 'Contrato de mutuo',
         'pagare' => 'Pagaré',
@@ -130,6 +135,10 @@ class ExpedienteDocumentosService
 
         $tasa = (float) $expediente->tasa_interes_mensual;
 
+        // Con la tasa en blanco no basta con borrar el porcentaje: el interés
+        // mensual en pesos la delata, así que se va con ella.
+        $enBlanco = (bool) $expediente->tasa_en_blanco;
+
         return [
             'exp' => $expediente,
             'prestamista' => $expediente->prestamista,
@@ -140,10 +149,16 @@ class ExpedienteDocumentosService
             'primerCorteLargo' => $this->fechaCorta($expediente->primer_corte),
             'montoLetras' => NumeroALetras::pesos($expediente->monto),
             'topeLetras' => NumeroALetras::pesos($expediente->pagare_tope),
-            'interesMensualLetras' => NumeroALetras::pesos($expediente->interes_mensual),
+            'interesMensualLetras' => $enBlanco
+                ? self::LINEA_LARGA.' PESOS MONEDA CORRIENTE ($'.self::LINEA_CORTA.' M/CTE)'
+                : NumeroALetras::pesos($expediente->interes_mensual),
             'plazoLetras' => NumeroALetras::conCifra($expediente->plazo_meses),
-            'tasaLetras' => NumeroALetras::porcentaje($tasa),
-            'tasaCorta' => rtrim(rtrim(number_format($tasa, 3, ',', ''), '0'), ',').'%',
+            'tasaLetras' => $enBlanco
+                ? self::LINEA_LARGA.' POR CIENTO ('.self::LINEA_CORTA.'%)'
+                : NumeroALetras::porcentaje($tasa),
+            'tasaCorta' => $enBlanco
+                ? self::LINEA_CORTA.'%'
+                : rtrim(rtrim(number_format($tasa, 3, ',', ''), '0'), ',').'%',
         ];
     }
 
