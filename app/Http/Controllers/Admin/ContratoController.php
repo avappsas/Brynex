@@ -908,10 +908,8 @@ class ContratoController extends Controller
             $moraRetiro = (int) $request->input('mora');
         } else {
             try {
-                $rsRetiro = $contrato->razonSocial;
-                $esIndep = $contrato->esIndependiente() || ($rsRetiro && $rsRetiro->es_independiente);
-                $rsNitRet = $esIndep ? (int) $contrato->cedula : ($rsRetiro ? (int) ($rsRetiro->nit ?: $rsRetiro->id) : 0);
-                $rsDiaHRet = $esIndep ? null : ($rsRetiro ? ($rsRetiro->dia_habil ?? null) : null);
+                $rsNitRet = $contrato->nitParaMora();
+                $rsDiaHRet = $contrato->diaHabilParaMora();
 
                 $mesRet = (int) ($validated['mes_plano'] ?? now()->month);
                 $anioRet = (int) ($validated['anio_plano'] ?? now()->year);
@@ -1179,10 +1177,8 @@ class ContratoController extends Controller
                 }
             }
 
-            $rsRetiro = $contrato->razonSocial;
-            $esIndep = $contrato->esIndependiente() || ($rsRetiro && $rsRetiro->es_independiente);
-            $rsNitRet = $esIndep ? (int) $contrato->cedula : ($rsRetiro ? (int) ($rsRetiro->nit ?: $rsRetiro->id) : 0);
-            $rsDiaHRet = $esIndep ? null : ($rsRetiro ? ($rsRetiro->dia_habil ?? null) : null);
+            $rsNitRet = $contrato->nitParaMora();
+            $rsDiaHRet = $contrato->diaHabilParaMora();
 
             if ($rsNitRet && $costoSs > 0) {
                 $periodoActualNum = now()->year * 100 + now()->month;

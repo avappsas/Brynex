@@ -551,10 +551,8 @@ class CobrosController extends Controller
         // todos comparten la misma fecha → O(1) en vez de O(N) queries.
         $moraLoteInput = [];
         foreach ($contratos as $c) {
-            $rsObj  = $c->razonSocial;
-            $esIndep = $c->esIndependiente() || ($rsObj && $rsObj->es_independiente);
-            $rsNit  = $esIndep ? (int)$c->cedula : ($rsObj ? (int)($rsObj->nit ?: $rsObj->id) : 0);
-            $rsDiaH = $esIndep ? null : ($rsObj ? ($rsObj->dia_habil ?? null) : null);
+            $rsNit  = $c->nitParaMora();
+            $rsDiaH = $c->diaHabilParaMora();
             $vSS    = $vSsPorContrato[$c->id] ?? 0;
             $flags  = $flagsPorContrato[$c->id] ?? [];
             $moraLoteInput[] = [
@@ -1165,10 +1163,8 @@ class CobrosController extends Controller
         $moraEmpLoteInput = [];
         foreach ($contratosActivos as $c) {
             if (isset($cedulasPagadasEmp[(string)$c->cedula])) continue; // ya pagó
-            $rsObj   = $c->razonSocial;
-            $esIndep = $c->esIndependiente() || ($rsObj && $rsObj->es_independiente);
-            $rsNit   = $esIndep ? (int)$c->cedula : ($rsObj ? (int)($rsObj->nit ?: $rsObj->id) : 0);
-            $rsDiaH  = $esIndep ? null : ($rsObj ? ($rsObj->dia_habil ?? null) : null);
+            $rsNit   = $c->nitParaMora();
+            $rsDiaH  = $c->diaHabilParaMora();
             // Calcular aportes exactos por entidad (evita estimación 28.5%)
             $cotiz   = $c->calcularCotizacion(30);
             $vSsCont = (int) ($cotiz['ss'] ?? 0);
@@ -2283,10 +2279,8 @@ class CobrosController extends Controller
         $moraEmpLoteInput = [];
         foreach ($contratosActivos as $c) {
             if (isset($cedulasPagadasEmp[(string)$c->cedula])) continue;
-            $rsObj   = $c->razonSocial;
-            $esIndep = $c->esIndependiente() || ($rsObj && $rsObj->es_independiente);
-            $rsNit   = $esIndep ? (int)$c->cedula : ($rsObj ? (int)($rsObj->nit ?: $rsObj->id) : 0);
-            $rsDiaH  = $esIndep ? null : ($rsObj ? ($rsObj->dia_habil ?? null) : null);
+            $rsNit   = $c->nitParaMora();
+            $rsDiaH  = $c->diaHabilParaMora();
             // Calcular aportes exactos por entidad (evita estimación 28.5%)
             $cotiz   = $c->calcularCotizacion(30);
             $vSsCont = (int) ($cotiz['ss'] ?? 0);

@@ -458,9 +458,7 @@ class FacturacionController extends Controller
             if ((int) $c->tipo_modalidad_id === 15) {
                 continue;
             }
-            $rs = $c->razonSocial;
-            $esIndep = $c->esIndependiente() || ($rs && $rs->es_independiente);
-            $rsNit = $esIndep ? (int) $c->cedula : ($rs ? (int) ($rs->nit ?: $rs->id) : 0);
+            $rsNit = $c->nitParaMora();
             if (! $rsNit) {
                 continue;
             }
@@ -471,7 +469,7 @@ class FacturacionController extends Controller
             $filasMora[$c->id] = [
                 'contrato_id' => $c->id,
                 'rs_nit' => $rsNit,
-                'rs_dia_habil' => $esIndep ? null : ($rs->dia_habil ?? null),
+                'rs_dia_habil' => $c->diaHabilParaMora(),
                 'total_ss' => $vSS,
                 // Desglose por entidad para mora exacta (igual que módulo planos)
                 'eps' => (int) ($c->cotizacion_calc['eps'] ?? 0),
@@ -1278,16 +1276,18 @@ class FacturacionController extends Controller
             ], 422);
         }
 
-        // ─── ¿El usuario quito la mora a mano? ─────────────────────────────
-        // En el lote de empresa la mora se calcula por contrato con MoraClienteService
-        // y se ignora lo que venga del modal (cada RS tiene su propio vencimiento). Pero
-        // si el usuario la puso en 0 a proposito, esa decision manda: no se le cobra a
-        // nadie del lote y la factura queda por el valor sin mora, sin dejar saldo
-        // pendiente que despues se cobre como deuda.
-        // Solo cuenta el 0 explicito: un valor editado > 0 en masivo no se puede repartir
-        // entre contratos con vencimientos distintos, asi que ahi sigue mandando el calculo.
-        $moraAnulada = ! empty($validated['mora_manual'])
-                    && (int) ($validated['mora'] ?? 0) === 0;
+        // ─── Mora escrita a mano en el lote de empresa ─────────────────────
+        // Sin tocar nada, la mora la calcula MoraClienteService contrato por
+        // contrato (cada RS tiene su propio vencimiento). Pero si el usuario la
+        // escribio en el modal, esa decision manda —valga 0 o valga mas— y se
+        // reparte entre los contratos que cotizan planilla, en proporcion a su
+        // seguridad social. Antes solo se respetaba el 0: escribir $1.300 se
+        // ignoraba en silencio, el backend cobraba lo calculado y la propia
+        // validacion de pago rechazaba el lote por la diferencia, sin decir que
+        // la culpa era la mora (caso AGROMACZO, sep-2026: $1.300 escritos,
+        // $6.265 cobrados, "faltan $4.965").
+        $moraManualLote = ! empty($validated['mora_manual']);
+        $moraLoteManual = max(0, (int) ($validated['mora'] ?? 0));
 
         // Fecha del recibo: si el pago es solo consignación, la fecha en que
         // entró el dinero al banco (la mayor si son varias), no la de hoy.
@@ -1319,12 +1319,42 @@ class FacturacionController extends Controller
             ->get()
             ->keyBy('id');
 
+        // ── Retiros facturables del lote (contrato retirado con factura 0) ──
+        // Se precargan ANTES del costeo: lo que cuesta un contrato retirado es
+        // su retiro, no un mes completo. Costearlo como mes completo infla su
+        // peso en el reparto del pago y de los "otros" del lote, y descuadra a
+        // los demas (lote 106127, sep-2026: 5 retiros pesados como mes entero
+        // se llevaron $382k y $240k de mas, dejando -$30.062 en 20 facturas).
+        $facturasRetiro0Lote = Factura::withTrashed()
+            ->where('aliado_id', $aliadoId)
+            ->whereIn('contrato_id', $contratosCargados->pluck('id')->all())
+            ->where('numero_factura', 0)
+            ->whereNull('deleted_at')
+            ->get()
+            ->keyBy('contrato_id');
+
+        $incluirAdmonRetiroCorto = ! empty($validated['incluir_admon_retiro_corto']);
+
         // Calcular COSTO BRUTO REAL de cada contrato para proporcionar el pago proporcional.
         $totalesRealesPorContrato = [];
+        // Seguridad social de los contratos que pueden llevar mora (planilla, no
+        // afiliacion): es la base para repartir la mora que el usuario escribio.
+        $ssParaMora = [];
         foreach ($validated['contratos'] as $cId) {
             $c = $contratosCargados->get($cId);
             if (! $c) {
                 $totalesRealesPorContrato[$cId] = 0;
+
+                continue;
+            }
+
+            // Retiro facturable: el costo ya esta calculado en la factura 0.
+            if ($this->_tieneRetiroFacturable($c, $facturasRetiro0Lote, $mes, $anio)) {
+                $totalesRealesPorContrato[$cId] = self::_totalRetiroFacturable(
+                    $c,
+                    $facturasRetiro0Lote->get($c->id),
+                    $incluirAdmonRetiroCorto
+                );
 
                 continue;
             }
@@ -1467,12 +1497,16 @@ class FacturacionController extends Controller
                     $moraCliente = 0;   // sin planilla que pagar tarde no hay mora
                 } elseif ($esModoIndividual) {
                     $moraCliente = $esAfiliacion ? 0 : (int) ($validated['mora'] ?? 0);
+                } elseif ($moraManualLote) {
+                    // La reparte el bloque de abajo entre quienes cotizan planilla.
+                    $moraCliente = 0;
+                    if (! $esAfiliacion && $totalSS > 0) {
+                        $ssParaMora[$cId] = $totalSS;
+                    }
                 } else {
-                    if (! $esAfiliacion && ! $moraAnulada) {
-                        $rs = $c->razonSocial;
-                        $esIndep = $c->esIndependiente() || ($rs && $rs->es_independiente);
-                        $rsNit = $esIndep ? (int) $c->cedula : ($rs ? (int) ($rs->nit ?: $rs->id) : 0);
-                        $rsDiaH = $esIndep ? null : ($rs ? ($rs->dia_habil ?? null) : null);
+                    if (! $esAfiliacion) {
+                        $rsNit = $c->nitParaMora();
+                        $rsDiaH = $c->diaHabilParaMora();
                         if ($rsNit && $totalSS > 0) {
                             $moraInfo = MoraClienteService::calcular($aliadoId, $rsNit, $rsDiaH, $totalSS, $mes, $anio);
                             $moraCliente = $moraInfo['mora'];
@@ -1482,6 +1516,22 @@ class FacturacionController extends Controller
                 $total += $moraCliente;
             }
             $totalesRealesPorContrato[$cId] = max(0, $total);
+        }
+
+        // ─── Mora del lote escrita a mano: se reparte, no se repite ────────
+        // Solo entre los que cotizan planilla y en proporcion a su seguridad
+        // social, que es sobre lo que se causa la mora. Si el usuario la dejo en
+        // 0, no se le cobra a nadie.
+        $moraPorContrato = [];
+        if ($moraManualLote && count($validated['contratos']) > 1) {
+            $moraPorContrato = self::_repartirProporcional(
+                $moraLoteManual,
+                $ssParaMora,
+                array_sum($ssParaMora)
+            );
+            foreach ($moraPorContrato as $cId => $v) {
+                $totalesRealesPorContrato[$cId] = ($totalesRealesPorContrato[$cId] ?? 0) + $v;
+            }
         }
 
         // ─── "Otros" del lote: se reparten, no se repiten ──────────────────
@@ -1552,17 +1602,6 @@ class FacturacionController extends Controller
             ->get(['id', 'contrato_id', 'tipo', 'estado', 'numero_factura'])
             ->groupBy('contrato_id');
 
-        // ── Pre-cargar facturas de retiro con numero_factura=0 (para el flujo de retiro facturable) ──
-        $facturasRetiro0Lote = Factura::withTrashed()
-            ->where('aliado_id', $aliadoId)
-            ->whereIn('contrato_id', $contratoIdsLote)
-            ->where('numero_factura', 0)
-            ->whereNull('deleted_at')
-            ->get()
-            ->keyBy('contrato_id');
-
-        $incluirAdmonRetiroCorto = ! empty($validated['incluir_admon_retiro_corto']);
-
         // ── Bloqueo del lote completo si alguno ya está facturado ─────────────
         // Antes se omitía el duplicado en silencio y se seguía facturando el resto.
         // El problema: el pago recibido se reparte proporcionalmente entre los
@@ -1625,7 +1664,7 @@ class FacturacionController extends Controller
             &$efAcum, &$csAcum, &$prAcum, &$sfAcum, &$antAcum,
             $saldoEmpresaAplicar, &$contratosPendientes, $contratosCargados, $facturasDuplicadasLote,
             $manualSsPorContrato, $facturasRetiro0Lote, $incluirAdmonRetiroCorto,
-            $fechaPagoRecibo, $moraAnulada
+            $fechaPagoRecibo, $moraManualLote, $moraPorContrato
         ) {
             foreach ($validated['contratos'] as $contratoId) {
                 $contrato = $contratosCargados->get($contratoId);
@@ -1767,11 +1806,7 @@ class FacturacionController extends Controller
                 // ─── Validación anti-duplicado (flujo normal) ─────────────
                 // EXCEPCIÓN: contratos retirados con factura 0 pendiente no se bloquean aquí
                 // — se procesan en el bloque de retiro facturable de más abajo.
-                $tieneRetiroFacturable = $contrato->estado === 'retirado'
-                    && $facturasRetiro0Lote->has($contrato->id)
-                    // En su mes de ingreso lo que se cobra es la afiliación: la factura 0
-                    // del retiro se conserva para el período que le corresponde.
-                    && ! $this->_esAfiliacionDelMesDeIngreso($contrato, $mes, $anio);
+                $tieneRetiroFacturable = $this->_tieneRetiroFacturable($contrato, $facturasRetiro0Lote, $mes, $anio);
 
                 // ── FLUJO ESPECIAL: Retiro facturable (contrato retirado con factura 0) ──────────
                 // El usuario seleccionó un contrato retirado desde la vista empresa.
@@ -1828,7 +1863,14 @@ class FacturacionController extends Controller
                         0
                     );
 
-                    $totalRetiro = $totalSSRet + $admonRetiro + $adminAsesorRetiro + $ivaRetiro;
+                    // Parte de los "otros" del lote que le toca a este contrato. Se
+                    // reservo en el reparto de arriba: si no se cobra aqui, el cliente
+                    // paga un total que la factura no tiene y sobra como saldo a favor.
+                    $otrosPlanillaRet = (int) ($otrosPorContrato[$contratoId] ?? 0);
+                    $otrosAdmonRet = (int) ($otrosAdmonPorContrato[$contratoId] ?? 0);
+
+                    $totalRetiro = $totalSSRet + $admonRetiro + $adminAsesorRetiro + $ivaRetiro
+                        + $otrosPlanillaRet + $otrosAdmonRet;
 
                     // n_plano: reutilizar el del plano de retiro existente
                     $rsIdRet = $contrato->razon_social_id;
@@ -1866,8 +1908,8 @@ class FacturacionController extends Controller
                         'afiliacion' => 0,
                         'iva' => $ivaRetiro,
                         'mora' => 0,
-                        'otros' => 0,
-                        'otros_admon' => 0,
+                        'otros' => $otrosPlanillaRet,
+                        'otros_admon' => $otrosAdmonRet,
                         'mensajeria' => 0,
                         'total' => $totalRetiro,
                         'anticipo_aplicado' => $vAnticipo,
@@ -2136,10 +2178,10 @@ class FacturacionController extends Controller
 
                 // ─── Mora al cliente ────────────────────────────────────────
                 // La mora viene del modal (pre-calculada + editable por el usuario).
-                // En modo masivo: se distribuye SOLO en facturación individual (1 contrato);
-                // en modo masivo NO dividimos la mora entre todos los clientes porque
-                // cada RS tiene su propio vencimiento y su propio cálculo.
-                // Por diseño: en masivo el frontend envía mora=0 (pendiente de impl. por RS).
+                // Individual: manda el valor del modal tal cual.
+                // Masivo: si el usuario la escribió, manda esa y llega ya repartida
+                // en $moraPorContrato; si no la tocó, se calcula por RS con
+                // MoraClienteService, que es lo que el modal muestra sumado.
                 $moraCliente = 0;
                 if ($contrato->esSoloSeguro()) {
                     $moraCliente = 0;   // sin planilla que pagar tarde no hay mora
@@ -2147,14 +2189,16 @@ class FacturacionController extends Controller
                     // Modo individual: usar el valor del modal (puede ser 0 o el calculado)
                     // Si es afiliación pura, forzar mora=0 sin importar lo que envíe el frontend
                     $moraCliente = $esAfiliacion ? 0 : (int) ($validated['mora'] ?? 0);
+                } elseif ($moraManualLote) {
+                    // Modo masivo con mora escrita en el modal: la parte que le tocó
+                    // en el reparto de arriba. La decisión del usuario manda.
+                    $moraCliente = (int) ($moraPorContrato[$contratoId] ?? 0);
                 } else {
                     // Modo masivo (empresa): calcular mora por contrato si aplica
                     // Afiliaciones nunca generan mora (no hay pago de planilla)
-                    if (! $esAfiliacion && ! $moraAnulada) {
-                        $rs = $contrato->razonSocial;
-                        $esIndep = $contrato->esIndependiente() || ($rs && $rs->es_independiente);
-                        $rsNit = $esIndep ? (int) $contrato->cedula : ($rs ? (int) ($rs->nit ?: $rs->id) : 0);
-                        $rsDiaH = $esIndep ? null : ($rs ? ($rs->dia_habil ?? null) : null);
+                    if (! $esAfiliacion) {
+                        $rsNit = $contrato->nitParaMora();
+                        $rsDiaH = $contrato->diaHabilParaMora();
                         if ($rsNit && $totalSS > 0) {
                             $moraInfo = MoraClienteService::calcular($aliadoId, $rsNit, $rsDiaH, $totalSS, $mes, $anio);
                             $moraCliente = $moraInfo['mora']; // aplicar tramos automáticamente
@@ -3673,6 +3717,53 @@ class FacturacionController extends Controller
      * Sin esta distinción el flujo de retiro facturable se comía la selección
      * y la afiliación quedaba sin cobrar.
      */
+    /**
+     * Retiro facturable: contrato ya retirado que dejo una factura en $0 al
+     * marcarse el retiro, y que ahora se cobra de verdad dentro del lote.
+     *
+     * Lo consultan las dos pasadas de facturar(): la que cuesta cada contrato
+     * para repartir el pago, y la que crea la factura. Tienen que decidir lo
+     * mismo o el reparto no cuadra con lo que se cobra.
+     */
+    private function _tieneRetiroFacturable(Contrato $contrato, $facturasRetiro0Lote, int $mes, int $anio): bool
+    {
+        return $contrato->estado === 'retirado'
+            && $facturasRetiro0Lote->has($contrato->id)
+            // En su mes de ingreso lo que se cobra es la afiliación: la factura 0
+            // del retiro se conserva para el período que le corresponde.
+            && ! $this->_esAfiliacionDelMesDeIngreso($contrato, $mes, $anio);
+    }
+
+    /**
+     * Lo que cuesta un retiro facturable, sin los "otros" del lote (que se
+     * reparten despues, sobre esta base). Misma cuenta que hace el bloque de
+     * retiro al crear la factura real.
+     */
+    private static function _totalRetiroFacturable(Contrato $contrato, Factura $facturaRetiro0, bool $incluirAdmonRetiroCorto): int
+    {
+        $totalSS = (int) ($facturaRetiro0->v_eps ?? 0)
+            + (int) ($facturaRetiro0->v_arl ?? 0)
+            + (int) ($facturaRetiro0->v_afp ?? 0)
+            + (int) ($facturaRetiro0->v_caja ?? 0);
+
+        // Admon: solo se cobra si días > 3, o si el usuario marcó "incluir admon retiro corto"
+        $admon = 0;
+        $adminAsesor = 0;
+        if ((int) ($facturaRetiro0->dias_cotizados ?? 0) > 3 || $incluirAdmonRetiroCorto) {
+            $admon = intval($contrato->administracion ?? 0);
+            $adminAsesor = intval($contrato->admon_asesor ?? 0);
+        }
+
+        $iva = \App\Services\IvaService::deFactura(
+            \App\Services\IvaService::aplicaContrato($contrato),
+            $admon,
+            $adminAsesor,
+            0
+        );
+
+        return max(0, $totalSS + $admon + $adminAsesor + $iva);
+    }
+
     private function _esAfiliacionDelMesDeIngreso(Contrato $contrato, int $mes, int $anio): bool
     {
         if (! $contrato->fecha_ingreso) {
@@ -3790,10 +3881,8 @@ class FacturacionController extends Controller
     private function _calcularMoraParaModal(int $aliadoId, Contrato $contrato, int $mes, int $anio): array
     {
         try {
-            $rs = $contrato->razonSocial;
-            $esIndependiente = $contrato->esIndependiente() || ($rs && $rs->es_independiente);
-            $rsNit = $esIndependiente ? (int) $contrato->cedula : ($rs ? (int) ($rs->nit ?: $rs->id) : 0);
-            $rsDiaH = $esIndependiente ? null : ($rs ? ($rs->dia_habil ?? null) : null);
+            $rsNit = $contrato->nitParaMora();
+            $rsDiaH = $contrato->diaHabilParaMora();
 
             if (! $rsNit) {
                 return ['mora_cliente' => 0, 'mora_dias' => 0, 'mora_fecha_vence' => null, 'mora_dia_habil' => 0, 'mora_info' => ''];
@@ -4751,9 +4840,7 @@ class FacturacionController extends Controller
                 continue;
             }
 
-            $rs = $c->razonSocial;
-            $esIndep = $c->esIndependiente() || ($rs && $rs->es_independiente);
-            $rsNit = $esIndep ? (int) $c->cedula : ($rs ? (int) ($rs->nit ?: $rs->id) : 0);
+            $rsNit = $c->nitParaMora();
             if (! $rsNit) {
                 continue;
             }
@@ -4761,7 +4848,7 @@ class FacturacionController extends Controller
             $filasMora[$c->id] = [
                 'contrato_id' => $c->id,
                 'rs_nit' => $rsNit,
-                'rs_dia_habil' => $esIndep ? null : ($rs?->dia_habil ?? null),
+                'rs_dia_habil' => $c->diaHabilParaMora(),
                 'total_ss' => $vSS,
                 'eps' => (int) ($cotizCalc['eps'] ?? 0),
                 'arl' => (int) ($cotizCalc['arl'] ?? 0),

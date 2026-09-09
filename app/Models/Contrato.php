@@ -294,6 +294,89 @@ class Contrato extends BaseModel
     }
 
     /**
+     * Menos de estos dígitos no es un NIT, es basura del legacy: la razón social
+     * "RAZON SOCIAL" que GiMave arrastra trae `nit = "2"` (ver nitParaMora).
+     */
+    private const MIN_DIGITOS_NIT = 5;
+
+    /** Caché por empresa del NIT del aportante, para no repetir la consulta por contrato. */
+    private static array $cacheNitEmpresa = [];
+
+    /**
+     * El NIT con el que se decide cuándo vence la planilla de este contrato, y
+     * por tanto cuánta mora se le cobra al cliente: los dos últimos dígitos dan
+     * el día hábil de vencimiento (Decreto 1990 de 2016).
+     *
+     * El independiente responde con su cédula. El dependiente, con el NIT de su
+     * razón social — salvo que esa razón social sea una de las genéricas que el
+     * legacy dejó sin NIT real ("RAZON SOCIAL" con nit "2", "PROCESOS" sin nit):
+     * ahí manda el NIT de la empresa del cliente, que es el aportante de verdad.
+     * Con el "2" el sistema creía que todo vencía el 2º día hábil —el más
+     * temprano de la tabla— y cobraba mora que no existía (AGROMACZO, sep-2026:
+     * $6.265 cobrados donde con su NIT real la planilla ni siquiera había
+     * vencido). Mismo criterio que pagaParafiscales(): el NIT del aportante vive
+     * en la empresa, no en la razón social compartida.
+     */
+    public function nitParaMora(): int
+    {
+        $rs = $this->razonSocial;
+
+        if ($this->esIndependiente() || ($rs && $rs->es_independiente)) {
+            return (int) $this->cedula;
+        }
+
+        $nitRs = preg_replace('/\D/', '', (string) ($rs->nit ?? ''));
+        if (strlen($nitRs) >= self::MIN_DIGITOS_NIT) {
+            return (int) $nitRs;
+        }
+
+        $nitEmpresa = $this->nitEmpresaAportante();
+        if ($nitEmpresa > 0) {
+            return $nitEmpresa;
+        }
+
+        // Sin NIT por ningún lado se conserva el criterio viejo (el id de la RS):
+        // es arbitrario, pero al menos todos los contratos de esa RS vencen igual.
+        return $rs ? (int) $rs->id : 0;
+    }
+
+    /** Día hábil de vencimiento fijado a mano en la razón social, si lo hay. */
+    public function diaHabilParaMora(): ?int
+    {
+        $rs = $this->razonSocial;
+
+        if ($this->esIndependiente() || ($rs && $rs->es_independiente)) {
+            return null;
+        }
+
+        return $rs && $rs->dia_habil !== null ? (int) $rs->dia_habil : null;
+    }
+
+    /** NIT de la empresa del cliente, o 0 si no la hay o tampoco tiene NIT usable. */
+    private function nitEmpresaAportante(): int
+    {
+        $empresaId = (int) ($this->empresaAportanteId() ?? 0);
+        if ($empresaId <= 0) {
+            return 0;
+        }
+
+        $clave = $this->aliado_id.':'.$empresaId;
+        if (! array_key_exists($clave, self::$cacheNitEmpresa)) {
+            // Filtrando por aliado: muchos clientes arrastran un cod_empresa que
+            // apunta a la empresa de otro aliado (ver pagaParafiscales()).
+            $nit = DB::table('empresas')
+                ->where('id', $empresaId)
+                ->where('aliado_id', $this->aliado_id)
+                ->value('nit');
+
+            $nit = preg_replace('/\D/', '', (string) $nit);
+            self::$cacheNitEmpresa[$clave] = strlen($nit) >= self::MIN_DIGITOS_NIT ? (int) $nit : 0;
+        }
+
+        return self::$cacheNitEmpresa[$clave];
+    }
+
+    /**
      * Días a cotizar por entidad en Tiempo Parcial: ['arl' => 30, 'afp' => X, 'caja' => Y].
      *
      * Manda el contrato y, si no dice nada, el catálogo. Así conviven los dos

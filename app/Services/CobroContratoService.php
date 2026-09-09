@@ -130,10 +130,8 @@ class CobroContratoService
         $mora = 0;
         if (! $esAfiliacion && ! $esIndAct) {
             try {
-                $rs      = $contrato->razonSocial;
-                $esIndep = $contrato->esIndependiente() || ($rs && $rs->es_independiente);
-                $rsNit   = $esIndep ? (int) $contrato->cedula : ($rs ? (int) ($rs->nit ?: $rs->id) : 0);
-                $rsDia   = $esIndep ? null : ($rs ? ($rs->dia_habil ?? null) : null);
+                $rsNit   = $contrato->nitParaMora();
+                $rsDia   = $contrato->diaHabilParaMora();
                 if ($rsNit && $calcSS['ss'] > 0) {
                     $moraInfo = MoraClienteService::calcular($contrato->aliado_id, $rsNit, $rsDia, $calcSS['ss'], $mes, $anio);
                     $mora = (int) ($moraInfo['mora'] ?? 0);
