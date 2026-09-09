@@ -311,6 +311,42 @@ class MarketingVideoGuion extends Command
                 .'con una plataforma para que sigas a tus clientes.'."\n\n"
                 .'📲 Mándanos tu cotización actual al '.self::WHATSAPP_ASESORES.' y te decimos cuánto te ahorras.',
         ],
+        // Video de producto: qué hace la plataforma. No lleva ninguna escena de Veo — son las
+        // láminas de brynex.co/presentacion.html, que ya están diseñadas y dicen las cifras
+        // reales (41 módulos, 642 pantallas, 7 entidades conectadas). Costo de generación: $0.
+        //
+        // Las láminas son apaisadas: van en modo 'ancho' sobre el azul de la presentación, que
+        // es como se ven en la web. Recortarlas para llenar el cuadro partiría las tarjetas.
+        'funcionalidades' => [
+            'tema' => 'qué hace la plataforma de BryNex: automatizaciones, APIs, cobros por WhatsApp y conciliación',
+            'titulo' => 'BryNex: ocho procesos que se ejecutan solos',
+            'escenas' => ['CAPTURAS', 'CAPTURAS', 'CAPTURAS'],
+            'capturas' => [
+                [['archivo' => '22-ciclo.png', 'modo' => 'ancho', 'fondo' => '0xeef2f7']],
+                [['archivo' => '21-automatizaciones.png', 'modo' => 'ancho', 'fondo' => '0x0d1b3e']],
+                [
+                    ['archivo' => '23-whatsapp.png', 'modo' => 'ancho', 'fondo' => '0xeef2f7'],
+                    ['archivo' => '24-cartera.png', 'modo' => 'ancho', 'fondo' => '0xeef2f7'],
+                ],
+            ],
+            'frases' => [
+                'Seis etapas, una sola plataforma',
+                'Ocho procesos automáticos',
+                'Cobros por WhatsApp',
+            ],
+            'narracion' => 'BryNex es el back office completo de una agremiadora: seis etapas operativas en una '
+                .'sola plataforma, cuarenta y un módulos y siete entidades conectadas. '
+                .'Ocho procesos se ejecutan solos: consulta del registro oficial, afiliación a riesgos, '
+                .'liquidación de planillas por API, verificación en salud, facturación electrónica ante la DIAN, '
+                .'cobros por WhatsApp con número propio, asistente conversacional y conciliación bancaria. '
+                .'Todo con la trazabilidad de lo enviado, incluidos los intentos fallidos.',
+            'copy' => 'BryNex es el back office completo de una agremiadora: 41 módulos, 642 pantallas y 7 '
+                .'entidades conectadas, en una sola plataforma.'."\n\n"
+                .'Ocho procesos se ejecutan solos: consulta del registro oficial, afiliación a riesgos, '
+                .'liquidación de planillas por API, verificación en salud, facturación electrónica ante la DIAN, '
+                .'mensajería de WhatsApp con número propio, asistente conversacional y conciliación bancaria.'."\n\n"
+                .'📲 Escríbenos al '.self::WHATSAPP_ASESORES.' y te mostramos la plataforma.',
+        ],
     ];
 
     public function handle(): int
@@ -360,12 +396,22 @@ class MarketingVideoGuion extends Command
             .' ('.$escenasVeo.' de '.count($guion['escenas']).' escenas van a Veo)');
 
         $escenas = [];
+        $capturasUsadas = 0;
         foreach ($guion['escenas'] as $orden => $prompt) {
             // La escena marcada CAPTURAS no la genera Veo: se arma con pantallazos reales de la
             // plataforma. Veo no sabe escribir texto legible, y a un asesor con experiencia una
             // interfaz inventada lo pierde en dos segundos.
             if ($prompt === 'CAPTURAS') {
-                $clip = $this->clipDeCapturas($guion['capturas'] ?? []);
+                // Con varias escenas de capturas, `capturas` trae un grupo por escena: así un
+                // video puede recorrer láminas distintas en cada tramo en vez de repetir las
+                // mismas tres. Con una sola escena sigue siendo la lista de siempre.
+                $grupos = $guion['capturas'] ?? [];
+                $lote = isset($grupos[0][0]) && is_array($grupos[0][0])
+                    ? ($grupos[$capturasUsadas] ?? [])
+                    : $grupos;
+                $capturasUsadas++;
+
+                $clip = $this->clipDeCapturas($lote);
                 if (! $clip['ok']) {
                     $this->error('Escena '.($orden + 1).': '.$clip['error']);
 
