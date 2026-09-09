@@ -40,6 +40,7 @@ class ProcesarVideosIa extends Command
 
         if ($pendientes->isEmpty()) {
             $this->info('No hay videos pendientes.');
+
             return self::SUCCESS;
         }
 
@@ -57,27 +58,31 @@ class ProcesarVideosIa extends Command
     private function procesarUnaEscena(PublicidadVideoIa $video): void
     {
         $iaConfig = IaConfiguracionAliado::paraAliado($video->aliado_id);
-        if (!$iaConfig->gemini_api_key) {
+        if (! $iaConfig->gemini_api_key) {
             $video->update(['estado' => PublicidadVideoIa::ESTADO_ERROR, 'error_mensaje' => 'Ya no hay una clave de Gemini configurada para este aliado.']);
+
             return;
         }
 
         $estado = VeoVideoGenerator::consultarEstado($iaConfig->gemini_api_key, $video->operation_name);
 
-        if (!$estado['ok']) {
+        if (! $estado['ok']) {
             $video->update(['estado' => PublicidadVideoIa::ESTADO_ERROR, 'error_mensaje' => $estado['error']]);
+
             return;
         }
 
-        if (!$estado['done']) {
+        if (! $estado['done']) {
             $this->info("Video #{$video->id} todavía generándose en Veo.");
+
             return; // se vuelve a intentar en el próximo tick del cron
         }
 
-        $rutaBrutaAbsoluta = $this->rutaTempPublica('bruto_' . Str::random(20) . '.mp4');
+        $rutaBrutaAbsoluta = $this->rutaTempPublica('bruto_'.Str::random(20).'.mp4');
 
-        if (!VeoVideoGenerator::descargar($iaConfig->gemini_api_key, $estado['videoUri'], $rutaBrutaAbsoluta)) {
+        if (! VeoVideoGenerator::descargar($iaConfig->gemini_api_key, $estado['videoUri'], $rutaBrutaAbsoluta)) {
             $video->update(['estado' => PublicidadVideoIa::ESTADO_ERROR, 'error_mensaje' => 'No se pudo descargar el video generado por Veo.']);
+
             return;
         }
 
@@ -87,8 +92,9 @@ class ProcesarVideosIa extends Command
     private function procesarMultiEscena(PublicidadVideoIa $video): void
     {
         $iaConfig = IaConfiguracionAliado::paraAliado($video->aliado_id);
-        if (!$iaConfig->gemini_api_key) {
+        if (! $iaConfig->gemini_api_key) {
             $video->update(['estado' => PublicidadVideoIa::ESTADO_ERROR, 'error_mensaje' => 'Ya no hay una clave de Gemini configurada para este aliado.']);
+
             return;
         }
 
@@ -102,7 +108,7 @@ class ProcesarVideosIa extends Command
 
             $estado = VeoVideoGenerator::consultarEstado($iaConfig->gemini_api_key, $escena['operation_name']);
 
-            if (!$estado['ok']) {
+            if (! $estado['ok']) {
                 // El filtro de audio de Veo es INTERMITENTE: el mismo prompt pasa en un
                 // intento y falla en el siguiente, y Google avisa que no cobra los filtrados.
                 // Antes eso mataba el video entero y había que reencolar la escena a mano,
@@ -125,7 +131,8 @@ class ProcesarVideosIa extends Command
                         $escenas[$i]['operation_name'] = $nuevo['operationName'];
                         $escenas[$i]['reintentos'] = $reintentos + 1;
                         $escenas[$i]['estado'] = 'generando';
-                        $this->line("Video #{$video->id}: escena " . ($i + 1) . ' filtrada por Veo, reintento ' . ($reintentos + 1) . '.');
+                        $this->line("Video #{$video->id}: escena ".($i + 1).' filtrada por Veo, reintento '.($reintentos + 1).'.');
+
                         continue;
                     }
                 }
@@ -133,18 +140,20 @@ class ProcesarVideosIa extends Command
                 $escenas[$i]['estado'] = 'error';
                 $escenas[$i]['error'] = $estado['error'];
                 $huboError = true;
+
                 continue;
             }
 
-            if (!$estado['done']) {
+            if (! $estado['done']) {
                 continue; // esta escena sigue generándose, se reintenta en el próximo tick
             }
 
-            $rutaBruta = $this->rutaTempPublica('escena_' . Str::random(20) . '.mp4');
-            if (!VeoVideoGenerator::descargar($iaConfig->gemini_api_key, $estado['videoUri'], $rutaBruta)) {
+            $rutaBruta = $this->rutaTempPublica('escena_'.Str::random(20).'.mp4');
+            if (! VeoVideoGenerator::descargar($iaConfig->gemini_api_key, $estado['videoUri'], $rutaBruta)) {
                 $escenas[$i]['estado'] = 'error';
                 $escenas[$i]['error'] = 'No se pudo descargar la escena generada por Veo.';
                 $huboError = true;
+
                 continue;
             }
 
@@ -155,13 +164,15 @@ class ProcesarVideosIa extends Command
         if ($huboError) {
             $mensajes = collect($escenas)->filter(fn ($e) => $e['estado'] === 'error')->pluck('error')->implode(' / ');
             $video->update(['estado' => PublicidadVideoIa::ESTADO_ERROR, 'error_mensaje' => $mensajes, 'escenas' => $escenas]);
+
             return;
         }
 
         $todasListas = collect($escenas)->every(fn ($e) => $e['estado'] === 'lista');
-        if (!$todasListas) {
+        if (! $todasListas) {
             $video->update(['escenas' => $escenas]); // guarda el progreso parcial, se sigue en el próximo tick
-            $this->info("Video #{$video->id}: " . collect($escenas)->where('estado', 'lista')->count() . '/' . count($escenas) . ' escenas listas.');
+            $this->info("Video #{$video->id}: ".collect($escenas)->where('estado', 'lista')->count().'/'.count($escenas).' escenas listas.');
+
             return;
         }
 
@@ -175,15 +186,16 @@ class ProcesarVideosIa extends Command
         $aliado = $video->aliado;
 
         if (count($rutasBrutas) > 1) {
-            $rutaCombinada = $this->rutaTempPublica('combinado_' . Str::random(20) . '.mp4');
+            $rutaCombinada = $this->rutaTempPublica('combinado_'.Str::random(20).'.mp4');
             $union = VideoOverlayFfmpeg::concatenar($rutasBrutas, $rutaCombinada);
 
             foreach ($rutasBrutas as $ruta) {
                 @unlink($ruta);
             }
 
-            if (!$union['ok']) {
+            if (! $union['ok']) {
                 $video->update(['estado' => PublicidadVideoIa::ESTADO_ERROR, 'error_mensaje' => $union['error']]);
+
                 return;
             }
 
@@ -192,8 +204,8 @@ class ProcesarVideosIa extends Command
             $rutaBrutaFinal = $rutasBrutas[0];
         }
 
-        $rutaFinalRelativa  = 'publicidad/video_ia/' . Str::random(20) . '.mp4';
-        $rutaPosterRelativa = 'publicidad/video_ia/' . Str::random(20) . '.jpg';
+        $rutaFinalRelativa = 'publicidad/video_ia/'.Str::random(20).'.mp4';
+        $rutaPosterRelativa = 'publicidad/video_ia/'.Str::random(20).'.jpg';
 
         $narracion = $video->narrar ? $this->narrar($video) : null;
 
@@ -213,8 +225,9 @@ class ProcesarVideosIa extends Command
             @unlink($narracion);
         }
 
-        if (!$overlay['ok']) {
+        if (! $overlay['ok']) {
             $video->update(['estado' => PublicidadVideoIa::ESTADO_ERROR, 'error_mensaje' => $overlay['error']]);
+
             return;
         }
 
@@ -226,8 +239,8 @@ class ProcesarVideosIa extends Command
         }
 
         $video->update([
-            'estado'             => PublicidadVideoIa::ESTADO_LISTA,
-            'video_path'         => $rutaFinalRelativa,
+            'estado' => PublicidadVideoIa::ESTADO_LISTA,
+            'video_path' => $rutaFinalRelativa,
             'imagen_poster_path' => $overlay['posterPath'] ? $rutaPosterRelativa : null,
         ]);
 
@@ -255,24 +268,25 @@ class ProcesarVideosIa extends Command
         $narracionPropia = $video->autopilot_payload['narracion'] ?? null;
 
         $frases = array_values(array_filter($video->frases_texto ?? []));
-        if (!$narracionPropia && empty($frases)) {
+        if (! $narracionPropia && empty($frases)) {
             return null;
         }
 
         $apiKey = \App\Models\IaConfiguracionAliado::paraAliado($video->aliado_id)->gemini_api_key;
-        if (!$apiKey) {
+        if (! $apiKey) {
             $this->warn("Video #{$video->id}: sin clave de Gemini, se queda sin narración.");
+
             return null;
         }
 
         // Cada frase termina en punto para que el TTS respire entre una y otra en vez de
         // leerlas de corrido como una sola oración.
         $guion = $narracionPropia ?: implode(' ', array_map(
-            fn (string $f) => rtrim(trim($f), '.') . '.',
+            fn (string $f) => rtrim(trim($f), '.').'.',
             $frases
         ));
 
-        $destino = sys_get_temp_dir() . '/narracion_' . $video->id . '_' . Str::random(6) . '.wav';
+        $destino = sys_get_temp_dir().'/narracion_'.$video->id.'_'.Str::random(6).'.wav';
 
         $r = \App\Services\Publicidad\LocucionIaService::generar(
             $apiKey,
@@ -282,8 +296,9 @@ class ProcesarVideosIa extends Command
             'Léelo en español colombiano, cercano y con energía contenida, como una narración de anuncio; sin gritar'
         );
 
-        if (!$r['ok']) {
+        if (! $r['ok']) {
             $this->warn("Video #{$video->id}: no se pudo narrar ({$r['error']}).");
+
             return null;
         }
 
@@ -302,12 +317,12 @@ class ProcesarVideosIa extends Command
     private function pegarCierreDeMarca(PublicidadVideoIa $video, string $rutaContenidoRelativa): string
     {
         $aliado = $video->aliado;
-        if (!$aliado) {
+        if (! $aliado) {
             return $rutaContenidoRelativa;
         }
 
         $config = \App\Models\AutopilotConfig::paraAliado($aliado->id);
-        if (!$config->cierre_activo) {
+        if (! $config->cierre_activo) {
             return $rutaContenidoRelativa;
         }
 
@@ -319,12 +334,13 @@ class ProcesarVideosIa extends Command
             $config->cierre_ciudad ?: 'Cali'
         );
 
-        if (!$cierre['ok']) {
+        if (! $cierre['ok']) {
             $this->warn("Video #{$video->id}: sin cierre de marca ({$cierre['error']}).");
+
             return $rutaContenidoRelativa;
         }
 
-        $rutaConCierre = 'publicidad/video_ia/' . Str::random(20) . '.mp4';
+        $rutaConCierre = 'publicidad/video_ia/'.Str::random(20).'.mp4';
 
         $union = VideoOverlayFfmpeg::pegarCierre(
             Storage::disk('public')->path($rutaContenidoRelativa),
@@ -332,8 +348,9 @@ class ProcesarVideosIa extends Command
             Storage::disk('public')->path($rutaConCierre)
         );
 
-        if (!$union['ok']) {
+        if (! $union['ok']) {
             $this->warn("Video #{$video->id}: no se pudo pegar el cierre ({$union['error']}).");
+
             return $rutaContenidoRelativa;
         }
 
@@ -356,29 +373,51 @@ class ProcesarVideosIa extends Command
     private function publicarDesdeAutopilot(PublicidadVideoIa $video): void
     {
         $payload = $video->autopilot_payload;
-        if (!$payload) {
+        if (! $payload) {
             return;
         }
 
         $esAuto = ($payload['modo'] ?? null) === AutopilotConfig::MODO_AUTO;
 
-        $publicacion = Publicacion::create([
-            'aliado_id'          => $video->aliado_id,
-            'titulo'             => $payload['titulo'] ?? 'Reel del día',
-            'copy'               => $payload['copy'] ?? null,
-            // El poster es el primer frame: sirve de portada en la web y de respaldo si una
-            // red no acepta el video.
-            'imagen_path'        => $video->imagen_poster_path ?: '',
-            'tipo_pieza'         => 'video',
-            'video_path'         => $video->video_path,
-            'video_modelo'       => $video->modelo,
-            'origen'             => 'ia_auto',
-            'tema'               => $payload['tema'] ?? null,
-            'costo_estimado_usd' => $video->costo_estimado_usd,
-            'destinos'           => $payload['destinos'] ?? ['web'],
-            'estado'             => $esAuto ? Publicacion::ESTADO_APROBADA : Publicacion::ESTADO_PENDIENTE,
-            'creado_por'         => null,
-        ]);
+        // Los textos se recortan al ancho real de la columna. El 8-sep-2026 un tema de 127
+        // caracteres (el límite es 120) reventó la inserción y, como nadie miraba el
+        // resultado, dos videos ya pagados quedaron en "lista" sin pieza: el trabajo estaba
+        // hecho y era invisible. Cortar un tema largo es peor que perder el video.
+        $corte = fn (?string $t, int $max) => $t === null ? null : mb_substr($t, 0, $max);
+
+        try {
+            $publicacion = Publicacion::create([
+                'aliado_id' => $video->aliado_id,
+                'titulo' => $corte($payload['titulo'] ?? null, 150) ?: 'Reel del día',
+                'copy' => $payload['copy'] ?? null,
+                // El poster es el primer frame: sirve de portada en la web y de respaldo si una
+                // red no acepta el video.
+                'imagen_path' => $video->imagen_poster_path ?: '',
+                'tipo_pieza' => 'video',
+                'video_path' => $video->video_path,
+                'video_modelo' => $corte($video->modelo, 40),
+                'origen' => 'ia_auto',
+                'tema' => $corte($payload['tema'] ?? null, 120),
+                'costo_estimado_usd' => $video->costo_estimado_usd,
+                'destinos' => $payload['destinos'] ?? ['web'],
+                'estado' => $esAuto ? Publicacion::ESTADO_APROBADA : Publicacion::ESTADO_PENDIENTE,
+                'creado_por' => null,
+            ]);
+        } catch (\Throwable $e) {
+            // Sin esto la excepción se perdía y el video quedaba listo pero sin pieza. Se deja
+            // dicho en el log Y en el propio video, que es donde alguien lo va a buscar. El
+            // payload NO se limpia: así el siguiente intento puede volver a crearla.
+            \Illuminate\Support\Facades\Log::error(
+                "Video #{$video->id}: el video quedó listo pero no se pudo crear la pieza: ".$e->getMessage()
+            );
+            $video->update([
+                'error_mensaje' => 'El video se generó bien pero no se pudo crear la pieza: '
+                    .mb_substr($e->getMessage(), 0, 400),
+            ]);
+            $this->error("Video #{$video->id}: no se pudo crear la pieza — {$e->getMessage()}");
+
+            return;
+        }
 
         // El payload se limpia para que un reintento del comando no publique dos veces.
         $video->update(['autopilot_payload' => null]);
@@ -386,6 +425,7 @@ class ProcesarVideosIa extends Command
         if ($esAuto) {
             PublicacionPublisher::publicar($publicacion);
             $this->info("Reel del piloto publicado como pieza #{$publicacion->id}.");
+
             return;
         }
 
@@ -395,6 +435,7 @@ class ProcesarVideosIa extends Command
     private function rutaTempPublica(string $nombreArchivo): string
     {
         Storage::disk('public')->makeDirectory('publicidad/video_ia');
-        return Storage::disk('public')->path('publicidad/video_ia/' . $nombreArchivo);
+
+        return Storage::disk('public')->path('publicidad/video_ia/'.$nombreArchivo);
     }
 }
