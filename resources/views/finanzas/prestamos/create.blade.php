@@ -5,7 +5,7 @@
 
 @section('contenido')
 @include('finanzas.partials._responsive_fin')
-<div class="finanzas-container" x-data="{ formal: {{ old('deudor_nombre') || $errors->any() ? 'true' : 'false' }} }" :style="formal ? 'max-width: 1000px' : 'max-width: 600px'" style="max-width: 600px;">
+<div class="finanzas-container" x-data="{ formal: {{ old('deudor_nombre') || (isset($errors) && $errors->any()) ? 'true' : 'false' }} }" :style="formal ? 'max-width: 1000px' : 'max-width: 600px'" style="max-width: 600px;">
 
     {{-- Breadcrumb --}}
     <div class="fin-top-bar">
