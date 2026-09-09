@@ -32,10 +32,8 @@ class ExpedienteDocumentosService
         'DÉCIMA NOVENA', 'VIGÉSIMA',
     ];
 
-    /** Espacios para llenar a mano cuando la tasa se deja en blanco. */
-    private const LINEA_LARGA = '________________________________';
-
-    private const LINEA_CORTA = '________';
+    /** Hueco para escribir la tasa a mano cuando se deja en blanco. */
+    private const LINEA_TASA = '__________';
 
     private const TITULOS = [
         'contrato' => 'Contrato de mutuo',
@@ -135,8 +133,7 @@ class ExpedienteDocumentosService
 
         $tasa = (float) $expediente->tasa_interes_mensual;
 
-        // Con la tasa en blanco no basta con borrar el porcentaje: el interés
-        // mensual en pesos la delata, así que se va con ella.
+        // Con la tasa en blanco, ninguna cifra del paquete puede delatarla.
         $enBlanco = (bool) $expediente->tasa_en_blanco;
 
         return [
@@ -149,15 +146,14 @@ class ExpedienteDocumentosService
             'primerCorteLargo' => $this->fechaCorta($expediente->primer_corte),
             'montoLetras' => NumeroALetras::pesos($expediente->monto),
             'topeLetras' => NumeroALetras::pesos($expediente->pagare_tope),
-            'interesMensualLetras' => $enBlanco
-                ? self::LINEA_LARGA.' PESOS MONEDA CORRIENTE ($'.self::LINEA_CORTA.' M/CTE)'
-                : NumeroALetras::pesos($expediente->interes_mensual),
             'plazoLetras' => NumeroALetras::conCifra($expediente->plazo_meses),
+            // En blanco se escribe una sola vez y en cifra: el porcentaje en
+            // letras a mano, repetido en cuatro documentos, se presta a errores.
             'tasaLetras' => $enBlanco
-                ? self::LINEA_LARGA.' POR CIENTO ('.self::LINEA_CORTA.'%)'
+                ? self::LINEA_TASA.'%'
                 : NumeroALetras::porcentaje($tasa),
             'tasaCorta' => $enBlanco
-                ? self::LINEA_CORTA.'%'
+                ? self::LINEA_TASA.'%'
                 : rtrim(rtrim(number_format($tasa, 3, ',', ''), '0'), ',').'%',
         ];
     }

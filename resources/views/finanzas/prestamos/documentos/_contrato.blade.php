@@ -28,7 +28,7 @@
 <p><strong>PARÁGRAFO.</strong> En ningún caso la tasa aquí pactada, ni la de mora, podrá exceder el límite máximo legal, entendido como una y media veces el interés bancario corriente certificado por la Superintendencia Financiera de Colombia y vigente al momento de la causación. Si por cualquier circunstancia la tasa pactada llegare a superar dicho límite, se entenderá automáticamente reducida al máximo legal permitido, sin necesidad de modificación del presente contrato.</p>
 
 <h3>{{ $ordinales[$c++] }}. FORMA DE PAGO.</h3>
-<p>EL MUTUARIO pagará en cada corte mensual, como mínimo, la totalidad de los intereses causados en el período, que a la fecha de este contrato y sobre el saldo inicial ascienden a {{ $interesMensualLetras }}. El capital podrá abonarse total o parcialmente en cualquier momento y, en todo caso, deberá estar cancelado en su totalidad a la fecha de vencimiento pactada en la cláusula {{ $ordinales[2] }}.</p>
+<p>EL MUTUARIO pagará en cada corte mensual, como mínimo, la totalidad de los intereses causados en el período. El capital podrá abonarse total o parcialmente en cualquier momento y, en todo caso, deberá estar cancelado en su totalidad a la fecha de vencimiento pactada en la cláusula {{ $ordinales[2] }}.</p>
 <p>Los pagos podrán efectuarse en efectivo o por cualquier medio que las partes acuerden. <strong>Solo se tendrán por válidos los pagos acreditados con el respectivo recibo o comprobante</strong> expedido o aceptado por EL MUTUANTE. EL MUTUANTE llevará el registro de los abonos, con la liquidación de intereses y el saldo de capital, y lo pondrá a disposición de EL MUTUARIO cuando este lo solicite.</p>
 
 <h3>{{ $ordinales[$c++] }}. IMPUTACIÓN DE PAGOS.</h3>

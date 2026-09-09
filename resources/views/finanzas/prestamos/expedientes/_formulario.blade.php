@@ -260,7 +260,7 @@
         Imprimir los documentos con la tasa en blanco, para escribirla a mano
     </label>
     <p x-show="enBlanco" x-cloak style="margin:0.4rem 0 0 0; font-size:0.74rem; color:#92400e; background:#fffbeb; border:1px solid #fde68a; padding:0.5rem 0.7rem; border-radius:8px;">
-        Salen en blanco el porcentaje y el interés mensual en pesos, en los cuatro documentos.
+        El porcentaje sale en blanco en los cuatro documentos: contrato, pagaré, carta de instrucciones y recibo.
         Llénalos a mano <strong>antes de firmar</strong> y que las partes rubriquen esa página:
         un contrato firmado con el interés en blanco es fácil de discutir después.
         El sistema sigue liquidando con la tasa que escribiste arriba.

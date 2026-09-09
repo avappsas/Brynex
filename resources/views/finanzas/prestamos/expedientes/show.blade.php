@@ -90,7 +90,7 @@
 
         @if($exp->tasa_en_blanco)
             <div style="background:#fffbeb; border:1px solid #fde68a; color:#92400e; padding:0.6rem 0.8rem; border-radius:9px; font-size:0.78rem; margin-bottom:0.9rem;">
-                ✍️ Estos documentos salen con <strong>la tasa y el interés mensual en blanco</strong>. Escríbelos a mano antes de firmar.
+                ✍️ Estos documentos salen con <strong>la tasa en blanco</strong>. Escríbela a mano antes de firmar.
                 El sistema liquidará al {{ rtrim(rtrim(number_format($exp->tasa_interes_mensual, 3, ',', ''), '0'), ',') }}% mensual.
             </div>
         @endif
