@@ -1344,7 +1344,10 @@ class CobrosController extends Controller
         $aliadoId = session('aliado_id_activo');
         Empresa::where('aliado_id', $aliadoId)->findOrFail($empresaId);
 
-        $llamadas = BitacoraCobro::where('razon_social_id', $empresaId)
+        // La llamada a empresa se guarda con `empresa_id` (ver registrarLlamadaEmpresa):
+        // `razon_social_id` no existe en bitacora_cobros, asi que el historial
+        // reventaba con un 500 cada vez que alguien lo abria.
+        $llamadas = BitacoraCobro::where('empresa_id', $empresaId)
             ->where('aliado_id', $aliadoId)
             ->with('usuario')
             ->orderByDesc('fecha_llamada')
