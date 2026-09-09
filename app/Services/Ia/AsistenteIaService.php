@@ -186,7 +186,18 @@ class AsistenteIaService
             'UTF-8'
         );
 
-        if (! str_contains($texto, 'asesor')) {
+        // No solo el asesor de seguridad social: el público es quien YA tiene la relación con el
+        // cliente y hoy no maneja las afiliaciones —contadores, asesores de EPS o de seguros,
+        // oficinas con cartera—. A todos se les atiende con el mismo guion.
+        $esDelOficio = false;
+        foreach (['asesor', 'contador', 'contadora', 'contabilidad'] as $oficio) {
+            if (str_contains($texto, $oficio)) {
+                $esDelOficio = true;
+                break;
+            }
+        }
+
+        if (! $esDelOficio) {
             return false;
         }
 

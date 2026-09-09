@@ -274,7 +274,7 @@ class MarketingVideoGuion extends Command
         // cotización", que fue el mejor ángulo del lado de clientes. Le habla a la oficina o
         // agencia que YA afilia y hoy paga de más, no al independiente suelto.
         'empresas' => [
-            'tema' => 'empresas y oficinas que ya afilian clientes a seguridad social: les mejoramos la cotización y las condiciones de asesor',
+            'tema' => 'empresas y oficinas con cartera propia que ya afilian: mejoramos su cotización y las condiciones de asesor',
             'titulo' => '¿Tu empresa ya afilia clientes? Te mejoramos lo que pagas hoy',
             'escenas' => [
                 'Vertical 9:16 cinematic shot. A Colombian woman in her 30s in a small office reviews a '
@@ -363,6 +363,120 @@ class MarketingVideoGuion extends Command
                 .'• Cobros por WhatsApp con número propio y asistente que responde con datos del sistema.'."\n"
                 .'• Conciliación bancaria: cruce del extracto contra el libro.'."\n\n"
                 .'📲 Escríbenos al '.self::WHATSAPP_ASESORES.' y te mostramos la plataforma.',
+        ],
+        // Variantes del único ángulo que trae asesores (#90: 6 conversaciones a $2.585, contra
+        // 44 conversaciones y CERO contratos del lado de clientes). Mismo mensaje y mismo
+        // cierre; lo que cambia es el gancho de los primeros segundos, que es donde se decide
+        // si siguen viendo. Con una sola creatividad la audiencia se quema y el costo sube:
+        // la #90 pasó de $913 a $2.585 por conversación en cinco días.
+        'asesores-comision' => [
+            'tema' => 'asesores con cartera propia: cuánto les queda por afiliado y cuánto podrían ganar con mejores comisiones',
+            'titulo' => '¿Cuánto te queda a ti por cada afiliado?',
+            'escenas' => [
+                'Vertical 9:16 cinematic shot. A Colombian man in his 30s sits in his car after a work '
+                .'visit, looking at his phone with a disappointed expression, doing numbers in his head. '
+                .'Late afternoon light through the windshield, handheld camera, shallow depth of field. '
+                .'Ambient street sounds only. No text on screen, nobody speaks.',
+
+                'CAPTURAS',
+
+                'Vertical 9:16 cinematic shot. The same Colombian man walking into a bright cafe, '
+                .'greeting a client with a confident handshake, relaxed posture. Natural daylight, '
+                .'medium shot, shallow depth of field. Ambient sounds only. No text on screen, '
+                .'nobody speaks.',
+            ],
+            'capturas' => [
+                ['archivo' => '11-modulos.png', 'modo' => 'ancho', 'zoom' => 1.1, 'arriba' => 0.25],
+                ['archivo' => '12-cobros.png', 'modo' => 'ancho', 'zoom' => 1.1, 'arriba' => 0.3],
+            ],
+            'frases' => [
+                '¿Cuánto te queda por afiliado?',
+                'Con nosotros, más',
+                'Escríbenos ya',
+            ],
+            'narracion' => 'Si vendes seguridad social, haz la cuenta: ¿cuánto te queda a ti por cada afiliado? '
+                .'En BRYGAR te mejoramos lo que ganas hoy, por cada afiliación y por la administración mensual, '
+                .'con garantía y todo verificable. Y la operación la hacemos nosotros. '
+                .'Escríbenos y cuéntanos cuántos clientes manejas.',
+            'copy' => 'Si vendes seguridad social, haz la cuenta: ¿cuánto te queda a ti por cada afiliado?'."\n\n"
+                .'En BRYGAR te mejoramos lo que ganas hoy — por cada afiliación y por la administración mensual —, '
+                .'con garantía, respaldo y todo verificable. La operación la hacemos nosotros: afiliaciones al '
+                .'instante, planillas por API, cobros automáticos por WhatsApp e incapacidades.'."\n\n"
+                .'📲 Escríbenos al '.self::WHATSAPP_ASESORES.' y cuéntanos cuántos clientes manejas.',
+        ],
+
+        'asesores-respaldo' => [
+            'tema' => 'asesoras con cartera propia que cargan solas con la operación: nosotros ponemos el respaldo',
+            'titulo' => '¿Tienes los clientes pero no el respaldo?',
+            'escenas' => [
+                'Vertical 9:16 cinematic shot. A Colombian woman in her 40s works late at her kitchen '
+                .'table surrounded by folders and a laptop, rubbing her neck with tiredness while her '
+                .'phone lights up with messages. Warm lamp light, handheld camera, shallow depth of '
+                .'field. Ambient sounds only. No text on screen, nobody speaks.',
+
+                'CAPTURAS',
+
+                'Vertical 9:16 cinematic shot. The same Colombian woman, rested and smiling, closes her '
+                .'laptop at a tidy desk and picks up a cup of coffee. Bright morning light, medium shot, '
+                .'shallow depth of field. Ambient sounds only. No text on screen, nobody speaks.',
+            ],
+            'capturas' => [
+                ['archivo' => '24-cartera.png', 'modo' => 'ancho', 'fondo' => '0xeef2f7'],
+                ['archivo' => '21-automatizaciones.png', 'modo' => 'ancho', 'fondo' => '0x0d1b3e'],
+            ],
+            'frases' => [
+                '¿Tienes clientes y no respaldo?',
+                'Nosotros hacemos la operación',
+                'Tú solo vendes',
+            ],
+            'narracion' => 'Si ya tienes tus clientes de seguridad social pero cargas sola con todo el trabajo, '
+                .'en BRYGAR ponemos el respaldo: afiliaciones al instante, planillas pagadas por API, cobros '
+                .'automáticos por WhatsApp e incapacidades. Tú te quedas con tus clientes y con mejores '
+                .'condiciones. Escríbenos y cuéntanos cuántos manejas.',
+            'copy' => '¿Ya tienes tus clientes de seguridad social pero cargas solo con toda la operación?'."\n\n"
+                .'En BRYGAR ponemos el respaldo: afiliaciones al instante, planillas pagadas por API, cobros '
+                .'automáticos por WhatsApp e incapacidades. Tú te quedas con tus clientes y con mejores '
+                .'condiciones por afiliación y por administración mensual.'."\n\n"
+                .'📲 Escríbenos al '.self::WHATSAPP_ASESORES.' y cuéntanos cuántos clientes manejas.',
+        ],
+        // El público no es solo quien vende seguridad social: es quien YA tiene la relación con
+        // el cliente y hoy le dice "eso yo no lo manejo". Un contador tiene decenas de
+        // independientes y empresas pequeñas preguntándole por EPS, ARL y planillas.
+        'contadores' => [
+            'tema' => 'contadores y asesores con cartera propia: sus clientes piden afiliaciones y ellos ganan por traerlas',
+            'titulo' => '¿Tus clientes te preguntan por EPS y ARL?',
+            'escenas' => [
+                'Vertical 9:16 cinematic shot. A Colombian accountant in his 40s at his desk with '
+                .'spreadsheets on screen glances at his phone showing a client message, with a resigned '
+                .'expression of "not my area". Soft office light, handheld camera, shallow depth of '
+                .'field. Ambient office sounds only. No text on screen, nobody speaks.',
+
+                'CAPTURAS',
+
+                'Vertical 9:16 cinematic shot. The same Colombian accountant, relaxed and satisfied, '
+                .'closes a folder and shakes hands with a client across his desk. Bright natural light, '
+                .'medium shot, shallow depth of field. Ambient sounds only. No text on screen, '
+                .'nobody speaks.',
+            ],
+            'capturas' => [
+                ['archivo' => '11-modulos.png', 'modo' => 'ancho', 'zoom' => 1.1, 'arriba' => 0.25],
+                ['archivo' => '21-automatizaciones.png', 'modo' => 'ancho', 'fondo' => '0x0d1b3e'],
+            ],
+            'frases' => [
+                '¿Te piden EPS, ARL y planillas?',
+                'Nosotros lo hacemos por ti',
+                'Y tú ganas por cada uno',
+            ],
+            'narracion' => 'Si eres contador, tus clientes te preguntan por EPS, aereele y planillas, y eso no '
+                .'es lo tuyo. En BRYGAR lo hacemos nosotros: afiliaciones al instante, planillas pagadas por API '
+                .'y cobros automáticos. Tú no pones razón social ni haces trámites, y ganas por cada cliente que '
+                .'nos traes. Escríbenos y cuéntanos cuántos manejas.',
+            'copy' => '¿Eres contador y tus clientes te preguntan por EPS, ARL y planillas?'."\n\n"
+                .'En BRYGAR lo hacemos nosotros: afiliaciones al instante, planillas pagadas por API, cobros '
+                .'automáticos por WhatsApp e incapacidades. Tú no pones razón social, no haces trámites, y ganas '
+                .'por cada cliente que nos traes.'."\n\n"
+                .'También trabajamos con asesores de EPS, de seguros y con oficinas que ya manejan cartera.'."\n\n"
+                .'📲 Escríbenos al '.self::WHATSAPP_ASESORES.' y cuéntanos cuántos clientes manejas.',
         ],
     ];
 
