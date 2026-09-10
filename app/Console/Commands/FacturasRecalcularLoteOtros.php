@@ -132,8 +132,19 @@ class FacturasRecalcularLoteOtros extends Command
 
         $consigNuevo = $this->repartir($pagoConsig, $totalesNuevos, $baseTotal);
         $efectivoNuevo = $this->repartir($pagoEfectivo, $totalesNuevos, $baseTotal);
-        $prestamoNuevo = $this->repartir($pagoPrestamo, $totalesNuevos, $baseTotal);
         $anticipoNuevo = $this->repartir($pagoAnticipo, $totalesNuevos, $baseTotal);
+
+        // El prestamo no se reparte como el dinero: ES la deuda que le queda a
+        // cada factura despues de contar lo recibido. Calcularlo asi lo deja
+        // coherente con el saldo y visible en /admin/prestamos, que es donde
+        // alguien lo cobra (una deuda con valor_prestamo = 0 no la ve nadie).
+        $prestamoNuevo = [];
+        foreach ($totalesNuevos as $id => $tot) {
+            $recibido = $consigNuevo[$id] + $efectivoNuevo[$id] + $anticipoNuevo[$id];
+            $prestamoNuevo[$id] = $pagoPrestamo > 0 || $conPrestamo->isNotEmpty()
+                ? max(0, $tot - $recibido)
+                : 0;
+        }
 
         $this->info($dry ? '🔍 DRY-RUN — no se escribe nada' : '⚙️  Escribiendo en producción');
         $this->line("Lote #{$numero} (aliado {$aliadoId}) — {$facturas->count()} facturas");
@@ -164,8 +175,12 @@ class FacturasRecalcularLoteOtros extends Command
         if ($sinMora) {
             $this->line('Mora lote:    '.$facturas->sum('mora').' → 0  (la asume el aliado)');
         }
-        $this->line('Pagado lote:  '.($pagoConsig + $pagoEfectivo + $pagoPrestamo + $pagoAnticipo).' (sin cambio)');
-        $this->line('Saldo lote:   '.$facturas->sum('saldo_proximo').' → '.($pagoConsig + $pagoEfectivo + $pagoPrestamo + $pagoAnticipo - $baseTotal));
+        if ($conPrestamo->isNotEmpty()) {
+            $this->line('Prestamo:     '.$facturas->sum('valor_prestamo').' → '.array_sum($prestamoNuevo)
+                .'  (lo que queda debiendo, visible en /admin/prestamos)');
+        }
+        $this->line('Recibido:     '.($pagoConsig + $pagoEfectivo + $pagoAnticipo).' (sin cambio)');
+        $this->line('Saldo lote:   '.$facturas->sum('saldo_proximo').' → '.($pagoConsig + $pagoEfectivo + $pagoAnticipo - $baseTotal));
 
         if ($dry) {
             return Command::SUCCESS;
@@ -195,13 +210,13 @@ class FacturasRecalcularLoteOtros extends Command
                 $id = $f->id;
                 $pagado = $consigNuevo[$id] + $efectivoNuevo[$id] + $anticipoNuevo[$id];
                 $f->update([
+                    'valor_prestamo' => $prestamoNuevo[$id],
                     'mora' => $sinMora ? 0 : (int) $f->mora,
                     'otros' => $otrosNuevos[$id],
                     'otros_admon' => $otrosAdmonNuevos[$id],
                     'total' => $totalesNuevos[$id],
                     'valor_consignado' => $consigNuevo[$id],
                     'valor_efectivo' => $efectivoNuevo[$id],
-                    'valor_prestamo' => $prestamoNuevo[$id],
                     'anticipo_aplicado' => $anticipoNuevo[$id],
                     'saldo_proximo' => $pagado - $totalesNuevos[$id],
                 ]);
