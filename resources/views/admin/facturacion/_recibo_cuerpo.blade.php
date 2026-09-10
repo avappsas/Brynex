@@ -563,11 +563,6 @@ $empresaCliente = $cli1?->empresa ?? ($cli1?->cod_empresa ? \App\Models\Empresa:
             <div style="margin-top:.28rem">
                 <span style="font-size:.62rem;font-weight:800;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;padding:.15rem .5rem;border-radius:20px;text-transform:uppercase;letter-spacing:.05em;display:inline-block">Dependiente</span>
             </div>
-            @if($empresaCliente)
-            <div style="margin-top:.24rem">
-                <span style="font-size:.62rem;font-weight:800;color:#1e3a5f;background:#e8f0fe;border:1px solid #93c5fd;padding:.15rem .5rem;border-radius:20px;text-transform:uppercase;letter-spacing:.05em;display:inline-block">Facturado a la empresa: {{ $empresaCliente->empresa }}</span>
-            </div>
-            @endif
         @else
             {{-- Sin razón social → INDEPENDIENTE --}}
             <div style="font-size:1.1rem;font-weight:900;color:#0f172a;line-height:1.1">{{ $nom1 ?: 'CC '.$factura->cedula }}</div>
