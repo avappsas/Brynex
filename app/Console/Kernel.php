@@ -271,6 +271,27 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(30)
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/completar-ruaf.log'));
+
+        // ── Vigilancia de descuadres en la facturación ───────────────────
+        // TEMPORAL: corre hasta el 25-sep-2026 y después se apaga sola (la
+        // condición de abajo), así que puede quedarse escrita sin hacer nada.
+        // Se puso el 10-sep-2026, después de corregir 127 facturas que cobraban
+        // algo distinto de lo que el cliente pagó, para ver si el arreglo aguanta
+        // dos ciclos de facturación completos.
+        //
+        // 7:30 PM Colombia: pasada la jornada, con lo facturado del día ya
+        // registrado. Solo avisa por WhatsApp cuando aparece un caso NUEVO —
+        // lo ya revisado queda en la baseline y no vuelve a sonar.
+        // Ejecución manual: php artisan facturas:detectar-descuadres --dias=45
+        $schedule->command('facturas:detectar-descuadres --dias=45 --avisar')
+            ->dailyAt('19:30')
+            ->timezone('America/Bogota')
+            ->when(fn () => now('America/Bogota')->lessThanOrEqualTo(
+                \Carbon\Carbon::parse('2026-09-25 23:59', 'America/Bogota')
+            ))
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/facturas-descuadres.log'));
     }
 
     /**
