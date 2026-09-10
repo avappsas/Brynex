@@ -131,11 +131,20 @@ class InformeController extends Controller
         // egresos, utilidad, saldos) es solo de superadmin y contable.
         $esFinanciero = Auth::user()->can('informes.financiero');
         if ($esFinanciero) {
+            // Misma regla que el informe financiero de abajo, que es la buena:
+            // `otros` (Otros planilla) es un gasto de seguridad social que el
+            // aliado solo recauda, no un ingreso suyo; el ingreso es
+            // `otros_admon`. Este KPI los tenía al revés y por eso el tablero y
+            // el informe daban cifras distintas para el mismo mes.
+            // Excepción: en 'otro_ingreso' (trámites) `otros` SÍ es el valor
+            // cobrado, así que ahí sigue contando.
             $kpis['ingresos_mes'] = DB::table('facturas')
                 ->where('aliado_id',$aid)->whereNull('deleted_at')
                 ->where('mes',$mes)->where('anio',$anio)
                 ->whereIn('estado',['pagada','abono'])
-                ->sum(DB::raw('admon + seguro + afiliacion + mensajeria + otros + iva + retiro'));
+                ->sum(DB::raw("admon + seguro + afiliacion + mensajeria + iva + retiro
+                               + ISNULL(otros_admon,0)
+                               + CASE WHEN tipo = 'otro_ingreso' THEN otros ELSE 0 END"));
         }
 
         return view('admin.informes.hub', compact('kpis','esFinanciero'));

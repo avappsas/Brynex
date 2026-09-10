@@ -129,11 +129,13 @@ if ($factura->estado === 'prestamo' && $totPrest === 0) {
     $totPrest = max(0, $totTotal - $totEfect - $totConsig);
 }
 
+// Un préstamo chico (una mora, un redondeo) no le cambia la cara al recibo: el
+// cliente ve PAGO y la deuda igual queda viva en /admin/prestamos. Antes el
+// corte era "la mitad del total", con lo que un faltante de $500.000 sobre
+// $1.100.000 se imprimía como pagado; ahora manda el monto (ver el modelo).
 $estadoVisual = $factura->estado;
-if ($factura->estado === 'prestamo') {
-    if ($totPrest <= ($totTotal / 2)) {
-        $estadoVisual = 'pagada';
-    }
+if ($factura->estado === 'prestamo' && $totPrest <= \App\Models\Factura::PRESTAMO_SELLO_PAGO) {
+    $estadoVisual = 'pagada';
 }
 
 

@@ -27,11 +27,16 @@ class FacturacionController extends Controller
      * Cuánto puede faltar en una factura marcada PAGADA antes de rechazarla.
      * Cubre al cliente que redondea hacia abajo ($563.000 sobre $563.047); por
      * encima de esto es plata que alguien tiene que cobrar, y la factura debe
-     * guardarse como PRÉSTAMO o con el pago completo. El faltante tolerado
-     * igual queda como cartera del cliente (saldo_proximo negativo) y reaparece
-     * al facturar el mes siguiente.
+     * guardarse como PRÉSTAMO o con el pago completo.
+     *
+     * En cero a propósito (10-sep-2026): antes toleraba $2.000, y ese hueco se
+     * tragaba justo lo que más se cuela — una mora, un redondeo — dejándolo como
+     * cartera silenciosa (saldo_proximo negativo) que nadie cobra y reaparece el
+     * mes siguiente. Lo que falte, así sea $100, se registra como préstamo (y el
+     * recibo igual sale con sello PAGO si es menor de lo que dice
+     * Factura::PRESTAMO_SELLO_PAGO) o se ajusta el cobro.
      */
-    private const TOLERANCIA_PAGO = 2000;
+    private const TOLERANCIA_PAGO = 0;
 
     // ─── Listado de empresas ─────────────────────────────────────────
     public function index(Request $request)

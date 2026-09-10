@@ -12,6 +12,17 @@ class Factura extends BaseModel
     use SoftDeletes;
 
     protected $table    = 'facturas';
+    /**
+     * Hasta este valor, un préstamo no le cambia la cara al recibo: sale con
+     * sello PAGO y la deuda vive en /admin/prestamos, donde alguien la cobra.
+     * Por encima, el recibo sale con sello PRÉSTAMO.
+     *
+     * De los 617 préstamos de 2026, 491 están por debajo: son moras, redondeos
+     * y faltantes chicos. Los que pasan de aquí son deuda de verdad y el cliente
+     * tiene que verla en su recibo.
+     */
+    public const PRESTAMO_SELLO_PAGO = 20000;
+
     protected $fillable = [
         'aliado_id','numero_factura','tipo','cedula','contrato_id',
         'empresa_id',
