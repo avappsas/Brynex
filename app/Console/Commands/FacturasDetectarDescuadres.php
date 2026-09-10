@@ -24,6 +24,16 @@ use Illuminate\Support\Facades\Storage;
  *      total, así que el cobro se perdió y el pago sobrante cayó a saldo.
  *   C. IVA que falta — factura de planilla con administración pero sin IVA,
  *      de un cliente que sí lo causa.
+ *   D. Cargo del lote cobrado a cada trabajador — el mismo valor de "Otros" u
+ *      "Otros admón" quedó copiado en todas las facturas del lote, así que se
+ *      cobró tantas veces como trabajadores. Se reconoce porque el cliente pagó
+ *      como si fuera una sola vez y el lote quedó debiendo casi exactamente las
+ *      copias de más (Javier Tabares, ago-2026: $5.000 × 5 = $25.000).
+ *   E. Saldo peleado con sus propios números — el saldo guardado no es lo
+ *      recibido menos el total. Ojo: `valor_prestamo` NO es plata recibida, es
+ *      lo que el cliente queda debiendo, así que no entra en la cuenta.
+ *      Mientras el saldo y el pago se contradigan, ninguno de los dos sirve
+ *      para decidir nada: hay que mirar la consignación real.
  *
  * Con --avisar manda un WhatsApp a guardia SOLO por los hallazgos nuevos: lo
  * que ya se revisó y se decidió dejar así no vuelve a sonar (ver la baseline).
@@ -56,6 +66,8 @@ class FacturasDetectarDescuadres extends Command
             $this->pagoMalRepartido($desde, $aliado),
             $this->otrosFueraDelTotal($desde, $aliado),
             $this->ivaFaltante($desde, $aliado),
+            $this->cargoDuplicado($desde, $aliado),
+            $this->saldoIncoherente($desde, $aliado),
         );
 
         $this->render($hallazgos, $dias);
@@ -143,12 +155,23 @@ class FacturasDetectarDescuadres extends Command
     /** C. Planilla con administración, sin IVA, de un cliente que sí lo causa. */
     private function ivaFaltante($desde, ?int $aliado): array
     {
+        // El JOIN es solo un pre-filtro barato: sin él la consulta trae miles de
+        // facturas sin IVA (la mayoría legítimas) y revienta la memoria. Quién
+        // causa IVA de verdad lo decide IvaService más abajo, que es la
+        // autoridad: si la regla cambia allá, esto sigue funcionando porque
+        // solo acota, nunca concluye.
         $rows = DB::select("
             SELECT f.id, f.aliado_id, f.numero_factura, f.cedula, f.mes, f.anio,
                    f.admon + ISNULL(f.admin_asesor,0) AS base, f.saldo_proximo
             FROM facturas f
+            JOIN clientes cl ON cl.aliado_id = f.aliado_id AND cl.cedula = f.cedula
+            LEFT JOIN empresas e ON e.id = cl.cod_empresa AND e.aliado_id = cl.aliado_id
             WHERE f.deleted_at IS NULL AND f.estado <> 'anulada' AND f.created_at >= ?
               AND f.tipo = 'planilla' AND f.iva = 0 AND f.admon > 0
+              AND (
+                   (e.id IS NOT NULL AND UPPER(LTRIM(RTRIM(ISNULL(e.iva,'')))) = 'SI')
+                OR (e.id IS NULL     AND UPPER(LTRIM(RTRIM(ISNULL(cl.iva,'')))) = 'SI')
+              )
               ".($aliado ? 'AND f.aliado_id = '.$aliado : '')."
         ", [$desde]);
 
@@ -180,6 +203,90 @@ class FacturasDetectarDescuadres extends Command
         }
 
         return $out;
+    }
+
+    /**
+     * D. El mismo valor en todas las facturas del lote, y el cliente pagó como
+     * si fuera uno solo. Sin ese segundo filtro sonarían los lotes donde de
+     * verdad a cada trabajador le toca el mismo cargo.
+     */
+    private function cargoDuplicado($desde, ?int $aliado): array
+    {
+        $rows = DB::select("
+            SELECT f.aliado_id, f.numero_factura, COUNT(*) n, MIN(f.mes) mes, MIN(f.anio) anio,
+                   MAX(f.otros) otros, MAX(f.otros_admon) otros_admon,
+                   SUM(f.total) total, SUM(f.saldo_proximo) saldo
+            FROM facturas f
+            WHERE f.deleted_at IS NULL AND f.estado <> 'anulada' AND f.created_at >= ?
+              ".($aliado ? 'AND f.aliado_id = '.$aliado : '')."
+            GROUP BY f.aliado_id, f.numero_factura
+            HAVING COUNT(*) > 1
+               AND SUM(f.saldo_proximo) < 0
+               AND ((MIN(f.otros) = MAX(f.otros) AND MAX(f.otros) > 0)
+                 OR (MIN(f.otros_admon) = MAX(f.otros_admon) AND MAX(f.otros_admon) > 0))
+        ", [$desde]);
+
+        $out = [];
+        foreach ($rows as $r) {
+            $valor = (int) $r->otros + (int) $r->otros_admon;
+            $cobradoDeMas = $valor * ((int) $r->n - 1);
+            $deuda = -(int) $r->saldo;
+
+            // La deuda tiene que parecerse a las copias de más: si el cliente
+            // simplemente pagó de menos por otra razón, esto no es el caso.
+            if ($cobradoDeMas <= 0 || $deuda < $cobradoDeMas * 0.8 || $deuda > $cobradoDeMas * 1.5) {
+                continue;
+            }
+
+            $out[] = [
+                'tipo' => 'cargo del lote cobrado a cada trabajador',
+                'clave' => "duplicado:{$r->aliado_id}:{$r->numero_factura}",
+                'aliado' => $r->aliado_id,
+                'monto' => $cobradoDeMas,
+                'detalle' => "recibo #{$r->numero_factura} ({$r->mes}/{$r->anio}, {$r->n} facturas): $"
+                    .number_format($valor, 0, ',', '.').' cobrados '.$r->n.' veces; el cliente quedó debiendo $'
+                    .number_format($deuda, 0, ',', '.'),
+                'arreglo' => "php artisan facturas:recalcular-lote-otros {$r->aliado_id} {$r->numero_factura} --otros={$r->otros} --otros-admon={$r->otros_admon}",
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * E. El saldo guardado le cobra al cliente más de lo que sus propios
+     * números dicen. Solo se mira en esa dirección a propósito: cuando el saldo
+     * favorece al cliente más de lo pagado suele ser un crédito de la empresa
+     * que se está consumiendo, y eso el sistema lo graba así queriendo (ver
+     * facturar(), saldoEmpresaAplicar). No se arregla con el recalculador:
+     * recalcular sobre un pago que también puede estar mal empeora la cosa.
+     */
+    private function saldoIncoherente($desde, ?int $aliado): array
+    {
+        $rows = DB::select("
+            SELECT f.id, f.aliado_id, f.numero_factura, f.cedula, f.mes, f.anio, f.estado, f.total,
+                   f.valor_consignado + f.valor_efectivo + f.anticipo_aplicado AS recibido,
+                   f.valor_prestamo, f.saldo_proximo
+            FROM facturas f
+            WHERE f.deleted_at IS NULL AND f.estado <> 'anulada' AND f.created_at >= ?
+              AND f.saldo_proximo < (f.valor_consignado + f.valor_efectivo + f.anticipo_aplicado - f.total)
+              ".($aliado ? 'AND f.aliado_id = '.$aliado : '')."
+            ORDER BY ABS(f.saldo_proximo - (f.valor_consignado + f.valor_efectivo + f.anticipo_aplicado - f.total)) DESC
+        ", [$desde]);
+
+        return array_map(function ($r) {
+            $deberia = (int) $r->recibido - (int) $r->total;
+
+            return [
+                'tipo' => 'saldo peleado con sus propios números',
+                'clave' => "saldo:{$r->aliado_id}:{$r->id}",
+                'aliado' => $r->aliado_id,
+                'monto' => abs($deberia - (int) $r->saldo_proximo),
+                'detalle' => "factura {$r->id} (recibo #{$r->numero_factura}, c.c. {$r->cedula}, {$r->mes}/{$r->anio}, {$r->estado}): "
+                    ."saldo dice {$r->saldo_proximo} pero recibido - total da {$deberia}",
+                'arreglo' => 'revisar contra la consignación: NO recalcular, el pago tambien puede estar mal',
+            ];
+        }, $rows);
     }
 
     private function render(array $hallazgos, int $dias): void

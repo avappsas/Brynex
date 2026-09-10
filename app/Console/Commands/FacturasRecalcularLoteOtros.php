@@ -30,6 +30,8 @@ class FacturasRecalcularLoteOtros extends Command
                             {--otros-admon=0  : Valor de "Otros admón" del lote}
                             {--otros-fuera    : Los "otros" ya guardados en la factura NO están dentro del total: se suman tal cual, sin repartir}
                             {--solo-pago      : No toca totales ni "otros": solo reparte de nuevo el pago del lote entre las facturas}
+                            {--sin-mora       : Quita la mora del lote: la asume el aliado y deja de ser deuda del cliente}
+                            {--con-prestamo   : Procesar aunque el lote tenga facturas en préstamo (por defecto se rechaza)}
                             {--dry-run        : Mostrar el recálculo sin escribir}
                             {--force          : Aplicar sin preguntar (para correrlo sin terminal interactiva)}';
 
@@ -56,6 +58,19 @@ class FacturasRecalcularLoteOtros extends Command
             return Command::FAILURE;
         }
 
+        // Un lote con prestamo tiene su propia contabilidad: `valor_prestamo` no
+        // es plata recibida, es lo que el cliente queda debiendo, y el saldo se
+        // calcula sin contarlo (ver CuadreDiarioController::convertirEnPrestamo).
+        // Repartirlo como si fuera un pago le borra la deuda al cliente, que es
+        // justo lo que paso el 10-sep-2026 en 5 lotes (142 facturas, revertidas).
+        $conPrestamo = $facturas->filter(fn ($f) => $f->estado === 'prestamo' || (int) $f->valor_prestamo > 0);
+        if ($conPrestamo->isNotEmpty() && ! $this->option('con-prestamo')) {
+            $this->error("El lote #{$numero} tiene {$conPrestamo->count()} factura(s) en prestamo: ahi el saldo no se recalcula desde el pago.");
+            $this->line('Revisar a mano, o forzar con --con-prestamo si se sabe lo que se hace.');
+
+            return Command::FAILURE;
+        }
+
         // Costo propio de cada factura: lo que vale sin los "otros" del lote.
         // Con --otros-fuera el total guardado YA es ese costo limpio, porque los
         // "otros" nunca se le sumaron (factura de Alfredo Martinez, ago-2026:
@@ -64,11 +79,17 @@ class FacturasRecalcularLoteOtros extends Command
         // conserva los suyos y se le suman al total.
         $otrosFuera = (bool) $this->option('otros-fuera');
         $soloPago = (bool) $this->option('solo-pago');
+        // Quitar la mora es una decision del aliado, no un error de calculo: si
+        // no se le cobra al cliente, la asume el aliado y no puede quedar como
+        // deuda arrastrada. La mora que si se cobra y no se paga se factura como
+        // prestamo, que es el camino por el que alguien la cobra.
+        $sinMora = (bool) $this->option('sin-mora');
         $pesos = [];
         foreach ($facturas as $f) {
-            $pesos[$f->id] = ($otrosFuera || $soloPago)
-                ? max(0, (int) $f->total)
-                : max(0, (int) $f->total - (int) $f->otros - (int) $f->otros_admon);
+            $peso = ($otrosFuera || $soloPago)
+                ? (int) $f->total
+                : (int) $f->total - (int) $f->otros - (int) $f->otros_admon;
+            $pesos[$f->id] = max(0, $peso - ($sinMora ? (int) $f->mora : 0));
         }
         $base = array_sum($pesos);
 
@@ -79,7 +100,7 @@ class FacturasRecalcularLoteOtros extends Command
             // totales no se tocan — solo se reparte el dinero como corresponde.
             $otrosNuevos = $facturas->pluck('otros', 'id')->map(fn ($v) => (int) $v)->all();
             $otrosAdmonNuevos = $facturas->pluck('otros_admon', 'id')->map(fn ($v) => (int) $v)->all();
-            $totalesNuevos = $pesos;
+            $totalesNuevos = $pesos;   // el peso ya es el total (menos la mora, si se quita)
         } elseif ($otrosFuera && ($otrosLote > 0 || $otrosAdmonLote > 0)) {
             // Los "otros" quedaron copiados enteros en cada factura del lote: el
             // valor del lote se cobra UNA vez, repartido sobre los totales
@@ -121,7 +142,8 @@ class FacturasRecalcularLoteOtros extends Command
         $filas = [];
         foreach ($facturas as $f) {
             $id = $f->id;
-            $pagado = $consigNuevo[$id] + $efectivoNuevo[$id] + $prestamoNuevo[$id] + $anticipoNuevo[$id];
+            // El prestamo no entra: es deuda, no plata recibida.
+            $pagado = $consigNuevo[$id] + $efectivoNuevo[$id] + $anticipoNuevo[$id];
             $filas[] = [
                 $id,
                 $f->cedula,
@@ -139,6 +161,9 @@ class FacturasRecalcularLoteOtros extends Command
             : $otrosLote + $otrosAdmonLote;
         $this->line('Otros lote:   '.($facturas->sum('otros') + $facturas->sum('otros_admon')).' → '.$otrosDespues
             .($soloPago ? '  (sin cambio)' : ($otrosFuera ? '  (los mismos, ahora dentro del total)' : '')));
+        if ($sinMora) {
+            $this->line('Mora lote:    '.$facturas->sum('mora').' → 0  (la asume el aliado)');
+        }
         $this->line('Pagado lote:  '.($pagoConsig + $pagoEfectivo + $pagoPrestamo + $pagoAnticipo).' (sin cambio)');
         $this->line('Saldo lote:   '.$facturas->sum('saldo_proximo').' → '.($pagoConsig + $pagoEfectivo + $pagoPrestamo + $pagoAnticipo - $baseTotal));
 
@@ -156,6 +181,7 @@ class FacturasRecalcularLoteOtros extends Command
             'id' => $f->id,
             'otros' => (int) $f->otros,
             'otros_admon' => (int) $f->otros_admon,
+            'mora' => (int) $f->mora,
             'total' => (int) $f->total,
             'valor_consignado' => (int) $f->valor_consignado,
             'valor_efectivo' => (int) $f->valor_efectivo,
@@ -164,11 +190,12 @@ class FacturasRecalcularLoteOtros extends Command
             'saldo_proximo' => (int) $f->saldo_proximo,
         ])->all();
 
-        DB::transaction(function () use ($facturas, $otrosNuevos, $otrosAdmonNuevos, $totalesNuevos, $consigNuevo, $efectivoNuevo, $prestamoNuevo, $anticipoNuevo) {
+        DB::transaction(function () use ($facturas, $otrosNuevos, $otrosAdmonNuevos, $totalesNuevos, $consigNuevo, $efectivoNuevo, $prestamoNuevo, $anticipoNuevo, $sinMora) {
             foreach ($facturas as $f) {
                 $id = $f->id;
-                $pagado = $consigNuevo[$id] + $efectivoNuevo[$id] + $prestamoNuevo[$id] + $anticipoNuevo[$id];
+                $pagado = $consigNuevo[$id] + $efectivoNuevo[$id] + $anticipoNuevo[$id];
                 $f->update([
+                    'mora' => $sinMora ? 0 : (int) $f->mora,
                     'otros' => $otrosNuevos[$id],
                     'otros_admon' => $otrosAdmonNuevos[$id],
                     'total' => $totalesNuevos[$id],
