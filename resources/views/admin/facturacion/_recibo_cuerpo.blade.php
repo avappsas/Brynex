@@ -517,7 +517,6 @@ $selloCls = match($estadoVisual) {
 };
 
 // Dirección/contacto del cliente
-$dir1 = trim(($cli1?->direccion ?? ''));
 $tel1 = trim(($cli1?->telefono ?? '') ?: ($cli1?->celular ?? ''));
 $sal1 = (int)($factura->contrato?->salario ?? 0);
 
@@ -527,6 +526,15 @@ $logoAliado = $aliadoObj?->logo ? asset('storage/'.$aliadoObj->logo) : null;
 $nomAliado  = $aliadoObj?->nombre ?? $aliadoObj?->razon_social ?? 'BryNex';
 
 $empresaCliente = $cli1?->empresa ?? ($cli1?->cod_empresa ? \App\Models\Empresa::find($cli1->cod_empresa) : null);
+
+// Dirección a imprimir: la de la empresa cuando el trabajador es de una, y si
+// no la del cliente —de cobro antes que la de vivienda, que es a donde va el
+// mensajero—. Venía leyendo `clientes.direccion`, que no existe (las columnas
+// son `direccion_cobro` y `direccion_vivienda`), así que el renglón nunca se
+// pintaba. El respaldo importa: hay empresas con la dirección en blanco.
+$dir1 = trim((string) ($empresaCliente?->direccion ?? ''))
+    ?: trim((string) ($cli1?->direccion_cobro ?? ''))
+    ?: trim((string) ($cli1?->direccion_vivienda ?? ''));
 @endphp
 
 {{-- HEADER TIPO FACTURA (con margen superior) --}}
@@ -560,9 +568,6 @@ $empresaCliente = $cli1?->empresa ?? ($cli1?->cod_empresa ? \App\Models\Empresa:
             {{-- Con razón social → DEPENDIENTE --}}
             <div style="font-size:1.1rem;font-weight:900;color:#0f172a;line-height:1.1">{{ $nom1 ?: 'CC '.$factura->cedula }}</div>
             <div style="font-size:.68rem;color:#64748b;margin-top:.12rem">C.C. {{ $factura->cedula }}</div>
-            <div style="margin-top:.28rem">
-                <span style="font-size:.62rem;font-weight:800;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;padding:.15rem .5rem;border-radius:20px;text-transform:uppercase;letter-spacing:.05em;display:inline-block">Dependiente</span>
-            </div>
         @else
             {{-- Sin razón social → INDEPENDIENTE --}}
             <div style="font-size:1.1rem;font-weight:900;color:#0f172a;line-height:1.1">{{ $nom1 ?: 'CC '.$factura->cedula }}</div>
