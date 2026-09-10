@@ -56,7 +56,11 @@ class Bitacora extends BaseModel
                 'accion'      => $accion,
                 'modelo'      => $modelo,
                 'registro_id' => $registroId,
-                'descripcion' => $descripcion,
+                // La columna aguanta 255: una descripción más larga hacía fallar
+                // el insert entero y, como abajo el error solo va al log, el
+                // registro se perdía en silencio — que es lo peor que puede
+                // hacer una bitácora. Se recorta y se guarda.
+                'descripcion' => mb_strimwidth($descripcion, 0, 255, '…'),
                 'detalle'     => $detalle ? json_encode($detalle, JSON_UNESCAPED_UNICODE) : null,
                 'ip'          => Request::ip(),
                 'created_at'  => now(),
