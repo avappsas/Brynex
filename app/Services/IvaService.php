@@ -68,13 +68,21 @@ class IvaService
 
         $empresaId = $cliente->cod_empresa ?? null;
 
-        $aplica = $empresaId
-            ? self::bandera(
-                DB::table('empresas')
-                    ->where('id', $empresaId)
-                    ->where('aliado_id', $contrato->aliado_id)
-                    ->value('iva')
-            )
+        $ivaEmpresa = $empresaId
+            ? DB::table('empresas')
+                ->where('id', $empresaId)
+                ->where('aliado_id', $contrato->aliado_id)
+                ->value('iva')
+            : null;
+
+        // Sin fila de empresa no hay empresa que mande, aunque el cliente traiga
+        // un `cod_empresa`: muchos apuntan a una empresa de otro aliado (ver
+        // Contrato::pagaParafiscales()), y la consulta con el aliado correcto no
+        // encuentra nada. Tratar ese null como "no cobra IVA" le quitaba el IVA
+        // a un cliente que lo venia pagando (Jhon Jairo Ospina, ago-2026:
+        // $9.300 cobrados que la factura no incluyo y quedaron a favor).
+        $aplica = $ivaEmpresa !== null
+            ? self::bandera($ivaEmpresa)
             : self::bandera($cliente->iva);
 
         return self::$cache[$llave] = $aplica;
@@ -122,8 +130,10 @@ class IvaService
 
         $mapa = [];
         foreach ($clientes as $cli) {
-            $mapa[$cli->cedula] = $cli->cod_empresa
-                ? (bool) ($empresasIva[$cli->cod_empresa] ?? false)
+            // Mismo criterio que aplicaContrato(): si la empresa no aparece en
+            // este aliado, manda la marca del cliente y no un "no" por defecto.
+            $mapa[$cli->cedula] = array_key_exists($cli->cod_empresa, $empresasIva)
+                ? (bool) $empresasIva[$cli->cod_empresa]
                 : self::bandera($cli->iva);
             self::$cache[self::llave($aliadoId, $cli->cedula)] = $mapa[$cli->cedula];
         }
