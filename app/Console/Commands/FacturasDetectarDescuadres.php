@@ -34,6 +34,12 @@ use Illuminate\Support\Facades\Storage;
  *      lo que el cliente queda debiendo, así que no entra en la cuenta.
  *      Mientras el saldo y el pago se contradigan, ninguno de los dos sirve
  *      para decidir nada: hay que mirar la consignación real.
+ *   F. Anticipo que el saldo no refleja — el cliente entregó plata por
+ *      adelantado, la factura la registra en `anticipo_aplicado`, pero su saldo
+ *      se calculó sin contarla y por eso figura debiendo. No se arregla sumando
+ *      el anticipo al saldo: en muchas el anticipo aplicado es mayor que la
+ *      factura entera, así que hacerlo regalaría crédito que el cliente no
+ *      tiene. Lo que hay que revisar es a cuál factura se imputó cada peso.
  *
  * Con --avisar manda un WhatsApp a guardia SOLO por los hallazgos nuevos: lo
  * que ya se revisó y se decidió dejar así no vuelve a sonar (ver la baseline).
@@ -68,6 +74,7 @@ class FacturasDetectarDescuadres extends Command
             $this->ivaFaltante($desde, $aliado),
             $this->cargoDuplicado($desde, $aliado),
             $this->saldoIncoherente($desde, $aliado),
+            $this->anticipoSinReflejar($desde, $aliado),
         );
 
         $this->render($hallazgos, $dias);
@@ -255,7 +262,8 @@ class FacturasDetectarDescuadres extends Command
 
     /**
      * E. El saldo guardado le cobra al cliente más de lo que sus propios
-     * números dicen. Solo se mira en esa dirección a propósito: cuando el saldo
+     * números dicen, sin anticipos de por medio (esos van al chequeo F, que es
+     * otro problema y se arregla de otra forma). Solo se mira en esa dirección a propósito: cuando el saldo
      * favorece al cliente más de lo pagado suele ser un crédito de la empresa
      * que se está consumiendo, y eso el sistema lo graba así queriendo (ver
      * facturar(), saldoEmpresaAplicar). No se arregla con el recalculador:
@@ -270,6 +278,7 @@ class FacturasDetectarDescuadres extends Command
             FROM facturas f
             WHERE f.deleted_at IS NULL AND f.estado <> 'anulada' AND f.created_at >= ?
               AND f.saldo_proximo < (f.valor_consignado + f.valor_efectivo + f.anticipo_aplicado - f.total)
+              AND f.anticipo_aplicado = 0
               ".($aliado ? 'AND f.aliado_id = '.$aliado : '')."
             ORDER BY ABS(f.saldo_proximo - (f.valor_consignado + f.valor_efectivo + f.anticipo_aplicado - f.total)) DESC
         ", [$desde]);
@@ -287,6 +296,37 @@ class FacturasDetectarDescuadres extends Command
                 'arreglo' => 'revisar contra la consignación: NO recalcular, el pago tambien puede estar mal',
             ];
         }, $rows);
+    }
+
+    /**
+     * F. Anticipo que el saldo ignora. Se reporta aparte de E porque la causa y
+     * el arreglo son distintos: aquí el dinero del cliente está registrado, lo
+     * dudoso es a cuál factura se le imputó.
+     */
+    private function anticipoSinReflejar($desde, ?int $aliado): array
+    {
+        $rows = DB::select("
+            SELECT f.id, f.aliado_id, f.numero_factura, f.cedula, f.mes, f.anio, f.total,
+                   f.anticipo_aplicado, f.saldo_proximo
+            FROM facturas f
+            WHERE f.deleted_at IS NULL AND f.estado <> 'anulada' AND f.created_at >= ?
+              AND f.anticipo_aplicado > 0
+              AND f.saldo_proximo < (f.valor_consignado + f.valor_efectivo + f.anticipo_aplicado - f.total)
+              ".($aliado ? 'AND f.aliado_id = '.$aliado : '')."
+            ORDER BY f.anticipo_aplicado DESC
+        ", [$desde]);
+
+        return array_map(fn ($r) => [
+            'tipo' => 'anticipo que el saldo no refleja',
+            'clave' => "anticipo:{$r->aliado_id}:{$r->id}",
+            'aliado' => $r->aliado_id,
+            'monto' => (int) $r->anticipo_aplicado,
+            'detalle' => "factura {$r->id} (recibo #{$r->numero_factura}, c.c. {$r->cedula}, {$r->mes}/{$r->anio}): "
+                .'anticipo de $'.number_format($r->anticipo_aplicado, 0, ',', '.')
+                .' sobre una factura de $'.number_format($r->total, 0, ',', '.')
+                .", y el saldo dice {$r->saldo_proximo}",
+            'arreglo' => 'revisar a cuál factura se imputó el anticipo: NO sumarlo al saldo sin más',
+        ], $rows);
     }
 
     private function render(array $hallazgos, int $dias): void

@@ -2497,7 +2497,20 @@ class FacturacionController extends Controller
             // deshaga facturas, planos, anticipos y número de recibo.
             if ($validated['estado'] === Factura::ESTADO_PAGADA && ! empty($facturasCreadas)) {
                 $creadas = Factura::whereIn('id', $facturasCreadas)->get();
-                $faltante = max(0, -(int) $creadas->sum('saldo_proximo') - $favorPrevioLote);
+
+                // Se mide contra la plata, no contra el saldo. `saldo_proximo` no
+                // sirve de juez: en un lote de empresa con credito disponible se
+                // graba como "credito consumido" y puede quedar en 0 aunque no
+                // haya entrado un peso — por ese hueco pasaron 74 facturas de
+                // 2026 ($29,1M) marcadas pagadas sin pago, con la deuda anotada
+                // solo en la observacion ("AUTORIZA GERENCIA", "Jefe autoriza
+                // prestamo"). Lo que el cliente no pague va a PRESTAMO, que es
+                // donde alguien lo cobra; el recibo igual sale con sello PAGO si
+                // el faltante es menor que Factura::PRESTAMO_SELLO_PAGO.
+                $recibidoLote = (int) $creadas->sum(fn ($f) => (int) $f->valor_consignado
+                    + (int) $f->valor_efectivo
+                    + (int) $f->anticipo_aplicado);
+                $faltante = max(0, (int) $creadas->sum('total') - $recibidoLote - $favorPrevioLote);
                 if ($faltante > self::TOLERANCIA_PAGO) {
                     throw new \App\Exceptions\PagoIncompletoException(
                         totalLote: (int) $creadas->sum('total'),
