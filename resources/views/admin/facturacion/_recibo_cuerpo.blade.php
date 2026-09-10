@@ -612,12 +612,9 @@ $empresaCliente = $cli1?->empresa ?? ($cli1?->cod_empresa ? \App\Models\Empresa:
     </div>
     @endif
 
-    @if($empresaCliente)
-    <div class="fact-cliente-row">
-        <span class="fact-cliente-lbl">Empresa</span>
-        <span class="fact-cliente-val" style="color:#1d4ed8">{{ $empresaCliente->empresa }}</span>
-    </div>
-    @elseif($rs1)
+    {{-- La empresa del trabajador no se imprime en el recibo. El renglón queda
+         vacío en ese caso: no se sustituye por la razón social, que es otro dato. --}}
+    @if($rs1 && ! $empresaCliente)
     <div class="fact-cliente-row">
         <span class="fact-cliente-lbl">Razón Social</span>
         <span class="fact-cliente-val" style="color:#1d4ed8">{{ $rs1 }}</span>
