@@ -2608,6 +2608,19 @@ async function cargarEstadoEnlace() {
         const cont = document.getElementById('enlace-botones');
         cont.innerHTML = '';
 
+        // Tanda que mezcla las modalidades extraordinarias (Tipo E - Caja /
+        // Pensión) con las normales: no se puede liquidar así, porque en el
+        // paso 1 esas van sin salud y su corrección se busca después por el
+        // mismo filtro de modalidades. Se avisa aquí y el backend además lo
+        // rechaza. Ver PlanillaDosPasosService::tandaMezclada.
+        if (data.mezcla_extraordinaria) {
+            cont.innerHTML = avisoEnlace('#fffbeb', '#fde68a', '#92400e',
+                '⚠️ Esta tanda mezcla modalidades <strong>extraordinarias</strong> (Tipo E - Caja / Pensión) '
+                + 'con las normales, y esas van en su propio archivo. Marque arriba, en el filtro de '
+                + 'modalidades, solo las extraordinarias y liquídelas aparte; después las demás.');
+            return;
+        }
+
         data.operadores.forEach(op => {
             // Motivos por los que no se puede liquidar con ese operador.
             let bloqueo = null;
@@ -2649,14 +2662,17 @@ async function cargarEstadoEnlace() {
                 let bloqueoP2 = null;
                 if (!op.e1.paso1_liquidado) {
                     bloqueoP2 = 'Primero hay que liquidar la planilla del paso 1.';
-                } else if (!op.e1.pago_confirmado) {
+                } else if (!op.e1.automatico && !op.e1.pago_confirmado) {
+                    // En Solo Caja (`automatico`) la fecha de pago la revela el
+                    // operador al primer intento, así que la corrección puede
+                    // salir sin esperar la confirmación manual del pago.
                     bloqueoP2 = 'La planilla del paso 1 todavía no tiene el pago confirmado. '
                               + 'El operador rechaza una corrección sobre una planilla sin pagar.';
                 }
 
                 crearBoton(
                     (op.e1.paso2 && op.e1.paso2.estado === 'validada' ? '✅ ' : '2️⃣ ')
-                        + 'Paso 2 · Corrección (salud + ARL + caja)',
+                        + 'Paso 2 · ' + (op.e1.etiqueta_paso2 || 'Corrección'),
                     2, bloqueoP2
                 );
 
@@ -2668,6 +2684,12 @@ async function cargarEstadoEnlace() {
                     const aviso = document.createElement('div');
                     aviso.innerHTML = avisoEnlace('#f0fdf4', '#bbf7d0', '#166534',
                         `✅ Pago del paso 1 confirmado el <strong>${op.e1.fecha_pago}</strong>. Ya se puede enviar la corrección.`);
+                    cont.appendChild(aviso);
+                } else if (op.e1.automatico && op.e1.paso1_liquidado && !op.e1.paso2) {
+                    const aviso = document.createElement('div');
+                    aviso.innerHTML = avisoEnlace('#eff6ff', '#bfdbfe', '#1e40af',
+                        '💡 La corrección se puede enviar en cuanto el paso 1 esté pagado en el operador. '
+                        + 'La fecha del pago la averigua BryNex sola: no hay que confirmarla aquí.');
                     cont.appendChild(aviso);
                 }
             } else {

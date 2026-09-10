@@ -334,6 +334,14 @@ class PlanoPilaTxtService
             if ((int) $_p->tipo_modalidad_id === PilaCotizanteCalculator::TIPO_E1 && $pasoE1 === 1 && ! $varianteE1) {
                 $ibcP = PilaCotizanteE1::ibcUnDia($ibcF);
             }
+            // Solo Caja y Solo Pensión no cotizan caja en el paso 1 —su campo
+            // 45 va en cero y el aporte entra en la corrección—, así que no
+            // suman nada aquí. En la corrección tampoco: el campo 20 de una
+            // planilla N repite el de la planilla que corrige, que es la línea
+            // A. Ver PilaCotizanteDosPasos.
+            if (in_array((int) $_p->tipo_modalidad_id, \App\Models\TipoModalidad::IDS_DOS_PASOS, true)) {
+                continue;
+            }
             $cajP = ! empty($_p->cod_caj_pila) ? $_p->cod_caj_pila : 'CCF68';
             $valorNomina += ($cajP === 'CCF68') ? 100 : $ibcP;
         }
@@ -543,7 +551,11 @@ class PlanoPilaTxtService
         // Con la marca de colombiano en el exterior la E-1 va sin administradora
         // de salud: quien está fuera del país no cotiza salud en Colombia, y el
         // calculador ya dejó el código vacío para decirlo.
-        $sinSaludE1 = $esE1 && $c['codEpsPila'] === '' && (int) $c['diasSalud'] === 0;
+        // `forzarSinSalud` es la misma decisión tomada por el calculador y no
+        // por el paso: las modalidades de dos pasos van sin salud en las dos líneas de
+        // la corrección, no solo en la A. Ver PilaCotizanteDosPasos.
+        $sinSaludE1 = ($esE1 || ! empty($c['forzarSinSalud']))
+                   && $c['codEpsPila'] === '' && (int) $c['diasSalud'] === 0;
         $codEps = ($esPlanillaY || $sinSaludE1) ? '' : (! empty($p->cod_eps_pila) ? $p->cod_eps_pila : $c['codEpsPila']);
         $codArl = ! empty($p->cod_arl_pila) ? $p->cod_arl_pila : ($codigoArlRs ?? '');
         $codCaj = $esPlanillaY ? '' : $c['codCcfPila'];
@@ -591,6 +603,18 @@ class PlanoPilaTxtService
         // pueden ser menores a 30") y eo.val.2.484, su equivalente en riesgos.
         if ($esE1 || ! empty($c['forzarIng'])) {
             $ing = 'X';
+
+            // Del segundo mes en adelante la fecha real de ingreso es de un
+            // período viejo, y marcarla junto al ING es eo.val.2.429 ("la fecha
+            // inicio reportada para la novedad ING no es válida, debe
+            // corresponder al periodo de cotización reportado"). El archivo del
+            // cliente que el operador ya aceptó marca ING **sin fecha**: la
+            // novedad aquí no dice que la persona entró este mes, dice que no
+            // se cotizan los 30 días. Solo aplica a quien pide forzarIng, para
+            // no cambiarle el archivo a la E-1.
+            if (! empty($c['forzarIng']) && $fechaIng !== $blanco10 && substr($fechaIng, 0, 7) < $periodoLiq) {
+                $fechaIng = $blanco10;
+            }
         }
 
         // Novedades que una variante de prueba quiera encender explícitamente.

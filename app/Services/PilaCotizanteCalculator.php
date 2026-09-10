@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\ConfiguracionBrynex;
+use App\Models\TipoModalidad;
 
 /**
  * PilaCotizanteCalculator
@@ -601,6 +602,13 @@ class PilaCotizanteCalculator
         // baste con borrar la clase y esta línea. Ver PilaCotizanteE1.
         if ($tipoModalidad === self::TIPO_E1) {
             $res = PilaCotizanteE1::ajustar($res, $p, $ibcFull, $codAfpPila, $sinCaja);
+        }
+
+        // ── Solo Caja y Solo Pensión: un subsistema, en dos planillas ───────
+        // Misma forma que la E-1 y por la misma razón: reglas propias que no
+        // comparte con nadie más. Ver PilaCotizanteDosPasos.
+        if (in_array($tipoModalidad, TipoModalidad::IDS_DOS_PASOS, true)) {
+            $res = PilaCotizanteDosPasos::ajustar($res, $p, $ibcFull, $codAfpPila);
         }
 
         return $res;

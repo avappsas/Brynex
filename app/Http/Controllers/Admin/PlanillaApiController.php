@@ -7,6 +7,7 @@ use App\Models\{OperadorCredencial, OperadorPlanilla, OperadorPlanillaApi, Razon
 use App\Services\CorreccionEnlaceService;
 use App\Services\CorreccionPensionFaltanteService;
 use App\Services\PlanillaE1Service;
+use App\Services\PlanillaDosPasosService;
 use App\Services\PlanoPilaTxtService;
 use App\Services\SuaporteApiService;
 use Illuminate\Http\Request;
@@ -43,9 +44,22 @@ class PlanillaApiController extends Controller
 
         $filtro = $this->filtroModalidades($validated['tipos_modalidad'] ?? []);
 
-        // La E-1 se paga en dos liquidaciones encadenadas, así que la pantalla
-        // necesita saber en cuál va la tanda. Ver PlanillaE1Service.
-        $esE1 = PlanillaE1Service::aplica($validated['tipos_modalidad'] ?? []);
+        // La E-1, Solo Caja y Solo Pensión se pagan en dos liquidaciones
+        // encadenadas, así que la pantalla necesita saber en cuál va la tanda.
+        // Ver PlanillaE1Service y PlanillaDosPasosService.
+        $esDosPasos = PlanillaDosPasosService::aplica($validated['tipos_modalidad'] ?? []);
+        $esE1 = $esDosPasos || PlanillaE1Service::aplica($validated['tipos_modalidad'] ?? []);
+
+        // Una tanda que mezcla extraordinarias con gente normal no se puede
+        // liquidar: ver PlanillaDosPasosService::tandaMezclada.
+        $mezclada = PlanillaDosPasosService::tandaMezclada(
+            $aliadoId,
+            (int) $validated['razon_social_id'],
+            (int) $validated['mes'],
+            (int) $validated['anio'],
+            (int) $validated['n_plano'],
+            $validated['tipos_modalidad'] ?? []
+        );
 
         $operadores = [];
 
@@ -102,7 +116,7 @@ class PlanillaApiController extends Controller
                 // Estado del flujo de dos pasos; null cuando la tanda no es E-1
                 // y la pantalla pinta el botón único de siempre.
                 'e1'            => $esE1
-                    ? $this->estadoE1($aliadoId, (int) $validated['razon_social_id'], $operador->id, $validated, $filtro, $planilla)
+                    ? $this->estadoE1($aliadoId, (int) $validated['razon_social_id'], $operador->id, $validated, $filtro, $planilla, $esDosPasos)
                     : null,
                 'planilla'      => $planilla ? [
                     'estado'          => $planilla->estado,
@@ -125,6 +139,7 @@ class PlanillaApiController extends Controller
         return response()->json([
             'disponible' => count($operadores) > 0,
             'motivo'     => $operadores ? null : 'Ninguna razón social tiene credenciales de operador configuradas.',
+            'mezcla_extraordinaria' => $mezclada,
             'operadores' => $operadores,
             'pendientes' => $this->pendientesDelPeriodo(
                 $aliadoId, (int) $validated['razon_social_id'],
@@ -134,9 +149,13 @@ class PlanillaApiController extends Controller
     }
 
     /**
-     * Dónde va la tanda dentro del flujo de dos pasos de la E-1: si el paso 1
-     * está liquidado, si su pago ya se confirmó (que es lo que habilita la
-     * corrección) y si el paso 2 ya salió. Ver PlanillaE1Service.
+     * Dónde va la tanda dentro del flujo de dos pasos: si el paso 1 está
+     * liquidado, si su pago ya se confirmó y si el paso 2 ya salió. Ver
+     * PlanillaE1Service y PlanillaDosPasosService.
+     *
+     * En Solo Caja y Solo Pensión la confirmación del pago no bloquea: la fecha
+     * la descubre el propio operador al primer intento (`automatico`), así que
+     * ahí solo sirve para mostrarla cuando existe.
      */
     private function estadoE1(
         int $aliadoId,
@@ -144,7 +163,8 @@ class PlanillaApiController extends Controller
         int $operadorId,
         array $validated,
         string $filtro,
-        ?OperadorPlanillaApi $paso1
+        ?OperadorPlanillaApi $paso1,
+        bool $dosPasos = false
     ): array {
         $paso2 = OperadorPlanillaApi::where('aliado_id', $aliadoId)
             ->where('razon_social_id', $razonSocialId)
@@ -165,6 +185,12 @@ class PlanillaApiController extends Controller
             'paso1_liquidado' => (bool) ($paso1 && $paso1->estado === 'validada' && $paso1->numero_planilla),
             'pago_confirmado' => (bool) $pago,
             'fecha_pago'      => $pago ? $pago->fecha->format('Y-m-d') : null,
+            // Solo Caja y Solo Pensión no esperan la confirmación del pago: el
+            // operador revela la fecha y BryNex reintenta con ella.
+            'automatico'      => $dosPasos,
+            'etiqueta_paso2'  => $dosPasos
+                ? PlanillaDosPasosService::etiquetaCorreccion($validated['tipos_modalidad'] ?? [])
+                : 'Corrección (salud + ARL + caja)',
             'paso2'           => $paso2 ? [
                 'estado'          => $paso2->estado,
                 'numero_planilla' => $paso2->numero_planilla,
@@ -229,6 +255,30 @@ class PlanillaApiController extends Controller
 
         $filtro = $this->filtroModalidades($validated['tipos_modalidad'] ?? []);
         $paso   = (int) ($validated['paso'] ?? 1);
+
+        // ── Tanda mezclada: no se liquida ────────────────────────────────
+        // Las modalidades extraordinarias van sin salud en el paso 1 y su
+        // corrección se busca por el mismo filtro con el que se liquidaron.
+        // Metidas en una tanda con gente normal quedan sin forma de corregirse
+        // y hay que volver a liquidar, que duplica la planilla en el operador.
+        // Ver PlanillaDosPasosService::tandaMezclada.
+        if (PlanillaDosPasosService::tandaMezclada(
+            $aliadoId,
+            (int) $validated['razon_social_id'],
+            (int) $validated['mes'],
+            (int) $validated['anio'],
+            (int) $validated['n_plano'],
+            $validated['tipos_modalidad'] ?? []
+        )) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Esta tanda mezcla modalidades extraordinarias (Tipo E - Caja / Pensión) '
+                    .'con las normales, y esas van en su propio archivo: en el paso 1 se reportan sin '
+                    .'salud, y su corrección se busca después por el mismo filtro con el que se '
+                    .'liquidaron. Marque en el filtro de modalidades solo las extraordinarias, '
+                    .'liquide, y después las demás.',
+            ], 422);
+        }
 
         // Multi-tenant: la razón social debe ser del aliado activo.
         $rs = RazonSocial::where('aliado_id', $aliadoId)
@@ -302,18 +352,24 @@ class PlanillaApiController extends Controller
         // pagada, porque de ahí salen los campos 9 y 10 del registro tipo 1.
         // Ver PlanillaE1Service.
         $opcionesPlano = [];
+        // Solo Caja descubre la fecha de pago preguntándole al operador, así
+        // que su corrección puede salir sin que nadie confirme el pago en
+        // BryNex. Ver PlanillaDosPasosService.
+        $esDosPasos = PlanillaDosPasosService::aplica($validated['tipos_modalidad'] ?? []);
 
         if ($paso === 2) {
-            if (! PlanillaE1Service::aplica($validated['tipos_modalidad'] ?? [])) {
+            if (! $esDosPasos && ! PlanillaE1Service::aplica($validated['tipos_modalidad'] ?? [])) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'La corrección solo existe en la modalidad E-1, y el filtro '
-                        . 'de modalidades debe traer únicamente esa. Con otras mezcladas, el '
-                        . 'paso 1 dejaría sin salud a gente que no está en este esquema.',
+                    'message' => 'La corrección solo existe en las modalidades E-1 y Solo Caja, y el '
+                        . 'filtro de modalidades debe traer únicamente una de ellas. Con otras '
+                        . 'mezcladas, el paso 1 dejaría sin salud a gente que no está en este esquema.',
                 ], 422);
             }
 
-            $contexto = PlanillaE1Service::contextoCorreccion($llave);
+            $contexto = $esDosPasos
+                ? PlanillaDosPasosService::contextoCorreccion($llave)
+                : PlanillaE1Service::contextoCorreccion($llave);
 
             if (! $contexto['ok']) {
                 return response()->json([
@@ -443,10 +499,56 @@ class PlanillaApiController extends Controller
             'clave_secreta' => $credencial->clave_secreta,
         ]);
 
-        $resultado = $api->liquidarPlanilla($rs->nit, $plano['contenido'], $plano['filename'], [
+        $opcionesApi = [
             'planillaNSoloNovedades' => (bool) ($validated['solo_novedades'] ?? false),
             'tipoArchivo'            => 'I',
-        ]);
+        ];
+
+        $resultado = $api->liquidarPlanilla($rs->nit, $plano['contenido'], $plano['filename'], $opcionesApi);
+
+        // ── 5b. La fecha de pago que revela el operador ──────────────────
+        // La corrección de Solo Caja sale con una fecha tentativa porque la API
+        // no devuelve la real. Si era otra, el rechazo la dice
+        // (`eo.val.1.043`): se rearma el archivo con ella y se reintenta una
+        // sola vez. Ver PlanillaDosPasosService.
+        if ($paso === 2 && $esDosPasos
+            && ($resultado['success'] ?? false) && ! ($resultado['liquidada'] ?? false)) {
+
+            $fechaReal = PlanillaDosPasosService::fechaPagoDelError(
+                $resultado['errores_empresa'] ?? [],
+                (string) $opcionesPlano['planilla_asociada']['fecha_pago']
+            );
+
+            if ($fechaReal) {
+                Log::info('Enlace API: el operador corrigió la fecha de pago de la planilla asociada', [
+                    'razon_social_id' => $rs->id,
+                    'planilla'        => $opcionesPlano['planilla_asociada']['numero'],
+                    'enviada'         => $opcionesPlano['planilla_asociada']['fecha_pago'],
+                    'real'            => $fechaReal,
+                ]);
+
+                $opcionesPlano['planilla_asociada']['fecha_pago'] = $fechaReal;
+
+                try {
+                    $plano = (new PlanoPilaTxtService())->construir(array_merge([
+                        'aliado_id'       => $aliadoId,
+                        'razon_social_id' => $rs->id,
+                        'mes'             => $validated['mes'],
+                        'anio'            => $validated['anio'],
+                        'n_plano'         => $validated['n_plano'],
+                        'tipos_modalidad' => $validated['tipos_modalidad'] ?? [],
+                        'codigo_operador' => (string) $operador->codigo_ni,
+                    ], $opcionesPlano));
+
+                    $resultado = $api->liquidarPlanilla($rs->nit, $plano['contenido'], $plano['filename'], $opcionesApi);
+                } catch (\Exception $e) {
+                    Log::error('Enlace API: error al rearmar la corrección con la fecha real', [
+                        'razon_social_id' => $rs->id,
+                        'message'         => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
 
         // Deja constancia de qué planilla corrige esta, para no tener que
         // reconstruir el número después leyendo el archivo.
@@ -483,6 +585,24 @@ class PlanillaApiController extends Controller
 
             $correcciones = (new CorreccionEnlaceService())
                 ->interpretar($resultado['errores_cotizante'] ?? [], $aliadoId);
+
+            // El operador no encuentra la planilla del paso 1 entre las
+            // pagadas: no es un archivo mal armado, es que falta el pago. Se
+            // cuenta distinto para que nadie salga a buscar un error que no
+            // existe. Ver PlanillaDosPasosService.
+            if ($paso === 2 && $esDosPasos
+                && PlanillaDosPasosService::faltaElPago($resultado['errores_empresa'] ?? [])) {
+
+                $numero = $opcionesPlano['planilla_asociada']['numero'] ?? '';
+
+                return response()->json([
+                    'success'    => false,
+                    'falta_pago' => true,
+                    'message'    => "La planilla {$numero} del paso 1 todavía no aparece pagada en el "
+                        .'operador. La corrección solo se puede enviar sobre una planilla ya pagada: '
+                        .'pague el paso 1 y vuelva a intentarlo.',
+                ], 422);
+            }
 
             return response()->json([
                 'success'          => true,
