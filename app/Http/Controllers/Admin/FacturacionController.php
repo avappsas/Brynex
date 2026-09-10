@@ -512,8 +512,22 @@ class FacturacionController extends Controller
             ->whereNull('deleted_at')
             ->sum('saldo_proximo');
 
+        // Los abonos son pagos posteriores que NO tocan `saldo_proximo`, asi que
+        // el pendiente hay que bajarlo con ellos o se le cobra al cliente algo
+        // que ya pago: 18 empresas venian mostrando $21,1 millones de mas.
+        // Solo se descuentan contra deuda: nunca convierten un pendiente en
+        // saldo a favor.
+        $abonosEmpresa = (int) DB::table('abonos')
+            ->join('facturas', 'facturas.id', '=', 'abonos.factura_id')
+            ->where('facturas.aliado_id', $aliadoId)
+            ->where('facturas.empresa_id', $empresa->id)
+            ->whereNull('facturas.deleted_at')
+            ->sum('abonos.valor');
+
         $saldoEmpresaFavor = $saldoNetoEmpresa > 0 ? (int) $saldoNetoEmpresa : 0;
-        $saldoEmpresaPendiente = $saldoNetoEmpresa < 0 ? (int) abs($saldoNetoEmpresa) : 0;
+        $saldoEmpresaPendiente = $saldoNetoEmpresa < 0
+            ? max(0, (int) abs($saldoNetoEmpresa) - $abonosEmpresa)
+            : 0;
 
         // Las facturas que arman ese saldo neto, para poder ver de dónde sale.
         // Mismas condiciones que la suma de arriba, sin las que quedaron en cero.

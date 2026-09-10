@@ -88,9 +88,13 @@ class PrestamosController extends Controller
                 // Saldo a nivel de lote — usa valor_prestamo como fuente de verdad.
                 // valor_prestamo = monto explícito del préstamo al facturar ($22K total).
                 // Fallback: abs(saldo_proximo) para facturas antiguas sin valor_prestamo.
-                $saldoLote = $valorPrestamo > 0
-                    ? max(0, $valorPrestamo - $abonosLote)
-                    : max(0, abs((int)$lote->sum('saldo_proximo')) - $abonosLote);
+                // Manda la deuda mas grande de las dos: `valor_prestamo` es lo que
+                // se pacto al facturar y a veces quedo por debajo de lo que la
+                // factura realmente debia (17 lotes asi en la base). Cuando eso
+                // pasa y hay un abono, la resta daba 0 y el lote DESAPARECIA del
+                // listado con deuda viva — EL EMBAL escondia $549.200 de julio.
+                $deudaLote = max($valorPrestamo, abs((int) $lote->sum('saldo_proximo')));
+                $saldoLote = max(0, $deudaLote - $abonosLote);
                 return (object)[
                     'numero_factura'  => $primera->numero_factura,
                     'mes'             => $primera->mes,
