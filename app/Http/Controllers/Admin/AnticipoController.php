@@ -343,11 +343,20 @@ class AnticipoController extends Controller
 
         $anticipos = $query->get();
 
+        // Los maestros ('distribuido') no son plata aparte: son el contenedor del
+        // anticipo que la empresa entregó de una vez, y su valor ya está repartido
+        // en los hijos. Sumarlos contaba dos veces lo mismo — en Brygar inflaba el
+        // disponible de $3.163.100 a $22.579.800, y el recibido igual. Siguen en
+        // el listado (son el agrupador que explica de dónde salen los hijos),
+        // pero fuera de los totales. Mismo criterio que el informe financiero.
+        $paraTotales = $anticipos->whereNull('deleted_at')
+            ->where('estado', '!=', Anticipo::ESTADO_DISTRIBUIDO);
+
         $totales = [
-            'recibido'  => $anticipos->whereNull('deleted_at')->sum('valor'),
-            'aplicado'  => $anticipos->whereNull('deleted_at')->sum('valor_aplicado'),
-            'disponible'=> $anticipos->whereNull('deleted_at')->sum('valor_disponible'),
-            'devuelto'  => $anticipos->where('estado', Anticipo::ESTADO_DEVUELTO)->whereNull('deleted_at')->sum('valor'),
+            'recibido'  => $paraTotales->sum('valor'),
+            'aplicado'  => $paraTotales->sum('valor_aplicado'),
+            'disponible'=> $paraTotales->sum('valor_disponible'),
+            'devuelto'  => $paraTotales->where('estado', Anticipo::ESTADO_DEVUELTO)->sum('valor'),
             'anulado'   => $incluyeAnulados ? $anticipos->sum('valor') : 0,
         ];
 
