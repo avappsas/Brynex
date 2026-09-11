@@ -327,8 +327,18 @@ class AnticipoController extends Controller
         // Si se filtra por 'anulado', usar onlyTrashed
         $incluyeAnulados = $estado === 'anulado';
 
+        // Al entrar por el card "Disponible" se listan los anticipos que forman
+        // ese saldo — todos los que aun tienen plata sin aplicar, de cualquier
+        // fecha — para poder cuadrar la cifra contra la lista renglon por
+        // renglon. El rango de fechas no aplica aqui: un saldo no depende de
+        // cuando entro el dinero.
+        $soloDisponibles = $request->input('ver') === 'disponibles';
+
         $query = Anticipo::where('aliado_id', $aliadoId)
-            ->whereBetween('fecha_pago', [$desde, $hasta])
+            ->when(! $soloDisponibles, fn ($q) => $q->whereBetween('fecha_pago', [$desde, $hasta]))
+            ->when($soloDisponibles, fn ($q) => $q
+                ->whereIn('estado', [Anticipo::ESTADO_DISPONIBLE, Anticipo::ESTADO_PARCIAL])
+                ->whereRaw('valor - valor_aplicado > 0'))
             ->with(['contrato.cliente', 'empresa', 'factura', 'usuario'])
             ->orderBy('fecha_pago')
             ->orderBy('id');
@@ -360,8 +370,18 @@ class AnticipoController extends Controller
             'anulado'   => $incluyeAnulados ? $anticipos->sum('valor') : 0,
         ];
 
+        // "Disponible" es un saldo, no un movimiento del periodo: cuanta plata
+        // hay sin usar HOY no depende de en que fechas entro. Filtrado por rango
+        // decia $568.700 cuando el aliado tenia $3.163.100 para aplicar, y la
+        // vista de empresa mostraba saldos que aqui no aparecian. Se calcula
+        // aparte, sin el rango; el del periodo queda como dato secundario.
+        $disponibleTotal = (int) Anticipo::where('aliado_id', $aliadoId)
+            ->whereNull('deleted_at')
+            ->where('estado', '!=', Anticipo::ESTADO_DISTRIBUIDO)
+            ->sum(DB::raw('valor - valor_aplicado'));
+
         return view('admin.anticipos.informe', compact(
-            'anticipos', 'totales', 'desde', 'hasta', 'estado'
+            'anticipos', 'totales', 'desde', 'hasta', 'estado', 'disponibleTotal', 'soloDisponibles'
         ));
     }
 

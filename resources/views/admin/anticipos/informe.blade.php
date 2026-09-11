@@ -220,11 +220,20 @@
             <span class="ant-card-val">${{ number_format($totales['aplicado'], 0, ',', '.') }}</span>
             <span style="font-size:.68rem;opacity:.75;">Ya vinculado a facturas</span>
         </div>
-        <div class="ant-card ant-card-disponible">
+        {{-- Clickeable: lleva a la lista de los anticipos que forman ese saldo,
+             para poder cuadrarlo renglón por renglón. --}}
+        <a href="{{ route('admin.anticipos.informe') }}?ver=disponibles"
+           class="ant-card ant-card-disponible" style="text-decoration:none;cursor:pointer;"
+           title="Ver los anticipos que aún tienen saldo sin aplicar">
             <span class="ant-card-label">⏳ Disponible</span>
-            <span class="ant-card-val">${{ number_format($totales['disponible'], 0, ',', '.') }}</span>
-            <span style="font-size:.68rem;opacity:.75;">Saldo sin usar</span>
-        </div>
+            {{-- El saldo va completo, sin el filtro de fechas: es lo que hay para
+                 aplicar hoy, no un movimiento del periodo. --}}
+            <span class="ant-card-val">${{ number_format($disponibleTotal ?? $totales['disponible'], 0, ',', '.') }}</span>
+            <span style="font-size:.68rem;opacity:.75;">Saldo sin usar · clic para ver el detalle</span>
+            @if(! ($soloDisponibles ?? false) && ($disponibleTotal ?? 0) != $totales['disponible'])
+                <span style="font-size:.68rem;opacity:.75;">De lo recibido en este rango: ${{ number_format($totales['disponible'], 0, ',', '.') }}</span>
+            @endif
+        </a>
         <div class="ant-card ant-card-devuelto">
             <span class="ant-card-label">↩️ Devuelto</span>
             <span class="ant-card-val">${{ number_format($totales['devuelto'], 0, ',', '.') }}</span>
