@@ -261,7 +261,7 @@
                     <th>Fecha pago</th>
                     <th>Cliente / Empresa</th>
                     <th>Forma</th>
-                    <th>Referencia</th>
+                    <th>Empresa</th>
                     <th style="text-align:right">Valor</th>
                     <th style="text-align:right">Aplicado</th>
                     <th style="text-align:right">Disponible</th>
@@ -316,9 +316,21 @@
                     </span>
                 </td>
 
-                {{-- Referencia --}}
-                <td style="font-size:.72rem;color:#64748b;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                    {{ $ant->referencia ?? '—' }}
+                {{-- Empresa a la que pertenece (la del anticipo, o la del cliente).
+                     La empresa 1 es el cajón de los que no tienen ninguna. --}}
+                @php
+                    $empId  = $ant->empresa_id ?: ($ant->contrato?->cliente?->cod_empresa ?? null);
+                    $empNom = ($empId && (int) $empId !== 1)
+                        ? ($empresasPorId[$empId] ?? null)
+                        : null;
+                @endphp
+                <td style="font-size:.7rem;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                    title="{{ $empNom ?? 'Sin empresa' }}">
+                    @if($empNom)
+                        <span style="color:#334155;font-weight:700;">{{ $empNom }}</span>
+                    @else
+                        <span style="color:#94a3b8;">Individual</span>
+                    @endif
                 </td>
 
                 {{-- Valor total --}}

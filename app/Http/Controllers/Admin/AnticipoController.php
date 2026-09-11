@@ -375,13 +375,18 @@ class AnticipoController extends Controller
         // decia $568.700 cuando el aliado tenia $3.163.100 para aplicar, y la
         // vista de empresa mostraba saldos que aqui no aparecian. Se calcula
         // aparte, sin el rango; el del periodo queda como dato secundario.
+        // Nombre de empresa por id, para la columna del listado: el anticipo
+        // individual no trae empresa propia, la hereda del cliente
+        // (clientes.cod_empresa). Un solo query en vez de uno por fila.
+        $empresasPorId = Empresa::where('aliado_id', $aliadoId)->pluck('empresa', 'id');
+
         $disponibleTotal = (int) Anticipo::where('aliado_id', $aliadoId)
             ->whereNull('deleted_at')
             ->where('estado', '!=', Anticipo::ESTADO_DISTRIBUIDO)
             ->sum(DB::raw('valor - valor_aplicado'));
 
         return view('admin.anticipos.informe', compact(
-            'anticipos', 'totales', 'desde', 'hasta', 'estado', 'disponibleTotal', 'soloDisponibles'
+            'anticipos', 'totales', 'desde', 'hasta', 'estado', 'disponibleTotal', 'soloDisponibles', 'empresasPorId'
         ));
     }
 
