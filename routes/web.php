@@ -825,6 +825,7 @@ Route::middleware('auth')->group(function () {
         Route::middleware('permiso:brynex_razones.ver')->group(function () use ($brs, $bob) {
             Route::get('/', [$brs, 'index'])->name('index');
             Route::get('/tablero', [$brs, 'tablero'])->name('tablero');
+            Route::get('/afiliados-excel', [$brs, 'afiliadosExcel'])->name('afiliados_excel');
             Route::get('/calendario', [$bob, 'calendario'])->name('calendario');
             Route::get('/{id}', [$brs, 'show'])->whereNumber('id')->name('show');
             Route::get('/documentos/{id}/descargar', [$bob, 'descargarDocumento'])->name('documentos.descargar');

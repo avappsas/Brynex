@@ -298,6 +298,13 @@
                 Este es el número que no se ve desde el panel de ningún aliado: ante la ley todos están en la misma empresa.
             </p>
 
+            @if($afiliados['total'] > 0)
+                <a href="{{ route('brynex.razones.afiliados_excel', ['nit' => $ficha->nit]) }}"
+                   style="display:inline-block;background:#047857;color:#fff;text-decoration:none;padding:0.4rem 0.9rem;border-radius:8px;font-size:0.8rem;font-weight:700;margin-bottom:1rem;">
+                    📥 Descargar los {{ number_format($afiliados['total'], 0, ',', '.') }} afiliados en Excel
+                </a>
+            @endif
+
             <table style="width:100%;border-collapse:collapse;font-size:0.87rem;">
                 <thead>
                     <tr style="background:#f8fafc;color:#475569;font-size:0.72rem;text-transform:uppercase;text-align:left;">

@@ -173,8 +173,14 @@
                                 </span>
                             @endif
                         </td>
-                        <td style="padding:0.65rem 0.7rem;text-align:right;font-weight:700;color:{{ $r->afiliados > 0 ? '#0f172a' : '#cbd5e1' }};font-variant-numeric:tabular-nums;">
+                        <td style="padding:0.65rem 0.7rem;text-align:right;font-weight:700;color:{{ $r->afiliados > 0 ? '#0f172a' : '#cbd5e1' }};font-variant-numeric:tabular-nums;white-space:nowrap;">
                             {{ number_format($r->afiliados, 0, ',', '.') }}
+                            @if($r->afiliados > 0)
+                                {{-- La lista detrás del número, con el aliado de cada contrato. --}}
+                                <a href="{{ route('brynex.razones.afiliados_excel', ['nit' => $r->nit]) }}"
+                                   title="Descargar los {{ number_format($r->afiliados, 0, ',', '.') }} afiliados vigentes en Excel"
+                                   style="text-decoration:none;margin-left:0.35rem;font-size:0.85rem;">📥</a>
+                            @endif
                         </td>
                         <td style="padding:0.65rem 0.7rem;color:#475569;font-size:0.78rem;">
                             {{ $r->regimen ? ($r->regimen === 'RST' ? 'Simple' : 'Ordinario') : '—' }}

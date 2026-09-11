@@ -261,6 +261,109 @@ class BrynexRazonSocialController extends Controller
             ->with('success', "Ficha creada: {$vinculos} razón(es) social(es) enlazada(s) y {$generadas} obligaciones generadas.");
     }
 
+    // ─── Afiliados vigentes en Excel ──────────────────────────────────
+
+    /**
+     * Descarga los afiliados vigentes de un NIT, de todos los aliados.
+     *
+     * El listado muestra el conteo cruzado por NIT; esto es la lista detrás
+     * de ese número. Va por NIT y no por ficha a propósito: la mayoría de las
+     * razones sociales del listado no tienen ficha creada y el contador
+     * necesita la lista igual.
+     *
+     * La última columna es el aliado: es la única forma de saber a quién
+     * reclamarle por una persona de la lista.
+     */
+    public function afiliadosExcel(Request $request)
+    {
+        $nit = (int) preg_replace('/\D/', '', (string) $request->get('nit'));
+
+        abort_if($nit < 100000000, 404, 'NIT inválido.');
+
+        $rs = DB::table('razones_sociales')->where('nit', $nit)->first(['razon_social']);
+        abort_if(! $rs, 404, 'Ese NIT no está registrado por ningún aliado.');
+
+        // Cruza aliados a propósito, igual que el listado: el join a clientes
+        // sí lleva el aliado, porque la cédula sola trae la ficha de otro.
+        $filas = DB::table('contratos as c')
+            ->join('razones_sociales as rs', 'rs.id', '=', 'c.razon_social_id')
+            ->join('aliados as al', 'al.id', '=', 'c.aliado_id')
+            ->leftJoin('clientes as cl', function ($j) {
+                $j->on('cl.cedula', '=', 'c.cedula')->on('cl.aliado_id', '=', 'c.aliado_id');
+            })
+            ->leftJoin('empresas as em', function ($j) {
+                $j->on('em.id', '=', 'cl.cod_empresa')->on('em.aliado_id', '=', 'cl.aliado_id');
+            })
+            ->leftJoin('eps as e', 'e.id', '=', 'c.eps_id')
+            ->leftJoin('pensiones as p', 'p.id', '=', 'c.pension_id')
+            ->leftJoin('cajas as cj', 'cj.id', '=', 'c.caja_id')
+            ->leftJoin('arls as ar', 'ar.id', '=', 'c.arl_id')
+            ->leftJoin('tipo_modalidad as tm', 'tm.id', '=', 'c.tipo_modalidad_id')
+            ->leftJoin('planes_contrato as pl', 'pl.id', '=', 'c.plan_id')
+            ->where('rs.nit', $nit)
+            ->where('c.estado', 'vigente')
+            ->orderBy('al.nombre')
+            ->orderBy('cl.primer_apellido')
+            ->get([
+                'c.cedula', 'c.cargo', 'c.fecha_ingreso', 'c.salario', 'c.ibc', 'c.n_arl',
+                'cl.tipo_doc', 'cl.celular', 'cl.telefono', 'cl.correo',
+                DB::raw("LTRIM(RTRIM(ISNULL(cl.primer_nombre,'')+' '+ISNULL(cl.segundo_nombre,'')+' '+ISNULL(cl.primer_apellido,'')+' '+ISNULL(cl.segundo_apellido,''))) as nombre_completo"),
+                'rs.razon_social',
+                'em.empresa',
+                'e.nombre as eps_nombre',
+                'p.razon_social as pension_nombre',
+                'cj.nombre as caja_nombre',
+                'ar.nombre_arl as arl_nombre',
+                'tm.tipo_modalidad as modalidad_nombre',
+                'pl.nombre as plan_nombre',
+                'al.nombre as aliado',
+            ]);
+
+        $archivo = 'afiliados_'.$nit.'_'.now()->format('Ymd_His').'.csv';
+
+        return response()->streamDownload(function () use ($filas, $nit) {
+            $out = fopen('php://output', 'w');
+            fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF)); // BOM: sin esto Excel parte las tildes
+            fputcsv($out, [
+                'NIT', 'Razón social', 'Tipo doc', 'Cédula', 'Nombre completo',
+                'Celular', 'Teléfono', 'Correo', 'Empresa',
+                'EPS', 'Pensión', 'Caja', 'ARL', 'Nivel ARL',
+                'Modalidad', 'Plan', 'Cargo', 'Fecha ingreso', 'Salario', 'IBC',
+                'Aliado',
+            ], ';');
+
+            foreach ($filas as $f) {
+                fputcsv($out, [
+                    $nit,
+                    $f->razon_social,
+                    $f->tipo_doc,
+                    $f->cedula,
+                    // Un contrato cuyo cliente no está en el mismo aliado deja
+                    // el nombre vacío: se marca en vez de dejar la celda muda.
+                    $f->nombre_completo !== '' ? $f->nombre_completo : '(sin ficha de cliente)',
+                    $f->celular,
+                    $f->telefono,
+                    $f->correo,
+                    $f->empresa,
+                    $f->eps_nombre,
+                    $f->pension_nombre,
+                    $f->caja_nombre,
+                    $f->arl_nombre,
+                    $f->n_arl,
+                    $f->modalidad_nombre,
+                    $f->plan_nombre,
+                    $f->cargo,
+                    sqldate($f->fecha_ingreso)?->format('d/m/Y'),
+                    $f->salario,
+                    $f->ibc,
+                    $f->aliado,
+                ], ';');
+            }
+
+            fclose($out);
+        }, $archivo, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
     // ─── Ficha ────────────────────────────────────────────────────────
 
     public function show(Request $request, int $id)
