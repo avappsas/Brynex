@@ -9,6 +9,7 @@ use App\Models\Incapacidad;
 use App\Models\Radicado;
 use App\Models\User;
 use App\Services\CompresorDocumentoService;
+use App\Services\ExcelIncapacidadesService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -135,26 +136,37 @@ class IncapacidadController extends Controller
         return (string) $valor;
     }
 
-    // ── INDEX ────────────────────────────────────────────────────────────────
-    public function index(Request $request)
+    // ── LISTA: FILTROS COMPARTIDOS ───────────────────────────────────────────
+    /** Texto del buscador de la lista (`cedula` es el nombre viejo, aún llega en links). */
+    private function busquedaIncapacidades(Request $request): string
     {
-        $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
+        return trim($request->busqueda ?? $request->cedula ?? '');
+    }
 
-        // Solo mostramos las incapacidades PADRE (raíz) en la lista principal
-        $query = Incapacidad::with([
-            'quienRecibe:id,nombre',
-            'latestGestion',
-            'prorrogas:id,incapacidad_padre_id,fecha_inicio,numero_proroga,estado,valor_esperado', // para calcular valor pendiente
-        ])
-            ->withCount('prorrogas')
-            ->where('aliado_id', $alidoId)
-            ->whereNull('incapacidad_padre_id');
+    /**
+     * ¿El usuario pidió expresamente un estado final desde el filtro de columna?
+     *
+     * Si lo pidió, la regla de ocultar las cerradas no aplica: dejaría la tabla
+     * vacía sin explicación.
+     */
+    private function pidioEstadoFinal(Request $request): bool
+    {
+        return $request->filled('estado')
+            && in_array($request->get('estado'), self::ESTADOS_FINALES, true);
+    }
 
-        // ── Filtros ─────────────────────────────────────────────────────────
-        $busqueda = trim($request->busqueda ?? $request->cedula ?? '');
-        $hayBusqueda = strlen($busqueda) > 0;
+    /**
+     * Filtros de la lista de incapacidades raíz.
+     *
+     * Vive aparte porque tiene dos entradas: la tabla y la descarga en Excel.
+     * Mientras compartan esta función, el archivo trae exactamente las mismas
+     * incapacidades que el usuario está viendo en pantalla.
+     */
+    private function aplicarFiltrosIncapacidades(Request $request, $query, int $alidoId)
+    {
+        $busqueda = $this->busquedaIncapacidades($request);
 
-        if ($hayBusqueda) {
+        if (strlen($busqueda) > 0) {
             $query->where(function ($q) use ($busqueda) {
                 $q->where('cedula_usuario', 'like', '%'.$busqueda.'%')
                     ->orWhereIn('cedula_usuario', function ($subquery) use ($busqueda) {
@@ -200,14 +212,64 @@ class IncapacidadController extends Controller
 
         // Si hay búsqueda: mostrar TODAS (pagadas, rechazadas, activas)
         // Sin búsqueda: ocultar estados finales/cerrados por defecto.
-        // Excepción: si el usuario eligió un estado final desde el filtro de la
-        // columna Estado, ocultarlo dejaría la tabla vacía sin explicación.
-        $estadosInactivosDefault = self::ESTADOS_FINALES;
-        $pidioEstadoFinal = $request->filled('estado')
-            && in_array($request->get('estado'), $estadosInactivosDefault, true);
-        if (! $hayBusqueda && ! $request->boolean('con_cerradas') && ! $pidioEstadoFinal) {
-            $query->whereNotIn('estado', $estadosInactivosDefault);
+        if (strlen($busqueda) === 0 && ! $request->boolean('con_cerradas') && ! $this->pidioEstadoFinal($request)) {
+            $query->whereNotIn('estado', self::ESTADOS_FINALES);
         }
+
+        return $query;
+    }
+
+    /**
+     * Descarga en Excel las incapacidades que el usuario tiene filtradas.
+     *
+     * Dos hojas: "Originales" y "Prórrogas". Juntas en una sola, la prórroga
+     * repite cédula, entidad y razón social de su padre, así que sumar la
+     * columna de días o la de valor esperado da de más y contar filas deja de
+     * ser contar casos.
+     *
+     * Respeta los filtros de la pantalla, incluida la regla de esconder las
+     * cerradas: lo que se descarga es lo que se está viendo. Para bajarlas
+     * todas, "ver cerradas" y sin filtros.
+     */
+    public function exportarExcel(Request $request, ExcelIncapacidadesService $excel)
+    {
+        $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
+
+        // Fábrica y no consulta: el servicio la arma dos veces (las filas de la
+        // hoja de originales, y la subconsulta que busca sus prórrogas).
+        $consulta = fn () => $this->aplicarFiltrosIncapacidades(
+            $request,
+            Incapacidad::where('aliado_id', $alidoId)->whereNull('incapacidad_padre_id'),
+            $alidoId
+        );
+
+        $nombreAliado = (string) DB::table('aliados')->where('id', $alidoId)->value('nombre');
+
+        return $excel->descargar($consulta, $alidoId, $nombreAliado);
+    }
+
+    // ── INDEX ────────────────────────────────────────────────────────────────
+    public function index(Request $request)
+    {
+        $alidoId = session('aliado_id_activo') ?? Auth::user()->aliado_id;
+
+        // Solo mostramos las incapacidades PADRE (raíz) en la lista principal
+        $query = Incapacidad::with([
+            'quienRecibe:id,nombre',
+            'latestGestion',
+            'prorrogas:id,incapacidad_padre_id,fecha_inicio,numero_proroga,estado,valor_esperado', // para calcular valor pendiente
+        ])
+            ->withCount('prorrogas')
+            ->where('aliado_id', $alidoId)
+            ->whereNull('incapacidad_padre_id');
+
+        // ── Filtros ─────────────────────────────────────────────────────────
+        $busqueda = $this->busquedaIncapacidades($request);
+        $hayBusqueda = strlen($busqueda) > 0;
+        $estadosInactivosDefault = self::ESTADOS_FINALES;
+        $pidioEstadoFinal = $this->pidioEstadoFinal($request);
+
+        $this->aplicarFiltrosIncapacidades($request, $query, $alidoId);
 
         $vista = $request->get('vista', 'agrupada'); // agrupada | plana
 

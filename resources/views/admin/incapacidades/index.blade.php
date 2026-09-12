@@ -149,6 +149,9 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
 .barra-top-form input{width:180px;}
 .barra-acciones{display:flex;gap:.35rem;flex-shrink:0;}
 .btn-claves{background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#1c1917;border:none;box-shadow:0 1px 4px rgba(0,0,0,.12);}
+.btn-excel{background:#107c41;color:#fff;border:none;display:inline-flex;align-items:center;padding:.32rem .5rem;box-shadow:0 1px 4px rgba(0,0,0,.12);}
+.btn-excel:hover{background:#0b5c30;}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
 @media (max-width:1100px){ .barra-top-form{margin-left:0;} }
 
 /* ── Encabezados oscuros, como en cobros ────────────────────────────────── */
@@ -243,6 +246,19 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
     </form>
 
     <div class="barra-acciones">
+        {{-- Descarga lo que esté filtrado en pantalla, en dos hojas: originales
+             y prórrogas. Sin `page`: el archivo no se pagina. --}}
+        <a class="btn btn-sm btn-excel"
+           href="{{ route('admin.incapacidades.excel', Arr::except(request()->query(), ['page'])) }}"
+           title="Descargar en Excel — hojas separadas para originales y prórrogas, con los filtros actuales">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <path d="m9.5 13 5 5"/><path d="m14.5 13-5 5"/>
+            </svg>
+            <span class="sr-only">Descargar en Excel</span>
+        </a>
         <button class="btn btn-sm btn-claves" onclick="abrirModalClavesGlobal()">🔑 Claves</button>
         <button class="btn btn-sm btn-primary" onclick="abrirModalCrear()">➕ Nueva</button>
     </div>

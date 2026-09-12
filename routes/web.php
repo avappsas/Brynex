@@ -1009,6 +1009,9 @@ Route::middleware('auth')->group(function () {
     Route::prefix('admin/incapacidades')->name('admin.incapacidades.')->middleware(['permiso:incapacidades.ver', 'permiso.escritura:incapacidades.gestionar'])->group(function () {
         $ic = \App\Http\Controllers\Admin\IncapacidadController::class;
         Route::get('/', [$ic, 'index'])->name('index');
+        // Lo mismo que muestra la tabla, con los mismos filtros, en dos hojas:
+        // originales y prórrogas.
+        Route::get('/excel', [$ic, 'exportarExcel'])->name('excel');
         Route::post('/', [$ic, 'store'])->name('store');
         Route::put('/{id}', [$ic, 'update'])->name('update');
         Route::delete('/{id}', [$ic, 'destroy'])->name('destroy');
