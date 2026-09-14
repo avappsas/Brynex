@@ -1178,9 +1178,19 @@ class PlanoPagoController extends Controller
             // Mostrar pendientes y fallidos tal como pidió el usuario
             $destinatarios = $destinatarios->filter(fn($d) => in_array($d['envio_estado'], ['pendiente', 'fallido']));
         } elseif ($filtroEst === 'enviados') {
-            $destinatarios = $destinatarios->filter(fn($d) => $d['envio_estado'] === 'enviado');
+            // «enviado» es solo que Meta lo aceptó; el webhook lo asciende a
+            // entregado y leído. Los tres cuentan como enviados o una planilla
+            // que SÍ llegó se saldría de todos los filtros.
+            $destinatarios = $destinatarios->filter(fn($d) => in_array($d['envio_estado'], ['enviado', 'entregado', 'leido']));
         } elseif ($filtroEst === 'fallidos') {
             $destinatarios = $destinatarios->filter(fn($d) => $d['envio_estado'] === 'fallido');
+        } elseif ($filtroEst === 'entregados') {
+            $destinatarios = $destinatarios->filter(fn($d) => in_array($d['envio_estado'], ['entregado', 'leido']));
+        } elseif ($filtroEst === 'sin_confirmar') {
+            // Salieron y Meta nunca confirmó la entrega. Es el caso que se nos
+            // fue con las 136 de una empresa: verdes en pantalla y ninguna
+            // recibida, porque el número no tenía WhatsApp.
+            $destinatarios = $destinatarios->filter(fn($d) => $d['envio_estado'] === 'enviado');
         } elseif ($filtroEst === 'omitidos') {
             // PlanillaEnvioWhatsappJob marca «omitido» lo que no pudo intentar
             // (hoy: operador sin plantilla PDF autorizada).

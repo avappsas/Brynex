@@ -15,6 +15,7 @@ use App\Models\{
     ConsentimientoDato,
     IaConfiguracionAliado,
     MarketingBloqueado,
+    PlanillaEnvioWhatsappDetalle,
     WhatsappConfig,
     WhatsappConversacion,
     WhatsappMensaje
@@ -121,6 +122,20 @@ class WhatsappWebhookService
                 $phoneNumberId = $value['metadata']['phone_number_id'] ?? null;
                 if (!$phoneNumberId) continue;
 
+                // Las actualizaciones de estado (entregado, leído, fallido) van
+                // ANTES de resolver la config, y a propósito: se resuelven por
+                // `wa_message_id`, que es único en toda la cuenta, así que no
+                // necesitan saber de qué aliado son. Colgaban de la rama de
+                // config propia y la del número compartido de BryNex hace
+                // `continue` sin llegar hasta allá: todo aliado que usa la
+                // cuenta de BryNex perdía cada acuse que Meta reportaba. Por
+                // eso 46 planillas seguidas se quedaron en «enviado» sin una
+                // sola entrega ni un solo rebote — no es que no pasara nada,
+                // es que nadie lo escuchaba.
+                foreach ($value['statuses'] ?? [] as $status) {
+                    $this->procesarActualizacionEstado($status);
+                }
+
                 $config = WhatsappConfig::where('phone_number_id', $phoneNumberId)
                     ->where('activo', true)
                     ->first();
@@ -145,12 +160,6 @@ class WhatsappWebhookService
                 $mensajes = $value['messages'] ?? [];
                 foreach ($mensajes as $msg) {
                     $this->procesarMensajeEntrante($msg, $config->aliado_id, $config, $value);
-                }
-
-                // Actualizaciones de estado (entregado/leído)
-                $statuses = $value['statuses'] ?? [];
-                foreach ($statuses as $status) {
-                    $this->procesarActualizacionEstado($status);
                 }
             }
         }
@@ -514,8 +523,30 @@ class WhatsappWebhookService
             }
         }
 
+        $this->reflejarEstadoEnPlanilla($waMessageId, $estadoLocal, $status);
+
         // Emitir evento para actualizar ícono de estado en el chat
         broadcast(new WhatsappConversacionActualizada($mensaje->conversacion))->toOthers();
+    }
+
+    /**
+     * Lleva el estado que reporta Meta al detalle del envío de planillas.
+     *
+     * Hasta ahora esto solo se hacía con los masivos de cobros, y las planillas
+     * se quedaban en «enviado» para siempre. Pero «enviado» solo significa que
+     * Meta aceptó el mensaje: si el número no tiene WhatsApp, el rebote llega
+     * segundos después por webhook y quedaba únicamente en `whatsapp_mensajes`,
+     * donde nadie del módulo de planillas mira. Así se perdieron las 136 de una
+     * empresa sin que la pantalla dijera nada: verde, y ninguna entregada.
+     *
+     * Las reglas de qué estado pisa a cuál viven en el modelo, porque la misma
+     * decisión la toma `planillas:conciliar-entregas` al reconstruir el pasado.
+     */
+    private function reflejarEstadoEnPlanilla(string $waMessageId, string $estadoLocal, array $status): void
+    {
+        PlanillaEnvioWhatsappDetalle::where('wa_message_id', $waMessageId)
+            ->first()
+            ?->aplicarEstadoDeMeta($estadoLocal, $status['errors'] ?? null);
     }
 
     /**

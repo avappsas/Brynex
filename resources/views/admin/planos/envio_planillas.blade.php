@@ -252,6 +252,8 @@
                     <select x-model="estadoFiltro" @change="cargarDestinatarios()" style="padding: 0.3rem 0.5rem; font-size: 0.78rem; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; width: 155px; height: 30px; font-weight: 600;">
                         <option value="pendientes">Pendientes / Fallidos</option>
                         <option value="enviados">Enviados</option>
+                        <option value="entregados">Entregados</option>
+                        <option value="sin_confirmar">Sin confirmar entrega</option>
                         <option value="fallidos">Fallidos</option>
                         <option value="omitidos">Omitidos</option>
                         <option value="todos">Todos</option>
@@ -801,7 +803,7 @@
                 </div>
 
                 {{-- Un reenvío sobre algo ya enviado es un duplicado para quien recibe --}}
-                <template x-if="individualAConfirmar?.envio_estado === 'enviado'">
+                <template x-if="['enviado', 'entregado', 'leido'].includes(individualAConfirmar?.envio_estado)">
                     <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 0.85rem; margin-top: 1.15rem; display: flex; align-items: flex-start; gap: 0.5rem;">
                         <i class="fas fa-info-circle" style="color: #3b82f6; margin-top: 0.15rem; flex-shrink: 0;"></i>
                         <div style="font-size: 0.8rem; color: #1e3a8a; line-height: 1.45;">
@@ -1334,7 +1336,9 @@ function enviosPlanillaApp() {
         // Helpers de UI
         badgeEstado(estado) {
             return {
-                'enviado': 'badge-ok',
+                'enviado': 'badge-warn',
+                'entregado': 'badge-ok',
+                'leido': 'badge-ok',
                 'pendiente': 'badge-warn',
                 'fallido': 'badge-err',
                 'omitido': 'badge-info',
@@ -1342,9 +1346,14 @@ function enviosPlanillaApp() {
             }[estado] || 'badge-warn';
         },
 
+        // «Enviado» no es verde a propósito: significa que Meta aceptó el
+        // mensaje, no que haya llegado. El verde se lo gana «Entregado», que
+        // es el que confirma el webhook.
         etiquetaEstado(estado) {
             return {
-                'enviado': '🟢 Enviado',
+                'enviado': '📤 Enviado a Meta',
+                'entregado': '🟢 Entregado',
+                'leido': '🔵 Leído',
                 'pendiente': '⏳ Pendiente',
                 'fallido': '🔴 Fallido',
                 'omitido': '⚪ Omitido',
@@ -1476,7 +1485,7 @@ function enviosPlanillaApp() {
         },
 
         get contadorEnviados() {
-            return this.destinatarios.filter(d => (d.envio_state || d.envio_estado) === 'enviados' || (d.envio_state || d.envio_estado) === 'enviado').length;
+            return this.destinatarios.filter(d => ['enviado', 'entregado', 'leido'].includes(d.envio_state || d.envio_estado)).length;
         },
 
         get contadorPendientes() {
