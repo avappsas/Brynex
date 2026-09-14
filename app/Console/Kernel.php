@@ -96,6 +96,19 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/dataico.log'));
 
+        // ── Confirmación de afiliaciones en EPS SURA ──────────────────
+        // Cada noche a las 21:00 baja el informe de afiliados de cada empresa y
+        // pasa a OK confirmado (verde fuerte) los radicados de EPS de quienes ya
+        // son cotizantes con derecho. No vuelve a mirar confirmados ni retirados.
+        // Ejecución manual: php artisan eps:confirmar-sura --aliado=2 --simular
+        $schedule->command('eps:confirmar-sura')
+            ->dailyAt('21:00')
+            ->timezone('America/Bogota')
+            ->name('eps-confirmar-sura')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/eps-confirmacion.log'));
+
         // ── Reset mensual de n_plano ──────────────────────────────────
         // El día 1 de cada mes a las 00:01 (hora Colombia) resetea n_plano=1
         // y avanza mes_pagos/anio_pagos en todas las razones sociales.
