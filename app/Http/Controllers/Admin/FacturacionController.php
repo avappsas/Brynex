@@ -1590,7 +1590,15 @@ class FacturacionController extends Controller
         $empresaId = $validated['empresa_id'] ?? null;
         $saldoEmpresaAplicar = 0;
         $contratosPendientes = count(array_filter($validated['contratos']));
-        if ($empresaId && $esMasivo) {
+
+        // El modal puede decidir NO tomar el saldo a favor en esta factura, igual
+        // que se hace con la cartera pendiente: sirve para poder facturar mientras
+        // se corrige un saldo a favor que no corresponde (los "Otros" que no se
+        // cobraban dejaron varios falsos). Sin la casilla, se aplica como siempre.
+        $aplicarSaldo = ! array_key_exists('aplicar_saldo', $validated)
+            || (bool) $validated['aplicar_saldo'];
+
+        if ($empresaId && $esMasivo && $aplicarSaldo) {
             // ── Saldo neto REAL de la empresa (sin filtro de fecha) ──────────
             // Se debe sumar TODOS los saldo_proximo de empresa_id, incluyendo
             // los del mes actual ya facturados. Razón: al facturar un lote
@@ -1659,7 +1667,11 @@ class FacturacionController extends Controller
         // negativo: el cliente pagó de más antes y ahora abona menos. Se usa
         // como tolerancia en la guarda de pago incompleto del final de la
         // transacción. En empresa el crédito ya viene calculado arriba.
-        if ($empresaId) {
+        if (! $aplicarSaldo) {
+            // Sin crédito aplicado, el cliente paga el total: la guarda de pago
+            // incompleto no puede tolerar una diferencia que nadie va a cubrir.
+            $favorPrevioLote = 0;
+        } elseif ($empresaId) {
             $favorPrevioLote = $saldoEmpresaAplicar;
         } else {
             $favorPrevioLote = max(0, (int) Factura::where('aliado_id', $aliadoId)

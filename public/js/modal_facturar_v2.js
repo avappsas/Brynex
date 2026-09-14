@@ -37,6 +37,35 @@ const MF = (function () {
     let _total = 0;                // total calculado (planilla o afiliación)
     let _totalAfil = 0;            // costo afiliación
     let _saldoFavor = 0;
+    // El usuario puede pedir que el saldo a favor NO se descuente en esta factura
+    // (igual que la cartera pendiente, pero al reves: aqui viene marcado). Sirve
+    // para facturar mientras se corrige un saldo a favor que no corresponde.
+    let _aplicarFavor = true;
+
+    /** Lo que de verdad se descuenta: cero si el usuario desmarcó la casilla. */
+    function favorAplicado() {
+        return _aplicarFavor ? _saldoFavor : 0;
+    }
+
+    /** La casilla del badge verde: rehace las cuentas sin tocar el saldo guardado. */
+    function toggleFavor(checked) {
+        _aplicarFavor = !! checked;
+        recalc();
+    }
+
+    /**
+     * El badge verde del saldo a favor, con su casilla. Viene marcada: el
+     * comportamiento normal es descontarlo. Al desmarcarla, la factura sale por
+     * el total completo y el saldo queda intacto para cuando se corrija.
+     */
+    function badgeFavor(titulo, explica) {
+        return '<label class="mf-badge-favor" style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:.5rem;">'
+             + '<input type="checkbox" id="mf-chk-favor" checked onchange="MF.toggleFavor(this.checked)" '
+             + 'style="accent-color:#15803d;width:14px;height:14px;flex-shrink:0;">'
+             + '<span>✅ ' + titulo + ': ' + fmt(_saldoFavor)
+             + ' <span style="font-weight:500;font-size:.65rem;">(' + explica + ' — desmarca para no usarlo)</span></span>'
+             + '</label>';
+    }
     let _saldoPendiente = 0;
     let _pendienteActual = 0;      // lo que falta por registrar en el pago (lo pinta recalc)
     // Lo que puede faltar en una factura PAGADA sin rechazarla: el cliente que
@@ -447,7 +476,7 @@ const MF = (function () {
         // mes de ingreso: ese es su default, no "solo afiliación".
         const modoPorDefecto = _cfg.pagaMesActual ? 'ambos' : 'normal';
         document.querySelectorAll('input[name="mf_indep_modo"]').forEach(r => { r.checked = (r.value === modoPorDefecto); });
-        _saldoFavor = 0; _saldoPendiente = 0;
+        _saldoFavor = 0; _saldoPendiente = 0; _aplicarFavor = true;
         // Reset checkbox cartera
         const chkCart = document.getElementById('mf-chk-cartera');
         if (chkCart) chkCart.checked = false;
@@ -846,7 +875,7 @@ const MF = (function () {
                     saldoPanel.style.display = 'flex';
                     saldoPanel.style.flexDirection = 'column';
                     let html = '';
-                    if (_saldoFavor > 0) html += '<span class="mf-badge-favor">✅ Saldo a favor: ' + fmt(_saldoFavor) + ' (se descuenta del total)</span>';
+                    if (_saldoFavor > 0) html += badgeFavor('Saldo a favor', 'se descuenta del total');
                     if (_saldoPendiente > 0) html += '<label class="mf-badge-pendiente" style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:.5rem;"><input type="checkbox" id="mf-chk-cartera" onchange="MF.recalc()" style="accent-color:#dc2626;width:14px;height:14px;flex-shrink:0;"><span>⚠️ Cartera pendiente: ' + fmt(_saldoPendiente) + ' <span style="font-weight:500;font-size:.65rem;">(marcar para incluir en esta factura)</span></span></label>';
                     saldoPanel.innerHTML = html;
                 } else {
@@ -953,7 +982,7 @@ const MF = (function () {
                     saldoPanel.style.gap = '.3rem';
                     let html = '';
                     // Anticipo arriba — solo el total, sin desglose por persona
-                    if (_saldoFavor > 0) html += '<span class="mf-badge-favor">✅ Anticipo a favor: ' + fmt(_saldoFavor) + ' (se descuenta del pendiente)</span>';
+                    if (_saldoFavor > 0) html += badgeFavor('Anticipo a favor', 'se descuenta del pendiente');
                     if (_saldoPendiente > 0) html += '<label class="mf-badge-pendiente" style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:.5rem;"><input type="checkbox" id="mf-chk-cartera" onchange="MF.recalc()" style="accent-color:#dc2626;width:14px;height:14px;flex-shrink:0;"><span>⚠️ Cartera pendiente: ' + fmt(_saldoPendiente) + ' <span style="font-weight:500;font-size:.65rem;">(marcar para incluir en esta factura)</span></span></label>';
                     saldoPanel.innerHTML = html;
                 } else {
@@ -969,7 +998,7 @@ const MF = (function () {
                 const efInp = el('mf-efectivo');
                 if (efInp && parse(efInp.value) === 0) {
                     // Solo si el campo aún está en 0 (sin edición manual)
-                    const neto = Math.max(0, _total - _saldoFavor + _saldoPendiente);
+                    const neto = Math.max(0, _total - favorAplicado() + _saldoPendiente);
                     setVal('mf-efectivo', neto);
                     recalc(); // actualizar el saldo a pagar con el nuevo valor
                 }
@@ -1387,9 +1416,10 @@ const MF = (function () {
         const efect         = parse(el('mf-efectivo')?.value);
         const prest         = parse(el('mf-prestamo')?.value);
         const totalAnticipo = (window.MF_ANT ? MF_ANT.totalSeleccionado() : 0);
+        const favorUsado    = favorAplicado();
 
         // Calcular diferencia REAL (puede ser negativa = saldo a favor por exceso de pago)
-        const diferencia    = totalBruto - _saldoFavor - totalAnticipo - consigs - efect - prest;
+        const diferencia    = totalBruto - favorUsado - totalAnticipo - consigs - efect - prest;
         const pendiente     = Math.max(0, diferencia);
         const excedente     = diferencia < 0 ? Math.abs(diferencia) : 0; // saldo a favor generado por overpayment
         _pendienteActual    = pendiente;  // lo lee la guarda de "pagada sin plata" al guardar
@@ -1447,7 +1477,7 @@ const MF = (function () {
         // El pendiente de la derecha = (C1 total + C2 total) - pagos ingresados.
         if (_segundoContrato) {
             const totalC1C2    = totalBruto + (_segundoContrato.total || 0);
-            const difTotal     = totalC1C2 - _saldoFavor - totalAnticipo - consigs - efect - prest;
+            const difTotal     = totalC1C2 - favorAplicado() - totalAnticipo - consigs - efect - prest;
             const pendienteTotal = Math.max(0, difTotal);
             const excedenteTotal = difTotal < 0 ? Math.abs(difTotal) : 0;
             if (pEl) {
@@ -2005,6 +2035,9 @@ const MF = (function () {
                 empresa_id: _cfg.empresaId || null,
                 // Anticipos seleccionados (pagos previos sin factura)
                 anticipo_ids: (window.MF_ANT ? MF_ANT.ids() : []),
+                // Si el usuario desmarcó el saldo a favor, el backend no lo aplica
+                // y la factura sale por el total completo.
+                aplicar_saldo: _aplicarFavor,
                 // Cartera pendiente: si el usuario marcó el checkbox, se liquida
                 // la factura de préstamo anterior en el backend (sin duplicar ingresos).
                 incluir_cartera: document.getElementById('mf-chk-cartera')?.checked ?? false,
@@ -2243,7 +2276,7 @@ const MF = (function () {
         ANT.abrir(contratoId, empresaId, onRegistrado);
     }
 
-    return { init, abrir, cerrar, detectarTipo, actualizarTipo, cambiarPeriodo, onEstado, recalc, distRecalc, addConsig, guardar, toggleRetiro, onRetiroFecha, setMora, onMoraInput, seleccionarSegundoContrato, _abrirAnticipo, actualizarValoresDesdeAlpine };
+    return { init, abrir, cerrar, detectarTipo, actualizarTipo, cambiarPeriodo, onEstado, recalc, distRecalc, addConsig, guardar, toggleRetiro, onRetiroFecha, setMora, onMoraInput, seleccionarSegundoContrato, _abrirAnticipo, actualizarValoresDesdeAlpine, toggleFavor };
 
 })();
 
