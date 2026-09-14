@@ -122,6 +122,20 @@ class WhatsappWebhookService
                 $phoneNumberId = $value['metadata']['phone_number_id'] ?? null;
                 if (!$phoneNumberId) continue;
 
+                // Las actualizaciones de estado (entregado, leído, fallido) van
+                // ANTES de resolver la config, y a propósito: se resuelven por
+                // `wa_message_id`, que es único en toda la cuenta, así que no
+                // necesitan saber de qué aliado son. Colgaban de la rama de
+                // config propia y la del número compartido de BryNex hace
+                // `continue` sin llegar hasta allá: todo aliado que usa la
+                // cuenta de BryNex perdía cada acuse que Meta reportaba. Por
+                // eso 46 planillas seguidas se quedaron en «enviado» sin una
+                // sola entrega ni un solo rebote — no es que no pasara nada,
+                // es que nadie lo escuchaba.
+                foreach ($value['statuses'] ?? [] as $status) {
+                    $this->procesarActualizacionEstado($status);
+                }
+
                 $config = WhatsappConfig::where('phone_number_id', $phoneNumberId)
                     ->where('activo', true)
                     ->first();
@@ -146,12 +160,6 @@ class WhatsappWebhookService
                 $mensajes = $value['messages'] ?? [];
                 foreach ($mensajes as $msg) {
                     $this->procesarMensajeEntrante($msg, $config->aliado_id, $config, $value);
-                }
-
-                // Actualizaciones de estado (entregado/leído)
-                $statuses = $value['statuses'] ?? [];
-                foreach ($statuses as $status) {
-                    $this->procesarActualizacionEstado($status);
                 }
             }
         }
