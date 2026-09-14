@@ -7,6 +7,7 @@ use App\Models\Contrato;
 use App\Models\RazonSocial;
 use App\Services\ArlSura\ArlConciliacionService;
 use App\Services\ArlSura\ArlSuraSesionService;
+use App\Services\EpsSura\EpsSuraAfiliadosService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -115,5 +116,23 @@ class ArlConciliacionController extends Controller
         }
 
         return response()->json(['ok' => true, 'diferencias' => $diferencias]);
+    }
+
+    /**
+     * Los cotizantes que EPS SURA tiene en la empresa y no deberían estar (y los
+     * que faltan). Va en esta pantalla porque el desfase nace de la ARL: en
+     * ELITES, afiliar a la ARL a gente de Gestión ARL les activó la EPS.
+     */
+    public function epsSura(Request $request, string $nit, EpsSuraAfiliadosService $servicio)
+    {
+        @set_time_limit(360);
+
+        try {
+            $r = $servicio->conciliar($nit);
+        } catch (Throwable $e) {
+            return response()->json(['ok' => false, 'mensaje' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['ok' => true] + $r);
     }
 }

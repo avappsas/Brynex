@@ -8,28 +8,20 @@
  * responde "El afiliado no existe como cotizante de la empresa."—, que es
  * justo lo que hace falta para saber si el trámite de EPS ya está hecho.
  *
- * Mismo SSO que la ARL (ver arl-sura-sesion-comun.mjs); después del login la EPS
- * pide el NIT de la empresa en su propia pantalla, no pasa por la Sucursal
- * Virtual.
- *
  * Entrada por stdin: {tipoDocumento, usuario, contrasena, nitEmpresa,
  *                     documentos: [{tipo: 'CC', numero: '123'}]}
  * Salida por stdout: {ok, empresa, resultados: [{tipo, numero, encontrado,
  *                     estado, nombre, parentesco, cotiza, ips, empresa, mensaje}], error}
  */
 import puppeteer from 'puppeteer-core';
-import { loginSso, rutaChrome } from './arl-sura-sesion-comun.mjs';
+import { rutaChrome } from './arl-sura-sesion-comun.mjs';
+import { entrarEmpresaEps, esperar, pulsarId, texto } from './eps-sura-sesion-comun.mjs';
 
-const URL_LOGIN =
-  'https://login.sura.com/sso/servicelogin.aspx' +
-  '?continueTo=https%3A%2F%2Fepsapps.suramericana.com%2FSemp%2F&service=epssura';
-const URL_EMPRESA  = 'https://epsapps.suramericana.com/Semp/faces/empleadores/login/loginEmpresas.jspx';
 const URL_CONSULTA = 'https://epsapps.suramericana.com/Semp/faces/pos/afiliadosCotizantes/parametros.jspx';
 
 // Tipos de documento de BryNex → valores del select de la consulta.
 const TIPOS = { CC: 'CC', CE: 'CE', PA: 'PA', PP: 'PA', TI: 'TI', RC: 'RC', PT: 'PT', PPT: 'PT', PE: 'PE', PEP: 'PE', SC: 'SC', CD: 'CD' };
 
-const esperar = (ms) => new Promise(r => setTimeout(r, ms));
 const salir = (d) => { console.log(JSON.stringify(d)); process.exit(d.ok ? 0 : 1); };
 
 const leerStdin = async () => {
@@ -58,46 +50,6 @@ const navegador = await puppeteer.launch({
   args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled'],
 });
 
-/**
- * Pulsa un control por id y espera lo que el clic dispare. Los botones de JSF
- * son <a onclick="mojarra.jsfcljs(...)"> que envían el formulario: el evaluate
- * puede reventar con el contexto destruido justo porque sí navegó.
- */
-const pulsarId = async (pagina, id) => {
-  const navegacion = pagina.waitForNavigation({ waitUntil: 'networkidle2', timeout: 45000 }).catch(() => {});
-  try {
-    await pagina.evaluate((i) => document.getElementById(i)?.click(), id);
-  } catch (e) {
-    if (!/Execution context was destroyed|Target closed/i.test(String(e.message || e))) throw e;
-  }
-  await navegacion;
-};
-
-const texto = (pagina) => pagina.evaluate(() => document.body?.innerText || '').catch(() => '');
-
-/**
- * Espera a que la página deje de redirigir y muestre uno de los selectores.
- * Semp encadena redirecciones por JavaScript después de cargar: leer el DOM en
- * ese momento revienta con "Execution context was destroyed", así que se
- * reintenta hasta que un selector aparezca estable.
- *
- * @returns el primer selector encontrado, o null si se agotó el tiempo.
- */
-const esperarUno = async (pagina, selectores, ms = 30000) => {
-  const limite = Date.now() + ms;
-  while (Date.now() < limite) {
-    try {
-      for (const s of selectores) {
-        if (await pagina.$(s)) return s;
-      }
-    } catch (e) {
-      if (!/Execution context was destroyed|Cannot find context|Target closed/i.test(String(e.message || e))) throw e;
-    }
-    await esperar(700);
-  }
-  return null;
-};
-
 /** El valor de una fila etiqueta→valor del reporte detallado. */
 const campo = (t, etiqueta) => {
   const m = t.match(new RegExp(etiqueta + '[ \\t]*\\t[ \\t]*([^\\t\\n]*)', 'i'));
@@ -112,47 +64,10 @@ let empresa = null;
 try {
   pagina = await navegador.newPage();
 
+  // El paso se distingue: si falla el login, quien llama no debe insistir
+  // (Sura bloquea al usuario tras varios intentos fallidos).
   paso = 'login';
-  await loginSso(pagina, entrada, URL_LOGIN);
-
-  // ── Elegir la empresa ──
-  // Un mismo usuario administra varias empresas y el portal pregunta cuál. Si
-  // no pregunta (una sola empresa), la pantalla ya viene con el menú.
-  paso = 'elegir empresa';
-  // El SSO todavía puede estar llegando a Semp: se deja asentar antes de ir.
-  await esperar(3000);
-  await pagina.goto(URL_EMPRESA, { waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {});
-
-  const SEL_NIT = '[id="loginEmpresas:dniEmpresa"]';
-  const SEL_MENU = 'a[href*="afiliadosCotizantes"]';
-  const pantalla = await esperarUno(pagina, [SEL_NIT, SEL_MENU, '#suraPassword']);
-
-  if (pantalla === '#suraPassword' || /servicelogin/i.test(pagina.url())) {
-    throw new Error('El portal de EPS pidió login de nuevo después de iniciar sesión.');
-  }
-  if (!pantalla) {
-    throw new Error('No apareció ni la selección de empresa ni el menú del portal de EPS.');
-  }
-
-  if (pantalla === SEL_NIT) {
-    await pagina.select('[id="loginEmpresas:tipoDniEmpresa"]', 'NI').catch(() => {});
-    await pagina.click('[id="loginEmpresas:dniEmpresa"]', { clickCount: 3 });
-    await pagina.type('[id="loginEmpresas:dniEmpresa"]', String(nitEmpresa), { delay: 40 });
-    await pulsarId(pagina, 'loginEmpresas:generar');
-
-    // Entró cuando el formulario de la empresa desaparece; si sigue ahí, el
-    // portal no la aceptó (el usuario no la administra, NIT mal escrito).
-    let sigue = true;
-    for (let i = 0; i < 25 && sigue; i++) {
-      await esperar(800);
-      try { sigue = !!(await pagina.$(SEL_NIT)); } catch { sigue = true; }
-    }
-
-    if (sigue) {
-      const t = (await texto(pagina)).replace(/\s+/g, ' ').trim();
-      throw new Error(`El portal no aceptó la empresa ${nitEmpresa}: ${t.slice(0, 200)}`);
-    }
-  }
+  await entrarEmpresaEps(pagina, entrada);
 
   // ── Una consulta por documento ──
   for (const doc of documentos) {

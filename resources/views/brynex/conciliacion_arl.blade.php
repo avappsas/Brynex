@@ -157,9 +157,84 @@ function mostrarDetalle(nit, d) {
                 Revisa uno por uno a los que están en ambos lados; tarda más.
             </span>
             <div id="riesgos-${nit}" style="margin-top:.6rem;"></div>
+        </div>
+        <div style="border-top:1px solid #e2e8f0;padding-top:.6rem;margin-top:.6rem;">
+            <button onclick="verEpsSura('${nit}', this)"
+                    style="background:#0033a0;color:#fff;border:none;border-radius:6px;padding:.3rem .75rem;font-size:.75rem;font-weight:600;cursor:pointer;">
+                Revisar EPS SURA
+            </button>
+            <span style="font-size:.7rem;color:#64748b;margin-left:.5rem;">
+                Quién está activo en EPS SURA con esta empresa sin deberlo (p. ej. Gestión ARL o retirados). Solo consulta.
+            </span>
+            <div id="eps-${nit}" style="margin-top:.6rem;"></div>
         </div>`;
 
     tr.style.display = '';
+}
+
+// La depuración se pide a la EPS: el portal no deja anular, y el retiro solo
+// acepta fechas desde el primer día del mes anterior. Aquí solo se muestra.
+async function verEpsSura(nit, btn) {
+    const parar = esperando(btn, 'Leyendo el informe de afiliados de EPS SURA');
+    const caja  = document.getElementById('eps-' + nit);
+    const esc   = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+    let d;
+    try {
+        const r = await fetch(`/brynex/conciliacion-arl/${nit}/eps-sura`, { headers: { 'Accept': 'application/json' } });
+        d = await r.json();
+    } catch (e) {
+        d = { ok: false, mensaje: 'Se perdió la conexión con el servidor.' };
+    }
+
+    parar();
+    btn.disabled = false; btn.textContent = 'Revisar EPS SURA';
+
+    if (!d.ok) { caja.innerHTML = `<div style="font-size:.76rem;color:#b91c1c;">❌ ${esc(d.mensaje || 'No se pudo leer el portal de EPS.')}</div>`; return; }
+
+    const graves = d.sobran.filter(f => f.grave).length;
+    let html = `<div style="font-size:.74rem;color:#475569;margin-bottom:.5rem;">${d.en_eps} cotizantes en EPS SURA con esta empresa.</div>`;
+
+    html += !d.sobran.length
+        ? '<div style="font-size:.76rem;color:#16a34a;margin-bottom:.6rem;">✓ Nadie activo en EPS SURA sin deberlo.</div>'
+        : `<div style="margin-bottom:.9rem;">
+            <div style="font-size:.78rem;font-weight:700;color:#991b1b;margin-bottom:.2rem;">
+                Activos en EPS SURA sin deberlo (${d.sobran.length}${graves !== d.sobran.length ? `, ${graves} a depurar con la EPS` : ''})</div>
+            <div style="font-size:.7rem;color:#64748b;margin-bottom:.35rem;">
+                Los marcados en rojo hacen que la EPS espere aportes de la empresa. Se depuran pidiéndolo a EPS SURA.</div>
+            <table style="width:100%;border-collapse:collapse;font-size:.74rem;background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+                <tr style="background:#f1f5f9;text-align:left;">
+                    <th style="padding:.35rem .6rem;">Documento</th><th style="padding:.35rem .6rem;">Nombre</th>
+                    <th style="padding:.35rem .6rem;">Ingreso EPS</th><th style="padding:.35rem .6rem;">En EPS como</th>
+                    <th style="padding:.35rem .6rem;">Por qué no debería</th><th style="padding:.35rem .6rem;">Aliado</th>
+                </tr>
+                ${d.sobran.map(f => `<tr style="border-top:1px solid #f1f5f9;${f.grave ? 'background:#fef2f2;' : ''}">
+                    <td style="padding:.35rem .6rem;white-space:nowrap;">${esc(f.documento)}</td>
+                    <td style="padding:.35rem .6rem;">${esc(f.nombre)}</td>
+                    <td style="padding:.35rem .6rem;white-space:nowrap;">${esc(f.ingreso_eps)}</td>
+                    <td style="padding:.35rem .6rem;">${esc(f.tipo_afiliado)}${f.parentesco && f.parentesco !== 'TITULAR' ? ' · ' + esc(f.parentesco) : ''}</td>
+                    <td style="padding:.35rem .6rem;font-weight:${f.grave ? 700 : 400};color:${f.grave ? '#991b1b' : '#475569'};">${esc(f.motivo)}</td>
+                    <td style="padding:.35rem .6rem;">${esc(f.aliado ?? '—')}</td>
+                </tr>`).join('')}
+            </table></div>`;
+
+    html += !d.faltan.length
+        ? '<div style="font-size:.76rem;color:#16a34a;">✓ Todos los vigentes con EPS SURA en el plan están en EPS.</div>'
+        : `<div>
+            <div style="font-size:.78rem;font-weight:700;color:#92400e;margin-bottom:.35rem;">Vigentes con EPS SURA en el plan que no están en EPS (${d.faltan.length})</div>
+            <table style="width:100%;border-collapse:collapse;font-size:.74rem;background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+                <tr style="background:#f1f5f9;text-align:left;">
+                    <th style="padding:.35rem .6rem;">Documento</th><th style="padding:.35rem .6rem;">Nombre</th>
+                    <th style="padding:.35rem .6rem;">Plan</th><th style="padding:.35rem .6rem;">Desde</th><th style="padding:.35rem .6rem;">Aliado</th>
+                </tr>
+                ${d.faltan.map(f => `<tr style="border-top:1px solid #f1f5f9;">
+                    <td style="padding:.35rem .6rem;">${esc(f.documento)}</td><td style="padding:.35rem .6rem;">${esc(f.nombre)}</td>
+                    <td style="padding:.35rem .6rem;">${esc(f.plan ?? '—')}</td><td style="padding:.35rem .6rem;">${esc(f.desde ?? '—')}</td>
+                    <td style="padding:.35rem .6rem;">${esc(f.aliado ?? '—')}</td>
+                </tr>`).join('')}
+            </table></div>`;
+
+    caja.innerHTML = html;
 }
 
 async function verRiesgos(nit, btn) {

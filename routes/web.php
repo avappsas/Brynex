@@ -735,6 +735,7 @@ Route::middleware('auth')->group(function () {
             Route::get('/conciliacion-arl', [$acc, 'index'])->name('conciliacion_arl');
             Route::get('/conciliacion-arl/{nit}', [$acc, 'conciliar'])->name('conciliacion_arl.empresa');
             Route::get('/conciliacion-arl/{nit}/riesgos', [$acc, 'riesgos'])->name('conciliacion_arl.riesgos');
+            Route::get('/conciliacion-arl/{nit}/eps-sura', [$acc, 'epsSura'])->name('conciliacion_arl.eps_sura');
         });
 
         // Parámetros globales del sistema (salario mínimo, % de SS, tarifas ARL).
