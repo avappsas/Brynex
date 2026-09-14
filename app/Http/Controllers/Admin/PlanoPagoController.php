@@ -1330,21 +1330,27 @@ class PlanoPagoController extends Controller
             : 'Cliente';
         $numeroCelular = $cliente?->celular;
 
-        // Si es tipo contacto_empresa, enviar al número del contacto de empresa.
-        // El tipo termina guardado en un varchar(20) del lote, así que no puede
-        // ser cualquier cosa que llegue por query string.
+        // El tipo termina guardado en un varchar(20) del lote, así que no
+        // puede ser cualquier cosa que llegue por query string.
         $tipoEnvio = $request->input('tipo_envio', 'individual');
         if (!in_array($tipoEnvio, ['individual', 'empleado_empresa', 'contacto_empresa'], true)) {
             $tipoEnvio = 'individual';
         }
-        if ($tipoEnvio === 'contacto_empresa' || !$numeroCelular) {
+        // El selector de destinatarios manda, y manda solo: «Clientes
+        // Individuales» y «Clientes dentro de Empresa» van al celular del
+        // cliente; «Contacto de la Empresa» va al celular de la empresa y a
+        // ningún otro. Son los mismos números que el listado muestra en la
+        // columna WhatsApp y a los que sale el envío masivo
+        // (PlanillaWhatsappService::obtenerDestinatarios), así que el botón
+        // individual no puede caer a un campo distinto del que el operador ve
+        // antes de hacer clic. Si el número elegido está vacío, el envío se
+        // rechaza abajo: mandar la planilla de un trabajador al celular de su
+        // empresa —o al revés— porque el primero faltaba es peor que no
+        // mandarla.
+        if ($tipoEnvio === 'contacto_empresa') {
             $empresa = \App\Models\Empresa::find($cliente?->cod_empresa);
-            // Primero el celular del encargado de la seguridad social; si la
-            // empresa no tiene encargado, el número general.
-            if ($empresa && $empresa->celularParaEnviar()) {
-                $numeroCelular = $empresa->celularParaEnviar();
-                // nombre sigue siendo el del CLIENTE (no el contacto de empresa)
-            }
+            $numeroCelular = $empresa?->celular;
+            // el nombre sigue siendo el del CLIENTE, no el del contacto
         }
 
         $celularPrueba = $request->input('celular_prueba');
@@ -1356,7 +1362,12 @@ class PlanoPagoController extends Controller
         }
 
         if (!$numeroCelular) {
-            return response()->json(['ok' => false, 'mensaje' => 'El destinatario no posee número de celular registrado.'], 422);
+            return response()->json([
+                'ok' => false,
+                'mensaje' => $tipoEnvio === 'contacto_empresa'
+                    ? 'La empresa no tiene celular registrado.'
+                    : 'El destinatario no posee número de celular registrado.',
+            ], 422);
         }
 
         // Detección del operador
@@ -1504,13 +1515,14 @@ class PlanoPagoController extends Controller
                         );
                     } catch (\Throwable $e) {
                         \Illuminate\Support\Facades\Log::error("Reenvío de planilla plano #{$plano->id}: el mensaje salió (wamid {$resultado['wa_message_id']}) pero no se pudo registrar: " . $e->getMessage());
-                        $avisoRegistro = ' El mensaje salió, pero no se pudo registrar el envío: la planilla seguirá apareciendo como pendiente.';
+                        $avisoRegistro = 'El mensaje salió, pero no se pudo registrar el envío: la planilla seguirá apareciendo como pendiente.';
                     }
                 }
 
                 return response()->json([
-                    'ok' => true,
-                    'mensaje' => ($esPrueba ? 'Mensaje de prueba enviado con éxito.' : 'Planilla reenviada con éxito por WhatsApp.') . ($avisoRegistro ?? ''),
+                    'ok'      => true,
+                    'mensaje' => $esPrueba ? 'Mensaje de prueba enviado con éxito.' : 'Planilla reenviada con éxito por WhatsApp.',
+                    'aviso'   => $avisoRegistro,
                 ]);
             } else {
                 return response()->json(['ok' => false, 'mensaje' => 'Meta API Error: ' . $resultado['error']], 422);

@@ -74,8 +74,13 @@ class Empresa extends BaseModel
      * A qué número se le escribe.
      *
      * Si la empresa tiene un encargado de la seguridad social con celular
-     * propio, las cuentas de cobro y las planillas van a él; si no, al número
-     * general de la empresa.
+     * propio, las cuentas de cobro van a él; si no, al número general de la
+     * empresa.
+     *
+     * El envío de planillas NO pasa por aquí: allá el destinatario lo fija el
+     * selector de la vista («Contacto de la Empresa» = `celular` de la empresa,
+     * los otros dos = celular del cliente), y el listado tiene que mostrar de
+     * antemano el mismo número al que va a salir el mensaje.
      */
     public function celularParaEnviar(): ?string
     {

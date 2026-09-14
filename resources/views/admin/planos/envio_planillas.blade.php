@@ -392,7 +392,7 @@
                                 <button
                                     class="wa-pill-btn wa-pill-btn-success"
                                     style="padding: 0 0.6rem; font-size: 0.72rem; height: 26px;"
-                                    @click="reenviarPlanillaIndividual(d.plano_id, d.cliente_nombre || d.nombre_destinatario, d.periodo_mes, d.periodo_anio)"
+                                    @click="abrirConfirmacionIndividual(d)"
                                     :disabled="reenviandoId === d.plano_id || !plantillaConfigurada || d.es_operador_autorizado === false"
                                     :title="d.es_operador_autorizado === false ? 'Operador no autorizado para envío PDF' : 'Enviar planilla por WhatsApp'"
                                 >
@@ -647,7 +647,7 @@
                         Se enviará la planilla de WhatsApp con el PDF correspondiente a los <span x-text="seleccionadosCount" style="font-weight: 700;"></span> destinatarios seleccionados.
                         <template x-if="tipoEnvio === 'contacto_empresa'">
                             <div style="margin-top: 0.4rem; font-weight: 600; color: #b91c1c;">
-                                ⚠️ ATENCIÓN: Se enviarán al número de contacto de la empresa. Verifique que los celulares correspondan al contacto de la empresa destino.
+                                ⚠️ ATENCIÓN: Las planillas NO van al celular de cada trabajador, sino al celular registrado de su empresa. Verifique los números antes de continuar.
                             </div>
                         </template>
                     </div>
@@ -671,8 +671,10 @@
                                     <td style="padding: 0.5rem 0.75rem; color: #1e293b;">
                                         <template x-if="tipoEnvio === 'contacto_empresa'">
                                             <div>
-                                                <span x-text="d.contacto_nombre || 'Contacto'" style="font-weight: 600;"></span>
-                                                <span style="color: #64748b;" x-text="' (' + d.wa_numero + ')'"></span>
+                                                <span style="font-weight: 600;" x-text="d.wa_numero || 'Sin Celular'"></span>
+                                                <div style="font-size: 0.7rem; color: #64748b;">
+                                                    Celular de la empresa<span x-show="d.contacto_nombre" x-text="' · contacto: ' + (d.contacto_nombre || '')"></span>
+                                                </div>
                                             </div>
                                         </template>
                                         <template x-if="tipoEnvio !== 'contacto_empresa'">
@@ -717,6 +719,93 @@
                         </div>
                     </template>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- MODAL: Confirmar Envío Individual --}}
+    {{-- Antes el botón «Enviar» de la tabla despachaba de una. Con «Contacto de
+         la Empresa» eso significa que la planilla de un trabajador sale al
+         celular de su empresa, y el operador no tenía dónde verlo antes de
+         hacer clic. --}}
+    <div x-show="confirmarIndividualModalOpen" class="modal-overlay" style="background: rgba(0,0,0,0.55); position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 1rem;" x-cloak @click.self="cerrarConfirmacionIndividual()">
+        <div class="modal-box" style="background: #fff; border-radius: 16px; max-width: 540px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.25); display: flex; flex-direction: column; overflow: hidden; animation: mIn .18s ease;">
+            <div class="modal-head" style="display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.25rem; border-bottom: 1px solid #e5e7eb; background: #f8fafc;">
+                <h3 style="margin: 0; font-size: 1.1rem; color: #1e293b; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;">
+                    <i class="fab fa-whatsapp" style="color: #10b981;"></i> ¿A quién le llega esta planilla?
+                </h3>
+                <button class="modal-close" style="background: none; border: none; font-size: 1.4rem; color: #94a3b8; cursor: pointer;" @click="cerrarConfirmacionIndividual()">&times;</button>
+            </div>
+
+            <div class="modal-body" style="padding: 1.5rem; max-height: 65vh; overflow-y: auto;" x-show="individualAConfirmar">
+                {{-- El destinatario, que es lo que se viene a confirmar --}}
+                <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 10px; padding: 1rem; margin-bottom: 1.15rem;">
+                    <div style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: #15803d; font-weight: 700; margin-bottom: 0.4rem;">
+                        El mensaje llega a
+                    </div>
+                    <div style="font-size: 1rem; font-weight: 700; color: #14532d;" x-text="destinatarioIndividual.quien"></div>
+                    <div style="font-family: monospace; font-size: 1.05rem; color: #166534; margin-top: 0.25rem;" x-text="destinatarioIndividual.numeroVisible"></div>
+                    <div style="font-size: 0.75rem; color: #15803d; margin-top: 0.35rem;" x-text="destinatarioIndividual.detalle"></div>
+                </div>
+
+                {{-- Cuando el número no se parece a un celular colombiano: es la
+                     forma de ver a tiempo un campo con dos números metidos. --}}
+                <template x-if="destinatarioIndividual.advertencia">
+                    <div style="background: #fffbeb; border: 1px solid #fcd34d; border-radius: 10px; padding: 0.85rem; margin-bottom: 1.15rem; display: flex; align-items: flex-start; gap: 0.5rem;">
+                        <i class="fas fa-exclamation-triangle" style="color: #d97706; margin-top: 0.15rem; flex-shrink: 0;"></i>
+                        <div style="font-size: 0.8rem; color: #92400e; line-height: 1.45;" x-text="destinatarioIndividual.advertencia"></div>
+                    </div>
+                </template>
+
+                {{-- Qué se envía --}}
+                <div style="border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.82rem;">
+                        <tbody>
+                            <tr style="border-bottom: 1px solid #f1f5f9;">
+                                <td style="padding: 0.6rem 0.85rem; color: #64748b; width: 40%;">Planilla de</td>
+                                <td style="padding: 0.6rem 0.85rem; color: #1e293b; font-weight: 600;" x-text="individualAConfirmar?.cliente_nombre || individualAConfirmar?.nombre_destinatario"></td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid #f1f5f9;">
+                                <td style="padding: 0.6rem 0.85rem; color: #64748b;">Cédula</td>
+                                <td style="padding: 0.6rem 0.85rem; color: #475569;" x-text="individualAConfirmar?.cliente_cedula"></td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid #f1f5f9;">
+                                <td style="padding: 0.6rem 0.85rem; color: #64748b;">Empresa</td>
+                                <td style="padding: 0.6rem 0.85rem; color: #475569;" x-text="individualAConfirmar?.empresa_nombre"></td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid #f1f5f9;">
+                                <td style="padding: 0.6rem 0.85rem; color: #64748b;">N° de planilla</td>
+                                <td style="padding: 0.6rem 0.85rem; color: #475569; font-family: monospace;" x-text="individualAConfirmar?.numero_planilla"></td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid #f1f5f9;">
+                                <td style="padding: 0.6rem 0.85rem; color: #64748b;">Operador</td>
+                                <td style="padding: 0.6rem 0.85rem; color: #475569;" x-text="individualAConfirmar?.operador_nombre"></td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 0.6rem 0.85rem; color: #64748b;">Periodo</td>
+                                <td style="padding: 0.6rem 0.85rem; color: #475569;" x-text="etiquetaTipoEnvio(tipoEnvio) + ' · ' + (individualAConfirmar?.periodo_mes || filtroMes) + '/' + (individualAConfirmar?.periodo_anio || filtroAnio)"></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                {{-- Un reenvío sobre algo ya enviado es un duplicado para quien recibe --}}
+                <template x-if="individualAConfirmar?.envio_estado === 'enviado'">
+                    <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 0.85rem; margin-top: 1.15rem; display: flex; align-items: flex-start; gap: 0.5rem;">
+                        <i class="fas fa-info-circle" style="color: #3b82f6; margin-top: 0.15rem; flex-shrink: 0;"></i>
+                        <div style="font-size: 0.8rem; color: #1e3a8a; line-height: 1.45;">
+                            Esta planilla ya figura como enviada. Si continúas, al destinatario le llegará por segunda vez.
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <div class="modal-foot" style="padding: 1rem 1.25rem; border-top: 1px solid #e5e7eb; background: #f8fafc; display: flex; justify-content: flex-end; gap: 0.5rem;">
+                <button class="wa-pill-btn wa-pill-btn-outline" @click="cerrarConfirmacionIndividual()" :disabled="reenviandoId !== null">Cancelar</button>
+                <button class="wa-pill-btn wa-pill-btn-success" @click="confirmarEnvioIndividual()" :disabled="reenviandoId !== null || !destinatarioIndividual.numeroVisible">
+                    <span x-show="reenviandoId === null"><i class="fas fa-paper-plane"></i> Confirmar y Enviar</span>
+                    <span x-show="reenviandoId !== null" x-cloak><i class="fas fa-spinner fa-spin"></i> Enviando...</span>
+                </button>
             </div>
         </div>
     </div>
@@ -783,6 +872,10 @@ function enviosPlanillaApp() {
         confirmarMasivoModalOpen: false,
         seleccionadosParaConfirmar: [],
         confirmarResultado: null, // null | {ok: bool, mensaje: string}
+
+        // Modal de Confirmación Individual
+        confirmarIndividualModalOpen: false,
+        individualAConfirmar: null,
 
         init() {
             const currentAliadoId = @json(session('aliado_id_activo'));
@@ -991,6 +1084,87 @@ function enviosPlanillaApp() {
             }
         },
 
+        // Quién recibe el mensaje, leído del mismo `wa_numero` que el backend
+        // va a usar: el selector de destinatarios decide el campo, y la API
+        // ya lo resolvió (cl.celular para los dos tipos de cliente,
+        // em.celular para contacto de empresa).
+        get destinatarioIndividual() {
+            const d = this.individualAConfirmar;
+            if (!d) {
+                return { quien: '', numeroVisible: '', detalle: '', advertencia: '' };
+            }
+
+            const esContacto = this.tipoEnvio === 'contacto_empresa';
+
+            return {
+                quien: esContacto
+                    ? (d.empresa_nombre || 'la empresa')
+                    : (d.cliente_nombre || d.nombre_destinatario),
+                numeroVisible: d.wa_numero || '',
+                detalle: esContacto
+                    ? (d.contacto_nombre
+                        ? `Celular de la empresa · contacto: ${d.contacto_nombre}`
+                        : 'Celular de la empresa')
+                    : 'Celular del cliente',
+                advertencia: this.advertenciaNumero(d.wa_numero),
+            };
+        },
+
+        // Misma normalización que WhatsappApiService::normalizarNumero(), para
+        // que el operador vea aquí lo que Meta va a recibir. Un campo con dos
+        // números metidos («300... / 320...») se delata solo: al quitarle los
+        // no-dígitos quedan 20 y el mensaje rebota.
+        numeroNormalizado(numero) {
+            let n = (numero || '').replace(/[^0-9]/g, '').replace(/^0+/, '');
+            if (n.length === 10) n = '57' + n;
+            return n;
+        },
+
+        advertenciaNumero(numero) {
+            if (!numero) {
+                return this.tipoEnvio === 'contacto_empresa'
+                    ? 'La empresa no tiene celular registrado; el envío será rechazado.'
+                    : 'El cliente no tiene celular registrado; el envío será rechazado.';
+            }
+
+            const n = this.numeroNormalizado(numero);
+
+            if (!/^573\d{9}$/.test(n)) {
+                return `El número guardado («${numero}») queda como ${n || 'vacío'} y no parece un celular colombiano. `
+                     + 'Revisa que el campo no tenga dos números juntos ni sea un fijo, o WhatsApp lo rechazará.';
+            }
+
+            return '';
+        },
+
+        abrirConfirmacionIndividual(d) {
+            this.mensajeExito = '';
+            this.mensajeError = '';
+            this.individualAConfirmar = d;
+            this.confirmarIndividualModalOpen = true;
+        },
+
+        cerrarConfirmacionIndividual() {
+            if (this.reenviandoId !== null) return; // hay un envío en curso
+            this.confirmarIndividualModalOpen = false;
+            this.individualAConfirmar = null;
+        },
+
+        async confirmarEnvioIndividual() {
+            const d = this.individualAConfirmar;
+            if (!d) return;
+
+            await this.reenviarPlanillaIndividual(
+                d.plano_id,
+                d.cliente_nombre || d.nombre_destinatario,
+                d.periodo_mes,
+                d.periodo_anio
+            );
+
+            this.confirmarIndividualModalOpen = false;
+            this.individualAConfirmar = null;
+        },
+
         async reenviarPlanillaIndividual(planoId, nombre, periodoMes, periodoAnio) {
             this.reenviandoId = planoId;
             this.mensajeExito = '';
@@ -1021,7 +1195,14 @@ function enviosPlanillaApp() {
                 const data = await res.json();
                 
                 if (data.ok) {
-                    this.mensajeExito = `Planilla enviada con éxito a ${nombre}`;
+                    // Decir a quién llegó, no solo de quién era la planilla:
+                    // con «Contacto de la Empresa» no son la misma persona.
+                    const paraQuien = this.tipoEnvio === 'contacto_empresa'
+                        ? (planoLocal?.empresa_nombre || 'la empresa')
+                        : nombre;
+                    const numero = planoLocal?.wa_numero ? ` (${planoLocal.wa_numero})` : '';
+                    this.mensajeExito = `Planilla de ${nombre} enviada a ${paraQuien}${numero}.`
+                        + (data.aviso ? ' ' + data.aviso : '');
                     // Actualizar el estado de este plano localmente en la tabla a enviado
                     if (planoLocal) {
                         planoLocal.envio_estado = 'enviado';
