@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Console\Commands\EpsSuraConciliar;
+use App\Console\Commands\NuevaEpsConciliar;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -10,13 +11,20 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * Botón de Afiliaciones que concilia los radicados de EPS SURA con el portal.
+ * Botón de Afiliaciones que concilia los radicados de EPS con los portales
+ * (EPS SURA y Nueva EPS).
  *
- * El trabajo real lo hace `eps:conciliar-sura` en un proceso aparte (ver el
- * comando para el porqué); aquí solo se lanza y se lee su progreso.
+ * El trabajo real lo hace el comando de cada EPS en un proceso aparte (ver
+ * `eps:conciliar-sura` para el porqué); aquí solo se lanza y se lee su progreso.
  */
 class EpsSuraConciliacionController extends Controller
 {
+    /** entidad => [clase del comando (claves de caché), firma del comando] */
+    private const ENTIDADES = [
+        'sura'      => [EpsSuraConciliar::class, 'eps:conciliar-sura'],
+        'nueva_eps' => [NuevaEpsConciliar::class, 'eps:conciliar-nueva-eps'],
+    ];
+
     public function __construct()
     {
         $this->middleware('auth');
@@ -26,6 +34,7 @@ class EpsSuraConciliacionController extends Controller
     {
         $aliadoId = (int) session('aliado_id_activo');
         $simular  = $request->boolean('simular');
+        [$clase, $comando] = self::ENTIDADES[$request->input('entidad', 'sura')] ?? self::ENTIDADES['sura'];
 
         if (! $aliadoId) {
             return response()->json(['ok' => false, 'mensaje' => 'No hay aliado activo.'], 422);
@@ -33,13 +42,13 @@ class EpsSuraConciliacionController extends Controller
 
         // Se prueba el candado solo para responder de inmediato; el comando lo
         // vuelve a tomar y es quien de verdad impide dos corridas a la vez.
-        $candado = Cache::lock(EpsSuraConciliar::claveCandado($aliadoId), 5);
+        $candado = Cache::lock($clase::claveCandado($aliadoId), 5);
         if (! $candado->get()) {
             return response()->json(['ok' => false, 'mensaje' => 'Ya hay una conciliación corriendo.'], 409);
         }
         $candado->release();
 
-        Cache::put(EpsSuraConciliar::claveEstado($aliadoId), [
+        Cache::put($clase::claveEstado($aliadoId), [
             'corriendo' => true,
             'inicio'    => now()->toIso8601String(),
             'mensaje'   => 'Iniciando…',
@@ -47,25 +56,26 @@ class EpsSuraConciliacionController extends Controller
             'simulado'  => $simular,
         ], now()->addDay());
 
-        $comando = sprintf(
-            'nohup %s %s eps:conciliar-sura --aliado=%d --usuario=%d%s < /dev/null > %s 2>&1 &',
+        exec(sprintf(
+            'nohup %s %s %s --aliado=%d --usuario=%d%s < /dev/null > %s 2>&1 &',
             escapeshellarg(self::binarioPhp()),
             escapeshellarg(base_path('artisan')),
+            $comando,
             $aliadoId,
             (int) Auth::id(),
             $simular ? ' --simular' : '',
-            escapeshellarg(storage_path('logs/eps-sura-conciliacion.log'))
-        );
-        exec($comando);
+            escapeshellarg(storage_path('logs/eps-conciliacion.log'))
+        ));
 
         return response()->json(['ok' => true]);
     }
 
-    public function estado(): JsonResponse
+    public function estado(Request $request): JsonResponse
     {
         $aliadoId = (int) session('aliado_id_activo');
+        [$clase] = self::ENTIDADES[$request->query('entidad', 'sura')] ?? self::ENTIDADES['sura'];
 
-        return response()->json(Cache::get(EpsSuraConciliar::claveEstado($aliadoId)) ?? ['corriendo' => false, 'vacio' => true]);
+        return response()->json(Cache::get($clase::claveEstado($aliadoId)) ?? ['corriendo' => false, 'vacio' => true]);
     }
 
     /**

@@ -308,7 +308,7 @@ body {
 
         <button type="button" onclick="abrirModalClavesGlobal()" class="btn-export" style="background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#1c1917;border:none;font-weight:800;cursor:pointer;">🔑 Claves</button>
         <a href="{{ route('admin.gestion-arl.index') }}" class="btn-export" style="background:#f97316;">🛡️ ARL</a>
-        <button type="button" onclick="abrirConciliacionEpsSura()" class="btn-export" style="background:#0033a0;cursor:pointer;" title="Cierra los radicados de EPS SURA que ya están vigentes en el portal">🩺 EPS SURA</button>
+        <button type="button" onclick="abrirConciliacionEpsSura()" class="btn-export" style="background:#0033a0;cursor:pointer;" title="Pone al día los radicados de EPS (SURA y Nueva EPS) con lo que dicen los portales">🩺 Conciliar EPS</button>
     </div>
 </div>
 </form>
@@ -779,6 +779,12 @@ function sortClass($col, $currSort, $currDir) {
                     onclick="afiliarApiDesdeRadicado()">
                     🚀 Afiliar por API
                 </button>
+                {{-- Radicados de EPS en Nueva EPS: reingreso por el portal --}}
+                <button id="btnReingresoNuevaEps" type="button"
+                    style="display:none;align-items:center;gap:0.35rem;padding:0.3rem 0.85rem;background:linear-gradient(135deg,#be123c,#e11d48);color:#fff;border:none;border-radius:7px;font-size:0.75rem;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(225,29,72,0.3);"
+                    onclick="reingresoNuevaEpsDesdeRadicado()">
+                    🏥 Reingreso Nueva EPS
+                </button>
                 {{-- Cuando ya está afiliado: deshacer, solo dentro de los 30 días --}}
                 <button id="btnAnularApi" type="button"
                     style="display:none;align-items:center;gap:0.35rem;padding:0.3rem 0.85rem;background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;border-radius:7px;font-size:0.75rem;font-weight:700;cursor:pointer;"
@@ -975,20 +981,33 @@ function sortClass($col, $currSort, $currDir) {
 <div class="modal-bg" id="modalConciliacionEps">
     <div class="modal-box" style="max-width:860px;">
         <div class="modal-title">
-            <span>🩺 Conciliar radicados de EPS SURA</span>
+            <span>🩺 Conciliar radicados de EPS con el portal</span>
             <button class="modal-close" onclick="cerrarModal('modalConciliacionEps')">✕</button>
         </div>
 
-        <div style="font-size:0.78rem;color:#475569;line-height:1.45;margin-bottom:0.8rem;">
+        <div style="display:flex;gap:0.4rem;margin-bottom:0.7rem;">
+            <button type="button" class="ceps-tab" data-entidad="sura" onclick="elegirEntidadConciliacion('sura')"
+                style="padding:0.3rem 0.8rem;border-radius:7px;border:1px solid #0033a0;font-size:0.78rem;font-weight:700;cursor:pointer;">EPS SURA</button>
+            <button type="button" class="ceps-tab" data-entidad="nueva_eps" onclick="elegirEntidadConciliacion('nueva_eps')"
+                style="padding:0.3rem 0.8rem;border-radius:7px;border:1px solid #be123c;font-size:0.78rem;font-weight:700;cursor:pointer;">Nueva EPS</button>
+        </div>
+
+        <div id="ceps-descripcion-sura" style="font-size:0.78rem;color:#475569;line-height:1.45;margin-bottom:0.8rem;">
             Consulta en el portal de empleadores de EPS SURA los radicados de EPS <strong>pendientes, en trámite o con error</strong>
             de contratos vigentes de dependientes. Si Sura confirma que ya es cotizante con derecho a cobertura en esa empresa
             y el apellido coincide, el radicado pasa a <strong>OK</strong>. En Sura solo se consulta: no se afilia a nadie.
             <br>Tarda alrededor de un minuto por empresa.
         </div>
+        <div id="ceps-descripcion-nueva_eps" style="display:none;font-size:0.78rem;color:#475569;line-height:1.45;margin-bottom:0.8rem;">
+            Busca en Nueva EPS los reingresos de cada empresa y pone al día los radicados de EPS <strong>pendientes, en trámite o con error</strong>:
+            si Nueva EPS ya lo <strong>procesó</strong> pasa a <strong>OK</strong>; si solo está <strong>radicado</strong> queda en trámite con su número.
+            En ambos casos se adjunta el certificado del portal. Los que no tienen reingreso se tramitan desde el radicado (🏥 Reingreso Nueva EPS).
+            <br>Tarda alrededor de un minuto por empresa.
+        </div>
 
         <div id="ceps-acciones" style="display:flex;gap:0.5rem;margin-bottom:0.8rem;">
             <button type="button" onclick="iniciarConciliacionEpsSura(true)" class="btn-export" style="background:#475569;cursor:pointer;">🔎 Solo consultar</button>
-            <button type="button" onclick="iniciarConciliacionEpsSura(false)" class="btn-export" style="background:#0033a0;cursor:pointer;">✅ Consultar y cerrar los vigentes</button>
+            <button type="button" onclick="iniciarConciliacionEpsSura(false)" class="btn-export" style="background:#0033a0;cursor:pointer;">✅ Consultar y actualizar radicados</button>
         </div>
 
         <div id="ceps-estado" style="display:none;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:0.55rem 0.75rem;font-size:0.8rem;color:#0c4a6e;margin-bottom:0.8rem;"></div>
@@ -1487,6 +1506,12 @@ function abrirModalRadicado(radId, radData, ctx = {}, contratoId = null, tieneFo
     // El badge de un radicado existente no trae data-contrato-id (solo el de
     // crear), así que el id sale del contexto.
     btnApi._contratoId = btnAnular._contratoId = contratoId || ctx.id || null;
+
+    // Reingreso por el portal: radicados de EPS de Nueva EPS que aún no están en OK.
+    const btnNuevaEps = document.getElementById('btnReingresoNuevaEps');
+    const esNuevaEps  = (radData.tipo === 'eps') && /NUEVA\s*EPS/i.test(ctx.eps || '');
+    btnNuevaEps.style.display = (esNuevaEps && radData.estado !== 'ok') ? 'inline-flex' : 'none';
+    btnNuevaEps._contratoId = contratoId || ctx.id || null;
     // Contexto del contrato
     document.getElementById('mrad-cotizante').textContent        = ctx.nombre         || '—';
     document.getElementById('mrad-empresa').textContent          = ctx.razon_social    || '—';
@@ -1584,6 +1609,13 @@ function afiliarApiDesdeRadicado() {
     if (!contratoId) { alert('No se pudo identificar el contrato.'); return; }
     cerrarModal('modalRadicado');
     abrirAfiliarSura(contratoId);
+}
+
+function reingresoNuevaEpsDesdeRadicado() {
+    const contratoId = document.getElementById('btnReingresoNuevaEps')._contratoId;
+    if (!contratoId) { alert('No se pudo identificar el contrato.'); return; }
+    cerrarModal('modalRadicado');
+    abrirReingresoNuevaEps(contratoId);
 }
 
 // Anular la afiliación. Es irreversible en el sentido contrario: la cobertura
@@ -2301,25 +2333,42 @@ const CEPS_URL_ESTADO  = '{{ route("admin.afiliaciones.conciliar-eps-sura.estado
 const CEPS_ACCIONES = {
     cerrado:  ['✅ Cerrado', '#dcfce7', '#166534'],
     cerraria: ['✅ Se cerraría', '#dcfce7', '#166534'],
-    falta:    ['⏳ Falta en Sura', '#fef3c7', '#92400e'],
+    tramite:  ['🔵 En trámite', '#dbeafe', '#1e40af'],
+    falta:    ['⏳ Falta en la EPS', '#fef3c7', '#92400e'],
     revisar:  ['👀 Revisar', '#e0e7ff', '#3730a3'],
     error:    ['❌ Error', '#fee2e2', '#991b1b'],
 };
+const CEPS_NOMBRES = { sura: 'EPS SURA', nueva_eps: 'Nueva EPS' };
 let _cepsTimer = null;
 let _cepsCorria = false;
+let _cepsEntidad = 'sura';
 
 function abrirConciliacionEpsSura() {
     document.getElementById('modalConciliacionEps').classList.add('open');
+    elegirEntidadConciliacion(_cepsEntidad);
+}
+
+function elegirEntidadConciliacion(entidad) {
+    _cepsEntidad = entidad;
+    _cepsCorria = false;
+    document.querySelectorAll('.ceps-tab').forEach(b => {
+        const activo = b.dataset.entidad === entidad;
+        b.style.background = activo ? (entidad === 'sura' ? '#0033a0' : '#be123c') : '#fff';
+        b.style.color = activo ? '#fff' : '#334155';
+    });
+    Object.keys(CEPS_NOMBRES).forEach(k => {
+        document.getElementById('ceps-descripcion-' + k).style.display = k === entidad ? 'block' : 'none';
+    });
     consultarConciliacionEpsSura();
 }
 
 async function iniciarConciliacionEpsSura(simular) {
-    if (!simular && !confirm('Se consultará el portal y se cerrarán en BryNex los radicados que Sura confirme vigentes. ¿Continuar?')) return;
+    if (!simular && !confirm(`Se consultará el portal de ${CEPS_NOMBRES[_cepsEntidad]} y se actualizarán en BryNex los radicados que el portal confirme. ¿Continuar?`)) return;
     try {
         const res = await fetch(CEPS_URL_INICIAR, {
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': CSRF, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({ simular }),
+            body: JSON.stringify({ simular, entidad: _cepsEntidad }),
         });
         const data = await res.json();
         if (!data.ok) { mostrarToast(data.mensaje || 'No se pudo iniciar.', 'error'); }
@@ -2333,7 +2382,7 @@ async function consultarConciliacionEpsSura() {
     clearTimeout(_cepsTimer);
     let data;
     try {
-        data = await (await fetch(CEPS_URL_ESTADO, { headers: { 'Accept': 'application/json' } })).json();
+        data = await (await fetch(CEPS_URL_ESTADO + '?entidad=' + _cepsEntidad, { headers: { 'Accept': 'application/json' } })).json();
     } catch (e) {
         return;
     }
@@ -2346,7 +2395,7 @@ async function consultarConciliacionEpsSura() {
     } else if (!data.corriendo && _cepsCorria) {
         _cepsCorria = false;
         if (data.cerrados > 0 && !data.simulado) {
-            mostrarToast(`${data.cerrados} radicados de EPS SURA cerrados. Recarga para verlos.`, 'success');
+            mostrarToast(`${data.cerrados} radicados de ${CEPS_NOMBRES[_cepsEntidad]} cerrados. Recarga para verlos.`, 'success');
         }
     }
 }
@@ -2375,7 +2424,8 @@ function pintarConciliacionEpsSura(data) {
         resumen.style.display = 'flex';
         resumen.innerHTML = [
             [data.simulado ? 'Se cerrarían' : 'Cerrados', data.cerrados, '#dcfce7', '#166534'],
-            ['Faltan en Sura', data.faltan, '#fef3c7', '#92400e'],
+            ...(data.tramite !== undefined ? [['En trámite', data.tramite, '#dbeafe', '#1e40af']] : []),
+            ['Faltan en la EPS', data.faltan, '#fef3c7', '#92400e'],
             ['Revisar', data.revisar, '#e0e7ff', '#3730a3'],
             ['Errores', data.errores, '#fee2e2', '#991b1b'],
         ].map(([t, n, bg, fg]) => `<span style="background:${bg};color:${fg};padding:0.2rem 0.6rem;border-radius:6px;font-weight:700;">${t}: ${n}</span>`).join('')
@@ -2412,5 +2462,6 @@ function mostrarToast(msg, tipo) {
 
 
 @include('admin.partials._afiliar_arl_sura')
+@include('admin.partials._reingreso_nueva_eps')
 
 @endsection

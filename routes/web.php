@@ -972,6 +972,11 @@ Route::middleware('auth')->group(function () {
         $esc = \App\Http\Controllers\Admin\EpsSuraConciliacionController::class;
         Route::post('/conciliar-eps-sura', [$esc, 'iniciar'])->name('conciliar-eps-sura');
         Route::get('/conciliar-eps-sura/estado', [$esc, 'estado'])->name('conciliar-eps-sura.estado');
+        // Reingreso en el portal de Nueva EPS desde el radicado de EPS.
+        $nec = \App\Http\Controllers\Admin\NuevaEpsController::class;
+        Route::get('/{contrato}/nueva-eps/precheck', [$nec, 'precheck'])->name('nueva-eps.precheck');
+        Route::post('/{contrato}/nueva-eps/consultar', [$nec, 'consultar'])->name('nueva-eps.consultar');
+        Route::post('/{contrato}/nueva-eps/registrar', [$nec, 'registrar'])->name('nueva-eps.registrar');
         Route::get('/{contrato}/historial', [$ac, 'historial'])->name('historial');
         Route::get('/{contrato}/formulario/eps', [$fc, 'vista'])->name('formulario.eps');
         Route::get('/{contrato}/formulario/eps/raw', [$fc, 'generar'])->name('formulario.eps.raw');
