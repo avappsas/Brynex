@@ -53,6 +53,23 @@ class SaldosMarcarRuido extends Command
             ->filter(fn ($lote) => $lote->sum(fn ($f) => (int) $f->saldo_proximo) < $tope)
             ->flatten(1);
 
+        // La factura no se toca al ajustar, así que su saldo sigue ahí y una
+        // segunda corrida volvería a pedirlo — esta vez mordiendo el crédito de
+        // verdad del cliente. Las que ya tienen ajuste quedan fuera.
+        $yaAjustadas = SaldoAjuste::where('aliado_id', $aliadoId)
+            ->get(['id', 'detalle'])
+            ->flatMap(fn ($a) => collect(is_array($a->detalle) ? $a->detalle : [])->pluck('factura_id'))
+            ->filter()
+            ->flip();
+
+        $ruido = $ruido->reject(fn ($f) => $yaAjustadas->has($f->id));
+
+        if ($ruido->isEmpty()) {
+            $this->info("No quedan residuos por marcar en el aliado {$aliadoId}.");
+
+            return Command::SUCCESS;
+        }
+
         if ($ruido->isEmpty()) {
             $this->info("No hay saldos por debajo de \${$tope} en el aliado {$aliadoId}.");
 
@@ -83,6 +100,14 @@ class SaldosMarcarRuido extends Command
             if ($valor > 0) {
                 $plan[] = ['cedula' => (string) $cedula, 'valor' => $valor, 'facturas' => $facturas];
             }
+        }
+
+        if ($plan === []) {
+            // Las facturas siguen ahí, pero sus dueños ya no tienen crédito:
+            // otra factura en rojo se comió el residuo. No hay nada que ajustar.
+            $this->info('Los residuos que quedan son de clientes sin saldo a favor vivo: nada que marcar.');
+
+            return Command::SUCCESS;
         }
 
         $total = array_sum(array_column($plan, 'valor'));
