@@ -82,6 +82,7 @@ class PlanillasConciliarEntregas extends Command
 
         $aplicar = (bool) $this->option('aplicar');
         $resumen = [];
+        $porEstadoReal = [];
         $cambiados = 0;
         $sinRastro = 0;
 
@@ -95,6 +96,7 @@ class PlanillasConciliarEntregas extends Command
 
             $clave = "{$detalle->estado} → {$estadoMeta}";
             $resumen[$clave] = ($resumen[$clave] ?? 0) + 1;
+            $porEstadoReal[$estadoMeta] = ($porEstadoReal[$estadoMeta] ?? 0) + 1;
 
             if ($aplicar && $detalle->aplicarEstadoDeMeta($estadoMeta)) {
                 $cambiados++;
@@ -115,9 +117,13 @@ class PlanillasConciliarEntregas extends Command
             collect($resumen)->map(fn ($n, $k) => [$k, $n])->sortByDesc(1)->values()->all()
         );
 
-        $llegaron = ($resumen['enviado → entregado'] ?? 0) + ($resumen['enviado → leido'] ?? 0);
-        $rebotaron = $resumen['enviado → fallido'] ?? 0;
-        $enElLimbo = $resumen['enviado → enviado'] ?? 0;
+        // Se cuenta por el estado REAL que reporta Meta, no por la transición.
+        // Contar transiciones servía cuando el detalle siempre estaba atrasado;
+        // ahora que el webhook lo mantiene al día, una entrega ya conciliada es
+        // «entregado → entregado» y el resumen la daba por no llegada.
+        $llegaron = ($porEstadoReal['entregado'] ?? 0) + ($porEstadoReal['leido'] ?? 0);
+        $rebotaron = $porEstadoReal['fallido'] ?? 0;
+        $enElLimbo = $porEstadoReal['enviado'] ?? 0;
 
         $this->newLine();
         $this->info("Llegaron de verdad : {$llegaron}");
