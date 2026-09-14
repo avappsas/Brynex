@@ -15,6 +15,8 @@ use App\Models\{
     ConsentimientoDato,
     IaConfiguracionAliado,
     MarketingBloqueado,
+    PlanillaEnvioWhatsapp,
+    PlanillaEnvioWhatsappDetalle,
     WhatsappConfig,
     WhatsappConversacion,
     WhatsappMensaje
@@ -514,8 +516,59 @@ class WhatsappWebhookService
             }
         }
 
+        $this->reflejarEstadoEnPlanilla($waMessageId, $estadoLocal, $status);
+
         // Emitir evento para actualizar ícono de estado en el chat
         broadcast(new WhatsappConversacionActualizada($mensaje->conversacion))->toOthers();
+    }
+
+    /**
+     * Lleva el estado que reporta Meta al detalle del envío de planillas.
+     *
+     * Hasta ahora esto solo se hacía con los masivos de cobros, y las planillas
+     * se quedaban en «enviado» para siempre. Pero «enviado» solo significa que
+     * Meta aceptó el mensaje: si el número no tiene WhatsApp, el rebote llega
+     * segundos después por webhook y quedaba únicamente en `whatsapp_mensajes`,
+     * donde nadie del módulo de planillas mira. Así se perdieron las 136 de una
+     * empresa sin que la pantalla dijera nada: verde, y ninguna entregada.
+     *
+     * Un «fallido» manda siempre, porque es el que hay que atender. Los demás
+     * solo avanzan (enviado → entregado → leído) para que un `delivered` que
+     * llegue tarde no borre un `read` que ya habíamos registrado.
+     */
+    private function reflejarEstadoEnPlanilla(string $waMessageId, string $estadoLocal, array $status): void
+    {
+        $detalle = PlanillaEnvioWhatsappDetalle::where('wa_message_id', $waMessageId)->first();
+
+        if (! $detalle) {
+            return;
+        }
+
+        $avance = ['enviado' => 1, 'entregado' => 2, 'leido' => 3];
+        $esFallo = $estadoLocal === 'fallido';
+
+        if (! $esFallo && ($avance[$estadoLocal] ?? 0) <= ($avance[$detalle->estado] ?? 0)) {
+            return;
+        }
+
+        $detalle->update([
+            'estado' => $estadoLocal,
+            'error'  => $esFallo
+                ? mb_substr(json_encode($status['errors'] ?? 'Fallo reportado por Meta'), 0, 500)
+                : null,
+        ]);
+
+        // El lote lleva su propio conteo y la vista de historial lo muestra: si
+        // un envío rebota después, deja de ser un enviado.
+        if ($esFallo && $detalle->envio_id) {
+            $lote = PlanillaEnvioWhatsapp::find($detalle->envio_id);
+            if ($lote) {
+                $lote->increment('total_fallidos');
+                if ($lote->total_enviados > 0) {
+                    $lote->decrement('total_enviados');
+                }
+            }
+        }
     }
 
     /**
