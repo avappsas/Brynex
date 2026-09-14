@@ -595,6 +595,7 @@ Route::middleware('auth')->group(function () {
             Route::get('/consolidado-mensual/whatsapp-detalle', [$ic, 'consolidadoMensualWhatsapp'])->name('consolidado_mensual_whatsapp');
             Route::get('/brynex-cobros', [$ic, 'brynexCobros'])->name('brynex_cobros');
             Route::get('/brynex-cobros/{cobro}/pdf', [$ic, 'brynexCobroPdf'])->name('brynex_cobros.pdf');
+            Route::get('/listados-mes', [$ic, 'listadosMes'])->name('listados_mes');
             Route::get('/clientes-activos', [$ic, 'clientesActivos'])->name('clientes_activos');
             Route::get('/por-razon-social', [$ic, 'porRazonSocial'])->name('por_razon_social');
             Route::get('/afiliaciones-retiros', [$ic, 'afiliacionesRetiros'])->name('afiliaciones_retiros');

@@ -40,6 +40,34 @@
         </a>
         @endforeach
     </div>
+
+    {{-- Listados del cierre: por defecto el mes anterior, que es el que se
+         entrega. Activos, pagos, retiros y afiliaciones en un solo Excel. --}}
+    @php
+        $mesCierre = now()->subMonthNoOverflow();
+        $mesesNombre = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    @endphp
+    <form method="GET" action="{{ route('admin.informes.listados_mes') }}"
+          style="display:flex;flex-wrap:wrap;align-items:center;gap:1rem;background:#fff;border-radius:14px;padding:1.1rem 1.25rem;box-shadow:0 1px 6px rgba(0,0,0,.06);margin-bottom:1.75rem;">
+        <div style="font-size:1.6rem;">📑</div>
+        <div style="flex:1;min-width:220px;">
+            <div style="font-size:.9rem;font-weight:700;color:#1e293b;">Listados del mes</div>
+            <div style="font-size:.74rem;color:#94a3b8;margin-top:.15rem;">Activos al cierre · Pagos · Retiros · Afiliaciones — un Excel con una hoja por listado</div>
+        </div>
+        <select name="mes" style="padding:.45rem .6rem;border:1px solid #cbd5e1;border-radius:8px;font-size:.85rem;">
+            @foreach($mesesNombre as $i => $nombreMes)
+                <option value="{{ $i + 1 }}" @selected($mesCierre->month === $i + 1)>{{ $nombreMes }}</option>
+            @endforeach
+        </select>
+        <select name="anio" style="padding:.45rem .6rem;border:1px solid #cbd5e1;border-radius:8px;font-size:.85rem;">
+            @for($a = now()->year; $a >= now()->year - 3; $a--)
+                <option value="{{ $a }}" @selected($mesCierre->year === $a)>{{ $a }}</option>
+            @endfor
+        </select>
+        <button type="submit" style="display:inline-flex;align-items:center;gap:.4rem;background:#15803d;color:#fff;border:none;border-radius:8px;padding:.5rem 1rem;font-size:.85rem;font-weight:600;cursor:pointer;">
+            ⬇ Exportar Excel
+        </button>
+    </form>
     @endcan
 
     <h2 style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:.75rem;">Financiero</h2>

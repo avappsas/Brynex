@@ -150,6 +150,24 @@ class InformeController extends Controller
         return view('admin.informes.hub', compact('kpis','esFinanciero'));
     }
 
+    // ── Listados del cierre de mes (Excel de 4 hojas) ─────────────────
+    public function listadosMes(Request $request)
+    {
+        $this->checkAdmin();
+        $datos = $request->validate([
+            'mes'  => 'required|integer|between:1,12',
+            'anio' => 'required|integer|between:2020,2100',
+        ]);
+
+        $servicio = new \App\Services\ListadosMesExcelService($this->aliadoId(), (int) $datos['mes'], (int) $datos['anio']);
+        $tmp = tempnam(sys_get_temp_dir(), 'lstmes');
+        (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($servicio->construir()))->save($tmp);
+
+        return response()->download($tmp, $servicio->nombreArchivo(), [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ])->deleteFileAfterSend(true);
+    }
+
     // ── 1. Clientes activos ───────────────────────────────────────────
     public function clientesActivos(Request $request)
     {
