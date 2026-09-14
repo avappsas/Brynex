@@ -331,6 +331,48 @@ class PlanillaWhatsappService
     }
 
     /**
+     * Registra un reenvío individual ya despachado a Meta.
+     *
+     * `planilla_envios_whatsapp_detalle.envio_id` tiene FK a
+     * `planilla_envios_whatsapp.id`, así que un reenvío suelto no puede
+     * apuntar a un id inventado: necesita su propio lote de un destinatario.
+     * Sin él el INSERT rebota contra la FK, el detalle nunca se guarda y la
+     * planilla se queda «pendiente» en la tabla aunque el mensaje ya salió,
+     * lo que lleva a reenviarla una y otra vez.
+     */
+    public function registrarReenvioIndividual(
+        int $aliadoId,
+        int $usuarioId,
+        ?int $plantillaId,
+        int $mes,
+        int $anio,
+        string $tipoEnvio,
+        array $detalle
+    ): PlanillaEnvioWhatsappDetalle {
+        return DB::transaction(function () use ($aliadoId, $usuarioId, $plantillaId, $mes, $anio, $tipoEnvio, $detalle) {
+            $lote = PlanillaEnvioWhatsapp::create([
+                'aliado_id'           => $aliadoId,
+                'usuario_id'          => $usuarioId,
+                'plantilla_id'        => $plantillaId,
+                'mes'                 => $mes,
+                'anio'                => $anio,
+                'tipo_envio'          => $tipoEnvio,
+                'total_destinatarios' => 1,
+                'total_enviados'      => 1,
+                'total_fallidos'      => 0,
+                'total_omitidos'      => 0,
+                'estado'              => 'completado',
+            ]);
+
+            return PlanillaEnvioWhatsappDetalle::create($detalle + [
+                'envio_id'   => $lote->id,
+                'estado'     => 'enviado',
+                'enviado_at' => now(),
+            ]);
+        });
+    }
+
+    /**
      * Crea automáticamente la plantilla transaccional en Meta si no existe.
      */
     public function crearPlantillaEnMeta(int $aliadoId)

@@ -1330,8 +1330,13 @@ class PlanoPagoController extends Controller
             : 'Cliente';
         $numeroCelular = $cliente?->celular;
 
-        // Si es tipo contacto_empresa, enviar al número del contacto de empresa
+        // Si es tipo contacto_empresa, enviar al número del contacto de empresa.
+        // El tipo termina guardado en un varchar(20) del lote, así que no puede
+        // ser cualquier cosa que llegue por query string.
         $tipoEnvio = $request->input('tipo_envio', 'individual');
+        if (!in_array($tipoEnvio, ['individual', 'empleado_empresa', 'contacto_empresa'], true)) {
+            $tipoEnvio = 'individual';
+        }
         if ($tipoEnvio === 'contacto_empresa' || !$numeroCelular) {
             $empresa = \App\Models\Empresa::find($cliente?->cod_empresa);
             // Primero el celular del encargado de la seguridad social; si la
@@ -1467,28 +1472,46 @@ class PlanoPagoController extends Controller
                     'estado_at' => now(),
                 ]);
 
-                // Registrar en planilla_envios_whatsapp_detalle si es posible (solo si no es prueba)
+                // Registrar el reenvío (solo si no es prueba). El mensaje ya
+                // salió: si el registro falla, el reenvío sigue siendo un
+                // éxito y hay que decirlo, o el operador lo repite creyendo
+                // que no se envió.
+                $avisoRegistro = null;
                 if (!$esPrueba) {
-                    DB::table('planilla_envios_whatsapp_detalle')->insert([
-                        'envio_id' => 0, // 0 indica envío individual / reenvío directo
-                        'plano_id' => $plano->id,
-                        'contrato_id' => $plano->contrato_id,
-                        'cliente_cedula' => $plano->no_identifi,
-                        'wa_numero' => $numeroCelular,
-                        'nombre_destinatario' => $nombreDestinatario,
-                        'numero_planilla' => $plano->numero_planilla,
-                        'operador_nombre' => $operadorNombre,
-                        'periodo_mes' => $plano->mes_plano,
-                        'periodo_anio' => $plano->anio_plano,
-                        'estado' => 'enviado',
-                        'wa_message_id' => $resultado['wa_message_id'],
-                        'enviado_at' => now(),
-                        'created_at' => now(),
-                        'updated_at' => now()
-                    ]);
+                    $codEmpresa = (int) ($cliente?->cod_empresa ?? 0);
+
+                    try {
+                        app(\App\Services\PlanillaWhatsappService::class)->registrarReenvioIndividual(
+                            $aliadoId,
+                            Auth::id(),
+                            $plantilla->id,
+                            (int) $request->input('mes', now()->month),
+                            (int) $request->input('anio', now()->year),
+                            $tipoEnvio,
+                            [
+                                'plano_id'            => $plano->id,
+                                'contrato_id'         => $plano->contrato_id,
+                                'cliente_cedula'      => $plano->no_identifi,
+                                'empresa_id'          => $codEmpresa > 1 ? $codEmpresa : null,
+                                'wa_numero'           => $numeroCelular,
+                                'nombre_destinatario' => $nombreDestinatario,
+                                'numero_planilla'     => $plano->numero_planilla,
+                                'operador_nombre'     => $operadorNombre,
+                                'periodo_mes'         => $plano->mes_plano,
+                                'periodo_anio'        => $plano->anio_plano,
+                                'wa_message_id'       => $resultado['wa_message_id'],
+                            ]
+                        );
+                    } catch (\Throwable $e) {
+                        \Illuminate\Support\Facades\Log::error("Reenvío de planilla plano #{$plano->id}: el mensaje salió (wamid {$resultado['wa_message_id']}) pero no se pudo registrar: " . $e->getMessage());
+                        $avisoRegistro = ' El mensaje salió, pero no se pudo registrar el envío: la planilla seguirá apareciendo como pendiente.';
+                    }
                 }
 
-                return response()->json(['ok' => true, 'mensaje' => $esPrueba ? 'Mensaje de prueba enviado con éxito.' : 'Planilla reenviada con éxito por WhatsApp.']);
+                return response()->json([
+                    'ok' => true,
+                    'mensaje' => ($esPrueba ? 'Mensaje de prueba enviado con éxito.' : 'Planilla reenviada con éxito por WhatsApp.') . ($avisoRegistro ?? ''),
+                ]);
             } else {
                 return response()->json(['ok' => false, 'mensaje' => 'Meta API Error: ' . $resultado['error']], 422);
             }
