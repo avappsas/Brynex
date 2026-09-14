@@ -66,7 +66,7 @@ class EpsSuraConfirmacionService
 
     /**
      * @param  callable|null  $avisar  fn(string $mensaje)
-     * @return array{empresas:int, candidatos:int, confirmados:int, no_aparecen:int, revisar:int, errores:int, simulado:bool, detalle:array}
+     * @return array{empresas:int, candidatos:int, confirmados:int, no_aparecen:int, revisar:int, errores:int, sin_usuario:int, simulado:bool, detalle:array}
      */
     public function confirmar(?int $aliadoId = null, ?string $nit = null, bool $simular = false, ?callable $avisar = null): array
     {
@@ -125,7 +125,9 @@ class EpsSuraConfirmacionService
             'confirmados' => $cuenta->get('confirmado', 0) + $cuenta->get('confirmaria', 0),
             'no_aparecen' => $cuenta->get('no_aparece', 0),
             'revisar'     => $cuenta->get('revisar', 0),
-            'errores'     => $cuenta->get('error', 0) + $cuenta->get('sin_usuario', 0),
+            'errores'     => $cuenta->get('error', 0),
+            // Empresas sin usuario del portal: se omiten cada noche, no son un fallo.
+            'sin_usuario' => $cuenta->get('sin_usuario', 0),
             'simulado'    => $simular,
             'detalle'     => $detalle,
         ];

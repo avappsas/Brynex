@@ -37,8 +37,8 @@ class EpsSuraConfirmarAfiliados extends Command
                 $cambios->map(fn ($f) => [$f['aliado_id'], $f['radicado_id'], $f['cedula'], $f['nombre'], $f['empresa'], $f['estado_antes'], $f['accion'], $f['mensaje']])->all());
         }
 
-        $this->info(sprintf('%s%d confirmados · %d no aparecen · %d por revisar · %d errores (de %d en %d empresas, %ss).',
-            $simular ? '[SIMULACIÓN] ' : '', $r['confirmados'], $r['no_aparecen'], $r['revisar'], $r['errores'],
+        $this->info(sprintf('%s%d confirmados · %d no aparecen · %d por revisar · %d errores · %d omitidos sin usuario del portal (de %d en %d empresas, %ss).',
+            $simular ? '[SIMULACIÓN] ' : '', $r['confirmados'], $r['no_aparecen'], $r['revisar'], $r['errores'], $r['sin_usuario'],
             $r['candidatos'], $r['empresas'], $inicio->diffInSeconds(now())));
 
         return self::SUCCESS;
