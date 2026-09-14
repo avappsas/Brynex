@@ -110,14 +110,21 @@ const clicEnlace = async (pagina, patron) => {
   return hecho;
 };
 
-/** Espera hasta que la condición (evaluada en la página) sea verdadera. */
+/**
+ * Espera hasta que la condición (evaluada en la página) sea verdadera. Un error
+ * dentro de la condición cuenta como "todavía no": en plena navegación
+ * `document.body` puede ser null por un instante (pasó en el servidor, con más
+ * latencia, justo después de pulsar Ingresar).
+ */
 const esperarQue = async (pagina, fn, ms, arg) => {
   const limite = Date.now() + ms;
+  let ultimo = null;
   while (Date.now() < limite) {
     try { if (await pagina.evaluate(fn, arg)) return true; }
-    catch (e) { if (!contextoPerdido(e)) throw e; }
+    catch (e) { ultimo = e; }
     await esperar(700);
   }
+  if (ultimo && !contextoPerdido(ultimo) && !/of null|of undefined/i.test(String(ultimo.message))) throw ultimo;
   return false;
 };
 
@@ -164,14 +171,15 @@ try {
   }
 
   // ── Login ──
-  // `paso: 'login'` le dice a PHP que la clave fue rechazada y la bloquea. Un
-  // portal que no carga (403 por IP, túnel caído, Cloudflare) no es eso: el
-  // paso solo pasa a 'login' cuando el formulario ya está en pantalla.
+  // `paso: 'login'` le dice a PHP que la clave fue rechazada y la bloquea hasta
+  // que la cambien. Solo se usa cuando el portal MUESTRA un rechazo: un portal
+  // que no carga (403 por IP, túnel caído), un error del script o un ingreso
+  // que tarda no son eso (dos falsos bloqueos de ELITES el 14-sep-2026).
   paso = 'abrir portal';
   await pagina.goto(`${BASE}/Portal/home.jspx`, { waitUntil: 'networkidle2', timeout: 60000 });
   await pagina.waitForSelector('[id="loginForm:clave"]', { visible: true, timeout: 30000 })
     .catch(async () => { throw new Error(`Nueva EPS no mostró el formulario de ingreso: ${(await pagina.title().catch(() => '')) || 'sin respuesta'}.`); });
-  paso = 'login';
+  paso = 'ingresar';
 
   const [tipoTexto, numeroUsuario] = String(usuario).trim().match(/^([A-Za-z]{2})\s+(\d+)$/)
     ? String(usuario).trim().split(/\s+/)
@@ -181,11 +189,12 @@ try {
   await pagina.type('[id="loginForm:clave"]', String(contrasena), { delay: 30 });
   await pagina.click('[id="loginForm:loginButton"]').catch(() => {});
 
-  const entro = await esperarQue(pagina, () => /Bienvenido/i.test(document.body.innerText || ''), 30000);
+  const entro = await esperarQue(pagina, () => /Bienvenido/i.test(document.body?.innerText || ''), 45000);
   if (!entro) {
     const t = (await texto(pagina)).replace(/\s+/g, ' ');
     const motivo = (t.match(/[^.]*(inv[aá]lid|incorrect|bloquead|errad|no existe|no coincide)[^.]*\.?/i) || [])[0];
-    throw new Error((motivo || 'El portal no aceptó el usuario y la clave.').trim().slice(0, 200));
+    if (motivo) paso = 'login';
+    throw new Error((motivo || `El portal no confirmó el ingreso (sin mensaje de rechazo): ${t.slice(0, 120)}`).trim().slice(0, 200));
   }
 
   // ── Empleador ──
