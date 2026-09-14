@@ -49,6 +49,29 @@ class PlanillasConciliarEntregas extends Command
         if ($detalles->isEmpty()) {
             $this->warn('No hay envíos con wa_message_id para esos filtros.');
 
+            // --mes y --anio miran el periodo del PLANO, que en dependientes es
+            // el mes vencido: no es el mes que se ve en el filtro de la
+            // pantalla. Vale más decir qué periodos sí tienen datos que dejar
+            // a alguien adivinando cuál pedir.
+            $disponibles = PlanillaEnvioWhatsappDetalle::query()
+                ->whereNotNull('wa_message_id')
+                ->where('wa_message_id', '!=', '')
+                ->selectRaw('periodo_anio, periodo_mes, COUNT(*) AS total')
+                ->groupBy('periodo_anio', 'periodo_mes')
+                ->orderByDesc('periodo_anio')
+                ->orderByDesc('periodo_mes')
+                ->limit(6)
+                ->get();
+
+            if ($disponibles->isNotEmpty()) {
+                $this->newLine();
+                $this->line('El periodo es el del plano (en dependientes, el mes vencido), no el del filtro de la pantalla.');
+                $this->line('Periodos con envíos registrados:');
+                foreach ($disponibles as $d) {
+                    $this->line("  --anio={$d->periodo_anio} --mes={$d->periodo_mes}   ({$d->total} envíos)");
+                }
+            }
+
             return self::SUCCESS;
         }
 

@@ -60,8 +60,13 @@ class PlanillaEnvioWhatsappDetalle extends BaseModel
     /**
      * Qué tan lejos llegó el mensaje. Meta los reporta en este orden y a veces
      * fuera de orden, así que hay que poder compararlos.
+     *
+     * «fallido» empata con «enviado» y no vale cero: si valiera cero, un
+     * `sent` que llegara tarde —o una reconciliación del pasado -- le pasaría
+     * por encima a un fallo real y lo daría por enviado. Un rebote solo lo
+     * puede reemplazar una entrega de verdad.
      */
-    public const AVANCE_ESTADO = ['enviado' => 1, 'entregado' => 2, 'leido' => 3];
+    public const AVANCE_ESTADO = ['enviado' => 1, 'fallido' => 1, 'entregado' => 2, 'leido' => 3];
 
     /**
      * Aplica el estado que reporta Meta, con las reglas que valen tanto para el
