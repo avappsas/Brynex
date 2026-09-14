@@ -201,7 +201,7 @@ class EpsSuraConciliacionService
                 'fecha_confirmacion' => now(),
                 'user_id'            => $usuarioId,
                 'observacion'        => trim(($fresco->observacion ? $fresco->observacion.' | ' : '').$observacion),
-            ]);
+            ] + $fresco->datosConfirmacion('eps_sura'));
 
             RadicadoMovimiento::create([
                 'radicado_id'     => $fresco->id,

@@ -79,6 +79,8 @@ body {
 .badge-traslado  { background:#fed7aa;color:#c2410c;border-color:#fb923c; }
 .badge-error     { background:#fee2e2;color:#b91c1c;border-color:#fca5a5; }
 .badge-ok        { background:#dcfce7;color:#15803d;border-color:#86efac; }
+/* OK confirmado por la entidad (portal/API): verde fuerte. El OK a mano queda en verde claro. */
+.badge-ok-confirmado { background:#15803d;color:#fff;border-color:#166534; }
 
 .badge-programado { background:#f3e8ff;color:#6b21a8;border-color:#c084fc; }
 
@@ -581,6 +583,7 @@ function sortClass($col, $currSort, $currDir) {
         <td style="padding-left:2px;">
             @if($plan?->incluye_eps && $rEps)
             <button class="badge-estado badge-{{ $rEps->estadoClaseEfectiva() }} btn-rad"
+                @if($rEps->esConfirmadoPorEntidad()) title="{{ $rEps->textoConfirmacion() }}" @endif
                 data-rad-id="{{ $rEps->id }}"
                 data-contrato-id="{{ $c->id }}"
                 data-eps-formulario="{{ $c->eps?->formulario_pdf ? '1' : '0' }}"
@@ -621,6 +624,7 @@ function sortClass($col, $currSort, $currDir) {
         <td style="padding-left:2px;">
             @if($plan?->incluye_arl && $rArl)
             <button class="badge-estado badge-{{ $rArl->estadoClaseEfectiva() }} btn-rad"
+                @if($rArl->esConfirmadoPorEntidad()) title="{{ $rArl->textoConfirmacion() }}" @endif
                 data-rad-id="{{ $rArl->id }}"
                 data-rad='{{ json_encode(['id'=>$rArl->id,'tipo'=>$rArl->tipo,'estado'=>$rArl->estado,'numero_radicado'=>$rArl->numero_radicado,'canal_envio'=>$rArl->canal_envio,'canal_envio_cliente'=>$rArl->canal_envio_cliente,'enviado_al_cliente'=>$rArl->enviado_al_cliente,'ruta_pdf'=>$rArl->ruta_pdf,'observacion'=>$rArl->observacion]) }}'
                 data-ctx='{{ $contexto }}'>
@@ -647,6 +651,7 @@ function sortClass($col, $currSort, $currDir) {
         <td style="padding-left:2px;">
             @if($plan?->incluye_caja && $rCaja)
             <button class="badge-estado badge-{{ $rCaja->estadoClaseEfectiva() }} btn-rad"
+                @if($rCaja->esConfirmadoPorEntidad()) title="{{ $rCaja->textoConfirmacion() }}" @endif
                 data-rad-id="{{ $rCaja->id }}"
                 data-rad='{{ json_encode(['id'=>$rCaja->id,'tipo'=>$rCaja->tipo,'estado'=>$rCaja->estado,'numero_radicado'=>$rCaja->numero_radicado,'canal_envio'=>$rCaja->canal_envio,'canal_envio_cliente'=>$rCaja->canal_envio_cliente,'enviado_al_cliente'=>$rCaja->enviado_al_cliente,'ruta_pdf'=>$rCaja->ruta_pdf,'observacion'=>$rCaja->observacion]) }}'
                 data-ctx='{{ $contexto }}'>
@@ -673,6 +678,7 @@ function sortClass($col, $currSort, $currDir) {
         <td style="padding-left:2px;">
             @if($plan?->incluye_pension && $rPen)
             <button class="badge-estado badge-{{ $rPen->estadoClaseEfectiva() }} btn-rad"
+                @if($rPen->esConfirmadoPorEntidad()) title="{{ $rPen->textoConfirmacion() }}" @endif
                 data-rad-id="{{ $rPen->id }}"
                 data-contrato-id="{{ $c->id }}"
                 data-pension-formulario="{{ $c->pension?->formulario_pdf ? '1' : '0' }}"
@@ -1877,7 +1883,7 @@ function actualizarBadgesEnTabla(radId, data) {
     // Buscar todos los botones con este radicadoId
     document.querySelectorAll('[onclick*="abrirModalRadicado(' + radId + '"]').forEach(btn => {
         // Actualizar data y clase
-        const clases = ['badge-pendiente','badge-tramite','badge-traslado','badge-error','badge-ok'];
+        const clases = ['badge-pendiente','badge-tramite','badge-traslado','badge-error','badge-ok','badge-ok-confirmado'];
         clases.forEach(c => btn.classList.remove(c));
         btn.classList.add('badge-' + data.estado);
         btn.textContent = data.icono + ' ' + data.estado.toUpperCase();

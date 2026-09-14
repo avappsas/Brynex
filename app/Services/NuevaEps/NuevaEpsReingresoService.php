@@ -276,7 +276,7 @@ class NuevaEpsReingresoService
                 'fecha_confirmacion'   => $nuevo === Radicado::ESTADO_OK ? ($r->fecha_confirmacion ?? now()) : $r->fecha_confirmacion,
                 'ruta_pdf'             => $rutaPdf ?? $r->ruta_pdf,
                 'observacion'          => trim(($r->observacion ? $r->observacion.' | ' : '').$observacion),
-            ]);
+            ] + (strtoupper($estadoEps) === 'PROCESADO' ? $r->datosConfirmacion('nueva_eps') : []));
 
             RadicadoMovimiento::create([
                 'radicado_id'     => $r->id,

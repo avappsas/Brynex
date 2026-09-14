@@ -389,6 +389,10 @@
           'ok'        => ['bg'=>'#dcfce7','txt'=>'#166534','icono'=>'✅','label'=>'Afiliado OK'],
         ];
         $c = $cfg[$rad->estado] ?? ['bg'=>'#f1f5f9','txt'=>'#475569','icono'=>'❓','label'=>$rad->estado];
+        // OK confirmado por la entidad (portal/API): verde fuerte, como en Afiliaciones.
+        if ($rad instanceof \App\Models\Radicado && $rad->esConfirmadoPorEntidad()) {
+          $c = ['bg'=>'#15803d','txt'=>'#fff','icono'=>'✔✔','label'=>'Confirmado '.(\App\Models\Radicado::CONFIRMADORES[$rad->confirmado_por] ?? '')];
+        }
         $num = $rad->numero_radicado ? $rad->numero_radicado : '';
         return '<span class="chip-ss" style="background:'.$c['bg'].';color:'.$c['txt'].';">'
           .$c['icono'].' '.$c['label'].($num ? ' · '.$num : '').'</span>';

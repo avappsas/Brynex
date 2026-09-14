@@ -130,6 +130,8 @@ class ArlAfiliacionService
                 'canal_envio'        => Radicado::CANAL_WEB,
                 'ruta_pdf'           => $soporte?->ruta,
                 'fecha_confirmacion' => now(),
+                'confirmado_por'     => 'arl_sura',
+                'confirmado_en'      => now(),
                 'user_id'            => $usuarioId,
                 'observacion'        => 'Afiliación automática en ARL Sura desde BryNex. Cobertura desde '.
                     $afiliacion->fecha_inicio_cobertura->format('d/m/Y').'.',
@@ -304,6 +306,9 @@ class ArlAfiliacionService
                 'numero_radicado'    => null,
                 'ruta_pdf'           => null,
                 'fecha_confirmacion' => null,
+                // update() de query no pasa por el evento del modelo que la limpia.
+                'confirmado_por'     => null,
+                'confirmado_en'      => null,
                 'observacion'        => 'Afiliación anulada en ARL Sura el '.now()->format('d/m/Y H:i').
                     ($vigente?->codigo_transaccion ? ' (transacción '.$vigente->codigo_transaccion.').' : '.'),
             ]);

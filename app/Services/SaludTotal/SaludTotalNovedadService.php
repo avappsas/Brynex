@@ -330,6 +330,9 @@ class SaludTotalNovedadService
         DB::transaction(function () use ($radicado, $numero, $nuevo, $rutaPdf, $observacion, $usuarioId) {
             $r = Radicado::whereKey($radicado->id)->lockForUpdate()->first();
             $anterior = $r->estado;
+            // Todo OK que llega aquí lo dio el portal (novedad aprobada o afiliación
+            // activa). Un OK a mano que se conserva abajo no cuenta como confirmado.
+            $confirmaSaludTotal = $nuevo === Radicado::ESTADO_OK;
 
             // Nunca se retrocede un radicado ya cerrado.
             if ($anterior === Radicado::ESTADO_OK) {
@@ -345,7 +348,7 @@ class SaludTotalNovedadService
                 'fecha_confirmacion'   => $nuevo === Radicado::ESTADO_OK ? ($r->fecha_confirmacion ?? now()) : $r->fecha_confirmacion,
                 'ruta_pdf'             => $rutaPdf ?? $r->ruta_pdf,
                 'observacion'          => trim(($r->observacion ? $r->observacion.' | ' : '').$observacion),
-            ]);
+            ] + ($confirmaSaludTotal ? $r->datosConfirmacion('salud_total') : []));
 
             RadicadoMovimiento::create([
                 'radicado_id'     => $r->id,

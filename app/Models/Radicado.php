@@ -16,13 +16,67 @@ class Radicado extends BaseModel
         'canal_envio_cliente', 'fecha_envio_cliente',
         'fecha_inicio_tramite', 'fecha_confirmacion',
         'user_id', 'observacion', 'ruta_pdf',
+        'confirmado_por', 'confirmado_en',
     ];
     protected $casts = [
         'enviado_al_cliente'   => 'boolean',
         'fecha_envio_cliente'  => 'datetime',
         'fecha_inicio_tramite' => 'datetime',
         'fecha_confirmacion'   => 'datetime',
+        'confirmado_en'        => 'datetime',
     ];
+
+    /**
+     * Entidades que confirman un OK por su portal o API. Un OK con
+     * `confirmado_por` lo dio por hecho la entidad; sin él, lo marcó alguien a mano.
+     */
+    const CONFIRMADORES = [
+        'nueva_eps'   => 'Nueva EPS',
+        'eps_sura'    => 'EPS SURA',
+        'salud_total' => 'Salud Total',
+        'arl_sura'    => 'ARL Sura',
+    ];
+
+    protected static function booted(): void
+    {
+        // La confirmación solo vale mientras el radicado sigue en OK: si alguien
+        // lo reabre (a mano o por una anulación), deja de estar confirmado.
+        static::saving(function (Radicado $r) {
+            if ($r->estado !== self::ESTADO_OK && ($r->confirmado_por || $r->confirmado_en)) {
+                $r->confirmado_por = null;
+                $r->confirmado_en  = null;
+            }
+        });
+    }
+
+    /**
+     * Columnas para marcar un OK como confirmado por la entidad, sin pisar una
+     * confirmación anterior (conserva la fecha en que se confirmó primero).
+     */
+    public function datosConfirmacion(string $entidad): array
+    {
+        return [
+            'confirmado_por' => $this->confirmado_por ?: $entidad,
+            'confirmado_en'  => $this->confirmado_en ?: now(),
+        ];
+    }
+
+    public function esConfirmadoPorEntidad(): bool
+    {
+        return $this->estado === self::ESTADO_OK && (bool) $this->confirmado_por;
+    }
+
+    /** "Confirmado en Nueva EPS el 15/09/2026 · radicado 10758215" */
+    public function textoConfirmacion(): ?string
+    {
+        if (! $this->esConfirmadoPorEntidad()) {
+            return null;
+        }
+
+        return 'Confirmado en '.(self::CONFIRMADORES[$this->confirmado_por] ?? $this->confirmado_por)
+            .($this->confirmado_en ? ' el '.$this->confirmado_en->format('d/m/Y') : '')
+            .($this->numero_radicado ? ' · radicado '.$this->numero_radicado : '');
+    }
 
     // ── Constantes de estado ──
     const ESTADO_PENDIENTE  = 'pendiente';
@@ -118,6 +172,9 @@ class Radicado extends BaseModel
         if ($this->esFuturoProgramado()) {
             return 'programado';
         }
+        if ($this->esConfirmadoPorEntidad()) {
+            return 'ok-confirmado';
+        }
         return $this->estado;
     }
 
@@ -125,6 +182,9 @@ class Radicado extends BaseModel
     {
         if ($this->esFuturoProgramado()) {
             return '📅 F';
+        }
+        if ($this->esConfirmadoPorEntidad()) {
+            return '✔✔ OK';
         }
         // "OK" se muestra completo; el resto con su inicial.
         $texto = $this->estado === self::ESTADO_OK
