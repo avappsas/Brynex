@@ -216,7 +216,7 @@ class InformeController extends Controller
 
         if ($request->input('excel')) {
             $todosClientes = $query->orderBy('cl.primer_apellido')->get();
-            return $this->exportCsv($todosClientes, 'clientes_activos',
+            return $this->exportExcel($todosClientes, 'clientes_activos',
                 ['Cédula','Nombre','Razón Social','Empresa','EPS','Caja','Pensión','Modalidad','Plan','Fecha Ingreso','Salario'],
                 fn($r)=>[$r->cedula,$r->nombre_completo,$r->razon_social,$r->empresa,$r->eps_nombre,$r->caja_nombre,$r->pension_nombre,$r->modalidad_nombre,$r->plan_nombre,sqldate($r->fecha_ingreso)?->format('d/m/Y'),$r->salario]);
         }
@@ -465,7 +465,7 @@ class InformeController extends Controller
         }
         $retirados = $retirados->values();
 
-        if ($request->input('excel')) return $this->exportCsv($retirados,'retirados_mes',
+        if ($request->input('excel')) return $this->exportExcel($retirados,'retirados_mes',
             ['Cédula','Nombre','Razón Social','Plan','Modalidad','Días Retiro','Fecha Retiro','Fecha Marcado Retiro','Motivo','Costo SS Retiro','Tipo Retiro','Observación','Renovó'],
             fn($r)=>[$r->cedula,$r->nombre_completo,$r->razon_social,$r->plan_nombre ?? '—',$r->modalidad_nombre ?? '—',$r->dias_retiro ?? 0,sqldate($r->fecha_retiro)?->format('d/m/Y'),sqldate($r->fecha_marcado_retiro)?->format('d/m/Y H:i'),$r->motivo,$r->costo_ss ? (int)$r->costo_ss : 0, $r->tipo_retiro, $r->observacion, $r->tiene_contrato_vigente > 0 ? 'Sí' : 'No']);
 
@@ -523,7 +523,7 @@ class InformeController extends Controller
         if ($request->input('excel')) {
             $filas = $grupo ? $detalle : $servicio->pendientes($fAliado, $mes, $anio);
 
-            return $this->exportCsv($filas, 'validacion_cierre',
+            return $this->exportExcel($filas, 'validacion_cierre',
                 ['Cédula','Nombre','Aliado','Razón Social','Plan','Modalidad','Celular','Fecha Ingreso','Último período en planilla'],
                 fn($r) => [
                     $r->cedula, $r->nombre, $r->aliado, $r->razon_social, $r->plan_nombre ?? '—',
@@ -649,7 +649,7 @@ class InformeController extends Controller
 
         if ($excel = $request->input('excel')) {
             if ($excel === 'lotes') {
-                return $this->exportCsv($lotes, 'planillas_sin_confirmar',
+                return $this->exportExcel($lotes, 'planillas_sin_confirmar',
                     ['Razón Social','Período plano','Tanda','Cotizantes','Valor SS','Estado','N° planilla'],
                     fn($r) => [
                         $r->razon_social, $r->anio_plano.'-'.str_pad($r->mes_plano, 2, '0', STR_PAD_LEFT),
@@ -662,7 +662,7 @@ class InformeController extends Controller
             $filas  = $excel === 'afiliaciones' ? $afiliaciones : $vigentes;
             $nombre = $excel === 'afiliaciones' ? 'afiliaciones_sin_facturar' : 'vigentes_sin_facturar';
 
-            return $this->exportCsv($filas, $nombre,
+            return $this->exportExcel($filas, $nombre,
                 ['Cédula','Nombre','Razón Social','Plan','Modalidad','Celular','Fecha Ingreso','Pendiente'],
                 fn($r) => [
                     $r->cedula, $r->nombre, $r->razon_social, $r->plan_nombre ?? '—',
@@ -1415,9 +1415,9 @@ class InformeController extends Controller
         // Desglose diario
         $diario = $this->desgloseDiario($aid, $mes, $anio);
 
-        if ($request->input('excel')) return $this->exportCsv(collect($diario),'estado_financiero',
+        if ($request->input('excel')) return $this->exportExcel(collect($diario),'estado_financiero',
             ['Día','# Plan','Planillas','# Afil','Afiliaciones','Trámites','SS','Gastos','Utilidad'],
-            fn($r)=>[$r['dia'],$r['cant_planillas'],number_format($r['planillas']),$r['cant_afiliaciones'],number_format($r['afiliaciones']),number_format($r['tramites']),number_format($r['ss']),number_format($r['gastos']),number_format($r['utilidad'])]);
+            fn($r)=>[$r['dia'],(int)$r['cant_planillas'],(float)$r['planillas'],(int)$r['cant_afiliaciones'],(float)$r['afiliaciones'],(float)$r['tramites'],(float)$r['ss'],(float)$r['gastos'],(float)$r['utilidad']]);
 
         // ── Saldo retenido para asesores (comisiones ganadas - pagadas, desde mayo 2025) ──
         $saldoAsesores = \App\Http\Controllers\Admin\ComisionesController::calcularSaldoRetenido($aid);
@@ -3222,17 +3222,86 @@ class InformeController extends Controller
         return $resultado;
     }
 
-    // ── Helper: exportar CSV ─────────────────────────────────────────
-    private function exportCsv($data, string $nombre, array $headers, callable $mapFn)
+    // ── Helper: exportar Excel ───────────────────────────────────────
+    /**
+     * Antes era un CSV con ";" detrás de un botón que decía Excel: al abrirlo
+     * las cédulas perdían ceros o salían en notación científica y las fechas
+     * no se podían ordenar.
+     *
+     * sqlsrv devuelve todo como texto, así que el tipo se decide aquí: las
+     * columnas de identificación (cédula, celular, planilla…) van siempre
+     * como texto; cualquier otro número, como número; y d/m/Y o Y-m-d, como
+     * fecha de Excel.
+     */
+    private function exportExcel($data, string $nombre, array $headers, callable $mapFn)
     {
-        $filename = "{$nombre}_".now()->format('Ymd_His').".csv";
-        return response()->streamDownload(function() use($data,$headers,$mapFn){
-            $out = fopen('php://output','w');
-            fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF)); // BOM UTF-8 para Excel
-            fputcsv($out,$headers,';');
-            foreach($data as $row) fputcsv($out,$mapFn($row),';');
-            fclose($out);
-        },$filename,['Content-Type'=>'text/csv; charset=UTF-8']);
+        $libro = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $hoja  = $libro->getActiveSheet();
+        $hoja->setTitle(mb_substr(ucfirst(str_replace('_', ' ', $nombre)), 0, 31));
+
+        $ultima = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(count($headers));
+        $hoja->fromArray($headers, null, 'A1');
+        $hoja->getStyle("A1:{$ultima}1")->applyFromArray([
+            'font' => ['bold' => true],
+            'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => 'FCE4D6']],
+        ]);
+
+        $esTexto = array_map(
+            fn ($h) => (bool) preg_match('/c[ée]dula|documento|nit\b|celular|tel[ée]fono|planilla|recibo/iu', $h),
+            array_values($headers)
+        );
+
+        $fila = 2;
+        foreach ($data as $row) {
+            foreach (array_values($mapFn($row)) as $i => $valor) {
+                $celda = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($i + 1).$fila;
+                if ($valor === null || $valor === '') {
+                    continue;
+                }
+                if (is_int($valor) || is_float($valor)) {
+                    $hoja->setCellValue($celda, $valor);
+                    if (is_float($valor)) {
+                        $hoja->getStyle($celda)->getNumberFormat()->setFormatCode('#,##0');
+                    }
+                    continue;
+                }
+                $valor = trim(preg_replace('/\s+/u', ' ', (string) $valor));
+                if (! ($esTexto[$i] ?? false)) {
+                    if (preg_match('/^-?\d+(\.\d+)?$/', $valor)) {
+                        $hoja->setCellValue($celda, (float) $valor);
+                        if (str_contains($valor, '.')) {
+                            $hoja->getStyle($celda)->getNumberFormat()->setFormatCode('#,##0');
+                        }
+                        continue;
+                    }
+                    if (preg_match('#^(\d{2})/(\d{2})/(\d{4})( \d{2}:\d{2})?$#', $valor, $m)
+                        || preg_match('#^(\d{4})-(\d{2})-(\d{2})( \d{2}:\d{2})?(:\d{2}(\.\d+)?)?$#', $valor)) {
+                        $fecha = str_contains($valor, '/')
+                            ? \Carbon\Carbon::createFromFormat('Y-m-d H:i', "{$m[3]}-{$m[2]}-{$m[1]} ".trim($m[4] ?? '00:00'))
+                            : \Carbon\Carbon::parse($valor);
+                        $conHora = $fecha->format('H:i') !== '00:00';
+                        $hoja->setCellValue($celda, \PhpOffice\PhpSpreadsheet\Shared\Date::PHPToExcel($fecha));
+                        $hoja->getStyle($celda)->getNumberFormat()->setFormatCode($conHora ? 'dd/mm/yyyy hh:mm' : 'dd/mm/yyyy');
+                        continue;
+                    }
+                }
+                $hoja->setCellValueExplicit($celda, $valor, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            }
+            $fila++;
+        }
+
+        $hoja->setAutoFilter("A1:{$ultima}".max(1, $fila - 1));
+        $hoja->freezePane('A2');
+        for ($c = 1; $c <= count($headers); $c++) {
+            $hoja->getColumnDimensionByColumn($c)->setAutoSize(true);
+        }
+
+        $tmp = tempnam(sys_get_temp_dir(), 'infxls');
+        (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($libro))->save($tmp);
+
+        return response()->download($tmp, "{$nombre}_".now()->format('Ymd_His').'.xlsx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ])->deleteFileAfterSend(true);
     }
 
     // ── JSON: Conciliación de Seguridad Social (Desfase de Recaudo vs Planillas) ──
