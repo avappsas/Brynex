@@ -171,10 +171,9 @@ class FormularioEpsService
                 $porId  = storage_path('app/sellos/' . $rs->id . '.png');
                 return file_exists($porNit) ? $porNit : (file_exists($porId) ? $porId : '');
             })(),
-            // Firma del cliente (PNG guardado en firma modal — clave: cedula)
-            'cliente.firma'            => $c?->cedula
-                ? storage_path('app/firmas/' . $c->cedula . '.png')
-                : '',
+            // Firma del cliente: la guardada en el modal (clave: cedula) o, si no hay,
+            // su nombre en letra cursiva — los clientes autorizan firmar así sus formularios.
+            'cliente.firma'            => $c?->cedula ? $this->firmaCliente($c) : '',
         ];
 
         // ── Beneficiarios ───────────────────────────────────────────
@@ -202,6 +201,52 @@ class FormularioEpsService
         }
 
         return $datos;
+    }
+
+    /**
+     * Ruta del PNG de la firma del cliente. Si no dibujó ni guardó una, se arma
+     * con su nombre en Kaushan Script (la misma letra del modal "Nombre como
+     * firma") y se deja en `firmas_auto/`, aparte de las guardadas para que una
+     * firma real siempre mande.
+     */
+    protected function firmaCliente($cliente): string
+    {
+        $guardada = storage_path('app/firmas/'.$cliente->cedula.'.png');
+        if (file_exists($guardada)) {
+            return $guardada;
+        }
+
+        $nombre = trim(preg_replace('/\s+/', ' ', mb_strtoupper(implode(' ', array_filter([
+            $cliente->primer_nombre, $cliente->segundo_nombre, $cliente->primer_apellido, $cliente->segundo_apellido,
+        ])))));
+        $fuente = resource_path('fonts/KaushanScript-Regular.ttf');
+        if ($nombre === '' || ! file_exists($fuente) || ! function_exists('imagettftext')) {
+            return '';
+        }
+
+        // El nombre va en el archivo para que un cambio de nombre genere otra firma.
+        $ruta = storage_path('app/firmas_auto/'.$cliente->cedula.'_'.substr(md5($nombre), 0, 8).'.png');
+        if (file_exists($ruta)) {
+            return $ruta;
+        }
+
+        $tamano = 48;
+        $caja   = imagettfbbox($tamano, 0, $fuente, $nombre);
+        $ancho  = abs($caja[2] - $caja[0]) + 40;
+        $alto   = abs($caja[7] - $caja[1]) + 30;
+
+        $img = imagecreatetruecolor($ancho, $alto);
+        imagesavealpha($img, true);
+        imagefill($img, 0, 0, imagecolorallocatealpha($img, 0, 0, 0, 127));
+        imagettftext($img, $tamano, 0, 20 - $caja[0], 15 - $caja[7], imagecolorallocate($img, 0x1e, 0x29, 0x3b), $fuente, $nombre);
+
+        if (! is_dir(dirname($ruta))) {
+            mkdir(dirname($ruta), 0775, true);
+        }
+        imagepng($img, $ruta);
+        imagedestroy($img);
+
+        return $ruta;
     }
 
     /** Separa cada dígito de un string con un espacio: '2026' -> '2 0 2 6' */
