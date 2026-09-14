@@ -32,6 +32,7 @@ class FacturasRecalcularLoteOtros extends Command
                             {--solo-pago      : No toca totales ni "otros": solo reparte de nuevo el pago del lote entre las facturas}
                             {--sin-mora       : Quita la mora del lote: la asume el aliado y deja de ser deuda del cliente}
                             {--con-prestamo   : Procesar aunque el lote tenga facturas en préstamo (por defecto se rechaza)}
+                            {--ajustar-estado : Deja el estado acorde al saldo: la factura que queda debiendo pasa a préstamo y la que queda cubierta vuelve a pagada}
                             {--dry-run        : Mostrar el recálculo sin escribir}
                             {--force          : Aplicar sin preguntar (para correrlo sin terminal interactiva)}';
 
@@ -150,6 +151,20 @@ class FacturasRecalcularLoteOtros extends Command
         $this->line("Lote #{$numero} (aliado {$aliadoId}) — {$facturas->count()} facturas");
         $this->newLine();
 
+        // El listado de /admin/prestamos solo mira las facturas en estado
+        // 'prestamo': una que quede debiendo con estado 'pagada' se vuelve deuda
+        // invisible, y una saldada que siga en 'prestamo' infla la cartera. Con
+        // --ajustar-estado el estado sigue al saldo.
+        $ajustarEstado = (bool) $this->option('ajustar-estado');
+        $estadosNuevos = [];
+        foreach ($facturas as $f) {
+            $id = $f->id;
+            $debe = $prestamoNuevo[$id] > 0;
+            $estadosNuevos[$id] = ($ajustarEstado && in_array($f->estado, ['pagada', 'prestamo'], true))
+                ? ($debe ? Factura::ESTADO_PRESTAMO : Factura::ESTADO_PAGADA)
+                : $f->estado;
+        }
+
         $filas = [];
         foreach ($facturas as $f) {
             $id = $f->id;
@@ -162,9 +177,10 @@ class FacturasRecalcularLoteOtros extends Command
                 (int) $f->total.' → '.$totalesNuevos[$id],
                 (int) $f->valor_consignado.' → '.$consigNuevo[$id],
                 (int) $f->saldo_proximo.' → '.($pagado - $totalesNuevos[$id]),
+                $estadosNuevos[$id] === $f->estado ? $f->estado : $f->estado.' → '.$estadosNuevos[$id],
             ];
         }
-        $this->table(['factura', 'cédula', 'otros', 'total', 'consignado', 'saldo'], $filas);
+        $this->table(['factura', 'cédula', 'otros', 'total', 'consignado', 'saldo', 'estado'], $filas);
 
         $this->line('Total lote:   '.$facturas->sum('total').' → '.$baseTotal);
         $otrosDespues = ($otrosFuera || $soloPago)
@@ -203,13 +219,15 @@ class FacturasRecalcularLoteOtros extends Command
             'valor_prestamo' => (int) $f->valor_prestamo,
             'anticipo_aplicado' => (int) $f->anticipo_aplicado,
             'saldo_proximo' => (int) $f->saldo_proximo,
+            'estado' => $f->estado,
         ])->all();
 
-        DB::transaction(function () use ($facturas, $otrosNuevos, $otrosAdmonNuevos, $totalesNuevos, $consigNuevo, $efectivoNuevo, $prestamoNuevo, $anticipoNuevo, $sinMora) {
+        DB::transaction(function () use ($facturas, $otrosNuevos, $otrosAdmonNuevos, $totalesNuevos, $consigNuevo, $efectivoNuevo, $prestamoNuevo, $anticipoNuevo, $sinMora, $estadosNuevos) {
             foreach ($facturas as $f) {
                 $id = $f->id;
                 $pagado = $consigNuevo[$id] + $efectivoNuevo[$id] + $anticipoNuevo[$id];
                 $f->update([
+                    'estado' => $estadosNuevos[$id],
                     'valor_prestamo' => $prestamoNuevo[$id],
                     'mora' => $sinMora ? 0 : (int) $f->mora,
                     'otros' => $otrosNuevos[$id],
