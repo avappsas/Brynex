@@ -54,7 +54,7 @@ class WhatsappApiService
 
         $payload = [
             'messaging_product' => 'whatsapp',
-            'to'                => $this->normalizarNumero($to),
+            'to'                => self::normalizarNumero($to),
             'type'              => 'template',
             'template'          => [
                 'name'       => $plantilla->nombre,
@@ -82,7 +82,7 @@ class WhatsappApiService
 
         $payload = [
             'messaging_product' => 'whatsapp',
-            'to'                => $this->normalizarNumero($to),
+            'to'                => self::normalizarNumero($to),
             'type'              => 'text',
             'text'              => ['body' => $texto, 'preview_url' => false],
         ];
@@ -146,7 +146,7 @@ class WhatsappApiService
 
         $payload = [
             'messaging_product' => 'whatsapp',
-            'to'                => $this->normalizarNumero($to),
+            'to'                => self::normalizarNumero($to),
             'type'              => $tipo,
             $tipo               => $mediaPayload,
         ];
@@ -449,7 +449,7 @@ class WhatsappApiService
 
         $payload = [
             'messaging_product' => 'whatsapp',
-            'to'                => $this->normalizarNumero($to),
+            'to'                => self::normalizarNumero($to),
             'type'              => 'template',
             'template'          => [
                 'name'       => $plantilla->nombre,
@@ -596,7 +596,15 @@ class WhatsappApiService
         }
     }
 
-    private function normalizarNumero(string $numero): string
+    /**
+     * El número tal como lo recibe Meta.
+     *
+     * Pública y estática a propósito: es la regla que decide a qué número sale
+     * de verdad un mensaje, así que quien guarda un celular tiene que poder
+     * validarlo contra esta misma función y no contra una copia que se le
+     * parezca.
+     */
+    public static function normalizarNumero(string $numero): string
     {
         // Quitar cualquier carácter que no sea número
         $numero = preg_replace('/[^0-9]/', '', $numero);
@@ -610,6 +618,31 @@ class WhatsappApiService
         }
 
         return $numero;
+    }
+
+    /**
+     * ¿Este campo es un celular colombiano y uno solo?
+     *
+     * Un campo con dos números metidos («300 7047642 / 320 1234567») no falla
+     * aquí por el separador —`normalizarNumero()` lo quita— sino por el largo:
+     * quedan veinte dígitos, no se le antepone el 57 y Meta lo rechaza sin que
+     * nadie se entere. Un fijo formateado («601 234 5678») es peor todavía:
+     * tiene diez dígitos, pasa por celular y el mensaje se pierde.
+     */
+    public static function esCelularColombiano(?string $numero): bool
+    {
+        return (bool) preg_match('/^573\d{9}$/', self::normalizarNumero((string) $numero));
+    }
+
+    /**
+     * El número tal como se guarda en BryNex: diez dígitos, sin indicativo ni
+     * separadores. `normalizarNumero()` le vuelve a poner el 57 al enviar.
+     */
+    public static function formatoNacional(string $numero): string
+    {
+        $n = self::normalizarNumero($numero);
+
+        return strlen($n) === 12 && str_starts_with($n, '57') ? substr($n, 2) : $n;
     }
 
     private function extensionDesde(string $mimeType): string
