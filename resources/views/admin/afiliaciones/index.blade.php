@@ -785,6 +785,12 @@ function sortClass($col, $currSort, $currDir) {
                     onclick="reingresoNuevaEpsDesdeRadicado()">
                     🏥 Reingreso Nueva EPS
                 </button>
+                {{-- Radicados de EPS en Salud Total: novedad de inicio laboral por el portal --}}
+                <button id="btnNovedadSaludTotal" type="button"
+                    style="display:none;align-items:center;gap:0.35rem;padding:0.3rem 0.85rem;background:linear-gradient(135deg,#15803d,#22c55e);color:#fff;border:none;border-radius:7px;font-size:0.75rem;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(34,197,94,0.3);"
+                    onclick="novedadSaludTotalDesdeRadicado()">
+                    🏥 Novedad Salud Total
+                </button>
                 {{-- Cuando ya está afiliado: deshacer, solo dentro de los 30 días --}}
                 <button id="btnAnularApi" type="button"
                     style="display:none;align-items:center;gap:0.35rem;padding:0.3rem 0.85rem;background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;border-radius:7px;font-size:0.75rem;font-weight:700;cursor:pointer;"
@@ -990,6 +996,8 @@ function sortClass($col, $currSort, $currDir) {
                 style="padding:0.3rem 0.8rem;border-radius:7px;border:1px solid #0033a0;font-size:0.78rem;font-weight:700;cursor:pointer;">EPS SURA</button>
             <button type="button" class="ceps-tab" data-entidad="nueva_eps" onclick="elegirEntidadConciliacion('nueva_eps')"
                 style="padding:0.3rem 0.8rem;border-radius:7px;border:1px solid #be123c;font-size:0.78rem;font-weight:700;cursor:pointer;">Nueva EPS</button>
+            <button type="button" class="ceps-tab" data-entidad="salud_total" onclick="elegirEntidadConciliacion('salud_total')"
+                style="padding:0.3rem 0.8rem;border-radius:7px;border:1px solid #15803d;font-size:0.78rem;font-weight:700;cursor:pointer;">Salud Total</button>
         </div>
 
         <div id="ceps-descripcion-sura" style="font-size:0.78rem;color:#475569;line-height:1.45;margin-bottom:0.8rem;">
@@ -1003,6 +1011,13 @@ function sortClass($col, $currSort, $currDir) {
             si Nueva EPS ya lo <strong>procesó</strong> pasa a <strong>OK</strong>; si solo está <strong>radicado</strong> queda en trámite con su número.
             En ambos casos se adjunta el certificado del portal. Los que no tienen reingreso se tramitan desde el radicado (🏥 Reingreso Nueva EPS).
             <br>Tarda alrededor de un minuto por empresa.
+        </div>
+        <div id="ceps-descripcion-salud_total" style="display:none;font-size:0.78rem;color:#475569;line-height:1.45;margin-bottom:0.8rem;">
+            Busca en el seguimiento de novedades de inicio laboral de Salud Total y pone al día los radicados de EPS <strong>pendientes, en trámite o con error</strong>:
+            <strong>aprobada</strong> pasa a <strong>OK</strong> con el certificado; <strong>en validación</strong> queda en trámite con el número de formulario y el PDF;
+            con <strong>inconsistencias</strong> queda en error con el motivo. Si no hay novedad pero ya está activo con la empresa, también pasa a OK.
+            Los que faltan se tramitan desde el radicado (🏥 Novedad Salud Total).
+            <br>Tarda unos segundos por empresa.
         </div>
 
         <div id="ceps-acciones" style="display:flex;gap:0.5rem;margin-bottom:0.8rem;">
@@ -1512,6 +1527,12 @@ function abrirModalRadicado(radId, radData, ctx = {}, contratoId = null, tieneFo
     const esNuevaEps  = (radData.tipo === 'eps') && /NUEVA\s*EPS/i.test(ctx.eps || '');
     btnNuevaEps.style.display = (esNuevaEps && radData.estado !== 'ok') ? 'inline-flex' : 'none';
     btnNuevaEps._contratoId = contratoId || ctx.id || null;
+
+    // Novedad de inicio laboral: radicados de EPS de Salud Total que aún no están en OK.
+    const btnSaludTotal = document.getElementById('btnNovedadSaludTotal');
+    const esSaludTotal  = (radData.tipo === 'eps') && /SALUD\s*TOTAL/i.test(ctx.eps || '');
+    btnSaludTotal.style.display = (esSaludTotal && radData.estado !== 'ok') ? 'inline-flex' : 'none';
+    btnSaludTotal._contratoId = contratoId || ctx.id || null;
     // Contexto del contrato
     document.getElementById('mrad-cotizante').textContent        = ctx.nombre         || '—';
     document.getElementById('mrad-empresa').textContent          = ctx.razon_social    || '—';
@@ -1616,6 +1637,13 @@ function reingresoNuevaEpsDesdeRadicado() {
     if (!contratoId) { alert('No se pudo identificar el contrato.'); return; }
     cerrarModal('modalRadicado');
     abrirReingresoNuevaEps(contratoId);
+}
+
+function novedadSaludTotalDesdeRadicado() {
+    const contratoId = document.getElementById('btnNovedadSaludTotal')._contratoId;
+    if (!contratoId) { alert('No se pudo identificar el contrato.'); return; }
+    cerrarModal('modalRadicado');
+    abrirNovedadSaludTotal(contratoId);
 }
 
 // Anular la afiliación. Es irreversible en el sentido contrario: la cobertura
@@ -2338,7 +2366,7 @@ const CEPS_ACCIONES = {
     revisar:  ['👀 Revisar', '#e0e7ff', '#3730a3'],
     error:    ['❌ Error', '#fee2e2', '#991b1b'],
 };
-const CEPS_NOMBRES = { sura: 'EPS SURA', nueva_eps: 'Nueva EPS' };
+const CEPS_NOMBRES = { sura: 'EPS SURA', nueva_eps: 'Nueva EPS', salud_total: 'Salud Total' };
 let _cepsTimer = null;
 let _cepsCorria = false;
 let _cepsEntidad = 'sura';
@@ -2353,7 +2381,7 @@ function elegirEntidadConciliacion(entidad) {
     _cepsCorria = false;
     document.querySelectorAll('.ceps-tab').forEach(b => {
         const activo = b.dataset.entidad === entidad;
-        b.style.background = activo ? (entidad === 'sura' ? '#0033a0' : '#be123c') : '#fff';
+        b.style.background = activo ? ({ sura: '#0033a0', nueva_eps: '#be123c', salud_total: '#15803d' }[entidad]) : '#fff';
         b.style.color = activo ? '#fff' : '#334155';
     });
     Object.keys(CEPS_NOMBRES).forEach(k => {
@@ -2463,5 +2491,6 @@ function mostrarToast(msg, tipo) {
 
 @include('admin.partials._afiliar_arl_sura')
 @include('admin.partials._reingreso_nueva_eps')
+@include('admin.partials._novedad_salud_total')
 
 @endsection

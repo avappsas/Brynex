@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Console\Commands\EpsSuraConciliar;
 use App\Console\Commands\NuevaEpsConciliar;
+use App\Console\Commands\SaludTotalConciliar;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -12,7 +13,7 @@ use Illuminate\Support\Facades\Cache;
 
 /**
  * Botón de Afiliaciones que concilia los radicados de EPS con los portales
- * (EPS SURA y Nueva EPS).
+ * (EPS SURA, Nueva EPS y Salud Total).
  *
  * El trabajo real lo hace el comando de cada EPS en un proceso aparte (ver
  * `eps:conciliar-sura` para el porqué); aquí solo se lanza y se lee su progreso.
@@ -23,6 +24,7 @@ class EpsSuraConciliacionController extends Controller
     private const ENTIDADES = [
         'sura'      => [EpsSuraConciliar::class, 'eps:conciliar-sura'],
         'nueva_eps' => [NuevaEpsConciliar::class, 'eps:conciliar-nueva-eps'],
+        'salud_total' => [SaludTotalConciliar::class, 'eps:conciliar-salud-total'],
     ];
 
     public function __construct()
