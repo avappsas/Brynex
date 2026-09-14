@@ -84,9 +84,13 @@ class EpsSuraConciliacionService
             $empresa = $radicados->first()->contrato->razonSocial->razon_social;
             $credencial = ArlSuraSesionService::credencialPara($aliadoId, '', (string) $nitEmpresa);
 
-            if (! $credencial) {
+            // Solo usuarios registrados. La cascada también ofrece claves del
+            // módulo de claves, pero muchas son relleno ("3000") y Sura bloquea
+            // al usuario tras varios intentos fallidos: reintentarlas en cada
+            // corrida es la forma de bloquearlo.
+            if (! $credencial?->exists) {
                 foreach ($radicados as $r) {
-                    $detalle[] = $this->fila($r, 'error', 'No hay usuario del portal de Sura registrado para esta empresa.');
+                    $detalle[] = $this->fila($r, 'error', 'Esta empresa no tiene usuario del portal de Sura registrado en BryNex.');
                 }
                 $avisar("{$empresa}: sin usuario del portal.", $detalle);
 
@@ -98,6 +102,19 @@ class EpsSuraConciliacionService
 
                 $salida = $this->consultarPortal($credencial, (string) $nitEmpresa, $lote);
                 $porDocumento = collect($salida['resultados'] ?? [])->keyBy('numero');
+
+                if (($salida['paso'] ?? null) === 'login') {
+                    $credencial->update(['ultimo_error' => mb_substr((string) ($salida['error'] ?? ''), 0, 300)]);
+
+                    // Con el login caído, los demás lotes de la empresa fallarían
+                    // igual y sumarían intentos fallidos contra el usuario.
+                    foreach ($radicados as $r) {
+                        $detalle[] = $this->fila($r, 'error', 'No se pudo entrar al portal: '.($salida['error'] ?? 'login fallido'));
+                    }
+                    $avisar("{$empresa}: falló el login.", $detalle);
+
+                    continue 2;
+                }
 
                 foreach ($lote as $r) {
                     $cedula = preg_replace('/\D/', '', (string) $r->contrato->cedula);

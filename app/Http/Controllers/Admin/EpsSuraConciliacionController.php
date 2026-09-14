@@ -48,7 +48,7 @@ class EpsSuraConciliacionController extends Controller
         ], now()->addDay());
 
         $comando = sprintf(
-            'nohup %s %s eps:conciliar-sura --aliado=%d --usuario=%d%s > %s 2>&1 &',
+            'nohup %s %s eps:conciliar-sura --aliado=%d --usuario=%d%s < /dev/null > %s 2>&1 &',
             escapeshellarg(self::binarioPhp()),
             escapeshellarg(base_path('artisan')),
             $aliadoId,
