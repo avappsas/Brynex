@@ -74,6 +74,24 @@ const leerPagina = (pagina) => pagina.evaluate(() => {
   return filas;
 }).catch(() => []);
 
+/**
+ * La página visible cuando ya terminó de dibujarse. Que cambie la primera fila
+ * no quiere decir que la tabla esté completa: en el servidor (más lento) se leía
+ * a medias y faltaba una fila (Construtech 13/12, Work at Home 54/53 el
+ * 14-sep-2026; desde el Mac salían completos). Vale cuando dos lecturas
+ * seguidas coinciden.
+ */
+const leerEstable = async (pagina) => {
+  let anterior = JSON.stringify(await leerPagina(pagina));
+  for (let i = 0; i < 12; i++) {
+    await esperar(500);
+    const actual = JSON.stringify(await leerPagina(pagina));
+    if (actual === anterior) break;
+    anterior = actual;
+  }
+  return JSON.parse(anterior);
+};
+
 let pagina;
 let paso = 'inicio';
 
@@ -114,14 +132,11 @@ try {
 
   // ── Paginar ──
   paso = 'paginar';
-  // La llave es la fila completa y no el documento: una persona puede salir dos
-  // veces (p. ej. "no tiene derecho por fin de vigencia" y "tiene derecho" tras
-  // reingresar), y con el documento solo se perdía una y el total no cuadraba
-  // (Construtech 13/12, Work at Home 54/53 el 14-sep-2026). Releer una página
-  // sigue sin duplicar, porque la fila es idéntica.
+  // La llave es la fila completa y no el documento, por si una persona sale dos
+  // veces con estados distintos. Releer una página no duplica: la fila es idéntica.
   const vistos = new Map();
   const guardar = (filas) => filas.forEach(f => vistos.set(`${f.estado}|${f.celdas.join('|')}`, f));
-  guardar(await leerPagina(pagina));
+  guardar(await leerEstable(pagina));
 
   for (let n = 2; n <= MAX_PAGINAS; n++) {
     const primera = (await leerPagina(pagina))[0]?.celdas[0];
@@ -145,7 +160,7 @@ try {
     }
     if (!cambio) break;
 
-    guardar(await leerPagina(pagina));
+    guardar(await leerEstable(pagina));
   }
 
   const afiliados = [...vistos.values()].map(({ celdas: c, estado }) => {
