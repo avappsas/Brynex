@@ -33,17 +33,26 @@ if (-not (Test-Path $ssh)) {
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
 icacls $dir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
 
-# 2. Llave del túnel. OpenSSH de Windows rechaza llaves con permisos abiertos,
-#    y la tarea corre como SYSTEM: dueño SYSTEM, acceso solo SYSTEM y Administradores.
+# 2. Llave del túnel. OpenSSH de Windows rechaza llaves con permisos abiertos
+#    ("bad permissions") si el dueño no es SYSTEM, Administradores o quien corre
+#    ssh. `icacls /setowner SYSTEM` falla en silencio (pide SeRestorePrivilege)
+#    y la llave quedaba a nombre del usuario: el dueño va a Administradores, que
+#    un administrador sí puede asignar, y el acceso solo a SYSTEM y Administradores.
 $llave = Join-Path $dir 'id_ed25519'
 if (-not (Test-Path $llave)) {
     # Start-Process con la línea completa: PowerShell 5.1 descarta los argumentos vacíos (-N "").
     Start-Process -FilePath $keygen -Wait -NoNewWindow `
         -ArgumentList "-q -t ed25519 -N `"`" -C tunel-nueva-eps@$env:COMPUTERNAME -f `"$llave`""
 }
+$sidSystem = New-Object System.Security.Principal.SecurityIdentifier 'S-1-5-18'
+$sidAdmins = New-Object System.Security.Principal.SecurityIdentifier 'S-1-5-32-544'
 foreach ($f in @($llave, "$llave.pub")) {
-    icacls $f /setowner '*S-1-5-18' | Out-Null
-    icacls $f /inheritance:r /grant:r '*S-1-5-18:F' '*S-1-5-32-544:F' | Out-Null
+    $acl = New-Object System.Security.AccessControl.FileSecurity
+    $acl.SetAccessRuleProtection($true, $false)
+    $acl.SetOwner($sidAdmins)
+    $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule $sidSystem, 'FullControl', 'Allow'))
+    $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule $sidAdmins, 'FullControl', 'Allow'))
+    Set-Acl -Path $f -AclObject $acl
 }
 
 # Huella fija del servidor: si algún día cambia, el túnel no conecta (en vez de hablarle a otro).
