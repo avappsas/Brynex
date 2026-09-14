@@ -247,7 +247,8 @@ class SaludTotalCliente
 
     private function descargarPdf(string $url): ?string
     {
-        $r = $this->http()->timeout(90)->get($url);
+        // Con el Accept: application/json de http() los PDF responden 406.
+        $r = $this->http()->accept('application/pdf,*/*')->timeout(90)->get($url);
 
         return $r->ok() && str_starts_with($r->body(), '%PDF') ? $r->body() : null;
     }
