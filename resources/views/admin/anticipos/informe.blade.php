@@ -132,6 +132,16 @@
 }
 .ant-empty-icon { font-size: 2.5rem; display: block; margin-bottom: .75rem; }
 
+/* Pestañas anticipos / saldos */
+.ant-tabs { display: flex; gap: .4rem; margin-bottom: 1.25rem; }
+.ant-tab {
+    padding: .45rem 1.1rem; border-radius: 9px; text-decoration: none;
+    font-size: .82rem; font-weight: 800; border: 1.5px solid #e2e8f0;
+    background: #fff; color: #64748b; transition: all .15s;
+}
+.ant-tab:hover { border-color: #cbd5e1; color: #334155; }
+.ant-tab.activa { background: linear-gradient(135deg,#78350f,#d97706); color: #fff; border-color: transparent; }
+
 /* Responsive */
 @media (max-width: 640px) {
     .ant-table-wrap { overflow-x: auto; }
@@ -182,6 +192,11 @@
            style="padding:.42rem 1.1rem;background:#fff;color:#475569;border:1.5px solid #e2e8f0;border-radius:8px;text-decoration:none;font-size:.8rem;font-weight:700;">
             ← Volver
         </a>
+    </div>
+
+    <div class="ant-tabs">
+        <a href="{{ route('admin.anticipos.informe') }}" class="ant-tab activa">💰 Anticipos</a>
+        <a href="{{ route('admin.anticipos.saldos') }}" class="ant-tab">🧾 Saldos a favor</a>
     </div>
 
     {{-- FILTROS --}}

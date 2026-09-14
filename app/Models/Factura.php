@@ -202,6 +202,13 @@ class Factura extends BaseModel
 
         $suma = (int) $query->sum('saldo_proximo');
 
+        // El crédito que el aliado ya dio por consumido no se le ofrece otra vez
+        // al cliente (ver SaldoAjuste). Solo baja saldos a favor: un ajuste nunca
+        // convierte un crédito en deuda.
+        if ($suma > 0) {
+            $suma = max(0, $suma - SaldoAjuste::totalDe($aliadoId, $cedula));
+        }
+
         return [
             'a_favor'   => $suma > 0 ? $suma : 0,
             'pendiente' => $suma < 0 ? abs($suma) : 0,

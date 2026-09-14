@@ -9,6 +9,13 @@ use Illuminate\Support\Facades\{Auth, DB};
 
 class AnticipoController extends Controller
 {
+    /**
+     * Estados en los que una factura le reconoce saldo a favor al cliente.
+     * Los mismos que mira Factura::saldoClienteMesPrevio: una pre-factura
+     * todavía no le debe nada a nadie.
+     */
+    private const ESTADOS_CON_SALDO = ['pagada', 'prestamo', 'abono'];
+
     // ── 1. Registrar anticipo ──────────────────────────────────────────
     public function store(Request $request)
     {
@@ -388,6 +395,210 @@ class AnticipoController extends Controller
         return view('admin.anticipos.informe', compact(
             'anticipos', 'totales', 'desde', 'hasta', 'estado', 'disponibleTotal', 'soloDisponibles', 'empresasPorId'
         ));
+    }
+
+    /**
+     * Saldos a favor por cliente: lo que el sistema le reconoce hoy a cada uno.
+     *
+     * No es lo mismo que un anticipo. El anticipo es plata que el cliente
+     * entregó y está registrada como tal; el saldo a favor sale de facturas
+     * donde pagó de más — y buena parte nació de "Otros" que se escribían y no
+     * se cobraban, así que hay créditos que no corresponden. Esta pantalla
+     * sirve para separarlos: los que son de verdad se dejan, y los que no se
+     * marcan como utilizados por el aliado (SaldoAjuste), sin tocar la factura.
+     */
+    public function saldosFavor(Request $request)
+    {
+        $aliadoId = session('aliado_id_activo');
+
+        // Los mismos estados que mira Factura::saldoClienteMesPrevio: una
+        // pre-factura todavía no le reconoce saldo a nadie.
+        $estados = self::ESTADOS_CON_SALDO;
+
+        // Saldo neto por cliente, contando solo lo que el saldo de verdad mide.
+        $saldos = DB::table('facturas')
+            ->where('aliado_id', $aliadoId)
+            ->whereNull('deleted_at')
+            ->whereIn('estado', $estados)
+            ->groupBy('cedula')
+            ->havingRaw('SUM(saldo_proximo) > 0')
+            ->selectRaw('cedula, SUM(saldo_proximo) AS neto, COUNT(*) AS facturas')
+            ->get();
+
+        $cedulas = $saldos->pluck('cedula');
+        $ajustes = \App\Models\SaldoAjuste::mapaPorCedulas($aliadoId, $cedulas);
+
+        // Datos del cliente y su empresa, en dos consultas en vez de una por fila.
+        $clientes = DB::table('clientes')
+            ->where('aliado_id', $aliadoId)
+            ->whereIn('cedula', $cedulas)
+            ->get(['cedula', 'primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido', 'cod_empresa'])
+            ->keyBy('cedula');
+
+        $empresas = Empresa::where('aliado_id', $aliadoId)->pluck('empresa', 'id');
+
+        // De dónde viene el saldo y si huele a los "Otros" que no se cobraron:
+        // esas facturas tienen el campo lleno pero el total no lo incluye.
+        $origen = DB::table('facturas')
+            ->where('aliado_id', $aliadoId)
+            ->whereNull('deleted_at')
+            ->whereIn('estado', $estados)
+            ->where('saldo_proximo', '>', 0)
+            ->whereIn('cedula', $cedulas)
+            ->selectRaw("id, cedula, numero_factura, mes, anio, saldo_proximo,
+                         CASE WHEN (otros + otros_admon) > 0
+                               AND total = total_ss + admon + admin_asesor + seguro + afiliacion + iva + mora
+                              THEN 1 ELSE 0 END AS sospechoso")
+            ->orderByDesc('saldo_proximo')
+            ->get()
+            ->groupBy('cedula');
+
+        $filas = $saldos->map(function ($s) use ($ajustes, $clientes, $empresas, $origen) {
+            $ajustado = (int) ($ajustes[(string) $s->cedula] ?? 0);
+            $disponible = max(0, (int) $s->neto - $ajustado);
+            $cli = $clientes[$s->cedula] ?? null;
+            $empId = $cli->cod_empresa ?? null;
+            $facturas = $origen[$s->cedula] ?? collect();
+
+            return (object) [
+                'cedula' => $s->cedula,
+                'nombre' => $cli
+                    ? trim("{$cli->primer_nombre} {$cli->segundo_nombre} {$cli->primer_apellido} {$cli->segundo_apellido}")
+                    : '—',
+                'empresa' => ($empId && (int) $empId !== 1) ? ($empresas[$empId] ?? null) : null,
+                'neto' => (int) $s->neto,
+                'ajustado' => $ajustado,
+                'disponible' => $disponible,
+                'sospechoso' => $facturas->contains(fn ($f) => (int) $f->sospechoso === 1),
+                'facturas' => $facturas->take(4),
+            ];
+        })
+        ->filter(fn ($f) => $f->disponible > 0)
+        ->sortByDesc('disponible')
+        ->values();
+
+        $totales = [
+            'clientes' => $filas->count(),
+            'disponible' => $filas->sum('disponible'),
+            'sospechoso' => $filas->where('sospechoso', true)->sum('disponible'),
+            'ajustado' => \App\Models\SaldoAjuste::where('aliado_id', $aliadoId)->sum('valor'),
+        ];
+
+        // Lo que ya se dio por consumido, para poder devolverlo si fue un error.
+        // Sus clientes no salen en la lista de arriba —ya no tienen saldo—, así
+        // que los nombres se buscan aparte.
+        $ajustesHechos = \App\Models\SaldoAjuste::where('aliado_id', $aliadoId)
+            ->with('usuario:id,nombre')
+            ->orderByDesc('id')
+            ->limit(100)
+            ->get();
+
+        $nombresAjustados = DB::table('clientes')
+            ->where('aliado_id', $aliadoId)
+            ->whereIn('cedula', $ajustesHechos->pluck('cedula')->unique())
+            ->selectRaw("cedula, LTRIM(RTRIM(primer_nombre + ' ' + primer_apellido)) AS nombre")
+            ->pluck('nombre', 'cedula');
+
+        $ajustesHechos->each(function ($a) use ($nombresAjustados) {
+            $a->nombre_cliente = $nombresAjustados[$a->cedula] ?? null;
+        });
+
+        return view('admin.anticipos.saldos', compact('filas', 'totales', 'ajustesHechos'));
+    }
+
+    /**
+     * Marca como utilizado por el aliado el saldo de uno o varios clientes.
+     * No toca ninguna factura: deja el ajuste, y el saldo se calcula restándolo.
+     */
+    public function ajustarSaldos(Request $request)
+    {
+        $aliadoId = session('aliado_id_activo');
+
+        $validated = $request->validate([
+            'cedulas' => 'required|array|min:1',
+            'cedulas.*' => 'required|string|max:20',
+            'motivo' => 'nullable|string|max:255',
+        ]);
+
+        $motivo = trim($validated['motivo'] ?? '') ?: \App\Models\SaldoAjuste::MOTIVO_ALIADO;
+        $hechos = 0;
+        $total = 0;
+
+        DB::transaction(function () use ($aliadoId, $validated, $motivo, &$hechos, &$total) {
+            foreach (array_unique($validated['cedulas']) as $cedula) {
+                $neto = (int) DB::table('facturas')
+                    ->where('aliado_id', $aliadoId)->where('cedula', $cedula)
+                    ->whereNull('deleted_at')->whereIn('estado', self::ESTADOS_CON_SALDO)
+                    ->sum('saldo_proximo');
+
+                $disponible = max(0, $neto - \App\Models\SaldoAjuste::totalDe($aliadoId, $cedula));
+                if ($disponible <= 0) {
+                    continue;   // ya no tiene crédito: nada que ajustar
+                }
+
+                $facturas = DB::table('facturas')
+                    ->where('aliado_id', $aliadoId)->where('cedula', $cedula)
+                    ->whereNull('deleted_at')->whereIn('estado', self::ESTADOS_CON_SALDO)
+                    ->where('saldo_proximo', '>', 0)
+                    ->get(['id', 'numero_factura', 'mes', 'anio', 'saldo_proximo']);
+
+                $ajuste = \App\Models\SaldoAjuste::create([
+                    'aliado_id' => $aliadoId,
+                    'cedula' => (string) $cedula,
+                    'valor' => $disponible,
+                    'motivo' => $motivo,
+                    'usuario_id' => Auth::id(),
+                    'detalle' => $facturas->map(fn ($f) => [
+                        'factura_id' => $f->id,
+                        'numero_factura' => $f->numero_factura,
+                        'periodo' => "{$f->mes}/{$f->anio}",
+                        'saldo' => (int) $f->saldo_proximo,
+                    ])->all(),
+                ]);
+
+                \App\Models\Bitacora::registrar(
+                    'ajustar', 'SaldoAjuste', $ajuste->id,
+                    "Saldo a favor de la c.c. {$cedula} por $"
+                        .number_format($disponible, 0, ',', '.')." dado por consumido: {$motivo}",
+                    ['cedula' => (string) $cedula, 'valor' => $disponible, 'motivo' => $motivo],
+                    $aliadoId
+                );
+
+                $hechos++;
+                $total += $disponible;
+            }
+        });
+
+        return response()->json([
+            'ok' => true,
+            'mensaje' => $hechos > 0
+                ? "Se marcaron {$hechos} saldo(s) por $".number_format($total, 0, ',', '.').'.'
+                : 'No había saldo disponible para marcar.',
+            'clientes' => $hechos,
+            'total' => $total,
+        ]);
+    }
+
+    /** Deshace un ajuste: el cliente recupera ese saldo a favor. */
+    public function deshacerAjuste(int $id)
+    {
+        $aliadoId = session('aliado_id_activo');
+
+        $ajuste = \App\Models\SaldoAjuste::where('aliado_id', $aliadoId)->findOrFail($id);
+        $ajuste->delete();
+
+        \App\Models\Bitacora::registrar(
+            'deshacer', 'SaldoAjuste', $ajuste->id,
+            "Ajuste deshecho: la c.c. {$ajuste->cedula} recupera $"
+                .number_format($ajuste->valor, 0, ',', '.').' de saldo a favor',
+            ['cedula' => $ajuste->cedula, 'valor' => $ajuste->valor],
+            $aliadoId
+        );
+
+        return response()->json([
+            'ok' => true,
+            'mensaje' => 'Ajuste deshecho: el cliente vuelve a tener ese saldo a favor.',
+        ]);
     }
 
     // ── 7. Registrar anticipo distribuido desde empresa ────────────────

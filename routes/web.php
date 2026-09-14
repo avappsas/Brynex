@@ -691,6 +691,9 @@ Route::middleware('auth')->group(function () {
             Route::post('/', [$ac, 'store'])->name('store');
             Route::post('/distribuir', [$ac, 'storeDistribuido'])->name('distribuir');
             Route::get('/informe', [$ac, 'informe'])->name('informe');
+            Route::get('/saldos', [$ac, 'saldosFavor'])->name('saldos');
+            Route::post('/saldos/ajustar', [$ac, 'ajustarSaldos'])->name('saldos.ajustar');
+            Route::delete('/saldos/ajuste/{id}', [$ac, 'deshacerAjuste'])->name('saldos.deshacer');
             Route::get('/{id}/recibo', [$ac, 'reciboAnticipo'])->name('recibo');
             Route::post('/{id}/anular', [$ac, 'anular'])->name('anular');
             Route::post('/{id}/devolver', [$ac, 'devolver'])->name('devolver');

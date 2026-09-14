@@ -524,7 +524,13 @@ class FacturacionController extends Controller
             ->whereNull('facturas.deleted_at')
             ->sum('abonos.valor');
 
-        $saldoEmpresaFavor = $saldoNetoEmpresa > 0 ? (int) $saldoNetoEmpresa : 0;
+        // El crédito que el aliado ya dio por consumido no se vuelve a ofrecer
+        // (ver SaldoAjuste): se descuenta del saldo a favor, nunca del pendiente.
+        $ajustesEmpresa = \App\Models\SaldoAjuste::totalDeEmpresa($aliadoId, (int) $empresa->id);
+
+        $saldoEmpresaFavor = $saldoNetoEmpresa > 0
+            ? max(0, (int) $saldoNetoEmpresa - $ajustesEmpresa)
+            : 0;
         $saldoEmpresaPendiente = $saldoNetoEmpresa < 0
             ? max(0, (int) abs($saldoNetoEmpresa) - $abonosEmpresa)
             : 0;
@@ -1612,8 +1618,10 @@ class FacturacionController extends Controller
                 ->whereIn('estado', ['pagada', 'prestamo', 'abono'])
                 ->whereNull('deleted_at')
                 ->sum('saldo_proximo');
-            // Solo aplicar como crédito si el neto es estrictamente positivo
-            $saldoEmpresaAplicar = max(0, (int) $histSaldo);
+            // Solo aplicar como crédito si el neto es estrictamente positivo, y
+            // descontando lo que el aliado ya dio por consumido (SaldoAjuste).
+            $saldoEmpresaAplicar = max(0, (int) $histSaldo
+                - \App\Models\SaldoAjuste::totalDeEmpresa($aliadoId, (int) $empresaId));
         }
 
         // ── Anti-duplicado: verificar por contrato_id (no por cédula+RS)
@@ -1674,14 +1682,20 @@ class FacturacionController extends Controller
         } elseif ($empresaId) {
             $favorPrevioLote = $saldoEmpresaAplicar;
         } else {
-            $favorPrevioLote = max(0, (int) Factura::where('aliado_id', $aliadoId)
+            $favorContratos = (int) Factura::where('aliado_id', $aliadoId)
                 ->whereIn('contrato_id', $validated['contratos'])
                 ->whereNull('empresa_id')
                 ->whereIn('estado', ['pagada', 'prestamo', 'abono'])
                 ->whereNotNull('saldo_proximo')
                 ->where(fn ($q) => $q->where('anio', '<', $anio)
                     ->orWhere(fn ($q2) => $q2->where('anio', $anio)->where('mes', '<', $mes)))
-                ->sum('saldo_proximo'));
+                ->sum('saldo_proximo');
+
+            // Lo que el aliado ya dio por consumido (SaldoAjuste) no vuelve a
+            // ofrecerse como crédito; un ajuste nunca convierte saldo en deuda.
+            $favorPrevioLote = $favorContratos > 0
+                ? max(0, $favorContratos - $this->ajustesDeContratos($aliadoId, $validated['contratos']))
+                : 0;
         }
 
         DB::transaction(function () use (
@@ -3806,6 +3820,18 @@ class FacturacionController extends Controller
         );
 
         return max(0, $totalSS + $admon + $adminAsesor + $iva);
+    }
+
+    /** Lo que el aliado ya dio por consumido del crédito de estos contratos. */
+    private function ajustesDeContratos(int $aliadoId, array $contratoIds): int
+    {
+        $cedulas = Contrato::where('aliado_id', $aliadoId)
+            ->whereIn('id', $contratoIds)
+            ->pluck('cedula');
+
+        return (int) \App\Models\SaldoAjuste::where('aliado_id', $aliadoId)
+            ->whereIn('cedula', $cedulas->map(fn ($c) => (string) $c))
+            ->sum('valor');
     }
 
     private function _esAfiliacionDelMesDeIngreso(Contrato $contrato, int $mes, int $anio): bool
