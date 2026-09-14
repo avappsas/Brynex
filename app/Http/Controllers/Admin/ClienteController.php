@@ -414,7 +414,16 @@ class ClienteController extends Controller
             'fecha_nacimiento' => 'nullable|date',
             'fecha_expedicion' => 'nullable|date',
             'telefono' => 'nullable|string|max:20',
-            'celular' => 'nullable|string|max:20',
+            // A este celular salen las planillas por WhatsApp de los clientes
+            // individuales y de los que están dentro de una empresa, así que
+            // se valida contra la misma regla que usa el envío: un campo con
+            // dos números metidos o un fijo lo rechaza Meta sin avisar, y el
+            // mensaje simplemente no llega.
+            'celular' => ['nullable', 'string', 'max:20', function ($atributo, $valor, $fallar) {
+                if (filled($valor) && ! \App\Services\WhatsappApiService::esCelularColombiano($valor)) {
+                    $fallar("El celular («{$valor}») no es un celular colombiano. Debe ser un solo número de diez dígitos que empiece por 3; si hay dos, deja el que recibe WhatsApp.");
+                }
+            }],
             'correo' => 'nullable|string|max:100',
             'rh' => 'nullable|string|max:10',
             'departamento_id' => 'nullable|integer',
@@ -440,9 +449,11 @@ class ClienteController extends Controller
 
     private function limpiarDatos(array $data): array
     {
-        // Celular: limpiar caracteres
+        // Celular: los diez dígitos y nada más. El cast a int de antes
+        // desbordaba con un campo de dos números —veinte dígitos no caben en
+        // PHP_INT_MAX— y guardaba el tope del entero como si fuera un celular.
         if (isset($data['celular']) && $data['celular'] !== null) {
-            $data['celular'] = (int) preg_replace('/[^0-9]/', '', $data['celular']) ?: null;
+            $data['celular'] = \App\Services\WhatsappApiService::formatoNacional((string) $data['celular']) ?: null;
         }
         // EPS y Pensión: NULL si vacío
         foreach (['eps_id', 'pension_id'] as $campo) {

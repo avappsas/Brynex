@@ -4665,6 +4665,36 @@ class FacturacionController extends Controller
             $datos['nombre_legal'] = null;
         }
 
+        // Los celulares se guardan como los diez dígitos y nada más. A este
+        // campo salen las cuentas de cobro y las planillas por WhatsApp, y
+        // hasta ahora entraba cualquier cosa que cupiera en 50 caracteres: dos
+        // números separados por una barra, un fijo, un «311 - casa». Meta los
+        // rechaza sin avisar —el mensaje simplemente no llega— así que se
+        // valida aquí, contra la misma regla que usa el envío, y no cuando ya
+        // es tarde. `telefono` no entra: ese sí es el fijo.
+        foreach (['celular' => 'El celular', 'contacto_celular' => 'El celular del contacto'] as $campo => $etiqueta) {
+            if (! array_key_exists($campo, $datos)) {
+                continue;
+            }
+
+            $valor = trim((string) $datos[$campo]);
+
+            if ($valor === '') {
+                $datos[$campo] = null;
+                continue;
+            }
+
+            if (! \App\Services\WhatsappApiService::esCelularColombiano($valor)) {
+                return [$datos, [$campo => "{$etiqueta} («{$valor}») no es un celular colombiano. Debe ser un solo número de diez dígitos que empiece por 3; si hay dos, deja el que recibe WhatsApp."]];
+            }
+
+            $datos[$campo] = \App\Services\WhatsappApiService::formatoNacional($valor);
+        }
+
+        if (array_key_exists('telefono', $datos)) {
+            $datos['telefono'] = trim((string) $datos['telefono']) ?: null;
+        }
+
         // La ciudad tiene que ser del departamento elegido, o el par queda
         // incoherente y la factura electrónica rebota: la DIAN valida la
         // combinación.
