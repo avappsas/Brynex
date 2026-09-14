@@ -252,6 +252,8 @@
                     <select x-model="estadoFiltro" @change="cargarDestinatarios()" style="padding: 0.3rem 0.5rem; font-size: 0.78rem; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; width: 155px; height: 30px; font-weight: 600;">
                         <option value="pendientes">Pendientes / Fallidos</option>
                         <option value="enviados">Enviados</option>
+                        <option value="fallidos">Fallidos</option>
+                        <option value="omitidos">Omitidos</option>
                         <option value="todos">Todos</option>
                     </select>
                 </div>
@@ -376,13 +378,22 @@
                         <td style="padding: 0.6rem 0.75rem; color: #475569;" x-text="d.empresa_nombre"></td>
                         <td style="padding: 0.6rem 0.75rem; color: #475569; text-align: center;" x-text="d.wa_numero || 'Sin Celular'"></td>
                         <td style="padding: 0.6rem 0.75rem; text-align: center;">
-                            <template x-if="d.es_operador_autorizado === false">
-                                <span class="badge-info" style="background: #f3f4f6; color: #6b7280; border: 1px solid #d1d5db;">⚠️ Sin envío</span>
+                            {{-- «Sin envío» es un pronóstico, no un estado: vale
+                                 mientras no haya intento registrado. Si el lote ya
+                                 pasó por esta planilla, el estado real manda, o un
+                                 «omitido» se queda sin verse nunca. --}}
+                            <template x-if="d.es_operador_autorizado === false && (d.envio_state || d.envio_estado) === 'pendiente'">
+                                <span class="badge-info" style="background: #f3f4f6; color: #6b7280; border: 1px solid #d1d5db;" title="El operador de esta planilla no tiene plantilla PDF autorizada para WhatsApp">⚠️ Sin envío</span>
                             </template>
-                            <template x-if="d.es_operador_autorizado !== false">
-                                <span :class="badgeEstado(d.envio_state || d.envio_estado)" x-text="etiquetaEstado(d.envio_state || d.envio_estado)"></span>
+                            <template x-if="d.es_operador_autorizado !== false || (d.envio_state || d.envio_estado) !== 'pendiente'">
+                                <span :class="badgeEstado(d.envio_state || d.envio_estado)" x-text="etiquetaEstado(d.envio_state || d.envio_estado)" :title="d.envio_error || ''"></span>
                             </template>
-                            <div x-show="d.envio_fecha && d.es_operador_autorizado !== false" style="font-size: 0.65rem; color: #64748b; margin-top: 0.2rem;" x-text="formatearFecha(d.envio_fecha)"></div>
+                            <div x-show="d.envio_fecha" style="font-size: 0.65rem; color: #64748b; margin-top: 0.2rem;" x-text="formatearFecha(d.envio_fecha)"></div>
+                            {{-- El motivo, que es lo que uno viene a buscar cuando ve
+                                 una planilla omitida o fallida. --}}
+                            <template x-if="d.envio_error && (d.envio_state || d.envio_estado) !== 'enviado'">
+                                <div style="font-size: 0.62rem; color: #b45309; margin-top: 0.2rem; line-height: 1.3;" x-text="d.envio_error"></div>
+                            </template>
                         </td>
                         <td style="padding: 0.6rem 0.75rem; text-align: center;">
                             <div style="display: flex; gap: 0.3rem; justify-content: center; align-items: center;">
@@ -989,17 +1000,26 @@ function enviosPlanillaApp() {
             this.verificarSeleccionIndividual();
         },
 
+        // Las filas de operador no autorizado tienen el checkbox deshabilitado,
+        // pero «seleccionar todos» las marcaba igual: el contador prometía más
+        // envíos de los posibles y el lote nacía con detalles que el job solo
+        // podía omitir.
+        get seleccionables() {
+            return this.filtrados.filter(d => d.es_operador_autorizado !== false);
+        },
+
         toggleSeleccionarTodos() {
             this.filtrados.forEach(d => {
-                d.seleccionado = this.seleccionarTodos;
+                d.seleccionado = this.seleccionarTodos && d.es_operador_autorizado !== false;
             });
             this.verificarSeleccionIndividual();
         },
 
         verificarSeleccionIndividual() {
-            const activos = this.filtrados.filter(d => d.seleccionado);
+            const seleccionables = this.seleccionables;
+            const activos = seleccionables.filter(d => d.seleccionado);
             this.seleccionadosCount = activos.length;
-            this.seleccionarTodos = this.filtrados.length > 0 && activos.length === this.filtrados.length;
+            this.seleccionarTodos = seleccionables.length > 0 && activos.length === seleccionables.length;
         },
 
         actualizarUrlFiltros() {
@@ -1021,7 +1041,7 @@ function enviosPlanillaApp() {
             
             // Llenar datos de confirmación
             this.confirmarResultado = null;
-            this.seleccionadosParaConfirmar = this.filtrados.filter(d => d.seleccionado);
+            this.seleccionadosParaConfirmar = this.seleccionables.filter(d => d.seleccionado);
             this.confirmarMasivoModalOpen = true;
         },
 

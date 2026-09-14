@@ -193,6 +193,9 @@ class PlanillaWhatsappService
                         'periodo_mes'            => $plano->mes_plano,
                         'periodo_anio'           => $plano->anio_plano,
                         'envio_estado'           => $plano->envio_estado,
+                        // el motivo del último intento: sin él, un «omitido» en
+                        // la tabla no dice por qué quedó sin enviar
+                        'envio_error'            => $plano->envio_error,
                         'envio_fecha'            => $plano->envio_fecha,
                         'es_operador_autorizado' => $plano->es_operador_autorizado,
                     ]);
@@ -216,6 +219,7 @@ class PlanillaWhatsappService
                         'periodo_mes'            => $plano->mes_plano,
                         'periodo_anio'           => $plano->anio_plano,
                         'envio_estado'           => $plano->envio_estado,
+                        'envio_error'            => $plano->envio_error,
                         'envio_fecha'            => $plano->envio_fecha,
                         'es_operador_autorizado' => $plano->es_operador_autorizado,
                     ]);
@@ -244,6 +248,7 @@ class PlanillaWhatsappService
                         'periodo_mes'            => $plano->mes_plano,
                         'periodo_anio'           => $plano->anio_plano,
                         'envio_estado'           => $plano->envio_estado,
+                        'envio_error'            => $plano->envio_error,
                         'envio_fecha'            => $plano->envio_fecha,
                         'es_operador_autorizado' => $plano->es_operador_autorizado,
                     ]);

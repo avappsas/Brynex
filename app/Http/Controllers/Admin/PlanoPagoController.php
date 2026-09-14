@@ -1171,7 +1171,9 @@ class PlanoPagoController extends Controller
 
         $destinatarios = $service->obtenerDestinatarios($planos, $tipoEnvio);
 
-        // Aplicar filtros de estado
+        // Aplicar filtros de estado. Todo estado que el job pueda escribir
+        // tiene que ser alcanzable desde aquí: una planilla que no se puede
+        // ver es una planilla que nadie va a atender.
         if ($filtroEst === 'pendientes') {
             // Mostrar pendientes y fallidos tal como pidió el usuario
             $destinatarios = $destinatarios->filter(fn($d) => in_array($d['envio_estado'], ['pendiente', 'fallido']));
@@ -1179,6 +1181,10 @@ class PlanoPagoController extends Controller
             $destinatarios = $destinatarios->filter(fn($d) => $d['envio_estado'] === 'enviado');
         } elseif ($filtroEst === 'fallidos') {
             $destinatarios = $destinatarios->filter(fn($d) => $d['envio_estado'] === 'fallido');
+        } elseif ($filtroEst === 'omitidos') {
+            // PlanillaEnvioWhatsappJob marca «omitido» lo que no pudo intentar
+            // (hoy: operador sin plantilla PDF autorizada).
+            $destinatarios = $destinatarios->filter(fn($d) => $d['envio_estado'] === 'omitido');
         }
 
         // Búsqueda de texto en las columnas
@@ -1255,16 +1261,21 @@ class PlanoPagoController extends Controller
         // Obtener los IDs seleccionados desde el request
         $planoIdsSeleccionados = array_map('intval', (array) $request->input('plano_ids', []));
 
-        // Filtrar destinatarios que estén seleccionados y además pendientes o fallidos
+        // Filtrar destinatarios seleccionados que aún estén por enviar. Los
+        // omitidos entran: se omiten por una causa que se puede corregir (hoy,
+        // un operador sin plantilla PDF autorizada), y si se corrigió hay que
+        // poder reintentarlos sin que el lote los dé por perdidos para siempre.
+        // El job vuelve a validar el operador y los marca omitido de nuevo si
+        // la causa sigue ahí.
         $destinatariosAEnviar = $destinatarios->filter(function($d) use ($planoIdsSeleccionados) {
             return in_array((int)$d['plano_id'], $planoIdsSeleccionados)
-                && in_array($d['envio_estado'], ['pendiente', 'fallido']);
+                && in_array($d['envio_estado'], ['pendiente', 'fallido', 'omitido']);
         })->values();
 
         if ($destinatariosAEnviar->isEmpty()) {
             return response()->json([
                 'ok' => false,
-                'mensaje' => 'No hay planillas pendientes de envío (o fallidas) para los filtros seleccionados.'
+                'mensaje' => 'No hay planillas por enviar (pendientes, fallidas u omitidas) para los filtros seleccionados.'
             ], 422);
         }
 
