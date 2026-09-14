@@ -123,4 +123,13 @@ return [
         'url' => env('PROXY_COLOMBIA'),
     ],
 
+    // Nueva EPS tampoco acepta IPs de datacenter "colombianas" (se probó una de
+    // IPRoyal): hace falta la IP de un ISP real. Un PC de la oficina mantiene un
+    // túnel SSH inverso con destino fijo (`-R 127.0.0.1:18443:portal.nuevaeps.com.co:443`)
+    // y Chrome manda ese dominio al puerto local. El servidor no alcanza nada más
+    // de la red de la oficina. Formato: 127.0.0.1:18443 — ver scripts/tunel-nueva-eps/.
+    'nueva_eps' => [
+        'tunel' => env('NUEVA_EPS_TUNEL'),
+    ],
+
 ];

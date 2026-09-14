@@ -59,6 +59,18 @@ if (entrada.proxy) {
   }
 }
 
+// Túnel de la oficina: `127.0.0.1:18443` reenvía al 443 del portal por la IP del
+// ISP de la oficina. Chrome resuelve el dominio a ese puerto; el certificado
+// sigue siendo el de Nueva EPS, así que TLS valida igual. Sin QUIC, que iría
+// por UDP y el túnel solo lleva TCP.
+let tunel = null;
+if (entrada.tunel) {
+  if (!/^[\w.-]+:\d{2,5}$/.test(String(entrada.tunel))) {
+    salir({ ok: false, paso: 'tunel', error: 'La dirección del túnel no es válida (se espera 127.0.0.1:18443).' });
+  }
+  tunel = String(entrada.tunel);
+}
+
 const ejecutable = await (async () => {
   const { access } = await import('node:fs/promises');
   for (const r of rutaChrome()) { try { await access(r); return r; } catch {} }
@@ -72,6 +84,7 @@ const navegador = await puppeteer.launch({
   args: [
     '--no-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled',
     ...(proxy ? [`--proxy-server=${proxy.servidor}`] : []),
+    ...(tunel ? [`--host-rules=MAP portal.nuevaeps.com.co ${tunel}`, '--disable-quic'] : []),
   ],
 });
 
@@ -129,15 +142,21 @@ try {
       ip = { error: String(e.message || e).slice(0, 150) };
     }
 
+    // Con túnel, la IP de arriba es la del servidor (ipinfo no pasa por el
+    // túnel); lo que prueba el túnel es que el portal responda por 127.0.0.1.
     let estado = null;
-    const alResponder = (r) => { if (estado === null && r.request().isNavigationRequest()) estado = r.status(); };
+    let remoto = null;
+    const alResponder = (r) => {
+      if (estado === null && r.request().isNavigationRequest()) { estado = r.status(); remoto = r.remoteAddress(); }
+    };
     pagina.on('response', alResponder);
     await pagina.goto(`${BASE}/Portal/home.jspx`, { waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {});
     pagina.off('response', alResponder);
 
     const formulario = !!(await pagina.$('[id="loginForm:clave"]').catch(() => null));
     salir({
-      ok: formulario, modo, proxy: !!proxy,
+      ok: formulario, modo, proxy: !!proxy, tunel,
+      nueva_eps_remoto: remoto?.ip ? `${remoto.ip}:${remoto.port}` : null,
       ip: ip?.ip ?? null, pais: ip?.country ?? null, ciudad: ip?.city ?? null, red: ip?.org ?? null, ip_error: ip?.error ?? null,
       nueva_eps_http: estado, nueva_eps_titulo: await pagina.title().catch(() => null), formulario_login: formulario,
       error: formulario ? undefined : 'Nueva EPS no mostró el formulario de ingreso desde esta conexión.',

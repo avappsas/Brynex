@@ -78,6 +78,13 @@ class NuevaEpsPortalService
             return ['ok' => false, 'paso' => 'credencial', 'error' => $cred['error']];
         }
 
+        // Sin el túnel arriba Chrome solo diría ERR_CONNECTION_REFUSED; y no es
+        // un fallo de clave, así que no debe marcarla como rechazada.
+        if (self::tunelConectado() === false) {
+            return ['ok' => false, 'paso' => 'tunel', 'error' => 'El PC de la oficina no tiene conectado el túnel hacia Nueva EPS ('
+                .config('services.nueva_eps.tunel').'). Revisa que esté encendido y con internet.'];
+        }
+
         $salida = self::correrScript($datos + [
             'usuario'    => $cred['usuario'],
             'contrasena' => $cred['contrasena'],
@@ -112,12 +119,38 @@ class NuevaEpsPortalService
         return self::correrScript(['modo' => 'conexion']);
     }
 
+    /**
+     * Si el túnel de la oficina está escuchando en el servidor. `null` cuando no
+     * hay túnel configurado (se sale directo o por PROXY_COLOMBIA).
+     */
+    public static function tunelConectado(): ?bool
+    {
+        $tunel = config('services.nueva_eps.tunel');
+
+        if (! $tunel || ! preg_match('/^([\w.-]+):(\d{2,5})$/', $tunel, $m)) {
+            return null;
+        }
+
+        $socket = @fsockopen($m[1], (int) $m[2], $errno, $errstr, 3);
+
+        if (! $socket) {
+            return false;
+        }
+
+        fclose($socket);
+
+        return true;
+    }
+
     /** El proxy va por stdin junto con los datos, para que no quede en `ps`. */
     private static function correrScript(array $entrada): array
     {
         $resultado = Process::path(base_path())
             ->timeout(self::TIMEOUT_SEGUNDOS)
-            ->input(json_encode($entrada + ['proxy' => config('services.proxy_colombia.url')], JSON_UNESCAPED_UNICODE))
+            ->input(json_encode($entrada + [
+                'proxy' => config('services.proxy_colombia.url'),
+                'tunel' => config('services.nueva_eps.tunel'),
+            ], JSON_UNESCAPED_UNICODE))
             ->run(ArlSuraSesionService::binarioNode().' scripts/nueva-eps-portal.mjs');
 
         return json_decode(trim($resultado->output()), true) ?: [
