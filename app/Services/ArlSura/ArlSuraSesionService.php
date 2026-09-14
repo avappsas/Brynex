@@ -321,8 +321,10 @@ class ArlSuraSesionService
      * interactiva: en el servidor y bajo php-fpm, un `node` a secas falla con
      * "command not found" aunque esté instalado. Por eso se busca en las rutas
      * habituales y se permite fijarlo con ARL_NODE_BIN.
+     *
+     * Público porque los scripts de EPS SURA corren con el mismo node.
      */
-    private static function binarioNode(): string
+    public static function binarioNode(): string
     {
         if ($configurado = env('ARL_NODE_BIN')) {
             return $configurado;

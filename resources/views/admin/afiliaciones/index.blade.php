@@ -308,6 +308,7 @@ body {
 
         <button type="button" onclick="abrirModalClavesGlobal()" class="btn-export" style="background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#1c1917;border:none;font-weight:800;cursor:pointer;">🔑 Claves</button>
         <a href="{{ route('admin.gestion-arl.index') }}" class="btn-export" style="background:#f97316;">🛡️ ARL</a>
+        <button type="button" onclick="abrirConciliacionEpsSura()" class="btn-export" style="background:#0033a0;cursor:pointer;" title="Cierra los radicados de EPS SURA que ya están vigentes en el portal">🩺 EPS SURA</button>
     </div>
 </div>
 </form>
@@ -966,6 +967,47 @@ function sortClass($col, $currSort, $currDir) {
                     style="padding:0.42rem 1rem;background:#1e40af;color:#fff;border:none;border-radius:8px;font-size:0.82rem;font-weight:600;cursor:pointer;white-space:nowrap;align-self:flex-end;">⬆ Subir</button>
             </div>
             <div style="font-size:0.68rem;color:#94a3b8;margin-top:0.25rem;">PDF, JPG o PNG · máx. 3MB</div>
+        </div>
+    </div>
+</div>
+
+{{-- ══ MODAL CONCILIACIÓN EPS SURA ══ --}}
+<div class="modal-bg" id="modalConciliacionEps">
+    <div class="modal-box" style="max-width:860px;">
+        <div class="modal-title">
+            <span>🩺 Conciliar radicados de EPS SURA</span>
+            <button class="modal-close" onclick="cerrarModal('modalConciliacionEps')">✕</button>
+        </div>
+
+        <div style="font-size:0.78rem;color:#475569;line-height:1.45;margin-bottom:0.8rem;">
+            Consulta en el portal de empleadores de EPS SURA los radicados de EPS <strong>pendientes, en trámite o con error</strong>
+            de contratos vigentes de dependientes. Si Sura confirma que ya es cotizante con derecho a cobertura en esa empresa
+            y el apellido coincide, el radicado pasa a <strong>OK</strong>. En Sura solo se consulta: no se afilia a nadie.
+            <br>Tarda alrededor de un minuto por empresa.
+        </div>
+
+        <div id="ceps-acciones" style="display:flex;gap:0.5rem;margin-bottom:0.8rem;">
+            <button type="button" onclick="iniciarConciliacionEpsSura(true)" class="btn-export" style="background:#475569;cursor:pointer;">🔎 Solo consultar</button>
+            <button type="button" onclick="iniciarConciliacionEpsSura(false)" class="btn-export" style="background:#0033a0;cursor:pointer;">✅ Consultar y cerrar los vigentes</button>
+        </div>
+
+        <div id="ceps-estado" style="display:none;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:0.55rem 0.75rem;font-size:0.8rem;color:#0c4a6e;margin-bottom:0.8rem;"></div>
+
+        <div id="ceps-resumen" style="display:none;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.6rem;font-size:0.75rem;"></div>
+
+        <div style="overflow-x:auto;">
+            <table id="ceps-tabla" style="display:none;width:100%;border-collapse:collapse;font-size:0.74rem;">
+                <thead>
+                    <tr style="background:#f8fafc;color:#475569;text-align:left;">
+                        <th style="padding:0.35rem 0.5rem;">Cédula</th>
+                        <th style="padding:0.35rem 0.5rem;">Nombre</th>
+                        <th style="padding:0.35rem 0.5rem;">Empresa</th>
+                        <th style="padding:0.35rem 0.5rem;">Resultado</th>
+                        <th style="padding:0.35rem 0.5rem;">Detalle</th>
+                    </tr>
+                </thead>
+                <tbody id="ceps-filas"></tbody>
+            </table>
         </div>
     </div>
 </div>
@@ -2247,6 +2289,113 @@ function mostrarNotifClavesRS(msg, tipo) {
         el.textContent = '❌ ' + msg;
     }
     setTimeout(function(){ el.style.display = 'none'; }, 4000);
+}
+
+// ═══════════════════════════════════════════════════════
+// ── Conciliación de radicados de EPS SURA ──────────────
+// ═══════════════════════════════════════════════════════
+// El comando corre en segundo plano; aquí solo se lanza y se consulta su
+// progreso cada pocos segundos mientras el modal esté abierto.
+const CEPS_URL_INICIAR = '{{ route("admin.afiliaciones.conciliar-eps-sura") }}';
+const CEPS_URL_ESTADO  = '{{ route("admin.afiliaciones.conciliar-eps-sura.estado") }}';
+const CEPS_ACCIONES = {
+    cerrado:  ['✅ Cerrado', '#dcfce7', '#166534'],
+    cerraria: ['✅ Se cerraría', '#dcfce7', '#166534'],
+    falta:    ['⏳ Falta en Sura', '#fef3c7', '#92400e'],
+    revisar:  ['👀 Revisar', '#e0e7ff', '#3730a3'],
+    error:    ['❌ Error', '#fee2e2', '#991b1b'],
+};
+let _cepsTimer = null;
+let _cepsCorria = false;
+
+function abrirConciliacionEpsSura() {
+    document.getElementById('modalConciliacionEps').classList.add('open');
+    consultarConciliacionEpsSura();
+}
+
+async function iniciarConciliacionEpsSura(simular) {
+    if (!simular && !confirm('Se consultará el portal y se cerrarán en BryNex los radicados que Sura confirme vigentes. ¿Continuar?')) return;
+    try {
+        const res = await fetch(CEPS_URL_INICIAR, {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': CSRF, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ simular }),
+        });
+        const data = await res.json();
+        if (!data.ok) { mostrarToast(data.mensaje || 'No se pudo iniciar.', 'error'); }
+    } catch (e) {
+        mostrarToast('Error de conexión al iniciar la conciliación.', 'error');
+    }
+    consultarConciliacionEpsSura();
+}
+
+async function consultarConciliacionEpsSura() {
+    clearTimeout(_cepsTimer);
+    let data;
+    try {
+        data = await (await fetch(CEPS_URL_ESTADO, { headers: { 'Accept': 'application/json' } })).json();
+    } catch (e) {
+        return;
+    }
+    pintarConciliacionEpsSura(data);
+
+    const abierto = document.getElementById('modalConciliacionEps').classList.contains('open');
+    if (data.corriendo && abierto) {
+        _cepsCorria = true;
+        _cepsTimer = setTimeout(consultarConciliacionEpsSura, 3000);
+    } else if (!data.corriendo && _cepsCorria) {
+        _cepsCorria = false;
+        if (data.cerrados > 0 && !data.simulado) {
+            mostrarToast(`${data.cerrados} radicados de EPS SURA cerrados. Recarga para verlos.`, 'success');
+        }
+    }
+}
+
+function pintarConciliacionEpsSura(data) {
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const estado  = document.getElementById('ceps-estado');
+    const resumen = document.getElementById('ceps-resumen');
+    const tabla   = document.getElementById('ceps-tabla');
+    document.getElementById('ceps-acciones').style.display = data.corriendo ? 'none' : 'flex';
+
+    if (data.vacio) {
+        estado.style.display = resumen.style.display = tabla.style.display = 'none';
+        return;
+    }
+
+    const cuando = data.fin ? new Date(data.fin).toLocaleString('es-CO') : '';
+    estado.style.display = 'block';
+    estado.innerHTML = data.corriendo
+        ? `⏳ ${esc(data.mensaje)}${data.simulado ? ' <em>(solo consulta)</em>' : ''}`
+        : (data.error
+            ? `❌ Falló: ${esc(data.error)}`
+            : `Última corrida ${data.simulado ? '<strong>(solo consulta)</strong> ' : ''}terminó ${esc(cuando)}.`);
+
+    if (!data.corriendo && data.total !== undefined) {
+        resumen.style.display = 'flex';
+        resumen.innerHTML = [
+            [data.simulado ? 'Se cerrarían' : 'Cerrados', data.cerrados, '#dcfce7', '#166534'],
+            ['Faltan en Sura', data.faltan, '#fef3c7', '#92400e'],
+            ['Revisar', data.revisar, '#e0e7ff', '#3730a3'],
+            ['Errores', data.errores, '#fee2e2', '#991b1b'],
+        ].map(([t, n, bg, fg]) => `<span style="background:${bg};color:${fg};padding:0.2rem 0.6rem;border-radius:6px;font-weight:700;">${t}: ${n}</span>`).join('')
+          + `<span style="color:#64748b;padding:0.2rem 0;">de ${data.total}</span>`;
+    } else {
+        resumen.style.display = 'none';
+    }
+
+    const filas = data.detalle || [];
+    tabla.style.display = filas.length ? 'table' : 'none';
+    document.getElementById('ceps-filas').innerHTML = filas.map(f => {
+        const [txt, bg, fg] = CEPS_ACCIONES[f.accion] || [f.accion, '#f1f5f9', '#334155'];
+        return `<tr style="border-top:1px solid #f1f5f9;">
+            <td style="padding:0.35rem 0.5rem;white-space:nowrap;">${esc(f.cedula)}</td>
+            <td style="padding:0.35rem 0.5rem;">${esc(f.nombre)}</td>
+            <td style="padding:0.35rem 0.5rem;">${esc(f.empresa)}</td>
+            <td style="padding:0.35rem 0.5rem;white-space:nowrap;"><span style="background:${bg};color:${fg};padding:0.1rem 0.45rem;border-radius:5px;font-weight:700;">${txt}</span></td>
+            <td style="padding:0.35rem 0.5rem;color:#475569;">${esc(f.mensaje)}</td>
+        </tr>`;
+    }).join('');
 }
 
 // ── Toast ──

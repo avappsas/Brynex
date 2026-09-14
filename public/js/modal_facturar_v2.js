@@ -990,19 +990,10 @@ const MF = (function () {
                 }
             }
 
-            // ── Autocompletar efectivo sugerido con descuento de anticipo ────
-            // Si hay anticipo a favor, el efectivo a ingresar = totalBruto - saldoFavor.
-            // Esto evita que el usuario ingrese el total bruto completo sin
-            // considerar que el anticipo ya cubre parte del cobro.
-            if (_saldoFavor > 0) {
-                const efInp = el('mf-efectivo');
-                if (efInp && parse(efInp.value) === 0) {
-                    // Solo si el campo aún está en 0 (sin edición manual)
-                    const neto = Math.max(0, _total - favorAplicado() + _saldoPendiente);
-                    setVal('mf-efectivo', neto);
-                    recalc(); // actualizar el saldo a pagar con el nuevo valor
-                }
-            }
+            // El efectivo NO se autocompleta: lo escribe o lo pega quien factura.
+            // Antes se rellenaba con el neto sugerido y bastaba no mirarlo para
+            // registrar una plata que nadie recibió; el campo debe decir lo que
+            // de verdad entró. El "Saldo a pagar" de arriba ya muestra cuánto es.
         } catch (e) {
             console.warn('MF._fetchSaldosMasivo error:', e);
         }

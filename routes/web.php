@@ -964,6 +964,10 @@ Route::middleware('auth')->group(function () {
         $fc = \App\Http\Controllers\Admin\FormularioEpsController::class;
         Route::get('/', [$ac, 'index'])->name('index');
         Route::get('/exportar', [$ac, 'exportar'])->name('exportar');
+        // Conciliación de radicados de EPS SURA contra el portal (proceso en segundo plano).
+        $esc = \App\Http\Controllers\Admin\EpsSuraConciliacionController::class;
+        Route::post('/conciliar-eps-sura', [$esc, 'iniciar'])->name('conciliar-eps-sura');
+        Route::get('/conciliar-eps-sura/estado', [$esc, 'estado'])->name('conciliar-eps-sura.estado');
         Route::get('/{contrato}/historial', [$ac, 'historial'])->name('historial');
         Route::get('/{contrato}/formulario/eps', [$fc, 'vista'])->name('formulario.eps');
         Route::get('/{contrato}/formulario/eps/raw', [$fc, 'generar'])->name('formulario.eps.raw');

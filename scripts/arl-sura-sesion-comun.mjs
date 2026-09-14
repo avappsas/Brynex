@@ -1,10 +1,15 @@
 /**
- * Login en el portal de ARL Sura, compartido por los scripts que lo necesitan.
+ * Login en los portales de Sura, compartido por los scripts que lo necesitan.
  *
  * Vive aparte porque la sesión NO se puede pasar de un navegador a otro: Sura
  * está detrás de Imperva Incapsula, que ata la sesión al navegador que la abrió.
  * Inyectar las cookies en un Chrome distinto devuelve la pantalla de login, sin
  * decir por qué. Así que cada proceso que necesite operar abre la suya.
+ *
+ * ARL y EPS usan el mismo SSO (login.sura.com) con el mismo usuario; solo cambian
+ * `service` y `continueTo` en la URL. Por eso el login va en `loginSso()` y cada
+ * portal pone encima lo suyo: la ARL atraviesa la Sucursal Virtual, la EPS elige
+ * la empresa en su propia pantalla.
  */
 
 const URL_LOGIN =
@@ -18,8 +23,16 @@ const SEL_ENTRAR = '#session-internet';
 
 const esperar = (ms) => new Promise(r => setTimeout(r, ms));
 
-export async function iniciarSesion(pagina, { tipoDocumento = 'C', usuario, contrasena, nitEmpresa }) {
-  await loginSso(pagina, { tipoDocumento, usuario, contrasena }, URL_LOGIN);
+/**
+ * Pasa el SSO de login.sura.com. Deja la página donde el SSO redirija
+ * (`continueTo`), o lanza con el motivo que muestre el portal.
+ */
+export async function loginSso(pagina, { tipoDocumento = 'C', usuario, contrasena }, urlLogin) {
+  await pagina.setUserAgent(
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+  );
+
+  await pagina.goto(urlLogin, { waitUntil: 'networkidle2', timeout: 60000 });
   await pagina.waitForSelector(SEL_CLAVE, { visible: true, timeout: 30000 });
 
   await pagina.select(SEL_TIPO, tipoDocumento).catch(() => {});
@@ -41,7 +54,6 @@ export async function iniciarSesion(pagina, { tipoDocumento = 'C', usuario, cont
   }
 
   const aceptar = await pagina.$('.ui-keyboard button.ui-keyboard-accept');
-PLACEHOLDER_ACEPTAR
   if (aceptar) { await aceptar.click(); await esperar(400); }
 
   // "Iniciar sesión" es un input[type=button] con JavaScript: Enter no envía.
@@ -76,6 +88,10 @@ PLACEHOLDER_ACEPTAR
 
     throw new Error(motivo || 'El login no pasó. Revisa usuario y contraseña.');
   }
+}
+
+export async function iniciarSesion(pagina, { tipoDocumento = 'C', usuario, contrasena, nitEmpresa }) {
+  await loginSso(pagina, { tipoDocumento, usuario, contrasena }, URL_LOGIN);
 
   // Después del login hay que atravesar la Sucursal Virtual: primero
   // "Selecciona el módulo" (solo un botón Ingresar) y luego el NIT de la
