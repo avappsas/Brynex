@@ -36,7 +36,7 @@ class NuevaEpsController extends Controller
         @set_time_limit(300);
 
         try {
-            return response()->json($this->servicio->consultar($this->contrato($contratoId)));
+            return response()->json($this->servicio->consultar($this->contrato($contratoId), Auth::id()));
         } catch (Throwable $e) {
             return response()->json(['ok' => false, 'error' => $e->getMessage()], 422);
         }

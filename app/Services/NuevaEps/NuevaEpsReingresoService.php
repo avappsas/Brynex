@@ -7,10 +7,13 @@ use App\Models\EpsAfiliacion;
 use App\Models\EpsPortalEmpresa;
 use App\Models\Radicado;
 use App\Models\RadicadoMovimiento;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Throwable;
 
 /**
  * Reingreso de un trabajador dependiente en Nueva EPS desde BryNex.
@@ -119,7 +122,7 @@ class NuevaEpsReingresoService
      * Pregunta al portal sin registrar nada: nombre en la EPS, reingresos ya
      * radicados y asesor. Si la empresa no tiene asesor, guarda el más usado.
      */
-    public function consultar(Contrato $contrato): array
+    public function consultar(Contrato $contrato, ?int $usuarioId = null): array
     {
         $prep = $this->preparar($contrato);
 
@@ -127,7 +130,12 @@ class NuevaEpsReingresoService
             return ['ok' => false, 'problemas' => $prep['problemas'], 'resumen' => $prep['resumen']];
         }
 
-        $salida = NuevaEpsPortalService::ejecutar((string) $contrato->razonSocial->nit, $prep['datos'] + ['registrar' => false]);
+        $empresa = $this->conciliacion()->deLaEmpresa($contrato);
+        $salida  = NuevaEpsPortalService::ejecutar((string) $contrato->razonSocial->nit, $prep['datos'] + [
+            'registrar' => false,
+            'conciliar' => $this->conciliacion()->documentos($empresa),
+        ]);
+        $salida['conciliacion'] = $this->conciliarDePaso($empresa, $salida, $usuarioId);
 
         if (($salida['ok'] ?? false) && ! $prep['datos']['asesor'] && ($salida['asesor_sugerido'] ?? null)) {
             $nombre = collect($salida['asesores'] ?? [])->firstWhere('codigo', $salida['asesor_sugerido'])['nombre'] ?? null;
@@ -154,7 +162,12 @@ class NuevaEpsReingresoService
             throw new RuntimeException('La empresa no tiene asesor de Nueva EPS: consulta primero para que se asigne.');
         }
 
-        $salida = NuevaEpsPortalService::ejecutar((string) $contrato->razonSocial->nit, $prep['datos'] + ['registrar' => true]);
+        $empresa = $this->conciliacion()->deLaEmpresa($contrato);
+        $salida  = NuevaEpsPortalService::ejecutar((string) $contrato->razonSocial->nit, $prep['datos'] + [
+            'registrar' => true,
+            'conciliar' => $this->conciliacion()->documentos($empresa),
+        ]);
+        $deLaEmpresa = $this->conciliarDePaso($empresa, $salida, $usuarioId);
         $radicado = $this->radicadoEps($contrato);
 
         $log = EpsAfiliacion::create([
@@ -170,8 +183,8 @@ class NuevaEpsReingresoService
             },
             'numero_radicado' => $salida['radicado'] ?? ($salida['existentes'][0]['radicado'] ?? null),
             'payload'         => json_encode($salida['dto'] ?? $prep['datos'], JSON_UNESCAPED_UNICODE),
-            // El PDF va a disco, no a la base.
-            'respuesta'       => json_encode(collect($salida)->except('pdf')->all(), JSON_UNESCAPED_UNICODE),
+            // Los PDF van a disco, no a la base (también los de la conciliación de paso).
+            'respuesta'       => json_encode(collect($salida)->except(['pdf', 'conciliacion'])->all(), JSON_UNESCAPED_UNICODE),
             'mensaje_error'   => isset($salida['error']) ? mb_substr((string) $salida['error'], 0, 500) : null,
             'usuario_id'      => $usuarioId,
         ]);
@@ -186,7 +199,7 @@ class NuevaEpsReingresoService
                 "Ya tenía reingreso en Nueva EPS: radicado {$ex['radicado']} del {$ex['fecha_radicacion']} ({$ex['estado']}). No se volvió a radicar.",
                 $usuarioId);
 
-            return ['ok' => true, 'ya_existia' => true, 'radicado' => $ex['radicado'], 'estado_eps' => $ex['estado']];
+            return ['ok' => true, 'ya_existia' => true, 'radicado' => $ex['radicado'], 'estado_eps' => $ex['estado'], 'conciliacion' => $deLaEmpresa];
         }
 
         $ruta = $this->guardarPdf($contrato, $salida['pdf'] ?? null);
@@ -199,7 +212,47 @@ class NuevaEpsReingresoService
             number_format($prep['datos']['ibc'], 0, ',', '.'), $contrato->fecha_ingreso->format('d/m/Y')
         ), $usuarioId);
 
-        return ['ok' => true, 'radicado' => $salida['radicado'], 'pdf' => (bool) $ruta, 'nombre_eps' => $salida['nombre_eps'] ?? null];
+        return ['ok' => true, 'radicado' => $salida['radicado'], 'pdf' => (bool) $ruta, 'nombre_eps' => $salida['nombre_eps'] ?? null, 'conciliacion' => $deLaEmpresa];
+    }
+
+    /**
+     * Aplica lo que el portal dijo de los demás radicados abiertos de la empresa
+     * y devuelve un resumen corto para la pantalla (sin los PDF). Nunca tumba el
+     * trámite principal: si falla, queda en el log y en el resumen.
+     */
+    private function conciliarDePaso(Collection $radicados, array $salida, ?int $usuarioId): ?array
+    {
+        $resultados = $salida['conciliacion'] ?? null;
+
+        if (! ($salida['ok'] ?? false) || $radicados->isEmpty() || ! is_array($resultados)) {
+            return null;
+        }
+        if (isset($resultados['error'])) {
+            return ['error' => $resultados['error']];
+        }
+
+        try {
+            $detalle = $this->conciliacion()->aplicar($radicados, $resultados, false, $usuarioId);
+            $resumen = $this->conciliacion()->resumen($detalle, $radicados->count());
+        } catch (Throwable $e) {
+            Log::warning('Nueva EPS: falló la conciliación de paso', ['error' => $e->getMessage()]);
+
+            return ['error' => $e->getMessage()];
+        }
+
+        return [
+            'revisados' => $resumen['total'],
+            'cerrados'  => $resumen['cerrados'],
+            'tramite'   => $resumen['tramite'],
+            'faltan'    => $resumen['faltan'],
+            'nombres_cerrados' => collect($detalle)->where('accion', 'cerrado')->pluck('nombre')->values()->all(),
+        ];
+    }
+
+    /** Resuelta al usarse: la conciliación depende de este servicio. */
+    private function conciliacion(): NuevaEpsConciliacionService
+    {
+        return app(NuevaEpsConciliacionService::class);
     }
 
     /**

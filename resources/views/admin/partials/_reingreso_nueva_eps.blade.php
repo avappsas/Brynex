@@ -80,6 +80,14 @@ async function nepPedir(url, metodo, limiteSeg) {
     }
 }
 
+// Cada consulta o registro revisa de paso los radicados en trámite de la empresa.
+function nepTextoConciliacion(c) {
+    if (!c) return '';
+    if (c.error) return `<div style="margin-top:.4rem;color:#92400e">⚠️ No se pudieron revisar los demás radicados de la empresa: ${nepEsc(c.error)}</div>`;
+    const cerrados = c.cerrados ? ` <strong>${c.cerrados} pasaron a OK</strong>${c.nombres_cerrados?.length ? ' (' + c.nombres_cerrados.map(nepEsc).join(', ') + ')' : ''},` : '';
+    return `<div style="margin-top:.4rem;color:#475569">🩺 De paso se revisaron ${c.revisados} radicados en trámite de la empresa:${cerrados} ${c.tramite} siguen en trámite, ${c.faltan} sin reingreso en Nueva EPS.</div>`;
+}
+
 function nepPintarResumen(r) {
     const li = (k, v) => v ? `<div><span>${k}:</span> <strong>${nepEsc(v)}</strong></div>` : '';
     document.getElementById('nepResumen').innerHTML =
@@ -138,7 +146,8 @@ async function consultarNuevaEps() {
     const portal = document.getElementById('nepPortal');
     portal.innerHTML =
         `<div>En Nueva EPS: <strong>${nepEsc(d.nombre_eps || 'NO ENCONTRADO')}</strong> ${d.nombre_eps ? (d.apellido_coincide ? '✅ coincide con BryNex' : '⚠️ el apellido no coincide') : ''}</div>` +
-        `<div>Cargo en el catálogo: <strong>${d.cargo_portal ? nepEsc(d.cargo_portal.codigo + ' ' + d.cargo_portal.descripcion) : '⚠️ no está'}</strong></div>`;
+        `<div>Cargo en el catálogo: <strong>${d.cargo_portal ? nepEsc(d.cargo_portal.codigo + ' ' + d.cargo_portal.descripcion) : '⚠️ no está'}</strong></div>` +
+        nepTextoConciliacion(d.conciliacion);
     portal.style.display = 'block';
 
     const aviso = document.getElementById('nepAviso');
@@ -186,7 +195,8 @@ async function registrarNuevaEps() {
         ? `🔗 Se vinculó el radicado <strong>${nepEsc(d.radicado)}</strong> (${nepEsc(d.estado_eps)}). No se volvió a radicar.`
         : `✅ Reingreso radicado en Nueva EPS: <strong>${nepEsc(d.radicado)}</strong><br>` +
           `<span style="color:#475569">El radicado de EPS quedó en trámite${d.pdf ? ' con el certificado adjunto' : ''}. Pasa a OK cuando Nueva EPS lo procese.</span>`;
+    caja.innerHTML += nepTextoConciliacion(d.conciliacion);
     caja.style.display = 'block';
-    setTimeout(() => location.reload(), 3500);
+    setTimeout(() => location.reload(), d.conciliacion?.cerrados ? 7000 : 3500);
 }
 </script>

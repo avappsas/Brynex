@@ -263,12 +263,15 @@ try {
     respuesta: (rad.respuesta || '').slice(0, 400),
   });
 
-  if (modo === 'novedades') {
-    paso = 'novedades';
-    const docs = entrada.documentos || [];
-    const desdeMin = docs.map(d => d.desde).filter(Boolean).sort()[0] || new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10);
-    const todos = await reingresos(desdeMin);
+  const hace = (dias) => new Date(Date.now() - dias * 864e5).toISOString().slice(0, 10);
+  const desdeMinimo = (docs, porDefecto) => [porDefecto, ...docs.map(d => d.desde).filter(Boolean)].sort()[0];
 
+  /**
+   * El último reingreso de cada documento dentro de `todos`. El certificado
+   * solo se pide si el documento lo pide (`pdf`), porque cada uno es otra llamada.
+   * @param docs [{numero, desde, pdf}]
+   */
+  const resolverDocumentos = async (todos, docs) => {
     const resultados = [];
     for (const d of docs) {
       const numero = String(d.numero).replace(/\D/g, '');
@@ -281,14 +284,21 @@ try {
 
       const { rad, p } = candidatos[0];
       const fila = { numero, encontrado: true, ...resumirRadicado(rad, p) };
-      if (entrada.pdf) {
+      if (d.pdf ?? entrada.pdf) {
         const pdf = await api('POST', 'SearchUpdates/generarPDF', rad);
         fila.pdf = pdf.json?.file || null;
       }
       resultados.push(fila);
     }
+    return resultados;
+  };
 
-    salir({ ok: true, modo, empresa: sesion.nameParameter, resultados });
+  if (modo === 'novedades') {
+    paso = 'novedades';
+    const docs = entrada.documentos || [];
+    const todos = await reingresos(docs.length ? desdeMinimo(docs, hace(90)) : hace(90));
+
+    salir({ ok: true, modo, empresa: sesion.nameParameter, resultados: await resolverDocumentos(todos, docs) });
   }
 
   // ── Reingreso ──
@@ -306,8 +316,11 @@ try {
 
   const asesores = (await api('GET', `ReInsertRegister/asesoresList?tidCodigoParameter=${sesion.tidCodigoParameter}&idParameter=${sesion.idParameter}`)).json || [];
 
-  // El asesor más usado por la empresa en el último año, por si no hay uno configurado.
-  const historial = await reingresos(new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10));
+  // El asesor más usado por la empresa en el último año, por si no hay uno
+  // configurado. El mismo historial sirve para revisar de paso los radicados en
+  // trámite de la empresa (`conciliar`), así que alcanza hasta el más viejo.
+  const porConciliar = entrada.conciliar || [];
+  const historial = await reingresos(desdeMinimo(porConciliar, hace(365)));
   const conteo = {};
   historial.forEach(rad => (rad.reintegros || []).forEach(p => { if (p.codigoAsesor) conteo[p.codigoAsesor] = (conteo[p.codigoAsesor] || 0) + 1; }));
   const asesorSugerido = Object.entries(conteo).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
@@ -330,11 +343,21 @@ try {
   const normalizar = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
   const apellidoCoincide = !!persona.apellido && normalizar(nombreEps).includes(normalizar(persona.apellido));
 
+  // Radicados en trámite de la empresa, revisados con la sesión ya abierta. Un
+  // fallo aquí no debe tumbar el reingreso, que es lo que se pidió.
+  let conciliacion = [];
+  try {
+    conciliacion = await resolverDocumentos(historial, porConciliar);
+  } catch (e) {
+    conciliacion = { error: String(e.message || e).slice(0, 200) };
+  }
+
   const base = {
     ok: true, modo, empresa: sesion.nameParameter,
     nombre_eps: nombreEps || null, apellido_coincide: apellidoCoincide,
     asesores: asesores.map(a => ({ codigo: a.asesor, nombre: a.nombre })), asesor_sugerido: asesorSugerido,
     existentes, cargo_portal: cargoPortal ? { codigo: String(cargoPortal.ocpCodigo), descripcion: cargoPortal.ocpDescripcion } : null,
+    conciliacion,
   };
 
   if (!entrada.registrar) salir(base);

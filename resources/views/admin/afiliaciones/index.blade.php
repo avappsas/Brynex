@@ -2362,7 +2362,8 @@ const CEPS_ACCIONES = {
     cerrado:  ['✅ Cerrado', '#dcfce7', '#166534'],
     cerraria: ['✅ Se cerraría', '#dcfce7', '#166534'],
     tramite:  ['🔵 En trámite', '#dbeafe', '#1e40af'],
-    falta:    ['⏳ Falta en la EPS', '#fef3c7', '#92400e'],
+    sin_cambio: ['🔵 En trámite (sin cambios)', '#dbeafe', '#1e40af'],
+    falta:   ['⏳ Falta en la EPS', '#fef3c7', '#92400e'],
     revisar:  ['👀 Revisar', '#e0e7ff', '#3730a3'],
     error:    ['❌ Error', '#fee2e2', '#991b1b'],
 };
