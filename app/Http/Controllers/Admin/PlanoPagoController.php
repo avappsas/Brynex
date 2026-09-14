@@ -1171,7 +1171,9 @@ class PlanoPagoController extends Controller
 
         $destinatarios = $service->obtenerDestinatarios($planos, $tipoEnvio);
 
-        // Aplicar filtros de estado
+        // Aplicar filtros de estado. Todo estado que el job pueda escribir
+        // tiene que ser alcanzable desde aquí: una planilla que no se puede
+        // ver es una planilla que nadie va a atender.
         if ($filtroEst === 'pendientes') {
             // Mostrar pendientes y fallidos tal como pidió el usuario
             $destinatarios = $destinatarios->filter(fn($d) => in_array($d['envio_estado'], ['pendiente', 'fallido']));
@@ -1179,6 +1181,10 @@ class PlanoPagoController extends Controller
             $destinatarios = $destinatarios->filter(fn($d) => $d['envio_estado'] === 'enviado');
         } elseif ($filtroEst === 'fallidos') {
             $destinatarios = $destinatarios->filter(fn($d) => $d['envio_estado'] === 'fallido');
+        } elseif ($filtroEst === 'omitidos') {
+            // PlanillaEnvioWhatsappJob marca «omitido» lo que no pudo intentar
+            // (hoy: operador sin plantilla PDF autorizada).
+            $destinatarios = $destinatarios->filter(fn($d) => $d['envio_estado'] === 'omitido');
         }
 
         // Búsqueda de texto en las columnas
@@ -1255,16 +1261,21 @@ class PlanoPagoController extends Controller
         // Obtener los IDs seleccionados desde el request
         $planoIdsSeleccionados = array_map('intval', (array) $request->input('plano_ids', []));
 
-        // Filtrar destinatarios que estén seleccionados y además pendientes o fallidos
+        // Filtrar destinatarios seleccionados que aún estén por enviar. Los
+        // omitidos entran: se omiten por una causa que se puede corregir (hoy,
+        // un operador sin plantilla PDF autorizada), y si se corrigió hay que
+        // poder reintentarlos sin que el lote los dé por perdidos para siempre.
+        // El job vuelve a validar el operador y los marca omitido de nuevo si
+        // la causa sigue ahí.
         $destinatariosAEnviar = $destinatarios->filter(function($d) use ($planoIdsSeleccionados) {
             return in_array((int)$d['plano_id'], $planoIdsSeleccionados)
-                && in_array($d['envio_estado'], ['pendiente', 'fallido']);
+                && in_array($d['envio_estado'], ['pendiente', 'fallido', 'omitido']);
         })->values();
 
         if ($destinatariosAEnviar->isEmpty()) {
             return response()->json([
                 'ok' => false,
-                'mensaje' => 'No hay planillas pendientes de envío (o fallidas) para los filtros seleccionados.'
+                'mensaje' => 'No hay planillas por enviar (pendientes, fallidas u omitidas) para los filtros seleccionados.'
             ], 422);
         }
 
@@ -1330,16 +1341,27 @@ class PlanoPagoController extends Controller
             : 'Cliente';
         $numeroCelular = $cliente?->celular;
 
-        // Si es tipo contacto_empresa, enviar al número del contacto de empresa
+        // El tipo termina guardado en un varchar(20) del lote, así que no
+        // puede ser cualquier cosa que llegue por query string.
         $tipoEnvio = $request->input('tipo_envio', 'individual');
-        if ($tipoEnvio === 'contacto_empresa' || !$numeroCelular) {
+        if (!in_array($tipoEnvio, ['individual', 'empleado_empresa', 'contacto_empresa'], true)) {
+            $tipoEnvio = 'individual';
+        }
+        // El selector de destinatarios manda, y manda solo: «Clientes
+        // Individuales» y «Clientes dentro de Empresa» van al celular del
+        // cliente; «Contacto de la Empresa» va al celular de la empresa y a
+        // ningún otro. Son los mismos números que el listado muestra en la
+        // columna WhatsApp y a los que sale el envío masivo
+        // (PlanillaWhatsappService::obtenerDestinatarios), así que el botón
+        // individual no puede caer a un campo distinto del que el operador ve
+        // antes de hacer clic. Si el número elegido está vacío, el envío se
+        // rechaza abajo: mandar la planilla de un trabajador al celular de su
+        // empresa —o al revés— porque el primero faltaba es peor que no
+        // mandarla.
+        if ($tipoEnvio === 'contacto_empresa') {
             $empresa = \App\Models\Empresa::find($cliente?->cod_empresa);
-            // Primero el celular del encargado de la seguridad social; si la
-            // empresa no tiene encargado, el número general.
-            if ($empresa && $empresa->celularParaEnviar()) {
-                $numeroCelular = $empresa->celularParaEnviar();
-                // nombre sigue siendo el del CLIENTE (no el contacto de empresa)
-            }
+            $numeroCelular = $empresa?->celular;
+            // el nombre sigue siendo el del CLIENTE, no el del contacto
         }
 
         $celularPrueba = $request->input('celular_prueba');
@@ -1351,7 +1373,12 @@ class PlanoPagoController extends Controller
         }
 
         if (!$numeroCelular) {
-            return response()->json(['ok' => false, 'mensaje' => 'El destinatario no posee número de celular registrado.'], 422);
+            return response()->json([
+                'ok' => false,
+                'mensaje' => $tipoEnvio === 'contacto_empresa'
+                    ? 'La empresa no tiene celular registrado.'
+                    : 'El destinatario no posee número de celular registrado.',
+            ], 422);
         }
 
         // Detección del operador
@@ -1467,28 +1494,47 @@ class PlanoPagoController extends Controller
                     'estado_at' => now(),
                 ]);
 
-                // Registrar en planilla_envios_whatsapp_detalle si es posible (solo si no es prueba)
+                // Registrar el reenvío (solo si no es prueba). El mensaje ya
+                // salió: si el registro falla, el reenvío sigue siendo un
+                // éxito y hay que decirlo, o el operador lo repite creyendo
+                // que no se envió.
+                $avisoRegistro = null;
                 if (!$esPrueba) {
-                    DB::table('planilla_envios_whatsapp_detalle')->insert([
-                        'envio_id' => 0, // 0 indica envío individual / reenvío directo
-                        'plano_id' => $plano->id,
-                        'contrato_id' => $plano->contrato_id,
-                        'cliente_cedula' => $plano->no_identifi,
-                        'wa_numero' => $numeroCelular,
-                        'nombre_destinatario' => $nombreDestinatario,
-                        'numero_planilla' => $plano->numero_planilla,
-                        'operador_nombre' => $operadorNombre,
-                        'periodo_mes' => $plano->mes_plano,
-                        'periodo_anio' => $plano->anio_plano,
-                        'estado' => 'enviado',
-                        'wa_message_id' => $resultado['wa_message_id'],
-                        'enviado_at' => now(),
-                        'created_at' => now(),
-                        'updated_at' => now()
-                    ]);
+                    $codEmpresa = (int) ($cliente?->cod_empresa ?? 0);
+
+                    try {
+                        app(\App\Services\PlanillaWhatsappService::class)->registrarReenvioIndividual(
+                            $aliadoId,
+                            Auth::id(),
+                            $plantilla->id,
+                            (int) $request->input('mes', now()->month),
+                            (int) $request->input('anio', now()->year),
+                            $tipoEnvio,
+                            [
+                                'plano_id'            => $plano->id,
+                                'contrato_id'         => $plano->contrato_id,
+                                'cliente_cedula'      => $plano->no_identifi,
+                                'empresa_id'          => $codEmpresa > 1 ? $codEmpresa : null,
+                                'wa_numero'           => $numeroCelular,
+                                'nombre_destinatario' => $nombreDestinatario,
+                                'numero_planilla'     => $plano->numero_planilla,
+                                'operador_nombre'     => $operadorNombre,
+                                'periodo_mes'         => $plano->mes_plano,
+                                'periodo_anio'        => $plano->anio_plano,
+                                'wa_message_id'       => $resultado['wa_message_id'],
+                            ]
+                        );
+                    } catch (\Throwable $e) {
+                        \Illuminate\Support\Facades\Log::error("Reenvío de planilla plano #{$plano->id}: el mensaje salió (wamid {$resultado['wa_message_id']}) pero no se pudo registrar: " . $e->getMessage());
+                        $avisoRegistro = 'El mensaje salió, pero no se pudo registrar el envío: la planilla seguirá apareciendo como pendiente.';
+                    }
                 }
 
-                return response()->json(['ok' => true, 'mensaje' => $esPrueba ? 'Mensaje de prueba enviado con éxito.' : 'Planilla reenviada con éxito por WhatsApp.']);
+                return response()->json([
+                    'ok'      => true,
+                    'mensaje' => $esPrueba ? 'Mensaje de prueba enviado con éxito.' : 'Planilla reenviada con éxito por WhatsApp.',
+                    'aviso'   => $avisoRegistro,
+                ]);
             } else {
                 return response()->json(['ok' => false, 'mensaje' => 'Meta API Error: ' . $resultado['error']], 422);
             }
