@@ -83,6 +83,8 @@ class EpsSuraAfiliadosService
 
         $faltan = $contratos->flatten()
             ->filter(fn ($c) => $c->estado === 'vigente'
+                // Con ingreso futuro todavía no tiene por qué estar en la EPS.
+                && $c->fecha_ingreso && $c->fecha_ingreso->lte(today())
                 && $c->plan?->incluye_eps
                 && $this->epsDe($c)?->codigo === EpsSuraConciliacionService::CODIGO_EPS
                 && ! $porDoc->has(self::normalizar((string) $c->cedula)))
