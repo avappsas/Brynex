@@ -99,11 +99,18 @@ class EpsSuraConfirmacionService
             $avisar("{$empresa}: bajando el informe de afiliados ({$radicados->count()} por cruzar)…");
 
             try {
+                // Una persona puede salir dos veces (sin derecho por fin de
+                // vigencia y con derecho tras reingresar): manda la fila con derecho.
                 $enSura = $this->afiliados->afiliadosEnEps((string) $nitEmpresa, $razones)
-                    ->keyBy(fn ($a) => self::documento((string) $a['numero']));
+                    ->groupBy(fn ($a) => self::documento((string) $a['numero']))
+                    ->map(fn ($filas) => $filas->first(fn ($a) => preg_match('/^TIENE DERECHO/i', (string) $a['estado'])) ?? $filas->first());
             } catch (Throwable $e) {
+                // El usuario entra, pero la EPS no le da acceso a esa empresa
+                // (Global Contact, Call Service Center…): falla igual cada noche y
+                // no es un error del cruce, sino un usuario que falta.
+                $sinAcceso = str_contains($e->getMessage(), 'no tiene acceso');
                 foreach ($radicados as $r) {
-                    $detalle[] = $this->fila($r, 'error', $e->getMessage());
+                    $detalle[] = $this->fila($r, $sinAcceso ? 'sin_usuario' : 'error', $e->getMessage());
                 }
                 $avisar("{$empresa}: {$e->getMessage()}");
 
@@ -126,7 +133,7 @@ class EpsSuraConfirmacionService
             'no_aparecen' => $cuenta->get('no_aparece', 0),
             'revisar'     => $cuenta->get('revisar', 0),
             'errores'     => $cuenta->get('error', 0),
-            // Empresas sin usuario del portal: se omiten cada noche, no son un fallo.
+            // Empresas sin usuario del portal o sin acceso a la EPS: se omiten cada noche, no son un fallo.
             'sin_usuario' => $cuenta->get('sin_usuario', 0),
             'simulado'    => $simular,
             'detalle'     => $detalle,
