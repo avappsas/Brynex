@@ -164,9 +164,14 @@ try {
   }
 
   // ── Login ──
-  paso = 'login';
+  // `paso: 'login'` le dice a PHP que la clave fue rechazada y la bloquea. Un
+  // portal que no carga (403 por IP, túnel caído, Cloudflare) no es eso: el
+  // paso solo pasa a 'login' cuando el formulario ya está en pantalla.
+  paso = 'abrir portal';
   await pagina.goto(`${BASE}/Portal/home.jspx`, { waitUntil: 'networkidle2', timeout: 60000 });
-  await pagina.waitForSelector('[id="loginForm:clave"]', { visible: true, timeout: 30000 });
+  await pagina.waitForSelector('[id="loginForm:clave"]', { visible: true, timeout: 30000 })
+    .catch(async () => { throw new Error(`Nueva EPS no mostró el formulario de ingreso: ${(await pagina.title().catch(() => '')) || 'sin respuesta'}.`); });
+  paso = 'login';
 
   const [tipoTexto, numeroUsuario] = String(usuario).trim().match(/^([A-Za-z]{2})\s+(\d+)$/)
     ? String(usuario).trim().split(/\s+/)
