@@ -66,6 +66,14 @@ class PlanillaEnvioWhatsappJob implements ShouldQueue
 
         $contadorBatch = 0;
 
+        // Meta limita por PAR de numeros (nuestra linea → la del destinatario), no
+        // por volumen total: 115 planillas de una empresa van todas al celular del
+        // contacto y a la mitad del lote empieza a rechazarlas con el error 131056
+        // ("pair rate limit hit"). Paso el 14-sep-2026: de 115, 49 rebotaron.
+        // Por eso se espacian los mensajes que van al MISMO numero, además de la
+        // pausa general del lote.
+        $ultimoEnvioPorNumero = [];
+
         foreach ($detalles as $detalle) {
             try {
                 // 1. Cargar el plano
@@ -143,15 +151,21 @@ class PlanillaEnvioWhatsappJob implements ShouldQueue
                     $detalle->numero_planilla ?: 'N/A'
                 ];
 
-                // 7. Enviar template por WhatsApp
-                $resultado = $apiService->enviarTemplateConDocumento(
-                    $detalle->wa_numero,
+                // 7. Enviar template por WhatsApp, espaciando los que van al mismo
+                //    numero y reintentando si Meta contesta con el limite de pareja.
+                $this->esperarTurnoDelNumero($detalle->wa_numero, $ultimoEnvioPorNumero);
+
+                $resultado = $this->enviarConReintento(
+                    $apiService,
+                    $detalle,
                     $plantilla,
                     $bodyParams,
                     $mediaId,
                     $nombreArchivo,
                     $config
                 );
+
+                $ultimoEnvioPorNumero[$detalle->wa_numero] = microtime(true);
 
                 if ($resultado['ok']) {
                     // Obtener o crear conversación
@@ -216,6 +230,70 @@ class PlanillaEnvioWhatsappJob implements ShouldQueue
         }
 
         $envio->update(['estado' => 'completado']);
+    }
+
+    /** Segundos entre dos mensajes al MISMO destinatario. */
+    private const PAUSA_MISMO_NUMERO = 2.0;
+
+    /** Cuántas veces se reintenta cuando Meta contesta con el límite de pareja. */
+    private const REINTENTOS_LIMITE = 2;
+
+    /** Segundos de espera antes de cada reintento (crece con cada intento). */
+    private const ESPERA_REINTENTO = 6;
+
+    /**
+     * Si a este número ya le mandamos algo hace menos de PAUSA_MISMO_NUMERO
+     * segundos, espera lo que falte. Los envíos a números distintos no esperan.
+     */
+    private function esperarTurnoDelNumero(string $numero, array $ultimoEnvioPorNumero): void
+    {
+        if (! isset($ultimoEnvioPorNumero[$numero])) {
+            return;
+        }
+
+        $transcurrido = microtime(true) - $ultimoEnvioPorNumero[$numero];
+        if ($transcurrido < self::PAUSA_MISMO_NUMERO) {
+            usleep((int) ((self::PAUSA_MISMO_NUMERO - $transcurrido) * 1_000_000));
+        }
+    }
+
+    /**
+     * Envía y, si Meta responde el límite de pareja (131056), espera y reintenta.
+     * Ese error no es un rechazo del mensaje: es "vas muy rápido con ese contacto",
+     * así que darle aire suele bastar. Con cualquier otro error devuelve de una.
+     */
+    private function enviarConReintento(
+        WhatsappApiService $apiService,
+        $detalle,
+        $plantilla,
+        array $bodyParams,
+        string $mediaId,
+        string $nombreArchivo,
+        $config
+    ): array {
+        for ($intento = 0; $intento <= self::REINTENTOS_LIMITE; $intento++) {
+            $resultado = $apiService->enviarTemplateConDocumento(
+                $detalle->wa_numero, $plantilla, $bodyParams, $mediaId, $nombreArchivo, $config
+            );
+
+            if (($resultado['ok'] ?? false) || ! $this->esLimiteDePareja($resultado)) {
+                return $resultado;
+            }
+
+            if ($intento < self::REINTENTOS_LIMITE) {
+                sleep(self::ESPERA_REINTENTO * ($intento + 1));
+            }
+        }
+
+        return $resultado;
+    }
+
+    /** ¿El error de Meta es el 131056 (demasiados mensajes al mismo contacto)? */
+    private function esLimiteDePareja(array $resultado): bool
+    {
+        $error = (string) ($resultado['error'] ?? '');
+
+        return str_contains($error, '131056') || str_contains($error, 'pair rate limit');
     }
 
     /**

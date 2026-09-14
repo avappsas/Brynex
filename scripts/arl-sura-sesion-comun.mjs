@@ -19,11 +19,7 @@ const SEL_ENTRAR = '#session-internet';
 const esperar = (ms) => new Promise(r => setTimeout(r, ms));
 
 export async function iniciarSesion(pagina, { tipoDocumento = 'C', usuario, contrasena, nitEmpresa }) {
-  await pagina.setUserAgent(
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
-  );
-
-  await pagina.goto(URL_LOGIN, { waitUntil: 'networkidle2', timeout: 60000 });
+  await loginSso(pagina, { tipoDocumento, usuario, contrasena }, URL_LOGIN);
   await pagina.waitForSelector(SEL_CLAVE, { visible: true, timeout: 30000 });
 
   await pagina.select(SEL_TIPO, tipoDocumento).catch(() => {});
@@ -45,6 +41,7 @@ export async function iniciarSesion(pagina, { tipoDocumento = 'C', usuario, cont
   }
 
   const aceptar = await pagina.$('.ui-keyboard button.ui-keyboard-accept');
+PLACEHOLDER_ACEPTAR
   if (aceptar) { await aceptar.click(); await esperar(400); }
 
   // "Iniciar sesión" es un input[type=button] con JavaScript: Enter no envía.
