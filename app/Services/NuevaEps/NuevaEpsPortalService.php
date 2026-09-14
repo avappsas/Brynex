@@ -78,19 +78,11 @@ class NuevaEpsPortalService
             return ['ok' => false, 'paso' => 'credencial', 'error' => $cred['error']];
         }
 
-        $resultado = Process::path(base_path())
-            ->timeout(self::TIMEOUT_SEGUNDOS)
-            ->input(json_encode($datos + [
-                'usuario'    => $cred['usuario'],
-                'contrasena' => $cred['contrasena'],
-                'nitEmpresa' => preg_replace('/\D/', '', $nit),
-            ], JSON_UNESCAPED_UNICODE))
-            ->run(ArlSuraSesionService::binarioNode().' scripts/nueva-eps-portal.mjs');
-
-        $salida = json_decode(trim($resultado->output()), true) ?: [
-            'ok' => false, 'paso' => 'proceso',
-            'error' => trim($resultado->errorOutput()) ?: 'El proceso del portal no devolvió respuesta.',
-        ];
+        $salida = self::correrScript($datos + [
+            'usuario'    => $cred['usuario'],
+            'contrasena' => $cred['contrasena'],
+            'nitEmpresa' => preg_replace('/\D/', '', $nit),
+        ]);
 
         $empresa = $cred['empresa'];
 
@@ -109,6 +101,29 @@ class NuevaEpsPortalService
         }
 
         return $salida;
+    }
+
+    /**
+     * Con qué IP sale el servidor hacia Nueva EPS y si el portal deja entrar.
+     * No usa claves del portal: sirve para probar el proxy.
+     */
+    public static function probarConexion(): array
+    {
+        return self::correrScript(['modo' => 'conexion']);
+    }
+
+    /** El proxy va por stdin junto con los datos, para que no quede en `ps`. */
+    private static function correrScript(array $entrada): array
+    {
+        $resultado = Process::path(base_path())
+            ->timeout(self::TIMEOUT_SEGUNDOS)
+            ->input(json_encode($entrada + ['proxy' => config('services.proxy_colombia.url')], JSON_UNESCAPED_UNICODE))
+            ->run(ArlSuraSesionService::binarioNode().' scripts/nueva-eps-portal.mjs');
+
+        return json_decode(trim($resultado->output()), true) ?: [
+            'ok' => false, 'paso' => 'proceso',
+            'error' => trim($resultado->errorOutput()) ?: 'El proceso del portal no devolvió respuesta.',
+        ];
     }
 
     private static function huella(string $usuario, string $clave): string

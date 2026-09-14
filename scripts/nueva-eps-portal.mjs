@@ -39,7 +39,25 @@ try { entrada = JSON.parse(await leerStdin() || '{}'); }
 catch { salir({ ok: false, error: 'Entrada JSON inválida.' }); }
 
 const { usuario, contrasena, nitEmpresa, modo = 'reingreso' } = entrada;
-if (!usuario || !contrasena || !nitEmpresa) salir({ ok: false, error: 'Faltan credenciales o NIT de la empresa.' });
+if (modo !== 'conexion' && (!usuario || !contrasena || !nitEmpresa)) salir({ ok: false, error: 'Faltan credenciales o NIT de la empresa.' });
+
+// Nueva EPS responde 403 "El contenido a este sitio está Restringido" a la IP
+// del servidor (datacenter fuera de Colombia), así que se sale por un proxy con
+// IP colombiana: `http://usuario:clave@host:puerto`. Chrome no acepta la clave
+// en --proxy-server; se entrega con page.authenticate().
+let proxy = null;
+if (entrada.proxy) {
+  try {
+    const u = new URL(entrada.proxy);
+    proxy = {
+      servidor: `${u.protocol}//${u.hostname}:${u.port}`,
+      usuario: decodeURIComponent(u.username || ''),
+      clave: decodeURIComponent(u.password || ''),
+    };
+  } catch {
+    salir({ ok: false, paso: 'proxy', error: 'La dirección del proxy no es válida (se espera http://usuario:clave@host:puerto).' });
+  }
+}
 
 const ejecutable = await (async () => {
   const { access } = await import('node:fs/promises');
@@ -51,7 +69,10 @@ if (!ejecutable) salir({ ok: false, error: 'No se encontró Chrome. Define CHROM
 const navegador = await puppeteer.launch({
   executablePath: ejecutable,
   headless: 'new',
-  args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled'],
+  args: [
+    '--no-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled',
+    ...(proxy ? [`--proxy-server=${proxy.servidor}`] : []),
+  ],
 });
 
 const contextoPerdido = (e) => /Execution context was destroyed|Cannot find context|Target closed/i.test(String(e?.message || e));
@@ -93,6 +114,35 @@ let paso = 'inicio';
 try {
   pagina = await navegador.newPage();
   await pagina.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
+  if (proxy?.usuario) {
+    await pagina.authenticate({ username: proxy.usuario, password: proxy.clave });
+  }
+
+  // ── Conexión: con qué IP se sale y si Nueva EPS deja entrar. Sin claves. ──
+  if (modo === 'conexion') {
+    paso = 'conexion';
+    let ip = null;
+    try {
+      await pagina.goto('https://ipinfo.io/json', { waitUntil: 'domcontentloaded', timeout: 45000 });
+      ip = JSON.parse(await pagina.evaluate(() => document.body.innerText));
+    } catch (e) {
+      ip = { error: String(e.message || e).slice(0, 150) };
+    }
+
+    let estado = null;
+    const alResponder = (r) => { if (estado === null && r.request().isNavigationRequest()) estado = r.status(); };
+    pagina.on('response', alResponder);
+    await pagina.goto(`${BASE}/Portal/home.jspx`, { waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {});
+    pagina.off('response', alResponder);
+
+    const formulario = !!(await pagina.$('[id="loginForm:clave"]').catch(() => null));
+    salir({
+      ok: formulario, modo, proxy: !!proxy,
+      ip: ip?.ip ?? null, pais: ip?.country ?? null, ciudad: ip?.city ?? null, red: ip?.org ?? null, ip_error: ip?.error ?? null,
+      nueva_eps_http: estado, nueva_eps_titulo: await pagina.title().catch(() => null), formulario_login: formulario,
+      error: formulario ? undefined : 'Nueva EPS no mostró el formulario de ingreso desde esta conexión.',
+    });
+  }
 
   // ── Login ──
   paso = 'login';

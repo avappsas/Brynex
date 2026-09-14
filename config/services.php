@@ -114,4 +114,13 @@ return [
         'timeout' => env('ADRES_WORKER_TIMEOUT', 90),
     ],
 
+    // Salida por IP colombiana para los sitios que rechazan la IP del servidor
+    // (datacenter de netcup, geolocalizada en EE. UU.). El primero fue Nueva
+    // EPS: 403 "El contenido a este sitio está Restringido". Es un solo proxy
+    // para todo lo que lo necesite en el servidor, no uno por integración.
+    // Formato: http://usuario:clave@host:puerto
+    'proxy_colombia' => [
+        'url' => env('PROXY_COLOMBIA'),
+    ],
+
 ];
