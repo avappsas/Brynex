@@ -103,7 +103,7 @@ class SosController extends Controller
         $motivo = in_array($request->query('motivo'), ['portal_rechazo', 'independiente', 'manual'], true) ? $request->query('motivo') : 'manual';
 
         return response()->json(['ok' => true] + $correo->preparar(
-            $this->contrato($contratoId), $motivo, $request->boolean('con_beneficiarios', true)
+            $this->contrato($contratoId), $motivo, $request->boolean('con_beneficiarios', true), mb_substr((string) $request->query('detalle', ''), 0, 300)
         ));
     }
 
@@ -125,6 +125,7 @@ class SosController extends Controller
             'cuerpo'            => 'required|string|max:10000',
             'motivo'            => 'required|in:portal_rechazo,independiente,manual',
             'con_beneficiarios' => 'nullable|boolean',
+            'detalle'           => 'nullable|string|max:300',
         ]);
 
         try {

@@ -827,7 +827,7 @@ function sortClass($col, $currSort, $currDir) {
                         <option value="pendiente">⏳ Pendiente</option>
                         <option value="tramite">🔵 En Trámite</option>
                         <option value="traslado">🔄 Traslado</option>
-                        <option value="error">❌ Error / Falta Doc.</option>
+                        <option value="error">❌ Error</option>
                         <option value="ok">✅ OK - Finalizado</option>
                     </select>
                 </div>

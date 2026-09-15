@@ -36,7 +36,7 @@ class SosCorreoService
     /**
      * Arma el correo sin enviarlo: destinatario, asunto, texto, adjuntos y lo que falta.
      */
-    public function preparar(Contrato $contrato, string $motivo = 'manual', bool $conBeneficiarios = true): array
+    public function preparar(Contrato $contrato, string $motivo = 'manual', bool $conBeneficiarios = true, string $detalle = ''): array
     {
         $contrato->loadMissing(['cliente.eps', 'cliente.municipio', 'cliente.departamento', 'eps', 'plan', 'razonSocial']);
         $cliente = $contrato->cliente;
@@ -105,7 +105,9 @@ class SosCorreoService
         }
         if ($motivo === 'portal_rechazo') {
             $lineas[] = '';
-            $lineas[] = 'El portal de empleadores no permitió registrar la novedad (validación no favorable).';
+            $lineas[] = trim($detalle) !== ''
+                ? 'Por el portal de empleadores la novedad fue devuelta con el motivo: «'.trim($detalle).'».'
+                : 'El portal de empleadores no permitió registrar la novedad (validación no favorable).';
         }
         $lineas = array_merge($lineas, [
             '',
@@ -158,7 +160,7 @@ class SosCorreoService
      */
     public function enviar(Contrato $contrato, array $datos, ?int $usuarioId): CorreoAfiliacion
     {
-        $prep = $this->preparar($contrato, $datos['motivo'], (bool) ($datos['con_beneficiarios'] ?? true));
+        $prep = $this->preparar($contrato, $datos['motivo'], (bool) ($datos['con_beneficiarios'] ?? true), (string) ($datos['detalle'] ?? ''));
         if ($prep['problemas']) {
             throw new RuntimeException(implode(' ', $prep['problemas']));
         }

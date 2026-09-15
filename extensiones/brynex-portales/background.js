@@ -166,8 +166,12 @@ function pFilas(doc) {
       documento: r.cells[2].innerText.trim(),
       nombre: r.cells[3].innerText.trim(),
       fecha_radicacion: r.cells[4].innerText.trim(),
-      causal: r.cells[5].innerText.trim(),
+      // La columna "Estado" es un ícono (✓ / reloj / X) y la "Causal" trae el texto
+      // del estado (Aprobado, No aprobado…). El motivo de una devolución no está en
+      // la tabla: sale en la ventana que abre la X (ver pMotivoDevolucion).
+      icono: [...r.cells[5].querySelectorAll('img')].map(i => i.title || i.alt || i.src.split('/').pop()).join(' '),
       estado: r.cells[6].innerText.trim(),
+      causal: '',
       accion: (r.querySelector('a[onclick*="jsfcljs"]')?.getAttribute('onclick')?.match(/\{'([^']+)'/) || [])[1] || null,
     }));
 }
@@ -258,7 +262,48 @@ async function sosConsultar(tabId, { tipo = 'CC', documento, desde, hasta }) {
   await esperarQue(tabId, () => ![...document.querySelectorAll('table')].some(t => t.dataset.brynexViejo === '1'), [], 25000);
   await esperar(500);
 
-  return ejecutar(tabId, pFilas, [String(documento)]);
+  const filas = await ejecutar(tabId, pFilas, [String(documento)]);
+
+  // Para las devueltas se abre la X de cada una y se lee el motivo.
+  for (const fila of filas) {
+    if (!/no aprobad|incorrect|declinad|devuelt|rechaz/i.test(fila.estado)) continue;
+    fila.causal = (await sosMotivoDevolucion(tabId, fila.radicado)) || '';
+  }
+  return filas;
+}
+
+/** Abre la ventana "Motivos de devolución" de la fila y devuelve el texto. */
+async function sosMotivoDevolucion(tabId, radicado) {
+  const abierto = await ejecutar(tabId, (rad) => {
+    const fila = [...document.querySelectorAll('tr')].find(r => r.cells.length >= 7 && r.cells[0].innerText.trim() === rad);
+    if (!fila) return false;
+    const candidatos = [...fila.cells[5].querySelectorAll('a, img, input, span, div')];
+    const clicable = candidatos.find(e => e.getAttribute('onclick') || e.tagName === 'A') || candidatos[0];
+    if (!clicable) return false;
+    clicable.click();
+    return true;
+  }, [radicado]).catch(() => false);
+  if (!abierto) return null;
+
+  const texto = await esperarQue(tabId, () => {
+    const caja = [...document.querySelectorAll('.rich-mpnl-body, .rich-modalpanel, [id*="modalMostrarMotivo"]')]
+      .find(e => e.offsetHeight > 0 && /motivos? de devoluci/i.test(e.innerText));
+    if (!caja) return null;
+    const t = caja.innerText.replace(/\s+/g, ' ')
+      .replace(/motivos? de devoluci[oó]n:?/gi, '').replace(/entendido/gi, '').trim();
+    return t || null;
+  }, [], 12000);
+
+  // Cerrar la ventana para dejar la página como estaba.
+  await ejecutar(tabId, () => {
+    const b = [...document.querySelectorAll('a, input[type=button], button')]
+      .find(e => e.offsetHeight > 0 && /^\s*entendido\s*$/i.test(e.value || e.textContent || ''));
+    b?.click();
+    return true;
+  }).catch(() => {});
+  await esperar(600);
+
+  return texto;
 }
 
 async function sosCertificado(tabId, filtro) {

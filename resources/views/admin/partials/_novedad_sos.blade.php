@@ -255,7 +255,8 @@ async function consultarSos() {
     const portal = sosnEl('sosnPortal');
     portal.innerHTML = n
         ? `<div>Ya tiene novedad en S.O.S.: radicado <strong>${sosnEsc(n.radicado)}</strong> del ${sosnEsc(n.fecha_radicacion)}</div>` +
-          `<div>Estado: <strong>${sosnEsc(n.estado)}</strong>${n.causal ? ' — ' + sosnEsc(n.causal) : ''}</div>`
+          `<div>Estado: <strong>${sosnEsc(n.estado)}</strong></div>` +
+          (n.causal ? `<div>Motivo de S.O.S.: <strong>${sosnEsc(n.causal)}</strong></div>` : '')
         : '<div>No tiene novedad de inicio laboral reciente en S.O.S.</div>';
     portal.style.display = 'block';
 
@@ -264,6 +265,14 @@ async function consultarSos() {
     const reg = sosnEl('sosnBtnRegistrar');
     const fecha = sosnEl('sosnFecha');
 
+    const devuelta = n && /no aprobad|incorrect|declinad|devuelt|rechaz/i.test(n.estado);
+    if (devuelta) {
+        // Se registra el motivo en el radicado y se pasa directo al correo al asesor.
+        sosnPedir('aplicar', 'POST', { novedad: n }, 60).catch(() => {});
+        sosnEl('sosnRegistro').style.display = 'none';
+        abrirCorreoSos('portal_rechazo', `radicado ${n.radicado}: ${n.causal || n.estado}`);
+        return;
+    }
     if (n) {
         sosnEl('sosnFechaFila').style.display = 'none';
         sosnEl('sosnFechaNota').textContent = '';
@@ -350,7 +359,7 @@ async function registrarSos() {
 }
 
 // ── Plan B: correo al asesor ────────────────────────────────────────────
-let sosnCorreoMotivoActual = 'manual', sosnCorreoPrep = null;
+let sosnCorreoMotivoActual = 'manual', sosnCorreoPrep = null, sosnCorreoDetalle = '';
 
 async function abrirCorreoSos(motivo, conservarTexto = false, detalle = '') {
     if (typeof conservarTexto === 'string') { detalle = conservarTexto; conservarTexto = false; }
@@ -361,13 +370,14 @@ async function abrirCorreoSos(motivo, conservarTexto = false, detalle = '') {
     const benef = sosnEl('sosnCorreoBenef').checked ? 1 : 0;
     const previo = conservarTexto ? { para: sosnEl('sosnCorreoPara').value, cc: sosnEl('sosnCorreoCc').value } : null;
 
+    if (detalle) sosnCorreoDetalle = detalle;
     let d;
-    try { d = await sosnPedir(`correo?motivo=${motivo}&con_beneficiarios=${benef}`); }
+    try { d = await sosnPedir(`correo?motivo=${motivo}&con_beneficiarios=${benef}&detalle=${encodeURIComponent(sosnCorreoDetalle || '')}`); }
     catch (e) { alert('No se pudo preparar el correo.'); return; }
     if (!d.ok) { alert(d.error || 'No se pudo preparar el correo.'); return; }
     sosnCorreoPrep = d;
 
-    const motivoTxt = { portal_rechazo: '❌ S.O.S. no validó la novedad en el portal' + (detalle ? ` (${sosnEsc(detalle)})` : '') + '. Se envía la afiliación por correo al asesor.',
+    const motivoTxt = { portal_rechazo: '❌ S.O.S. no aceptó la novedad por el portal' + (sosnCorreoDetalle ? ` (${sosnEsc(sosnCorreoDetalle)})` : '') + '. Se envía la afiliación por correo al asesor.',
         independiente: '👤 Independiente: el portal de empleadores no aplica. Se envía por correo al asesor.' }[motivo];
     sosnEl('sosnCorreoMotivo').innerHTML = motivoTxt || '';
     sosnEl('sosnCorreoMotivo').style.display = motivoTxt ? 'block' : 'none';
@@ -433,7 +443,7 @@ async function enviarCorreoSos() {
         d = await sosnPedir('correo/enviar', 'POST', {
             para, cc: sosnEl('sosnCorreoCc').value.trim(),
             asunto: sosnEl('sosnCorreoAsunto').value, cuerpo: sosnEl('sosnCorreoCuerpo').value,
-            motivo: sosnCorreoMotivoActual, con_beneficiarios: sosnEl('sosnCorreoBenef').checked,
+            motivo: sosnCorreoMotivoActual, con_beneficiarios: sosnEl('sosnCorreoBenef').checked, detalle: sosnCorreoDetalle,
         }, 120);
     } catch (e) { d = { ok: false, error: 'Se perdió la conexión. Revisa en Gmail (Enviados) antes de reintentar.' }; }
     parar();

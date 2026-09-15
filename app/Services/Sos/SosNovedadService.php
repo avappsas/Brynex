@@ -186,9 +186,12 @@ class SosNovedadService
 
         if (preg_match('/no aprobado|incorrecto|declinado/', $estado)) {
             $causal = trim((string) ($novedad['causal'] ?? ''));
-            $this->marcar($radicado, $numero, Radicado::ESTADO_ERROR, null, "{$prefijo} Radicado S.O.S. {$numero}: {$novedad['estado']}".($causal ? " ({$causal})" : '').'. Enviar formulario completo y carta de derechos.', $usuarioId);
+            $this->marcar($radicado, $numero, Radicado::ESTADO_ERROR, null,
+                "{$prefijo} Radicado S.O.S. {$numero} {$novedad['estado']}".($causal ? ". Motivo de S.O.S.: {$causal}" : ' (sin motivo leído del portal)')
+                .'. Se tramita por correo con el asesor.', $usuarioId);
 
-            return ['ok' => true, 'siguiente' => null, 'radicado' => $numero, 'estado_eps' => $novedad['estado'], 'mensaje' => 'S.O.S. la rechazó: enviar formulario completo y carta de derechos.'];
+            return ['ok' => true, 'siguiente' => 'correo', 'radicado' => $numero, 'estado_eps' => $novedad['estado'], 'causal' => $causal,
+                'mensaje' => 'S.O.S. la devolvió'.($causal ? ": {$causal}" : '').'. Envíala por correo al asesor.'];
         }
 
         $this->marcar($radicado, $numero, Radicado::ESTADO_TRAMITE, null, "{$prefijo} Radicado S.O.S. {$numero}: {$novedad['estado']}.", $usuarioId);
