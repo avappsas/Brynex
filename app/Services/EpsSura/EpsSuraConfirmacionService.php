@@ -112,7 +112,10 @@ class EpsSuraConfirmacionService
                 // El usuario entra, pero la EPS no le da acceso a esa empresa
                 // (Global Contact, Call Service Center…): falla igual cada noche y
                 // no es un error del cruce, sino un usuario que falta.
-                $sinAcceso = str_contains($e->getMessage(), 'no tiene acceso');
+                // "Salió de otra empresa" es lo mismo visto desde el otro lado: el
+                // portal no dejó elegir la empresa y quedó en la de por defecto.
+                $sinAcceso = str_contains($e->getMessage(), 'no tiene acceso')
+                    || str_contains($e->getMessage(), 'salió de otra empresa');
                 foreach ($radicados as $r) {
                     $detalle[] = $this->fila($r, $sinAcceso ? 'sin_usuario' : 'error', $e->getMessage());
                 }
