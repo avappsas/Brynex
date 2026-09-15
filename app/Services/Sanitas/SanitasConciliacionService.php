@@ -29,8 +29,8 @@ use RuntimeException;
  * que BryNex no tiene como contrato vigente con Sanitas.
  *
  * Un mismo NIT puede ser razón social en varios aliados (ELITES está en Brygar,
- * Grupo Fecop, Luis Lopez y BryNex). El usuario BryNex concilia todos a la vez;
- * el del aliado, solo el suyo.
+ * Grupo Fecop, Luis Lopez y BryNex). El usuario BryNex concilia todos a la vez
+ * menos el aliado BryNex, que es de pruebas; el del aliado, solo el suyo.
  */
 class SanitasConciliacionService
 {
@@ -79,10 +79,13 @@ class SanitasConciliacionService
                 ?? $filas->sortByDesc(fn ($a) => $this->fecha($a['inicio'])?->timestamp ?? 0)->first());
     }
 
-    /** Aliados donde el NIT es razón social (lo que ve un usuario BryNex). */
+    /** Aliado 1 (BryNex): solo contratos y afiliaciones de prueba, nunca reales. */
+    public const ALIADO_PRUEBAS = 1;
+
+    /** Aliados donde el NIT es razón social (lo que ve un usuario BryNex), sin el de pruebas. */
     public function aliadosDelNit(string $nit): array
     {
-        return RazonSocial::where('nit', preg_replace('/\D/', '', $nit))->distinct()->pluck('aliado_id')
+        return RazonSocial::where('nit', preg_replace('/\D/', '', $nit))->where('aliado_id', '<>', self::ALIADO_PRUEBAS)->distinct()->pluck('aliado_id')
             ->map(fn ($id) => (int) $id)->sort()->values()->all();
     }
 
