@@ -1,0 +1,220 @@
+<?php
+
+namespace App\Services\Sanitas;
+
+use App\Models\Contrato;
+use App\Models\Radicado;
+use App\Services\EpsPortal\EpsRadicado;
+use App\Services\FormularioEpsService;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Support\Str;
+use RuntimeException;
+
+/**
+ * Novedad de inicio laboral en Sanitas por el formulario público "Novedades a la
+ * afiliación" (tipo "Cambio de empleador", código 10513).
+ *
+ * Sanitas está detrás de Radware, así que el formulario lo llena la extensión
+ * BryNex Portales en el Chrome de la persona; el clic en Enviar lo da ella. BryNex
+ * prepara los datos, genera el formulario con "Reporte de novedades" y la
+ * novedad 9 marcados, y al final guarda la constancia con el número de radicado
+ * que muestra Sanitas y deja el radicado de BryNex en trámite (Sanitas responde
+ * por correo en unos 3 días hábiles; la conciliación lo pasa a OK).
+ */
+class SanitasNovedadService
+{
+    public const ENTIDAD = 'sanitas';
+
+    public const TIPO_NOVEDAD = '10513';
+
+    /** Tipo de documento de BryNex → valor del formulario de Sanitas. */
+    private const TIPOS = [
+        'CC' => '1', 'CE' => '2', 'NI' => '4', 'NIT' => '4', 'PA' => '6', 'PP' => '6', 'RC' => '7', 'TI' => '8',
+        'CD' => '9', 'CN' => '10', 'SC' => '11', 'PE' => '13', 'PT' => '14', 'PPT' => '14',
+    ];
+
+    public function __construct(private FormularioEpsService $formularios) {}
+
+    /**
+     * @return array{problemas: string[], avisos: string[], resumen: array, portal: array|null}
+     */
+    public function preparar(Contrato $contrato): array
+    {
+        $contrato->loadMissing(['cliente.eps', 'cliente.departamento', 'cliente.municipio', 'eps', 'plan', 'razonSocial']);
+        $cliente = $contrato->cliente;
+        $rs      = $contrato->razonSocial;
+        $eps     = $contrato->eps ?: $cliente?->eps;
+        $tipo    = strtoupper((string) $cliente?->tipo_doc);
+        $radicado = Radicado::where('contrato_id', $contrato->id)->where('tipo', Radicado::TIPO_EPS)->first();
+        $problemas = [];
+        $avisos = [];
+
+        if ($contrato->estado !== 'vigente') {
+            $problemas[] = 'El contrato no está vigente.';
+        }
+        if ($eps?->codigo !== SanitasConciliacionService::CODIGO_EPS) {
+            $problemas[] = 'La EPS del contrato no es Sanitas.';
+        }
+        if (! $contrato->plan?->incluye_eps) {
+            $problemas[] = 'El plan del contrato no incluye EPS.';
+        }
+        if (! $rs || $rs->es_independiente) {
+            $problemas[] = 'El cambio de empleador es para dependientes: el independiente no tiene empleador que reportar.';
+        }
+        if (! $cliente) {
+            $problemas[] = 'El contrato no tiene cliente en BryNex.';
+        } elseif (! isset(self::TIPOS[$tipo])) {
+            $problemas[] = "Tipo de documento '{$cliente->tipo_doc}' sin equivalencia en Sanitas.";
+        }
+        if (! $contrato->fecha_ingreso) {
+            $problemas[] = 'El contrato no tiene fecha de ingreso.';
+        }
+        if (! $cliente?->departamento_id || ! $cliente?->municipio_id) {
+            $problemas[] = 'El cliente no tiene departamento y municipio de residencia.';
+        }
+        if ($radicado?->estado === Radicado::ESTADO_OK) {
+            $problemas[] = 'El radicado de EPS ya está en OK.';
+        }
+
+        $celular = $this->digitos($cliente?->celular);
+        if (strlen($celular) !== 10) {
+            $problemas[] = 'Sanitas pide un celular de 10 dígitos y el del cliente no lo es.';
+        }
+        // Teléfono fijo obligatorio (7 a 10 dígitos): el del cliente, el de la empresa o el celular.
+        // `telefonos` de la empresa puede traer varios números separados.
+        $fijo = collect([$cliente?->telefono, $rs?->telefonos, $celular])
+            ->flatMap(fn ($t) => preg_split('/[,;\/|]| - /', (string) $t))
+            ->map(fn ($t) => $this->digitos($t))->first(fn ($t) => strlen($t) >= 7 && strlen($t) <= 10) ?? '';
+
+        // Sanitas responde al correo del formulario: el buzón del aliado, que revisa el agente.
+        $correo = config("afiliaciones_correo.buzones.{$contrato->aliado_id}") ?: $cliente?->correo;
+        if (! $correo) {
+            $problemas[] = 'No hay correo para la respuesta de Sanitas (ni buzón del aliado ni correo del cliente).';
+        } elseif ($correo === $cliente?->correo) {
+            $avisos[] = 'El aliado no tiene buzón configurado: la respuesta de Sanitas llegará al correo del cliente.';
+        }
+        if ($radicado?->numero_radicado && $radicado->estado === Radicado::ESTADO_TRAMITE) {
+            $avisos[] = "Este radicado ya está en trámite con el número {$radicado->numero_radicado}. Radica otra vez solo si Sanitas no lo recibió.";
+        }
+
+        $nombre = trim(implode(' ', array_filter([$cliente?->primer_nombre, $cliente?->segundo_nombre, $cliente?->primer_apellido, $cliente?->segundo_apellido])));
+        $resumen = [
+            'trabajador'    => $nombre,
+            'documento'     => trim($tipo.' '.$contrato->cedula),
+            'razon_social'  => $rs?->razon_social,
+            'nit'           => $rs?->nit,
+            'eps'           => $eps?->nombre,
+            'fecha_ingreso' => $contrato->fecha_ingreso?->toDateString(),
+            'residencia'    => trim(($cliente?->municipio?->nombre ?? '').' · '.($cliente?->departamento?->nombre ?? ''), ' ·'),
+            'telefono_fijo' => $fijo,
+            'celular'       => $celular,
+            'correo'        => $correo,
+            'estado_radicado' => $radicado?->estado,
+            'numero_radicado' => $radicado?->numero_radicado,
+        ];
+
+        return ['problemas' => $problemas, 'avisos' => $avisos, 'resumen' => $resumen, 'portal' => $problemas ? null : [
+            'tipoDoc'       => self::TIPOS[$tipo],
+            'documento'     => (string) $contrato->cedula,
+            'departamento'  => str_pad((string) $cliente->departamento_id, 2, '0', STR_PAD_LEFT),
+            'municipio'     => (string) $cliente->municipio?->nombre,
+            'municipioDane' => str_pad((string) $cliente->municipio_id, 5, '0', STR_PAD_LEFT),
+            'telefonoFijo'  => $fijo,
+            'celular'       => $celular,
+            'correo'        => $correo,
+            'tipoNovedad'   => self::TIPO_NOVEDAD,
+            'observaciones' => $this->observaciones($contrato),
+            'archivo'       => route('admin.afiliaciones.sanitas.formulario', $contrato->id, false),
+            'nombreArchivo' => 'Formulario_Sanitas_'.Str::slug($nombre, '_').'.pdf',
+        ]];
+    }
+
+    /** Formulario de Sanitas como novedad de inicio laboral, guardado en los soportes del radicado. */
+    public function formulario(Contrato $contrato): string
+    {
+        $pdf = $this->formularios->generar($contrato, false, [], true);
+        if (strlen($pdf) > 3_000_000) {
+            throw new RuntimeException('El formulario pesa más de 3 MB, el límite del portal de Sanitas.');
+        }
+        EpsRadicado::guardarPdf($contrato, $pdf, 'eps_formulario_sanitas');
+
+        return $pdf;
+    }
+
+    /**
+     * Registra lo que la extensión leyó de Sanitas después de que la persona dio Enviar.
+     *
+     * $entrada: radicado (número que mostró Sanitas, o el que escribió la persona),
+     * texto (lo que dice la página), captura (JPEG en base64, opcional), error (si
+     * Sanitas no lo recibió).
+     */
+    public function aplicar(Contrato $contrato, array $entrada, ?int $usuarioId): array
+    {
+        $prep = $this->preparar($contrato);
+        if ($prep['problemas']) {
+            throw new RuntimeException(implode(' ', $prep['problemas']));
+        }
+
+        $radicado = EpsRadicado::deContrato($contrato);
+        $numero   = trim((string) ($entrada['radicado'] ?? '')) ?: null;
+        $texto    = trim(preg_replace('/\s+/', ' ', (string) ($entrada['texto'] ?? '')));
+        $payload  = array_diff_key($prep['portal'], ['archivo' => 1]);
+
+        if (! empty($entrada['error']) && ! $numero) {
+            $mensaje = 'Sanitas: no recibió la novedad de cambio de empleador — '.mb_substr((string) $entrada['error'], 0, 300);
+            EpsRadicado::marcar($radicado, null, Radicado::ESTADO_ERROR, null, $mensaje, $usuarioId);
+            EpsRadicado::bitacora($contrato, $radicado, self::ENTIDAD, 'inicio_laboral', 'fallida', null, $payload, ['texto' => mb_substr($texto, 0, 2000)], (string) $entrada['error'], $usuarioId);
+
+            return ['ok' => false, 'estado' => Radicado::ESTADO_ERROR, 'mensaje' => $mensaje];
+        }
+        if (! $numero) {
+            throw new RuntimeException('Falta el número de radicado que dio Sanitas.');
+        }
+
+        $ruta = EpsRadicado::guardarPdf($contrato, $this->constancia($contrato, $numero, $texto, $entrada['captura'] ?? null), 'eps_radicado_sanitas');
+        $observacion = sprintf('Sanitas: novedad de cambio de empleador radicada por el formulario web con el número %s el %s. Responde por correo en unos 3 días hábiles.',
+            $numero, now()->format('d/m/Y H:i'));
+
+        EpsRadicado::marcar($radicado, $numero, Radicado::ESTADO_TRAMITE, $ruta, $observacion, $usuarioId);
+        EpsRadicado::bitacora($contrato, $radicado, self::ENTIDAD, 'inicio_laboral', 'exitosa', $numero, $payload, ['texto' => mb_substr($texto, 0, 2000)], null, $usuarioId, $ruta);
+
+        return ['ok' => true, 'estado' => $radicado->estado, 'radicado' => $numero, 'mensaje' => $observacion, 'pdf' => (bool) $ruta];
+    }
+
+    /** PDF con lo que mostró Sanitas al radicar: número, texto de la página y la captura si la hubo. */
+    private function constancia(Contrato $contrato, string $numero, string $texto, ?string $captura): ?string
+    {
+        $imagen = $captura && preg_match('/^[A-Za-z0-9+\/=]+$/', $captura) ? 'data:image/jpeg;base64,'.$captura : null;
+        $cliente = $contrato->cliente;
+        $e = fn ($s) => e((string) $s);
+
+        $html = '<html><head><meta charset="utf-8"><style>body{font-family:DejaVu Sans,sans-serif;font-size:11px;color:#0f172a}h1{font-size:15px;margin:0 0 6px}'
+            .'table{border-collapse:collapse;margin:8px 0 10px}td{padding:3px 8px;border:1px solid #cbd5e1}.t{color:#475569}.txt{border:1px solid #e2e8f0;padding:8px;line-height:1.5}</style></head><body>'
+            .'<h1>Constancia de radicación — EPS Sanitas</h1>'
+            .'<div class="t">Formulario web "Novedades a la afiliación" · tipo de novedad: Cambio de empleador</div>'
+            .'<table>'
+            .'<tr><td class="t">Número de radicado</td><td><strong>'.$e($numero).'</strong></td></tr>'
+            .'<tr><td class="t">Fecha</td><td>'.now()->format('d/m/Y H:i').'</td></tr>'
+            .'<tr><td class="t">Trabajador</td><td>'.$e(trim(($cliente?->primer_nombre ?? '').' '.($cliente?->segundo_nombre ?? '').' '.($cliente?->primer_apellido ?? '').' '.($cliente?->segundo_apellido ?? ''))).' — '.$e($cliente?->tipo_doc).' '.$e($contrato->cedula).'</td></tr>'
+            .'<tr><td class="t">Empleador</td><td>'.$e($contrato->razonSocial?->razon_social).' — NIT '.$e($contrato->razonSocial?->nit).'</td></tr>'
+            .'</table>'
+            .($texto !== '' ? '<div class="t">Lo que mostró la página de Sanitas:</div><div class="txt">'.$e(mb_substr($texto, 0, 4000)).'</div>' : '')
+            .($imagen ? '<div style="margin-top:10px"><img src="'.$imagen.'" style="width:100%"></div>' : '')
+            .'</body></html>';
+
+        return Pdf::loadHTML($html)->setPaper('letter')->output();
+    }
+
+    private function observaciones(Contrato $contrato): string
+    {
+        $rs = $contrato->razonSocial;
+
+        return sprintf('Cambio de empleador: inicio de relación laboral con %s NIT %s desde el %s. Se adjunta el formulario con la novedad 9 (inicio de relación laboral).',
+            $rs?->razon_social, $rs?->nit, $contrato->fecha_ingreso?->format('d/m/Y'));
+    }
+
+    private function digitos(?string $s): string
+    {
+        return preg_replace('/\D/', '', (string) $s);
+    }
+}

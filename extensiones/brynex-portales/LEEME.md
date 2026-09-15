@@ -2,7 +2,9 @@
 
 Hace los trámites de afiliación de BryNex en los portales de las EPS usando la
 sesión que la persona abre en su propio Chrome. Hoy: S.O.S. (novedad de inicio
-laboral: consultar, radicar, adjuntar el lado B y bajar el certificado).
+laboral: consultar, radicar, adjuntar el lado B y bajar el certificado) y Sanitas
+(Estado de Afiliación para la conciliación y cambio de empleador por el formulario
+web de novedades).
 
 Existe porque el login de S.O.S. pide reCAPTCHA y Google no deja pasar un Chrome
 automatizado desde el servidor. La extensión no ve ni guarda claves: la persona
@@ -18,6 +20,9 @@ inicia sesión como siempre.
 ## Uso
 
 Afiliaciones → radicado de EPS de un contrato con S.O.S. → **🏥 Novedad S.O.S.**
+Con Sanitas → **🏥 Radicar Sanitas**: abre el formulario de novedades, la extensión lo
+llena y adjunta el formulario, la persona pulsa Enviar y BryNex guarda el radicado.
+Después de actualizar la carpeta hay que pulsar **Recargar** en `chrome://extensions`.
 El modal pide abrir S.O.S. en otra pestaña; se inicia sesión ahí (con captcha) y
 se vuelve a BryNex. Mientras corre el trámite no hay que usar la pestaña de S.O.S.
 

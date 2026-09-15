@@ -12,7 +12,7 @@ class FormularioEpsService
      *
      * @param array<string,string> $customDatos  Valores de campos custom.* pasados desde la vista
      */
-    public function generar(Contrato $contrato, bool $incluirBeneficiarios = false, array $customDatos = []): string
+    public function generar(Contrato $contrato, bool $incluirBeneficiarios = false, array $customDatos = [], bool $novedadInicioLaboral = false): string
     {
         return $this->generarDesde(
             $contrato,
@@ -20,7 +20,8 @@ class FormularioEpsService
             'formularios/eps',
             'Sin formulario configurado para esta EPS.',
             $incluirBeneficiarios,
-            $customDatos
+            $customDatos,
+            $novedadInicioLaboral
         );
     }
 
@@ -52,7 +53,8 @@ class FormularioEpsService
         string $subdir,
         string $mensajeSinPdf,
         bool $incluirBeneficiarios,
-        array $customDatos
+        array $customDatos,
+        bool $novedadInicioLaboral = false
     ): string {
         if (!$entidad || !$entidad->formulario_pdf) abort(404, $mensajeSinPdf);
 
@@ -62,14 +64,14 @@ class FormularioEpsService
         $campos = $entidad->formulario_campos ?? [];
         if (empty($campos)) return file_get_contents($ruta);
 
-        $datos = $this->ensamblarDatos($contrato, $incluirBeneficiarios, $customDatos);
+        $datos = $this->ensamblarDatos($contrato, $incluirBeneficiarios, $customDatos, $novedadInicioLaboral);
         return $this->rellenarPdf($ruta, $campos, $datos);
     }
 
     /**
      * @param array<string,string> $customDatos  Ej: ['texto_1' => 'Valor libre']
      */
-    protected function ensamblarDatos(Contrato $contrato, bool $incluirBeneficiarios, array $customDatos = []): array
+    protected function ensamblarDatos(Contrato $contrato, bool $incluirBeneficiarios, array $customDatos = [], bool $novedadInicioLaboral = false): array
     {
         $c  = $contrato->cliente;
         $rs = $contrato->razonSocial;
@@ -122,6 +124,13 @@ class FormularioEpsService
             'cliente.ocupacion'        => strtoupper($c?->ocupacion ?? ''),
             // Estáticos
             'static.COLOMBIANA'        => 'COLOMBIANA',
+            // ── Tipo de trámite ────────────────────────────────────
+            // Por defecto es afiliación. Como novedad de inicio laboral (Sanitas lo
+            // pide así para el "cambio de empleador") se marca "Reporte de
+            // novedades" y la novedad 9, "Inicio de relación laboral".
+            'tramite.afiliacion_x'     => $novedadInicioLaboral ? '' : 'X',
+            'tramite.novedad_x'        => $novedadInicioLaboral ? 'X' : '',
+            'novedad.inicio_laboral_x' => $novedadInicioLaboral ? 'X' : '',
             // ── ARL y Pensión ──────────────────────────────────────
             'eps.nombre'               => strtoupper($contrato->eps?->nombre ?? ''),
             'arl.nombre'               => strtoupper($contrato->arl?->nombre_arl ?? $contrato->arl?->razon_social ?? ''),

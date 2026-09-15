@@ -16,6 +16,15 @@
  *  certificado {tipo, documento, desde, hasta}                → {pdf: base64}
  *  registrar  {tipoId, documento, ibc, fecha, arl, afp, guardar}
  *  adjuntar   {tipo, documento, desde, hasta, archivo}        (URL de BryNex)
+ *
+ * Pedidos Sanitas (portal: 'sanitas'):
+ *  estado / abrir / estadoAfiliacion   Oficina Virtual de Empleadores (conciliación)
+ *  novedadEstado                       → {abierta, listo, error} del formulario web de novedades
+ *  novedadAbrir                        → abre (o enfoca) el formulario web de novedades
+ *  novedadLlenar {tipoDoc, documento, departamento, municipio, municipioDane, telefonoFijo,
+ *                 celular, correo, tipoNovedad, observaciones, archivo, nombreArchivo}
+ *                                      → llena y adjunta; el clic en Enviar lo da la persona
+ *  novedadResultado {documento}        → {enviado, radicado, texto, errores, captura}
  */
 
 const ORIGENES_BRYNEX = ['https://brynex.co', 'https://www.brynex.co', 'http://localhost:8000'];
@@ -32,7 +41,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.canal !== 'brynex-portales' || !ORIGENES_BRYNEX.includes(origen) || sender.id !== chrome.runtime.id) return;
 
   // Ver el estado o abrir la pestaña no espera a que termine un trámite en curso.
-  const directo = ['estado', 'abrir'].includes(msg.accion);
+  const directo = ['estado', 'abrir', 'novedadEstado', 'novedadAbrir', 'novedadResultado'].includes(msg.accion);
   (directo ? atender(msg, origen) : enCola(() => atender(msg, origen)))
     .then(sendResponse)
     .catch(e => sendResponse({ ok: false, error: String(e?.message || e).slice(0, 400) }));
@@ -44,7 +53,7 @@ let cola = Promise.resolve();
 const enCola = (fn) => (cola = cola.then(fn, fn));
 
 async function atender({ portal, accion, datos = {} }, origen) {
-  if (portal === 'sanitas') return atenderSanitas(accion, datos);
+  if (portal === 'sanitas') return atenderSanitas(accion, datos, origen);
   if (portal !== 'sos') throw new Error(`Portal desconocido: ${portal}`);
 
   if (accion === 'estado') return sosEstado();
@@ -467,7 +476,9 @@ async function pestanaSanitas() {
   return pestanas.find(p => /\/group\/empleadores/.test(p.url || '')) || pestanas[0] || null;
 }
 
-async function atenderSanitas(accion, datos) {
+async function atenderSanitas(accion, datos, origen) {
+  if (accion.startsWith('novedad')) return atenderSanitasNovedad(accion, datos, origen);
+
   if (accion === 'abrir') {
     const p = await pestanaSanitas();
     if (p) {
@@ -522,4 +533,196 @@ async function sanitasSesion(tabId) {
   } catch {
     return { sesion: false };
   }
+}
+
+// ── Sanitas: formulario web "Novedades a la afiliación" ───────────────────
+// Portlet Liferay `radicarnovedades`. Tipo de novedad "Cambio de empleador" =
+// 10513. El adjunto lo sube el cargador de Liferay en cuanto se elige el archivo;
+// el Enviar lo pulsa la persona y la página se recarga con la respuesta.
+
+const SANITAS_NOVEDADES = 'https://www.epssanitas.com/usuarios/web/nuevo-portal-eps/novedades-afiliacion';
+const SANITAS_NS = '_radicarnovedades_WAR_radicarnovedadesportlet_';
+
+async function pestanaNovedades() {
+  const pestanas = await chrome.tabs.query({ url: ['https://www.epssanitas.com/*', 'https://epssanitas.com/*', 'https://validate.perfdrive.com/*'] });
+  return pestanas.find(p => /novedades-afiliacion/.test(p.url || '')) || pestanas.find(p => /perfdrive/.test(p.url || '')) || null;
+}
+
+async function atenderSanitasNovedad(accion, datos, origen) {
+  if (accion === 'novedadAbrir') {
+    const p = await pestanaNovedades();
+    if (p) {
+      await chrome.tabs.update(p.id, { active: true });
+      await chrome.windows.update(p.windowId, { focused: true });
+    } else {
+      await chrome.tabs.create({ url: SANITAS_NOVEDADES, active: true });
+    }
+    return { ok: true, abierta: true };
+  }
+
+  const pestana = await pestanaNovedades();
+  if (!pestana) return { ok: true, abierta: false, listo: false };
+  if (/perfdrive/.test(pestana.url || '')) {
+    return { ok: true, abierta: true, listo: false, error: 'Sanitas pide verificar que no eres un robot: resuélvelo en la pestaña de Sanitas.' };
+  }
+
+  if (accion === 'novedadEstado') {
+    let e;
+    try { e = await ejecutar(pestana.id, pNovedadEstado, [SANITAS_NS]); } catch { e = { listo: false }; }
+    return { ok: true, abierta: true, ...e };
+  }
+
+  if (accion === 'novedadLlenar') return sanitasNovedadLlenar(pestana, datos, origen);
+
+  if (accion === 'novedadResultado') {
+    const r = await ejecutar(pestana.id, pNovedadResultado, [SANITAS_NS, String(datos.documento || '')]);
+    if (r?.enviado) {
+      // La captura solo sale si la pestaña de Sanitas es la que se ve; si no, queda el texto.
+      try {
+        const actual = await chrome.tabs.get(pestana.id);
+        if (actual.active) {
+          const url = await chrome.tabs.captureVisibleTab(actual.windowId, { format: 'jpeg', quality: 70 });
+          r.captura = url.split(',')[1] || null;
+        }
+      } catch { /* sin permiso o sin ventana visible: basta con el texto */ }
+    }
+    return { ok: true, ...r };
+  }
+
+  throw new Error(`Acción de Sanitas desconocida: ${accion}`);
+}
+
+function pNovedadEstado(ns) {
+  const vis = e => !!(e && (e.offsetWidth || e.offsetHeight || e.getClientRects().length));
+  const form = document.getElementById(ns + 'fmRadicarNov');
+  const errores = ['msg-alert-error-login', 'msg-alert-error-titular', 'msg-alert-error-service', 'msg-alert-error-ajax']
+    .map(id => document.getElementById(id)).filter(vis).map(e => e.innerText.trim()).filter(Boolean);
+  const tipo = document.getElementById(ns + 'tipoNovedadSelect');
+  const listo = !!form && !!tipo && [...tipo.options].some(o => o.value === '10513');
+  return {
+    listo: listo && !errores.length,
+    formulario: !!form,
+    error: errores.join(' ') || (form ? (listo ? null : 'El formulario de Sanitas aún no carga los tipos de novedad.') : 'La pestaña no muestra el formulario de novedades de Sanitas.'),
+  };
+}
+
+async function sanitasNovedadLlenar(pestana, d, origen) {
+  const estado = await ejecutar(pestana.id, pNovedadEstado, [SANITAS_NS]);
+  if (!estado.listo) return { ok: false, error: estado.error || 'El formulario de Sanitas no está listo.' };
+
+  // El formulario PDF lo genera BryNex; solo se acepta de ese mismo origen.
+  const url = new URL(d.archivo, origen);
+  if (url.origin !== origen) throw new Error('El formulario no viene de BryNex.');
+  const res = await fetch(url, { credentials: 'include' });
+  if (!res.ok || !/pdf/.test(res.headers.get('content-type') || '')) {
+    let detalle = '';
+    try { detalle = (await res.json()).error || ''; } catch { /* no era JSON */ }
+    throw new Error(detalle || `BryNex no entregó el formulario (HTTP ${res.status}).`);
+  }
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  let binario = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binario += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+
+  // 1. Datos del afiliado y departamento (el municipio se carga por AJAX).
+  await ejecutar(pestana.id, (ns, d) => {
+    const $ = id => document.getElementById(ns + id);
+    const poner = (id, v) => { const e = $(id); e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); };
+    poner('documentType', d.tipoDoc);
+    window[ns + 'asignarNombreDocumento']?.();
+    poner('login', d.documento);
+    $('dptoSeleccionado').value = d.departamento;
+    window[ns + 'consultarCiudadesAjax']?.();
+    return true;
+  }, [SANITAS_NS, d]);
+
+  const ciudad = await esperarQue(pestana.id, (ns, d) => {
+    const s = document.getElementById(ns + 'citySeleccionado');
+    if (!s || s.options.length <= 1) return null;
+    const norm = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const op = [...s.options].find(o => o.value && (o.value === d.municipioDane || o.value === d.municipioDane.slice(2) || norm(o.text) === norm(d.municipio)))
+      || [...s.options].find(o => o.value && norm(o.text).startsWith(norm(d.municipio)));
+    if (!op) return { encontrado: false, opciones: [...s.options].slice(1, 8).map(o => o.value + '=' + o.text.trim()) };
+    s.value = op.value;
+    s.dispatchEvent(new Event('change', { bubbles: true }));
+    return { encontrado: true, valor: op.value, texto: op.text.trim() };
+  }, [SANITAS_NS, d], 20000);
+  if (!ciudad?.encontrado) {
+    return { ok: false, error: `Sanitas no cargó el municipio ${d.municipio}${ciudad?.opciones ? ` (opciones: ${ciudad.opciones.join(', ')})` : ''}.` };
+  }
+
+  // 2. Contacto, tipo de novedad y observaciones.
+  const requisitos = await ejecutar(pestana.id, (ns, d) => {
+    const $ = id => document.getElementById(ns + id);
+    const poner = (id, v) => { const e = $(id); e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); };
+    poner('telefonoFijoNumber', d.telefonoFijo);
+    poner('celularNumber', d.celular);
+    poner('emailAddress', d.correo);
+    poner('tipoNovedadSelect', d.tipoNovedad);
+    poner('observations', d.observaciones);
+    return (document.getElementById('list-documents-requiered')?.innerText || '').trim();
+  }, [SANITAS_NS, d]);
+
+  // 3. Adjunto: se entrega al cargador de Liferay, que lo sube de una vez.
+  const subido = await ejecutar(pestana.id, (ns, b64, nombre) => {
+    const ya = [...document.querySelectorAll(`input[name="${ns}selectUploadedFileCheckbox"]`)].some(c => c.value === nombre);
+    if (ya) return 'ya';
+    const input = document.querySelector(`#${ns}uploaderContent input[type=file]`) || document.querySelector(`#${ns}fileUpload input[type=file]`);
+    if (!input) return { __error: 'No se encontró el cargador de archivos del formulario de Sanitas.' };
+    const bin = atob(b64);
+    const u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    const dt = new DataTransfer();
+    dt.items.add(new File([u8], nombre, { type: 'application/pdf' }));
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    return 'enviado';
+  }, [SANITAS_NS, btoa(binario), d.nombreArchivo]);
+
+  const adjunto = subido === 'ya' || await esperarQue(pestana.id, (ns, nombre) => {
+    // Liferay puede renombrar el temporal: vale el que lleve el nombre, o el único que haya.
+    const todos = [...document.querySelectorAll(`input[name="${ns}selectUploadedFileCheckbox"]`)];
+    const base = nombre.replace(/\.pdf$/i, '');
+    const c = todos.find(x => x.value === nombre) || todos.find(x => x.value.includes(base)) || (todos.length === 1 ? todos[0] : null);
+    if (c && !c.checked) c.click();
+    return c?.checked ? true : null;
+  }, [SANITAS_NS, d.nombreArchivo], 60000);
+
+  // 4. Deja todo a la vista con Enviar resaltado y marca el trámite en la pestaña.
+  await ejecutar(pestana.id, (ns, doc) => {
+    sessionStorage.setItem('brynexNovedad', JSON.stringify({ documento: doc, desde: Date.now() }));
+    const b = document.getElementById(ns + 'btnSend');
+    if (b) { b.style.outline = '3px solid #f59e0b'; b.style.outlineOffset = '3px'; b.scrollIntoView({ block: 'center' }); }
+    return true;
+  }, [SANITAS_NS, String(d.documento)]);
+  await chrome.tabs.update(pestana.id, { active: true });
+  await chrome.windows.update(pestana.windowId, { focused: true });
+
+  return {
+    ok: true,
+    municipio: ciudad.texto,
+    requisitos,
+    adjunto: !!adjunto,
+    aviso: adjunto ? null : 'El formulario quedó lleno pero Sanitas no confirmó el adjunto: adjúntalo a mano antes de Enviar.',
+  };
+}
+
+/** Después del Enviar: la página se recarga (el documento vuelve vacío) y muestra la respuesta. */
+function pNovedadResultado(ns, documento) {
+  const vis = e => !!(e && (e.offsetWidth || e.offsetHeight || e.getClientRects().length));
+  let marca = null;
+  try { marca = JSON.parse(sessionStorage.getItem('brynexNovedad') || 'null'); } catch { /* sin marca */ }
+  if (!marca || (documento && marca.documento !== documento)) return { enviado: false, sinTramite: true };
+
+  const login = document.getElementById(ns + 'login');
+  const errores = [...document.querySelectorAll('.alert-error, .portlet-msg-error, .form-validator-stack, .help-inline')]
+    .filter(vis).map(e => e.innerText.trim()).filter(Boolean);
+  // Sigue en el formulario lleno: no han dado Enviar o la validación lo frenó.
+  if (login && login.value === marca.documento) return { enviado: false, errores };
+
+  const portlet = document.getElementById('p_p_id' + ns) || document.querySelector('.portlet-body') || document.body;
+  const texto = (portlet.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 6000);
+  const m = texto.match(/radicad[oa][^0-9]{0,80}?(\d[\d-]{3,})/i) || texto.match(/n[uú]mero[^0-9]{0,60}?(\d[\d-]{4,})/i);
+  const exito = [...document.querySelectorAll('.alert-success, .portlet-msg-success')].filter(vis).map(e => e.innerText.trim()).join(' ');
+  sessionStorage.removeItem('brynexNovedad');
+  return { enviado: true, radicado: m ? m[1] : null, texto, exito, errores };
 }

@@ -951,6 +951,11 @@ Route::middleware('auth')->group(function () {
             $sanc = \App\Http\Controllers\Admin\SanitasController::class;
             Route::post('/sanitas/conciliar', [$sanc, 'conciliar'])->name('sanitas.conciliar');
             Route::get('/sanitas/conciliar/estado', [$sanc, 'estado'])->name('sanitas.conciliar.estado');
+            // Novedad de cambio de empleador por el formulario web de Sanitas (lo llena la extensión).
+            $sann = \App\Http\Controllers\Admin\SanitasNovedadController::class;
+            Route::get('/{contrato}/sanitas/precheck', [$sann, 'precheck'])->name('sanitas.precheck');
+            Route::get('/{contrato}/sanitas/formulario', [$sann, 'formulario'])->name('sanitas.formulario');
+            Route::post('/{contrato}/sanitas/aplicar', [$sann, 'aplicar'])->name('sanitas.aplicar');
             // Bandeja del agente del buzón de afiliaciones.
             $buz = \App\Http\Controllers\Admin\BuzonAfiliacionesController::class;
             Route::get('/buzon', [$buz, 'index'])->name('buzon');

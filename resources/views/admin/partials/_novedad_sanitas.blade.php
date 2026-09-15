@@ -1,0 +1,243 @@
+{{--
+    Modal de novedad de cambio de empleador en Sanitas, autocontenido.
+
+    Lo abre `abrirNovedadSanitas(contratoId)` desde el radicado de EPS. Sanitas
+    está detrás de Radware, así que el formulario web lo llena la extensión
+    BryNex Portales en este mismo navegador: la persona abre el formulario en otra
+    pestaña, el modal pide llenarlo con el PDF adjunto, ella revisa y pulsa Enviar,
+    y el modal lee el número de radicado y lo guarda en BryNex con la constancia.
+--}}
+<style>
+.sann-bg { display:none;position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:10000;align-items:center;justify-content:center;padding:1rem }
+.sann-bg.open { display:flex }
+.sann-box { background:#fff;border-radius:14px;max-width:560px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.3);overflow:hidden;max-height:94vh;overflow-y:auto }
+.sann-head { background:linear-gradient(135deg,#0e7490,#0891b2);padding:.85rem 1.1rem;display:flex;justify-content:space-between;align-items:center }
+.sann-head h3 { color:#fff;font-size:.92rem;font-weight:800;margin:0 }
+.sann-x { background:none;border:none;color:#cffafe;font-size:1.15rem;cursor:pointer;line-height:1 }
+.sann-body { padding:1.1rem }
+.sann-resumen { background:#f8fafc;border:1px solid #e2e8f0;border-radius:9px;padding:.65rem .8rem;font-size:.76rem;line-height:1.65;margin-bottom:.8rem }
+.sann-resumen span { color:#64748b }
+.sann-prob { background:#fef2f2;border:1px solid #fecaca;border-radius:9px;padding:.65rem .8rem;margin-bottom:.8rem;font-size:.75rem;color:#991b1b }
+.sann-prob ul { margin:.35rem 0 0 1rem;padding:0 }
+.sann-aviso { background:#fffbeb;border:1px solid #fcd34d;border-radius:9px;padding:.65rem .8rem;margin-bottom:.8rem;font-size:.75rem;color:#92400e;line-height:1.5 }
+.sann-info { background:#ecfeff;border:1px solid #a5f3fc;border-radius:9px;padding:.65rem .8rem;margin-bottom:.8rem;font-size:.75rem;color:#155e75;line-height:1.55 }
+.sann-ok { background:#f0fdf4;border:1px solid #86efac;border-radius:9px;padding:.8rem .9rem;font-size:.8rem;color:#166534;line-height:1.6 }
+.sann-btn { width:100%;margin-top:.5rem;background:linear-gradient(135deg,#0e7490,#0891b2);color:#fff;border:none;border-radius:10px;padding:.6rem 1.2rem;font-size:.86rem;font-weight:700;cursor:pointer }
+.sann-btn.sec { background:#fff;color:#0e7490;border:1px solid #67e8f9 }
+.sann-btn.rojo { background:#fff;color:#b91c1c;border:1px solid #fecaca }
+.sann-btn:disabled { opacity:.5;cursor:not-allowed }
+.sann-input { width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:.4rem .55rem;font-size:.82rem;font-family:inherit }
+.sann-texto { font-size:.7rem;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:.45rem .55rem;max-height:120px;overflow-y:auto;margin:.4rem 0;line-height:1.45 }
+</style>
+
+<div class="sann-bg" id="sannModal">
+  <div class="sann-box">
+    <div class="sann-head">
+      <h3>🏥 Cambio de empleador en Sanitas</h3>
+      <button class="sann-x" onclick="cerrarNovedadSanitas()">✕</button>
+    </div>
+    <div class="sann-body">
+      <div id="sannCargando" style="text-align:center;color:#64748b;font-size:.82rem;padding:1.2rem">⏳ Revisando los datos del contrato...</div>
+
+      <div id="sannContenido" style="display:none">
+        <div class="sann-resumen" id="sannResumen"></div>
+        <div class="sann-prob" id="sannProblemas" style="display:none">
+          <strong>No se puede radicar todavía:</strong>
+          <ul id="sannProblemasLista"></ul>
+        </div>
+        <div class="sann-aviso" id="sannAvisos" style="display:none"></div>
+
+        <div class="sann-info" id="sannSesion"></div>
+        <button class="sann-btn sec" id="sannBtnAbrir" style="display:none" onclick="sannExt('novedadAbrir')">🌐 Abrir el formulario de novedades de Sanitas</button>
+        <button class="sann-btn" id="sannBtnLlenar" style="display:none" onclick="llenarNovedadSanitas()">📝 Llenar el formulario en Sanitas</button>
+
+        <div id="sannLleno" style="display:none"></div>
+
+        {{-- Después del Enviar: número de radicado --}}
+        <div id="sannEnviado" style="display:none">
+          <div class="sann-info" id="sannEnviadoInfo"></div>
+          <div class="sann-texto" id="sannEnviadoTexto" style="display:none"></div>
+          <label style="font-size:.74rem;font-weight:600;color:#475569">Número de radicado que dio Sanitas</label>
+          <input id="sannNumero" class="sann-input" placeholder="Ej: 12345678">
+          <button class="sann-btn" id="sannBtnGuardar" onclick="guardarNovedadSanitas()">💾 Guardar radicado en BryNex</button>
+          <button class="sann-btn rojo" onclick="rechazoNovedadSanitas()">⛔ Sanitas no lo recibió</button>
+        </div>
+      </div>
+
+      <div id="sannResultado" class="sann-ok" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let sannContratoId = null, sannPrep = {}, sannReloj = null, sannEnvio = null;
+const SANN_CSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
+const sannEsc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const sannEl = id => document.getElementById(id);
+const sannFmt = iso => iso ? iso.split('-').reverse().join('/') : '—';
+
+function cerrarNovedadSanitas() { sannEl('sannModal').classList.remove('open'); clearInterval(sannReloj); }
+
+async function sannPedir(ruta, metodo = 'GET', cuerpo = null) {
+    const r = await fetch(`/admin/afiliaciones/${sannContratoId}/sanitas/${ruta}`, {
+        method: metodo,
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': SANN_CSRF },
+        body: cuerpo ? JSON.stringify(cuerpo) : null,
+    });
+    return await r.json();
+}
+
+/** Pedido a la extensión BryNex Portales (por el puente que ella inyecta en esta página). */
+function sannExt(accion, datos = {}, limiteSeg = 180) {
+    return new Promise((resolve) => {
+        if (!document.documentElement.dataset.brynexPortales) {
+            resolve({ ok: false, sinExtension: true, error: 'La extensión BryNex Portales no está instalada en este navegador.' });
+            return;
+        }
+        const id = Date.now() + '-' + Math.random().toString(36).slice(2);
+        const oyente = (ev) => {
+            if (ev.source !== window || ev.data?.canal !== 'brynex-portales' || ev.data.tipo !== 'respuesta' || ev.data.id !== id) return;
+            window.removeEventListener('message', oyente); clearTimeout(alarma);
+            resolve(ev.data.respuesta || { ok: false, error: 'Respuesta vacía de la extensión.' });
+        };
+        window.addEventListener('message', oyente);
+        const alarma = setTimeout(() => { window.removeEventListener('message', oyente); resolve({ ok: false, error: 'La extensión no respondió a tiempo.' }); }, limiteSeg * 1000);
+        window.postMessage({ canal: 'brynex-portales', tipo: 'pedido', id, portal: 'sanitas', accion, datos }, window.location.origin);
+    });
+}
+
+async function abrirNovedadSanitas(contratoId) {
+    sannContratoId = contratoId; sannEnvio = null; clearInterval(sannReloj);
+    ['sannContenido', 'sannResultado', 'sannLleno', 'sannEnviado', 'sannBtnAbrir', 'sannBtnLlenar', 'sannAvisos'].forEach(id => sannEl(id).style.display = 'none');
+    sannEl('sannCargando').style.display = 'block';
+    sannEl('sannCargando').textContent = '⏳ Revisando los datos del contrato...';
+    sannEl('sannModal').classList.add('open');
+
+    try { sannPrep = await sannPedir('precheck'); }
+    catch (e) { sannEl('sannCargando').textContent = '⚠️ No se pudo revisar el contrato.'; return; }
+
+    sannEl('sannCargando').style.display = 'none';
+    sannEl('sannContenido').style.display = 'block';
+    const r = sannPrep.resumen || {};
+    const li = (k, v) => v ? `<div><span>${k}:</span> <strong>${sannEsc(v)}</strong></div>` : '';
+    sannEl('sannResumen').innerHTML =
+        li('Trabajador', `${r.trabajador} — ${r.documento}`) +
+        li('Empleador', `${r.razon_social} (NIT ${r.nit})`) +
+        li('Ingreso', sannFmt(r.fecha_ingreso)) +
+        li('Residencia', r.residencia) +
+        li('Teléfonos', `fijo ${r.telefono_fijo || '—'} · celular ${r.celular || '—'}`) +
+        li('Respuesta de Sanitas a', r.correo) +
+        li('Radicado BryNex', r.estado_radicado ? `${r.estado_radicado}${r.numero_radicado ? ' · N° ' + r.numero_radicado : ''}` : null);
+
+    const problemas = sannPrep.problemas || [];
+    sannEl('sannProblemas').style.display = problemas.length ? 'block' : 'none';
+    sannEl('sannProblemasLista').innerHTML = problemas.map(p => `<li>${sannEsc(p)}</li>`).join('');
+    const avisos = sannPrep.avisos || [];
+    sannEl('sannAvisos').style.display = avisos.length ? 'block' : 'none';
+    sannEl('sannAvisos').innerHTML = avisos.map(sannEsc).join('<br>');
+    if (problemas.length) { sannEl('sannSesion').style.display = 'none'; return; }
+
+    sannEl('sannSesion').style.display = 'block';
+    await revisarFormularioSanitas();
+    // Mientras falte la pestaña o el formulario, se vuelve a mirar sola.
+    sannReloj = setInterval(() => { if (!sannEnvio) revisarFormularioSanitas(); }, 3000);
+}
+
+async function revisarFormularioSanitas() {
+    const e = await sannExt('novedadEstado', {}, 20);
+    const caja = sannEl('sannSesion');
+    const lleno = sannEl('sannLleno').style.display === 'block';
+    sannEl('sannBtnAbrir').style.display = 'none';
+    if (e.sinExtension) {
+        caja.innerHTML = '🧩 Instala la extensión <strong>BryNex Portales</strong> (carpeta <code>extensiones/brynex-portales</code>) y recarga esta página.';
+        sannEl('sannBtnLlenar').style.display = 'none';
+        return;
+    }
+    if (!e.abierta) {
+        caja.innerHTML = '1️⃣ Abre el formulario de <strong>Novedades a la afiliación</strong> de Sanitas en otra pestaña (si pide verificación, resuélvela tú) y vuelve aquí.';
+        sannEl('sannBtnAbrir').style.display = 'block';
+        sannEl('sannBtnLlenar').style.display = 'none';
+        return;
+    }
+    if (!e.listo) {
+        caja.innerHTML = '⚠️ ' + sannEsc(e.error || 'El formulario de Sanitas no está listo.');
+        sannEl('sannBtnAbrir').style.display = 'block';
+        sannEl('sannBtnLlenar').style.display = 'none';
+        return;
+    }
+    caja.innerHTML = lleno
+        ? '✅ Formulario lleno. Revisa la pestaña de Sanitas y pulsa <strong>Enviar</strong> allá; aquí se lee el número de radicado.'
+        : '✅ El formulario de Sanitas está abierto y listo.';
+    sannEl('sannBtnLlenar').style.display = lleno ? 'none' : 'block';
+}
+
+async function llenarNovedadSanitas() {
+    const btn = sannEl('sannBtnLlenar');
+    btn.disabled = true; btn.textContent = '⏳ Llenando el formulario en Sanitas...';
+    const r = await sannExt('novedadLlenar', sannPrep.portal, 150);
+    btn.disabled = false; btn.textContent = '📝 Llenar el formulario en Sanitas';
+
+    if (!r.ok) { alert(r.error || 'No se pudo llenar el formulario de Sanitas.'); return; }
+
+    const caja = sannEl('sannLleno');
+    caja.style.display = 'block';
+    caja.innerHTML = `<div class="${r.adjunto ? 'sann-info' : 'sann-aviso'}">` +
+        `📝 Formulario lleno: municipio <strong>${sannEsc(r.municipio)}</strong>, tipo de novedad <strong>Cambio de empleador</strong>, ` +
+        (r.adjunto ? 'formulario PDF <strong>adjunto</strong>.' : `<strong>${sannEsc(r.aviso)}</strong>`) +
+        (r.requisitos ? `<div class="sann-texto">${sannEsc(r.requisitos)}</div>` : '') +
+        `👉 Ve a la pestaña de Sanitas, revisa y pulsa <strong>Enviar</strong>. No cierres este modal.</div>`;
+    btn.style.display = 'none';
+    sannEl('sannSesion').innerHTML = '⏳ Esperando a que pulses <strong>Enviar</strong> en Sanitas...';
+
+    // Espera el Enviar hasta 20 minutos.
+    clearInterval(sannReloj);
+    const desde = Date.now();
+    sannReloj = setInterval(async () => {
+        if (Date.now() - desde > 20 * 60 * 1000) { clearInterval(sannReloj); sannEl('sannSesion').innerHTML = '⌛ Se dejó de esperar el Enviar. Si ya lo enviaste, escribe el número abajo.'; mostrarEnvioSanitas({}); return; }
+        const res = await sannExt('novedadResultado', { documento: sannPrep.portal.documento }, 20);
+        if (res.ok && res.enviado) { clearInterval(sannReloj); mostrarEnvioSanitas(res); }
+        else if (res.errores?.length) sannEl('sannSesion').innerHTML = '⚠️ Sanitas marcó: ' + sannEsc(res.errores.join(' · '));
+    }, 3000);
+}
+
+function mostrarEnvioSanitas(res) {
+    sannEnvio = res;
+    sannEl('sannEnviado').style.display = 'block';
+    sannEl('sannNumero').value = res.radicado || '';
+    sannEl('sannEnviadoInfo').innerHTML = res.radicado
+        ? `📨 Sanitas respondió con el radicado <strong>${sannEsc(res.radicado)}</strong>. Confírmalo y guárdalo.`
+        : '📨 Se envió el formulario, pero no se encontró el número en la página. Cópialo de la pestaña de Sanitas.';
+    const texto = [res.exito, (res.errores || []).join(' · '), res.texto].filter(Boolean).join(' — ');
+    sannEl('sannEnviadoTexto').style.display = texto ? 'block' : 'none';
+    sannEl('sannEnviadoTexto').textContent = texto.slice(0, 1500);
+    sannEl('sannSesion').innerHTML = '✅ Enviado a Sanitas.';
+}
+
+async function guardarNovedadSanitas() {
+    const numero = sannEl('sannNumero').value.trim();
+    if (!numero) { alert('Escribe el número de radicado que dio Sanitas.'); return; }
+    const btn = sannEl('sannBtnGuardar');
+    btn.disabled = true; btn.textContent = '⏳ Guardando...';
+    const r = await sannPedir('aplicar', 'POST', { radicado: numero, texto: sannEnvio?.texto || '', captura: sannEnvio?.captura || null });
+    btn.disabled = false; btn.textContent = '💾 Guardar radicado en BryNex';
+    if (!r.ok) { alert(r.error || r.mensaje || 'No se pudo guardar.'); return; }
+    sannTerminar(`✅ Radicado <strong>${sannEsc(r.radicado)}</strong> guardado: el radicado de EPS queda <strong>en trámite</strong>` +
+        (r.pdf ? ' y la constancia quedó en los soportes.' : '.') + '<br><span style="color:#475569">Sanitas responde por correo; la conciliación lo pasará a OK.</span>');
+}
+
+async function rechazoNovedadSanitas() {
+    const motivo = prompt('¿Qué dijo Sanitas? (queda en el radicado como error)', (sannEnvio?.errores || []).join(' · ') || '');
+    if (motivo === null) return;
+    const r = await sannPedir('aplicar', 'POST', { error: motivo || 'Sanitas no recibió la novedad.', texto: sannEnvio?.texto || '' });
+    if (r.error) { alert(r.error); return; }
+    sannTerminar(`⛔ ${sannEsc(r.mensaje)}`);
+}
+
+function sannTerminar(html) {
+    clearInterval(sannReloj);
+    sannEl('sannContenido').style.display = 'none';
+    sannEl('sannResultado').style.display = 'block';
+    sannEl('sannResultado').innerHTML = html;
+    if (typeof mostrarToast === 'function') mostrarToast('Radicado de Sanitas actualizado. Recarga para verlo.', 'success');
+}
+</script>

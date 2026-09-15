@@ -806,6 +806,12 @@ function sortClass($col, $currSort, $currDir) {
                     onclick="novedadSosDesdeRadicado()">
                     🏥 Novedad S.O.S.
                 </button>
+                {{-- Radicados de EPS en Sanitas: cambio de empleador por el formulario web --}}
+                <button id="btnNovedadSanitas" type="button"
+                    style="display:none;align-items:center;gap:0.35rem;padding:0.3rem 0.85rem;background:linear-gradient(135deg,#0e7490,#0891b2);color:#fff;border:none;border-radius:7px;font-size:0.75rem;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(8,145,178,0.3);"
+                    onclick="novedadSanitasDesdeRadicado()">
+                    🏥 Radicar Sanitas
+                </button>
                 {{-- Cuando ya está afiliado: deshacer, solo dentro de los 30 días --}}
                 <button id="btnAnularApi" type="button"
                     style="display:none;align-items:center;gap:0.35rem;padding:0.3rem 0.85rem;background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;border-radius:7px;font-size:0.75rem;font-weight:700;cursor:pointer;"
@@ -1567,6 +1573,12 @@ function abrirModalRadicado(radId, radData, ctx = {}, contratoId = null, tieneFo
     const esSos  = (radData.tipo === 'eps') && /^\s*S\.?\s*O\.?\s*S\.?\s*$/i.test(ctx.eps || '');
     btnSos.style.display = (PUEDE_AUTOMATIZAR && esSos && radData.estado !== 'ok') ? 'inline-flex' : 'none';
     btnSos._contratoId = contratoId || ctx.id || null;
+
+    // Cambio de empleador en Sanitas: radicados de EPS de Sanitas que aún no están en OK.
+    const btnSanitas = document.getElementById('btnNovedadSanitas');
+    const esSanitas  = (radData.tipo === 'eps') && /SANITAS/i.test(ctx.eps || '');
+    btnSanitas.style.display = (PUEDE_AUTOMATIZAR && esSanitas && radData.estado !== 'ok') ? 'inline-flex' : 'none';
+    btnSanitas._contratoId = contratoId || ctx.id || null;
     // Contexto del contrato
     document.getElementById('mrad-cotizante').textContent        = ctx.nombre         || '—';
     document.getElementById('mrad-empresa').textContent          = ctx.razon_social    || '—';
@@ -1685,6 +1697,13 @@ function novedadSosDesdeRadicado() {
     if (!contratoId) { alert('No se pudo identificar el contrato.'); return; }
     cerrarModal('modalRadicado');
     abrirNovedadSos(contratoId);
+}
+
+function novedadSanitasDesdeRadicado() {
+    const contratoId = document.getElementById('btnNovedadSanitas')._contratoId;
+    if (!contratoId) { alert('No se pudo identificar el contrato.'); return; }
+    cerrarModal('modalRadicado');
+    abrirNovedadSanitas(contratoId);
 }
 
 // Anular la afiliación. Es irreversible en el sentido contrario: la cobertura
@@ -2618,6 +2637,7 @@ function mostrarToast(msg, tipo) {
 @include('admin.partials._reingreso_nueva_eps')
 @include('admin.partials._novedad_salud_total')
 @include('admin.partials._novedad_sos')
+@include('admin.partials._novedad_sanitas')
 @endcan
 
 @endsection
