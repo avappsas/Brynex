@@ -77,7 +77,7 @@
           <div class="sosn-aviso" id="sosnCorreoMotivo" style="display:none"></div>
           <div class="sosn-prob" id="sosnCorreoProblemas" style="display:none"></div>
           <div id="sosnCorreoSubir" style="display:none;font-size:.74rem;margin-bottom:.5rem">
-            <label class="sosn-campo" for="sosnCorreoArchivo">Subir copia del documento de identidad (PDF o imagen)</label>
+            <label class="sosn-campo" for="sosnCorreoArchivo">Subir copia del documento de identidad (opcional, PDF o imagen)</label>
             <input type="file" id="sosnCorreoArchivo" accept=".pdf,.jpg,.jpeg,.png" class="sosn-input" onchange="subirDocumentoSos()">
           </div>
           <div class="sosn-aviso" id="sosnCorreoAvisos" style="display:none"></div>
@@ -385,8 +385,8 @@ async function abrirCorreoSos(motivo, conservarTexto = false, detalle = '') {
     const prob = d.problemas || [];
     sosnEl('sosnCorreoProblemas').innerHTML = prob.map(p => '• ' + sosnEsc(p)).join('<br>');
     sosnEl('sosnCorreoProblemas').style.display = prob.length ? 'block' : 'none';
-    sosnEl('sosnCorreoSubir').style.display = prob.some(p => /documento de identidad/i.test(p)) ? 'block' : 'none';
     const av = d.avisos || [];
+    sosnEl('sosnCorreoSubir').style.display = av.some(a => /documento de identidad/i.test(a)) ? 'block' : 'none';
     sosnEl('sosnCorreoAvisos').innerHTML = av.map(a => '⚠️ ' + sosnEsc(a)).join('<br>');
     sosnEl('sosnCorreoAvisos').style.display = av.length ? 'block' : 'none';
 

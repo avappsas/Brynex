@@ -61,7 +61,8 @@ class SosCorreoService
 
         $cedula = $cliente ? $this->documentoIdentidad($contrato) : null;
         if ($cliente && ! $cedula) {
-            $problemas[] = 'Falta la copia del documento de identidad del cliente: súbela aquí antes de enviar.';
+            // Opcional: se puede enviar sin ella y subirla aquí si se tiene.
+            $avisos[] = 'No hay copia del documento de identidad del cliente. Puedes subirla aquí o enviar sin ella.';
         }
 
         $beneficiarios = $cliente ? $cliente->beneficiarios()->where('aliado_id', $contrato->aliado_id)->get() : collect();
@@ -111,7 +112,7 @@ class SosCorreoService
         }
         $lineas = array_merge($lineas, [
             '',
-            'Adjunto el formulario debidamente firmado, la carta de derechos y la copia del documento de identidad'
+            'Adjunto el formulario debidamente firmado'.($cedula ? ', la carta de derechos y la copia del documento de identidad' : ' y la carta de derechos')
                 .($docsBenef->isNotEmpty() ? ', junto con los documentos de los beneficiarios' : '').'.',
             '',
             'Quedo atenta a cualquier requerimiento. Muchas gracias por su colaboración.',
