@@ -60,10 +60,11 @@ if (!ejecutable) { log('No se encontró Chrome'); process.exit(1); }
 // idioma va también en la cabecera y en el locale de la página.
 const navegador = await puppeteer.launch({
   executablePath: ejecutable,
-  headless: 'new',
+  // En local (desarrollo) se puede abrir como ventana para resolver el captcha en ella.
+  headless: entrada.visible ? false : 'new',
   args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled', '--lang=es-CO', '--accept-lang=es-CO,es'],
   env: { ...process.env, LANG: 'es_CO.UTF-8', LANGUAGE: 'es_CO:es' },
-  defaultViewport: { width: 1280, height: 900 },
+  defaultViewport: entrada.visible ? null : { width: 1280, height: 1400 },
 });
 const pagina = await navegador.newPage();
 await pagina.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36');
@@ -146,8 +147,32 @@ async function captchaResuelto() {
 async function cajaReto() {
   const h = await pagina.$('iframe[src*="api2/bframe"]');
   if (!h) return null;
-  const caja = await h.boundingBox();
-  return caja && caja.height > 100 ? caja : null;
+  // Cerrado (resuelto o vencido), reCAPTCHA no lo quita: lo esconde con
+  // visibility:hidden y top muy negativo.
+  const oculto = await h.evaluate(e => {
+    for (let n = e; n && n !== document.body; n = n.parentElement) {
+      const s = getComputedStyle(n);
+      if (s.visibility === 'hidden' || s.display === 'none' || s.opacity === '0') return true;
+    }
+    return e.getBoundingClientRect().top < -1000;
+  }).catch(() => true);
+  if (oculto) return null;
+
+  let caja = await h.boundingBox();
+  if (!caja || caja.height <= 100) return null;
+
+  // En la segunda ronda el reto crece (4×4) y puede quedar fuera de la vista;
+  // la foto sin captureBeyondViewport solo toma lo visible y salía vacía.
+  const vista = pagina.viewport() || await pagina.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+  if (caja.y < 0 || caja.y + caja.height > vista.height) {
+    await h.evaluate(e => e.scrollIntoView({ block: 'center', inline: 'center' }));
+    await esperar(300);
+    caja = await h.boundingBox();
+    if (!caja) return null;
+  }
+  const y = Math.max(0, caja.y);
+  const alto = Math.min(caja.y + caja.height, vista.height) - y;
+  return alto > 100 ? { x: Math.max(0, caja.x), y, width: caja.width, height: alto } : null;
 }
 
 async function abrirLogin() {
@@ -160,7 +185,9 @@ async function abrirLogin() {
   await marcarCaptcha();
 }
 
+let ultimaMarca = 0;
 async function marcarCaptcha() {
+  ultimaMarca = Date.now();
   for (let i = 0; i < 20 && !marcoAncla(); i++) await esperar(500);
   const ancla = marcoAncla();
   if (!ancla) throw new Error('El login de S.O.S. no mostró el captcha.');
@@ -366,6 +393,12 @@ const servidor = http.createServer(async (req, res) => {
 
     if (ruta === '/estado') {
       if (estado.etapa === 'captcha') await revisarCaptcha();
+      if (estado.etapa === 'captcha' && !await cajaReto() && !await captchaResuelto() && Date.now() - ultimaMarca > 15000) {
+        // El reto se cerró sin resolver (venció o Google pidió empezar de nuevo):
+        // se vuelve a marcar "No soy un robot" para que salga uno nuevo.
+        log('Reto cerrado sin resolver: se pide uno nuevo');
+        await marcarCaptcha().catch(e => log('No se pudo pedir otro reto', e.message));
+      }
       const salida = { ...estado };
       if (estado.etapa === 'captcha') {
         const caja = await cajaReto();
@@ -373,7 +406,9 @@ const servidor = http.createServer(async (req, res) => {
           // Sin captureBeyondViewport: puppeteer cambiaba el tamaño de la página para
           // la foto, el reCAPTCHA se redibujaba y borraba las casillas ya marcadas.
           const imagen = await pagina.screenshot({ clip: caja, encoding: 'base64', captureBeyondViewport: false });
-          salida.captcha = { imagen, ancho: Math.round(caja.width), alto: Math.round(caja.height) };
+          const reto = pagina.frames().find(f => /bframe/.test(f.url()));
+          const marcadas = reto ? await reto.evaluate(() => document.querySelectorAll('.rc-imageselect-tileselected').length).catch(() => null) : null;
+          salida.captcha = { imagen, ancho: Math.round(caja.width), alto: Math.round(caja.height), marcadas };
         }
       }
       return responder(200, salida);

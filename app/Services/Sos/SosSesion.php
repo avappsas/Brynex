@@ -59,16 +59,25 @@ class SosSesion
         file_put_contents($archivo, json_encode([
             'usuario' => $cred['usuario'], 'contrasena' => $cred['contrasena'],
             'puerto' => $puerto, 'token' => $token, 'inactividadMinutos' => self::INACTIVIDAD_MINUTOS,
+            // En el Mac de desarrollo el Chrome se abre como ventana: el captcha se resuelve ahí mismo.
+            'visible' => app()->environment('local'),
         ]));
         chmod($archivo, 0600);
 
-        exec(sprintf(
-            'cd %s && nohup %s scripts/sos-sesion.mjs %s < /dev/null >> %s 2>&1 & echo $!',
+        // Antes de lanzar se cierran los descriptores heredados de PHP: sin eso el
+        // proceso se quedaba con la conexión de la petición (el navegador esperaba
+        // hasta que el proceso muriera) y con los puertos que escucha el servidor web.
+        $lanzar = sprintf(
+            'for fd in $(ls /dev/fd); do [ "$fd" -gt 2 ] 2>/dev/null && eval "exec $fd>&-"; done 2>/dev/null; '
+            // El cd va aparte: con `cd && nohup … &` bash deja un subproceso que
+            // conserva la salida de PHP y la petición no termina hasta que muere node.
+            .'cd %s || exit 1; nohup %s scripts/sos-sesion.mjs %s < /dev/null >> %s 2>&1 & echo $!',
             escapeshellarg(base_path()),
             escapeshellarg(ArlSuraSesionService::binarioNode()),
             escapeshellarg($archivo),
             escapeshellarg(storage_path('logs/sos-sesion.log'))
-        ), $salida);
+        );
+        exec('bash -c '.escapeshellarg($lanzar), $salida);
 
         Cache::put(self::clave($aliadoId, $nit), [
             'puerto' => $puerto, 'token' => $token, 'pid' => (int) ($salida[0] ?? 0), 'inicio' => now()->toIso8601String(),

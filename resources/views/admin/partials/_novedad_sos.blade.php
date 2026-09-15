@@ -153,7 +153,7 @@ function aplicarSesionSos(s) {
     const textos = {
         cerrada: 'Sin sesión en S.O.S. para esta empresa.',
         abriendo: '⏳ Abriendo el portal de S.O.S. en el servidor…',
-        captcha: '🧩 Resuelve el captcha: haz clic sobre las imágenes que pide y luego en <strong>VERIFICAR</strong>. Si al marcar una aparece otra en su lugar, es normal: marca también las nuevas que cumplan. Si pide otra ronda, sigue igual.',
+        captcha: '🧩 Resuelve el captcha: haz clic sobre las imágenes que pide y luego en <strong>VERIFICAR</strong>. Si dice “cuando ya no quede ninguna”, no verás chulos: la imagen marcada se cambia por otra nueva; si la nueva también cumple, haz clic otra vez. Si pide otra ronda, sigue igual.',
         entrando: '⏳ Captcha resuelto. Entrando con la clave del módulo de claves…',
         lista: '✅ Sesión iniciada en S.O.S.',
         vencida: '⌛ S.O.S. cerró la sesión por inactividad.',
