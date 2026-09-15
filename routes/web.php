@@ -952,6 +952,14 @@ Route::middleware('auth')->group(function () {
         Route::get('/{contrato}/salud-total/precheck', [$stc, 'precheck'])->name('salud-total.precheck');
         Route::post('/{contrato}/salud-total/consultar', [$stc, 'consultar'])->name('salud-total.consultar');
         Route::post('/{contrato}/salud-total/registrar', [$stc, 'registrar'])->name('salud-total.registrar');
+        // Novedad de inicio laboral en S.O.S. (sesión con captcha asistido).
+        $sosc = \App\Http\Controllers\Admin\SosController::class;
+        Route::get('/{contrato}/sos/precheck', [$sosc, 'precheck'])->name('sos.precheck');
+        Route::post('/{contrato}/sos/sesion', [$sosc, 'sesionIniciar'])->name('sos.sesion');
+        Route::get('/{contrato}/sos/sesion', [$sosc, 'sesionEstado'])->name('sos.sesion.estado');
+        Route::post('/{contrato}/sos/sesion/clic', [$sosc, 'sesionClic'])->name('sos.sesion.clic');
+        Route::post('/{contrato}/sos/consultar', [$sosc, 'consultar'])->name('sos.consultar');
+        Route::post('/{contrato}/sos/registrar', [$sosc, 'registrar'])->name('sos.registrar');
         Route::get('/{contrato}/historial', [$ac, 'historial'])->name('historial');
         Route::get('/{contrato}/formulario/eps', [$fc, 'vista'])->name('formulario.eps');
         Route::get('/{contrato}/formulario/eps/raw', [$fc, 'generar'])->name('formulario.eps.raw');
