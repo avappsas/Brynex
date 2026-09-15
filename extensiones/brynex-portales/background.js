@@ -47,7 +47,7 @@ async function atender({ portal, accion, datos = {} }, origen) {
   if (portal !== 'sos') throw new Error(`Portal desconocido: ${portal}`);
 
   if (accion === 'estado') return sosEstado();
-  if (accion === 'abrir') return sosAbrir();
+  if (accion === 'abrir') return sosAbrir(datos);
 
   const pestana = await pestanaSos();
   if (!pestana) throw new Error('No hay una pestaña de S.O.S. abierta. Pulsa "Abrir S.O.S." e inicia sesión.');
@@ -188,14 +188,30 @@ async function sosEstado() {
   return { ok: true, abierta: true, ...(await leerCabecera(pestana.id)) };
 }
 
-async function sosAbrir() {
-  const pestana = await pestanaSos();
+async function sosAbrir({ usuario } = {}) {
+  let pestana = await pestanaSos();
   if (pestana) {
     await chrome.tabs.update(pestana.id, { active: true });
     await chrome.windows.update(pestana.windowId, { focused: true });
-    return { ok: true, abierta: true };
+  } else {
+    pestana = await chrome.tabs.create({ url: SOS_LOGIN, active: true });
+    await esperarCarga(pestana.id);
   }
-  await chrome.tabs.create({ url: SOS_LOGIN, active: true });
+
+  // Deja escrito el usuario del módulo de claves; la contraseña y el captcha los pone la persona.
+  if (usuario) {
+    await esperarQue(pestana.id, (u) => {
+      const campo = document.getElementById('formLogin:loginUsrEMail');
+      if (!campo) return false;
+      if (!campo.value || /correo/i.test(campo.value)) {
+        campo.value = u;
+        campo.dispatchEvent(new Event('input', { bubbles: true }));
+        campo.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      document.getElementById('formLogin:input_contrasena')?.focus();
+      return true;
+    }, [String(usuario)], 15000);
+  }
   return { ok: true, abierta: true };
 }
 

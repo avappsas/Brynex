@@ -76,7 +76,7 @@ const SOSN_CSRF = document.querySelector('meta[name="csrf-token"]')?.content || 
 const sosnEsc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const sosnFmt = iso => iso ? iso.split('-').reverse().join('/') : '—';
 const sosnEl = id => document.getElementById(id);
-const sosnNorm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase()
+const sosnNorm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
     .replace(/SOCIEDAD POR ACCIONES SIMPLIFICADA|S\.?\s?A\.?\s?S\.?|LTDA\.?|\s+/g, ' ').trim();
 
 function cerrarNovedadSos() { sosnEl('sosnModal').classList.remove('open'); clearInterval(sosnReloj); }
@@ -189,7 +189,7 @@ async function revisarSesionSos() {
 }
 
 async function abrirPortalSos() {
-    await sosnExt('abrir', {}, 15);
+    await sosnExt('abrir', { usuario: sosnPrep.resumen?.usuario_portal || '' }, 40);
     clearInterval(sosnReloj);
     sosnReloj = setInterval(revisarSesionSos, 3000);
 }
