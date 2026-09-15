@@ -4,9 +4,9 @@ namespace App\Services\Sos;
 
 use App\Models\Contrato;
 use App\Models\Radicado;
+use App\Services\EpsPortal\EpsClavePortal;
 use App\Services\EpsPortal\EpsRadicado;
 use App\Services\FormularioEpsService;
-use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -15,15 +15,18 @@ use RuntimeException;
 /**
  * Novedad de inicio de relación laboral en S.O.S. desde el radicado de EPS.
  *
- * Mismo trámite que se hace a mano en la Oficina Virtual (primer caso: Elizabeth
- * Acosta, radicado 00276553, 14-sep-2026): se carga y valida el registro, se
- * guarda, y se adjunta el lado B del formulario firmado. S.O.S. lo deja
- * "Pendiente de aprobación" y responde en unas 24 horas.
+ * El login de S.O.S. pide reCAPTCHA y Google no deja pasar un Chrome del
+ * servidor, así que el portal lo opera la extensión BryNex Portales en el
+ * navegador de la persona, con la sesión que ella abre
+ * (`extensiones/brynex-portales`). BryNex prepara los datos, genera el lado B y
+ * registra en el radicado lo que la extensión trae del portal.
  *
- * Trabaja sobre la sesión abierta con captcha asistido (`SosSesion`).
+ * Primer caso a mano: Elizabeth Acosta, radicado 00276553, 14-sep-2026.
  */
 class SosNovedadService
 {
+    public const ENTIDAD = 'sos';
+
     public const CODIGO_EPS = 'EPS018';
 
     /** S.O.S. solo acepta fechas de ingreso a ±10 días de hoy. */
@@ -39,9 +42,9 @@ class SosNovedadService
     public function __construct(private FormularioEpsService $formularios) {}
 
     /**
-     * Revisa el contrato sin tocar el portal.
+     * Revisa el contrato y arma lo que la extensión necesita para el portal.
      *
-     * @return array{problemas: string[], resumen: array, datos: array|null}
+     * @return array{problemas: string[], resumen: array, portal: array|null}
      */
     public function preparar(Contrato $contrato): array
     {
@@ -77,161 +80,150 @@ class SosNovedadService
             $problemas[] = 'El contrato no tiene fecha de ingreso.';
         }
 
-        $cred = $rs ? SosSesion::credencial((string) $rs->nit) : ['error' => 'Sin razón social.'];
-        if (isset($cred['error'])) {
-            $problemas[] = $cred['error'];
-        }
-
         [$minimo, $maximo] = $this->ventana();
         $enPlazo = $contrato->fecha_ingreso && $contrato->fecha_ingreso->between($minimo, $maximo);
 
         $resumen = [
-            'trabajador'     => trim(implode(' ', array_filter([$cliente?->primer_nombre, $cliente?->segundo_nombre, $cliente?->primer_apellido, $cliente?->segundo_apellido]))),
-            'documento'      => trim($tipo.' '.$contrato->cedula),
-            'razon_social'   => $rs?->razon_social,
-            'nit'            => $rs?->nit,
-            'eps'            => $eps?->nombre,
-            'plan'           => $contrato->plan?->nombre,
-            'ibc'            => $ibc,
-            'arl'            => $this->arl($contrato),
-            'afp'            => $this->afp($contrato),
-            'fecha_ingreso'  => $contrato->fecha_ingreso?->toDateString(),
-            'fecha_minima'   => $minimo->toDateString(),
-            'fecha_maxima'   => $maximo->toDateString(),
-            'en_plazo'       => $enPlazo,
+            'trabajador'    => trim(implode(' ', array_filter([$cliente?->primer_nombre, $cliente?->segundo_nombre, $cliente?->primer_apellido, $cliente?->segundo_apellido]))),
+            'documento'     => trim($tipo.' '.$contrato->cedula),
+            'razon_social'  => $rs?->razon_social,
+            'nit'           => $rs?->nit,
+            'eps'           => $eps?->nombre,
+            'plan'          => $contrato->plan?->nombre,
+            'ibc'           => $ibc,
+            'arl'           => $this->arl($contrato),
+            'afp'           => $this->afp($contrato),
+            'fecha_ingreso' => $contrato->fecha_ingreso?->toDateString(),
+            'fecha_minima'  => $minimo->toDateString(),
+            'fecha_maxima'  => $maximo->toDateString(),
+            'en_plazo'      => $enPlazo,
+            'usuario_portal' => $rs ? $this->usuarioPortal((string) $rs->nit) : null,
         ];
 
-        return ['problemas' => $problemas, 'resumen' => $resumen, 'datos' => $problemas ? null : [
-            'tipo'      => $tipo,
-            'tipo_id'   => self::TIPOS[$tipo][0],
-            'tipo_sos'  => self::TIPOS[$tipo][1],
-            'documento' => (string) $contrato->cedula,
-            'ibc'       => $ibc,
+        return ['problemas' => $problemas, 'resumen' => $resumen, 'portal' => $problemas ? null : [
+            'filtro' => [
+                'tipo'      => self::TIPOS[$tipo][1],
+                'documento' => (string) $contrato->cedula,
+                'desde'     => $contrato->fecha_ingreso->copy()->subDays(45)->format('d/m/Y'),
+                'hasta'     => today()->format('d/m/Y'),
+            ],
+            // La fecha la elige la persona dentro del plazo; se agrega al registrar.
+            'envio' => [
+                'tipoId' => self::TIPOS[$tipo][0], 'documento' => (string) $contrato->cedula, 'ibc' => $ibc,
+                'arl' => $this->arl($contrato), 'afp' => $this->afp($contrato), 'guardar' => true,
+            ],
+            'lado_b_url' => route('admin.afiliaciones.sos.lado-b', $contrato->id, false),
         ]];
     }
 
-    /** Busca en S.O.S. las novedades de la persona desde poco antes del ingreso. */
-    public function consultar(Contrato $contrato): array
-    {
-        $prep = $this->preparar($contrato);
-        if ($prep['problemas']) {
-            return ['ok' => false, 'problemas' => $prep['problemas'], 'resumen' => $prep['resumen']];
-        }
-
-        $novedades = $this->novedades($contrato, $prep['datos']);
-
-        return ['ok' => true, 'resumen' => $prep['resumen'], 'novedades' => $novedades, 'novedad' => $novedades[0] ?? null];
-    }
-
     /**
-     * Radica la novedad con la fecha elegida (dentro del plazo de S.O.S.), adjunta
-     * el lado B y deja el radicado en trámite. Si ya existe, no repite: completa
-     * el lado B si falta y actualiza el radicado.
+     * Registra en BryNex lo que la extensión trajo del portal y dice qué falta.
+     *
+     * $entrada: novedad (fila de la consulta de S.O.S.) y, según el paso,
+     * registro {fecha, envio, resultado}, adjunto (true tras subir el lado B) o
+     * certificado (PDF en base64).
+     *
+     * @return array{ok: bool, siguiente: ?string, radicado?: string, estado_eps?: string, mensaje: string}
      */
-    public function registrar(Contrato $contrato, string $fechaReportar, ?int $usuarioId): array
+    public function aplicar(Contrato $contrato, array $entrada, ?int $usuarioId): array
     {
         $prep = $this->preparar($contrato);
         if ($prep['problemas']) {
             throw new RuntimeException(implode(' ', $prep['problemas']));
         }
 
-        $d        = $prep['datos'];
-        $nit      = (string) $contrato->razonSocial->nit;
         $radicado = EpsRadicado::deContrato($contrato);
+        $novedad  = $entrada['novedad'] ?? null;
+        $registro = $entrada['registro'] ?? null;
+        $prefijo  = 'S.O.S.:';
 
-        if ($existente = $this->novedades($contrato, $d)[0] ?? null) {
-            return $this->aplicar($contrato, $radicado, $existente, $d, $usuarioId, 'Ya tenía novedad en S.O.S.');
+        if ($registro) {
+            $fecha = Carbon::parse($registro['fecha'] ?? '')->startOfDay();
+            $ok    = ($registro['resultado']['ok'] ?? false) && $novedad;
+            EpsRadicado::bitacora($contrato, $radicado, self::ENTIDAD, 'inicio_laboral', $ok ? 'exitosa' : 'fallida',
+                $novedad['radicado'] ?? null, ($registro['envio'] ?? []) + ['fecha' => $fecha->format('d/m/Y')],
+                $registro['resultado'] ?? null, $ok ? null : ($registro['resultado']['error'] ?? 'No apareció en la consulta'), $usuarioId);
+
+            if (! $ok) {
+                throw new RuntimeException('S.O.S.: '.($registro['resultado']['error'] ?? 'guardó la novedad pero no aparece en la consulta; vuelve a consultar en un minuto.'));
+            }
+
+            $prefijo = 'Novedad de inicio laboral radicada en S.O.S. desde BryNex el '.now()->format('d/m/Y').'.'
+                .($fecha->isSameDay($contrato->fecha_ingreso) ? '' : ' Ingreso reportado '.$fecha->format('d/m/Y')
+                    .' por el plazo de S.O.S.; ingreso real '.$contrato->fecha_ingreso->format('d/m/Y').'.');
         }
 
-        $fecha = Carbon::parse($fechaReportar)->startOfDay();
-        [$minimo, $maximo] = $this->ventana();
-        if (! $fecha->between($minimo, $maximo)) {
-            throw new RuntimeException('S.O.S. solo acepta fechas de ingreso entre '.$minimo->format('d/m/Y').' y '.$maximo->format('d/m/Y').'.');
+        if (! $novedad || empty($novedad['radicado'])) {
+            return ['ok' => true, 'siguiente' => null, 'mensaje' => 'No hay novedad en S.O.S. para registrar.'];
         }
 
-        $envio = [
-            'tipoId' => $d['tipo_id'], 'documento' => $d['documento'], 'ibc' => $d['ibc'],
-            'fecha' => $fecha->format('d/m/Y'), 'arl' => $this->arl($contrato), 'afp' => $this->afp($contrato), 'guardar' => true,
-        ];
-
-        $res = SosSesion::llamar($contrato->aliado_id, $nit, '/registrar', $envio);
-        if (! ($res['ok'] ?? false)) {
-            EpsRadicado::bitacora($contrato, $radicado, SosSesion::ENTIDAD, 'inicio_laboral', 'fallida', null, $envio, $res, $res['error'] ?? null, $usuarioId);
-            throw new RuntimeException('S.O.S.: '.($res['error'] ?? 'no se pudo registrar.'));
-        }
-
-        $novedad = $this->novedades($contrato, $d, today())[0] ?? null;
-        if (! $novedad) {
-            EpsRadicado::bitacora($contrato, $radicado, SosSesion::ENTIDAD, 'inicio_laboral', 'exitosa', null, $envio, $res, 'Guardada, pero no apareció en la consulta', $usuarioId);
-            throw new RuntimeException('S.O.S. guardó la novedad pero todavía no aparece en la consulta. Vuelve a pulsar Registrar en un minuto: se vincula sin repetirla.');
-        }
-
-        $nota = $fecha->isSameDay($contrato->fecha_ingreso) ? '' : ' Ingreso reportado '.$fecha->format('d/m/Y').' por el plazo de S.O.S.; ingreso real '.$contrato->fecha_ingreso->format('d/m/Y').'.';
-        EpsRadicado::bitacora($contrato, $radicado, SosSesion::ENTIDAD, 'inicio_laboral', 'exitosa', $novedad['radicado'], $envio, $res, null, $usuarioId);
-
-        return $this->aplicar($contrato, $radicado, $novedad, $d, $usuarioId, 'Novedad de inicio laboral radicada automáticamente en S.O.S. el '.now()->format('d/m/Y').'.'.$nota);
-    }
-
-    /** Deja el radicado según la novedad de S.O.S., adjuntando el lado B si falta. */
-    private function aplicar(Contrato $contrato, Radicado $radicado, array $n, array $d, ?int $usuarioId, string $prefijo): array
-    {
-        $nit    = (string) $contrato->razonSocial->nit;
-        $estado = Str::lower(Str::ascii($n['estado']));
+        $numero = (string) $novedad['radicado'];
+        $estado = Str::lower(Str::ascii((string) ($novedad['estado'] ?? '')));
 
         if (str_contains($estado, 'cara b')) {
-            [$rutaPdf, $rutaImagen] = $this->ladoB($contrato);
-            $adj = SosSesion::llamar($contrato->aliado_id, $nit, '/adjuntar', $this->filtro($contrato, $d) + ['archivo' => Storage::disk('local')->path($rutaImagen)]);
-            if (! ($adj['ok'] ?? false)) {
-                EpsRadicado::marcar($radicado, $n['radicado'], Radicado::ESTADO_TRAMITE, $rutaPdf, "{$prefijo} Radicado S.O.S. {$n['radicado']}: falta adjuntar el lado B (".($adj['error'] ?? $adj['estado'] ?? 'sin detalle').').', $usuarioId);
-                throw new RuntimeException("S.O.S. radicó {$n['radicado']} pero no se pudo adjuntar el lado B: ".($adj['error'] ?? 'estado '.($adj['estado'] ?? '—')).'. Plazo: 48 horas.');
-            }
-            EpsRadicado::marcar($radicado, $n['radicado'], Radicado::ESTADO_TRAMITE, $rutaPdf, "{$prefijo} Radicado S.O.S. {$n['radicado']}, lado B adjuntado; estado: {$adj['estado']}.", $usuarioId);
+            if ($entrada['adjunto'] ?? false) {
+                $this->marcar($radicado, $numero, Radicado::ESTADO_TRAMITE, null, "{$prefijo} Radicado S.O.S. {$numero}: se adjuntó el lado B pero S.O.S. sigue pidiéndolo. Revisar en el portal (plazo 48 h).", $usuarioId);
 
-            return ['ok' => true, 'radicado' => $n['radicado'], 'estado_eps' => $adj['estado'], 'lado_b' => true];
+                return ['ok' => false, 'siguiente' => null, 'radicado' => $numero, 'estado_eps' => $novedad['estado'], 'mensaje' => 'S.O.S. sigue pidiendo el lado B. Revísalo en el portal.'];
+            }
+            [$rutaPdf] = $this->ladoB($contrato);
+            $this->marcar($radicado, $numero, Radicado::ESTADO_TRAMITE, $rutaPdf, "{$prefijo} Radicado S.O.S. {$numero}: pendiente de adjuntar el lado B (48 h).", $usuarioId);
+
+            return ['ok' => true, 'siguiente' => 'adjuntar', 'radicado' => $numero, 'estado_eps' => $novedad['estado'], 'mensaje' => 'Falta adjuntar el lado B.'];
         }
 
         if (str_contains($estado, 'aprobado') && ! str_contains($estado, 'no aprobado')) {
-            $cert = SosSesion::llamar($contrato->aliado_id, $nit, '/certificado', $this->filtro($contrato, $d));
-            $ruta = ($cert['ok'] ?? false) ? EpsRadicado::guardarPdf($contrato, base64_decode($cert['pdf'])) : null;
-            EpsRadicado::marcar($radicado, $n['radicado'], Radicado::ESTADO_OK, $ruta, "{$prefijo} Radicado S.O.S. {$n['radicado']} APROBADO.", $usuarioId);
+            $pdf = isset($entrada['certificado']) ? base64_decode((string) $entrada['certificado'], true) : null;
+            if (! $pdf) {
+                return ['ok' => true, 'siguiente' => 'certificado', 'radicado' => $numero, 'estado_eps' => $novedad['estado'], 'mensaje' => 'Aprobada: falta bajar el certificado.'];
+            }
+            $ruta = EpsRadicado::guardarPdf($contrato, $pdf, 'eps_certificado_sos');
+            $this->marcar($radicado, $numero, Radicado::ESTADO_OK, $ruta, "{$prefijo} Radicado S.O.S. {$numero} APROBADO; certificado adjunto.", $usuarioId);
 
-            return ['ok' => true, 'radicado' => $n['radicado'], 'estado_eps' => $n['estado'], 'certificado' => (bool) $ruta];
+            return ['ok' => true, 'siguiente' => null, 'radicado' => $numero, 'estado_eps' => $novedad['estado'], 'mensaje' => 'Aprobada: el radicado quedó en OK con el certificado.'];
         }
 
         if (preg_match('/no aprobado|incorrecto|declinado/', $estado)) {
-            EpsRadicado::marcar($radicado, $n['radicado'], Radicado::ESTADO_ERROR, null, "{$prefijo} Radicado S.O.S. {$n['radicado']}: {$n['estado']}".($n['causal'] ? " ({$n['causal']})" : '').'. Enviar formulario completo y carta de derechos.', $usuarioId);
+            $causal = trim((string) ($novedad['causal'] ?? ''));
+            $this->marcar($radicado, $numero, Radicado::ESTADO_ERROR, null, "{$prefijo} Radicado S.O.S. {$numero}: {$novedad['estado']}".($causal ? " ({$causal})" : '').'. Enviar formulario completo y carta de derechos.', $usuarioId);
 
-            return ['ok' => true, 'radicado' => $n['radicado'], 'estado_eps' => $n['estado'], 'rechazada' => true];
+            return ['ok' => true, 'siguiente' => null, 'radicado' => $numero, 'estado_eps' => $novedad['estado'], 'mensaje' => 'S.O.S. la rechazó: enviar formulario completo y carta de derechos.'];
         }
 
-        EpsRadicado::marcar($radicado, $n['radicado'], Radicado::ESTADO_TRAMITE, null, "{$prefijo} Radicado S.O.S. {$n['radicado']}: {$n['estado']}.", $usuarioId);
+        $this->marcar($radicado, $numero, Radicado::ESTADO_TRAMITE, null, "{$prefijo} Radicado S.O.S. {$numero}: {$novedad['estado']}.", $usuarioId);
 
-        return ['ok' => true, 'radicado' => $n['radicado'], 'estado_eps' => $n['estado']];
+        return ['ok' => true, 'siguiente' => null, 'radicado' => $numero, 'estado_eps' => $novedad['estado'], 'mensaje' => 'En trámite: S.O.S. responde en unas 24 horas.'];
     }
 
-    /** Novedades de la persona en S.O.S., la más reciente primero. */
-    private function novedades(Contrato $contrato, array $d, ?CarbonInterface $desde = null): array
+    /** Valida la fecha elegida para una novedad nueva. */
+    public function validarFecha(string $fecha): Carbon
     {
-        $res = SosSesion::llamar($contrato->aliado_id, (string) $contrato->razonSocial->nit, '/consultar', $this->filtro($contrato, $d, $desde));
+        $f = Carbon::parse($fecha)->startOfDay();
+        [$minimo, $maximo] = $this->ventana();
+        if (! $f->between($minimo, $maximo)) {
+            throw new RuntimeException('S.O.S. solo acepta fechas de ingreso entre '.$minimo->format('d/m/Y').' y '.$maximo->format('d/m/Y').'.');
+        }
 
-        return collect($res['filas'] ?? [])->sortByDesc('radicado')->values()->all();
-    }
-
-    private function filtro(Contrato $contrato, array $d, ?CarbonInterface $desde = null): array
-    {
-        $desde ??= ($contrato->fecha_ingreso ?? today())->copy()->subDays(45);
-
-        return ['tipo' => $d['tipo_sos'], 'documento' => $d['documento'], 'desde' => $desde->format('d/m/Y'), 'hasta' => today()->format('d/m/Y')];
+        return $f;
     }
 
     /**
-     * Formulario de EPS del contrato (con la firma) y su página 2 —el lado B— en
-     * PNG gris, que es lo que pide S.O.S. y pesa poco.
+     * Formulario de EPS del contrato (con la firma) y su página 2 —el lado B—
+     * en PNG gris, que es lo que pide S.O.S. y pesa poco. Si ya se generó hoy,
+     * se reutiliza.
      *
      * @return array{0: string, 1: string} rutas en el disco local
      */
-    private function ladoB(Contrato $contrato): array
+    public function ladoB(Contrato $contrato): array
     {
+        $disco = Storage::disk('local');
+        $hoy = collect($disco->files(EpsRadicado::carpeta($contrato)))
+            ->filter(fn ($f) => str_contains($f, '/eps_formulario_sos_'.now()->format('Ymd')) && str_ends_with($f, '_lado_b.png'))
+            ->sort()->last();
+        if ($hoy && $disco->exists($pdf = preg_replace('/_lado_b\.png$/', '.pdf', $hoy))) {
+            return [$pdf, $hoy];
+        }
+
         $contrato->loadMissing(['cliente.municipio', 'cliente.departamento', 'cliente.beneficiarios', 'razonSocial', 'eps', 'arl', 'pension']);
         $rutaPdf = EpsRadicado::guardarPdf($contrato, $this->formularios->generar($contrato, false, []), 'eps_formulario_sos');
         if (! $rutaPdf) {
@@ -239,7 +231,6 @@ class SosNovedadService
         }
 
         $rutaImagen = preg_replace('/\.pdf$/', '_lado_b.png', $rutaPdf);
-        $disco = Storage::disk('local');
         exec(sprintf(
             '%s -q -dNOPAUSE -dBATCH -dSAFER -sDEVICE=pnggray -r120 -dFirstPage=2 -dLastPage=2 -o %s %s 2>&1',
             is_executable('/usr/bin/gs') ? '/usr/bin/gs' : 'gs',
@@ -252,6 +243,24 @@ class SosNovedadService
         }
 
         return [$rutaPdf, $rutaImagen];
+    }
+
+    /** Marca el radicado solo si algo cambió: consultar varias veces no llena la bitácora. */
+    private function marcar(Radicado $radicado, string $numero, string $estado, ?string $ruta, string $observacion, ?int $usuarioId): void
+    {
+        $igual = $radicado->estado === $estado && (string) $radicado->numero_radicado === $numero && ! $ruta
+            && str_contains((string) $radicado->observacion, $observacion);
+        if (! $igual) {
+            EpsRadicado::marcar($radicado, $numero, $estado, $ruta, $observacion, $usuarioId);
+        }
+    }
+
+    /** Correo del usuario del portal en el módulo de claves, para recordarle a la persona con cuál entrar. */
+    private function usuarioPortal(string $nit): ?string
+    {
+        $cred = EpsClavePortal::para(self::ENTIDAD, '%SOS%', 'S.O.S.', $nit);
+
+        return $cred['usuario'] ?? null;
     }
 
     /** @return array{0: Carbon, 1: Carbon} */

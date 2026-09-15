@@ -5,18 +5,18 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Contrato;
 use App\Services\Sos\SosNovedadService;
-use App\Services\Sos\SosSesion;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Throwable;
 
 /**
  * Novedad de inicio laboral en S.O.S. desde el radicado de EPS de Afiliaciones.
  *
- * Antes de consultar o registrar hay que abrir la sesión del portal: el login
- * pide captcha y lo resuelve la persona, con la imagen que muestra `sesionEstado`
- * y los clics que manda `sesionClic`. La sesión es por empresa y queda abierta
- * un rato, así que los siguientes contratos de esa empresa ya no lo piden.
+ * El portal lo opera la extensión BryNex Portales en el navegador de la persona
+ * (el login pide captcha). Aquí solo: `precheck` arma los datos para la
+ * extensión, `ladoB` entrega la página 2 del formulario firmada y `aplicar`
+ * registra en el radicado lo que la extensión trajo del portal.
  */
 class SosController extends Controller
 {
@@ -27,84 +27,56 @@ class SosController extends Controller
 
     public function precheck(int $contratoId)
     {
-        $contrato = $this->contrato($contratoId);
-        $prep = $this->servicio->preparar($contrato);
+        $prep = $this->servicio->preparar($this->contrato($contratoId));
 
-        return response()->json(['ok' => ! $prep['problemas'], 'sesion' => $this->estadoSesion($contrato)] + $prep);
+        return response()->json(['ok' => ! $prep['problemas']] + $prep);
     }
 
-    public function sesionIniciar(int $contratoId)
+    /** Imagen del lado B (página 2 del formulario, firmada) para que la extensión la adjunte. */
+    public function ladoB(int $contratoId)
     {
-        $contrato = $this->contrato($contratoId);
-
         try {
-            return response()->json(['ok' => true, 'sesion' => SosSesion::iniciar($contrato->aliado_id, (string) $contrato->razonSocial?->nit)]);
+            [, $imagen] = $this->servicio->ladoB($this->contrato($contratoId));
         } catch (Throwable $e) {
             return response()->json(['ok' => false, 'error' => $e->getMessage()], 422);
         }
+
+        return response(Storage::disk('local')->get($imagen), 200, [
+            'Content-Type'  => 'image/png',
+            'Cache-Control' => 'no-store',
+        ]);
     }
 
-    public function sesionEstado(int $contratoId)
+    public function aplicar(Request $request, int $contratoId)
     {
-        return response()->json(['ok' => true, 'sesion' => $this->estadoSesion($this->contrato($contratoId))]);
-    }
-
-    public function sesionClic(Request $request, int $contratoId)
-    {
-        $datos = $request->validate(['x' => 'required|numeric', 'y' => 'required|numeric', 'reiniciar' => 'nullable|boolean']);
-        $contrato = $this->contrato($contratoId);
-        $nit = (string) $contrato->razonSocial?->nit;
+        $datos = $request->validate([
+            'novedad'           => 'nullable|array',
+            'novedad.radicado'  => 'nullable|string|max:20',
+            'novedad.estado'    => 'nullable|string|max:120',
+            'novedad.causal'    => 'nullable|string|max:300',
+            'registro'          => 'nullable|array',
+            'registro.fecha'    => 'required_with:registro|date',
+            'registro.envio'    => 'nullable|array',
+            'registro.resultado' => 'nullable|array',
+            'adjunto'           => 'nullable|boolean',
+            'certificado'       => 'nullable|string|max:8000000',
+        ]);
 
         try {
-            if ($request->boolean('reiniciar')) {
-                SosSesion::reiniciarCaptcha($contrato->aliado_id, $nit);
-
-                return response()->json(['ok' => true, 'sesion' => $this->estadoSesion($contrato)]);
+            $contrato = $this->contrato($contratoId);
+            if (isset($datos['registro'])) {
+                $this->servicio->validarFecha($datos['registro']['fecha']);
             }
 
-            // El clic ya trae la foto nueva del reto: sin otra vuelta al proceso.
-            $sesion = SosSesion::clic($contrato->aliado_id, $nit, (float) $datos['x'], (float) $datos['y']);
-            unset($sesion['ok']);
-
-            return response()->json(['ok' => true, 'sesion' => $sesion]);
+            return response()->json($this->servicio->aplicar($contrato, $datos, Auth::id()));
         } catch (Throwable $e) {
             return response()->json(['ok' => false, 'error' => $e->getMessage()], 422);
         }
-    }
-
-    public function consultar(int $contratoId)
-    {
-        @set_time_limit(300);
-
-        try {
-            return response()->json($this->servicio->consultar($this->contrato($contratoId)));
-        } catch (Throwable $e) {
-            return response()->json(['ok' => false, 'error' => $e->getMessage()], 422);
-        }
-    }
-
-    public function registrar(Request $request, int $contratoId)
-    {
-        @set_time_limit(420);
-        $datos = $request->validate(['fecha' => 'required|date']);
-
-        try {
-            return response()->json($this->servicio->registrar($this->contrato($contratoId), $datos['fecha'], Auth::id()));
-        } catch (Throwable $e) {
-            return response()->json(['ok' => false, 'error' => $e->getMessage()], 422);
-        }
-    }
-
-    private function estadoSesion(Contrato $contrato): array
-    {
-        $nit = (string) $contrato->razonSocial?->nit;
-
-        return ($nit ? SosSesion::estado($contrato->aliado_id, $nit) : null) ?? ['etapa' => 'cerrada', 'mensaje' => 'Sin sesión abierta.'];
     }
 
     /** Siempre del aliado activo: el id llega por la URL. */
     private function contrato(int $id): Contrato
     {
-        return Contrato::where('aliado_id', (int) session('aliado_id_activo'))->with('razonSocial')->findOrFail($id);
+        return Contrato::where('aliado_id', (int) session('aliado_id_activo'))->findOrFail($id);
     }
 }

@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "BryNex Portales",
+  "version": "1.0.0",
+  "description": "Hace los trámites de afiliación de BryNex en los portales de las EPS con la sesión que la persona abre en su propio navegador.",
+  "permissions": ["scripting", "tabs"],
+  "host_permissions": [
+    "https://centralaplicaciones.sos.com.co/*",
+    "https://brynex.co/*",
+    "https://www.brynex.co/*",
+    "http://localhost:8000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://brynex.co/*", "https://www.brynex.co/*", "http://localhost:8000/*"],
+      "js": ["puente.js"],
+      "run_at": "document_start"
+    }
+  ]
+}
