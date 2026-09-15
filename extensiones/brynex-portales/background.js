@@ -719,9 +719,16 @@ function pNovedadResultado(ns, documento) {
   // Sigue en el formulario lleno: no han dado Enviar o la validación lo frenó.
   if (login && login.value === marca.documento) return { enviado: false, errores };
 
+  // Sanitas responde en una ventana emergente: "La radicación no. 0014885197 ha sido
+  // registrada exitosamente. La respuesta será enviada a: … en los próximos tres días hábiles".
+  const limpiar = t => (t || '').replace(/\s+/g, ' ').trim();
+  const ventana = [...document.querySelectorAll('.modal, .aui-dialog, .yui3-widget-bd, [role=dialog], .alert, .portlet-msg-success, .portlet-msg-info')]
+    .filter(vis).map(e => limpiar(e.innerText)).find(t => /radicaci[oó]n|radicad[oa]/i.test(t)) || '';
   const portlet = document.getElementById('p_p_id' + ns) || document.querySelector('.portlet-body') || document.body;
-  const texto = (portlet.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 6000);
-  const m = texto.match(/radicad[oa][^0-9]{0,80}?(\d[\d-]{3,})/i) || texto.match(/n[uú]mero[^0-9]{0,60}?(\d[\d-]{4,})/i);
+  const texto = limpiar([ventana, portlet.innerText].filter(Boolean).join(' — ')).slice(0, 6000);
+  const buscar = t => t.match(/radicaci[oó]n\s*(?:no\.?|n[°º.]*|n[uú]mero)?\s*:?\s*(\d[\d-]{4,})/i)
+    || t.match(/radicad[oa][^0-9]{0,80}?(\d[\d-]{4,})/i) || t.match(/n[uú]mero[^0-9]{0,60}?(\d[\d-]{4,})/i);
+  const m = buscar(texto) || buscar(limpiar(document.body.innerText));
   const exito = [...document.querySelectorAll('.alert-success, .portlet-msg-success')].filter(vis).map(e => e.innerText.trim()).join(' ');
   sessionStorage.removeItem('brynexNovedad');
   return { enviado: true, radicado: m ? m[1] : null, texto, exito, errores };

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "BryNex Portales",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Hace los trámites de afiliación de BryNex en los portales de las EPS (S.O.S., Sanitas) con la sesión que la persona abre en su propio navegador.",
   "permissions": ["scripting", "tabs"],
   "host_permissions": [
