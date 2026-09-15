@@ -725,7 +725,8 @@ function pNovedadResultado(ns, documento) {
   const ventana = [...document.querySelectorAll('.modal, .aui-dialog, .yui3-widget-bd, [role=dialog], .alert, .portlet-msg-success, .portlet-msg-info')]
     .filter(vis).map(e => limpiar(e.innerText)).find(t => /radicaci[oó]n|radicad[oa]/i.test(t)) || '';
   const portlet = document.getElementById('p_p_id' + ns) || document.querySelector('.portlet-body') || document.body;
-  const texto = limpiar([ventana, portlet.innerText].filter(Boolean).join(' — ')).slice(0, 6000);
+  // Con la ventana de respuesta basta; sin ella, el texto del portlet (sin las listas del formulario).
+  const texto = (ventana || limpiar(portlet.innerText)).slice(0, 6000);
   const buscar = t => t.match(/radicaci[oó]n\s*(?:no\.?|n[°º.]*|n[uú]mero)?\s*:?\s*(\d[\d-]{4,})/i)
     || t.match(/radicad[oa][^0-9]{0,80}?(\d[\d-]{4,})/i) || t.match(/n[uú]mero[^0-9]{0,60}?(\d[\d-]{4,})/i);
   const m = buscar(texto) || buscar(limpiar(document.body.innerText));
