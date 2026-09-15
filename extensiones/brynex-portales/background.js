@@ -188,7 +188,7 @@ async function sosEstado() {
   return { ok: true, abierta: true, ...(await leerCabecera(pestana.id)) };
 }
 
-async function sosAbrir({ usuario } = {}) {
+async function sosAbrir({ usuario, contrasena } = {}) {
   let pestana = await pestanaSos();
   if (pestana) {
     await chrome.tabs.update(pestana.id, { active: true });
@@ -198,19 +198,29 @@ async function sosAbrir({ usuario } = {}) {
     await esperarCarga(pestana.id);
   }
 
-  // Deja escrito el usuario del módulo de claves; la contraseña y el captcha los pone la persona.
+  // Deja escritos usuario y clave del módulo de claves (la clave solo si BryNex la
+  // mandó: depende del permiso de la persona). No se guardan; el captcha y el
+  // botón Ingresar los hace la persona.
   if (usuario) {
-    await esperarQue(pestana.id, (u) => {
+    await esperarQue(pestana.id, (u, c) => {
       const campo = document.getElementById('formLogin:loginUsrEMail');
       if (!campo) return false;
-      if (!campo.value || /correo/i.test(campo.value)) {
-        campo.value = u;
-        campo.dispatchEvent(new Event('input', { bubbles: true }));
-        campo.dispatchEvent(new Event('change', { bubbles: true }));
+      const poner = (e, v) => {
+        e.value = v;
+        e.dispatchEvent(new Event('input', { bubbles: true }));
+        e.dispatchEvent(new Event('change', { bubbles: true }));
+      };
+      if (!campo.value || /correo/i.test(campo.value)) poner(campo, u);
+      const clave = document.getElementById('formLogin:input_contrasena');
+      if (clave && c) {
+        // S.O.S. lo tiene como input de texto y lo enmascara con JS: se deja tipo password.
+        clave.type = 'password';
+        poner(clave, c);
+      } else {
+        clave?.focus();
       }
-      document.getElementById('formLogin:input_contrasena')?.focus();
       return true;
-    }, [String(usuario)], 15000);
+    }, [String(usuario), contrasena ? String(contrasena) : ''], 15000);
   }
   return { ok: true, abierta: true };
 }

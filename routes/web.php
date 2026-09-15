@@ -956,6 +956,7 @@ Route::middleware('auth')->group(function () {
         $sosc = \App\Http\Controllers\Admin\SosController::class;
         Route::get('/{contrato}/sos/precheck', [$sosc, 'precheck'])->name('sos.precheck');
         Route::get('/{contrato}/sos/lado-b', [$sosc, 'ladoB'])->name('sos.lado-b');
+        Route::post('/{contrato}/sos/credencial', [$sosc, 'credencial'])->name('sos.credencial');
         Route::post('/{contrato}/sos/aplicar', [$sosc, 'aplicar'])->name('sos.aplicar');
         Route::get('/{contrato}/historial', [$ac, 'historial'])->name('historial');
         Route::get('/{contrato}/formulario/eps', [$fc, 'vista'])->name('formulario.eps');

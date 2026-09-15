@@ -172,7 +172,7 @@ async function revisarSesionSos() {
         caja.innerHTML = '⚠️ ' + sosnEsc(e.error);
     } else if (!e.abierta || !e.sesion) {
         caja.innerHTML = (e.abierta ? '🔐 La pestaña de S.O.S. está abierta pero sin sesión.' : '🔐 Abre S.O.S. en otra pestaña e inicia sesión.') +
-            `<ol class="sosn-pasos"><li>Pulsa el botón de abajo.</li><li>Entra como siempre${r.usuario_portal ? ' con <strong>' + sosnEsc(r.usuario_portal) + '</strong>' : ''} y resuelve el captcha.</li><li>Vuelve a esta pestaña: se detecta sola.</li></ol>`;
+            `<ol class="sosn-pasos"><li>Pulsa el botón de abajo.</li><li>El usuario${r.usuario_portal ? ' (<strong>' + sosnEsc(r.usuario_portal) + '</strong>)' : ''} y la contraseña se llenan solos; resuelve el captcha y pulsa Ingresar.</li><li>Vuelve a esta pestaña: se detecta sola.</li></ol>`;
         abrir.style.display = 'block';
     } else if (sosnNorm(e.empresa).split(' ')[0] !== sosnNorm(r.razon_social).split(' ')[0]) {
         caja.innerHTML = `⚠️ La sesión de S.O.S. es de <strong>${sosnEsc(e.empresa)}</strong>, pero el contrato es de <strong>${sosnEsc(r.razon_social)}</strong>. Cierra sesión en S.O.S. y entra con la empresa correcta.`;
@@ -189,7 +189,11 @@ async function revisarSesionSos() {
 }
 
 async function abrirPortalSos() {
-    await sosnExt('abrir', { usuario: sosnPrep.resumen?.usuario_portal || '' }, 40);
+    // La clave solo viaja ahora, para llenar el login; la extensión no la guarda.
+    let cred = {};
+    try { cred = await sosnPedir('credencial', 'POST', {}, 20); } catch (e) {}
+    await sosnExt('abrir', { usuario: cred.usuario || sosnPrep.resumen?.usuario_portal || '', contrasena: cred.contrasena || '' }, 40);
+    cred = null;
     clearInterval(sosnReloj);
     sosnReloj = setInterval(revisarSesionSos, 3000);
 }

@@ -258,9 +258,21 @@ class SosNovedadService
     /** Correo del usuario del portal en el módulo de claves, para recordarle a la persona con cuál entrar. */
     private function usuarioPortal(string $nit): ?string
     {
+        return $this->credencial($nit)['usuario'] ?? null;
+    }
+
+    /**
+     * Usuario y clave de S.O.S. de la empresa en el módulo de claves, para que la
+     * extensión llene el login. La clave solo sale para quien tiene permiso de
+     * verla (lo decide el controlador).
+     *
+     * @return array{usuario:string, contrasena:string}|array{error:string}
+     */
+    public function credencial(string $nit): array
+    {
         $cred = EpsClavePortal::para(self::ENTIDAD, '%SOS%', 'S.O.S.', $nit);
 
-        return $cred['usuario'] ?? null;
+        return isset($cred['error']) ? $cred : ['usuario' => $cred['usuario'], 'contrasena' => $cred['contrasena']];
     }
 
     /** @return array{0: Carbon, 1: Carbon} */

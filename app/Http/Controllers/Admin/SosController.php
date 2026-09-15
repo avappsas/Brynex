@@ -32,6 +32,26 @@ class SosController extends Controller
         return response()->json(['ok' => ! $prep['problemas']] + $prep);
     }
 
+    /**
+     * Usuario (y clave, si la persona tiene permiso de ver contraseñas del módulo
+     * de claves) para que la extensión llene el login de S.O.S. Va aparte del
+     * precheck para que la clave solo viaje al abrir el portal.
+     */
+    public function credencial(int $contratoId)
+    {
+        $contrato = $this->contrato($contratoId)->loadMissing('razonSocial');
+        $cred = $this->servicio->credencial((string) $contrato->razonSocial?->nit);
+
+        if (isset($cred['error'])) {
+            return response()->json(['ok' => false, 'error' => $cred['error']], 422);
+        }
+        if (! Auth::user()->can('claves_acceso.ver_contrasena')) {
+            unset($cred['contrasena']);
+        }
+
+        return response()->json(['ok' => true] + $cred)->header('Cache-Control', 'no-store');
+    }
+
     /** Imagen del lado B (página 2 del formulario, firmada) para que la extensión la adjunte. */
     public function ladoB(int $contratoId)
     {
