@@ -101,7 +101,11 @@ class EpsSuraConfirmacionService
             try {
                 // Una persona puede salir dos veces (sin derecho por fin de
                 // vigencia y con derecho tras reingresar): manda la fila con derecho.
-                $enSura = $this->afiliados->afiliadosEnEps((string) $nitEmpresa, $razones)
+                $informe = $this->afiliados->informe((string) $nitEmpresa, $razones);
+                $incompleto = $informe['incompleto']
+                    ? " (el informe quedó incompleto: {$informe['afiliados']->count()} de {$informe['total_sura']}; se vuelve a intentar mañana)"
+                    : '';
+                $enSura = $informe['afiliados']
                     ->groupBy(fn ($a) => self::documento((string) $a['numero']))
                     ->map(fn ($filas) => $filas->first(fn ($a) => preg_match('/^TIENE DERECHO/i', (string) $a['estado'])) ?? $filas->first());
             } catch (Throwable $e) {
@@ -118,10 +122,14 @@ class EpsSuraConfirmacionService
             }
 
             foreach ($radicados as $r) {
-                $detalle[] = $this->cruzar($r, $enSura->get(self::documento((string) $r->contrato->cedula)), $simular);
+                $fila = $this->cruzar($r, $enSura->get(self::documento((string) $r->contrato->cedula)), $simular);
+                if ($fila['accion'] === 'no_aparece' && $incompleto) {
+                    $fila['mensaje'] .= $incompleto;
+                }
+                $detalle[] = $fila;
             }
 
-            $avisar("{$empresa}: listo.");
+            $avisar("{$empresa}: listo{$incompleto}.");
         }
 
         $cuenta = collect($detalle)->countBy('accion');

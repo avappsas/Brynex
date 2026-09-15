@@ -56,11 +56,13 @@ const navegador = await puppeteer.launch({
 /**
  * Las filas de la página visible, en orden. Las de un solo cell en mayúsculas
  * son el encabezado del grupo de estado ("TIENE DERECHO A COBERTURA INTEGRAL")
- * y se arrastran a las filas que siguen.
+ * y se arrastran a las filas que siguen. El encabezado no se repite en cada
+ * página: las primeras filas heredan el estado con que terminó la anterior
+ * (`estadoInicial`); sin eso salían "sin estado" y no se confirmaban.
  */
-const leerPagina = (pagina) => pagina.evaluate(() => {
+const leerPagina = (pagina, estadoInicial = null) => pagina.evaluate((inicial) => {
   const filas = [];
-  let estado = null;
+  let estado = inicial;
   for (const tr of document.querySelectorAll('tr')) {
     const celdas = [...tr.children].map(td => td.innerText.trim());
     if (celdas.length === 1 && /^[A-ZÁÉÍÓÚÑ ()]{8,}$/.test(celdas[0])) {
@@ -72,24 +74,51 @@ const leerPagina = (pagina) => pagina.evaluate(() => {
     }
   }
   return filas;
-}).catch(() => []);
+}, estadoInicial).catch(() => []);
 
 /**
- * La página visible cuando ya terminó de dibujarse. Que cambie la primera fila
- * no quiere decir que la tabla esté completa: en el servidor (más lento) se leía
- * a medias y faltaba una fila (Construtech 13/12, Work at Home 54/53 el
- * 14-sep-2026; desde el Mac salían completos). Vale cuando dos lecturas
+ * La página visible cuando ya terminó de dibujarse: vale cuando dos lecturas
  * seguidas coinciden.
  */
-const leerEstable = async (pagina) => {
-  let anterior = JSON.stringify(await leerPagina(pagina));
+const leerEstable = async (pagina, estadoInicial) => {
+  let anterior = JSON.stringify(await leerPagina(pagina, estadoInicial));
   for (let i = 0; i < 12; i++) {
     await esperar(500);
-    const actual = JSON.stringify(await leerPagina(pagina));
+    const actual = JSON.stringify(await leerPagina(pagina, estadoInicial));
     if (actual === anterior) break;
     anterior = actual;
   }
   return JSON.parse(anterior);
+};
+
+/** Pulsa un botón del datascroller y espera a que cambie la primera fila. */
+const pulsarYEsperar = async (pagina, elegir, arg) => {
+  const primera = (await leerPagina(pagina))[0]?.celdas[0];
+  const pulsado = await pagina.evaluate(elegir, arg).catch(() => false);
+  if (!pulsado) return 'sin boton';
+  for (let i = 0; i < 25; i++) {
+    await esperar(400);
+    if ((await leerPagina(pagina))[0]?.celdas[0] !== primera) return 'ok';
+  }
+  return 'no cambio';
+};
+
+// El número de la página si está a la vista; si no, "siguiente".
+const botonPagina = (num) => {
+  const botones = [...document.querySelectorAll('[id*="_ds_"]')];
+  const b = botones.find(e => e.id.endsWith('_ds_' + num))
+    ?? botones.find(e => /_ds_next$/.test(e.id) && !/dsbl/.test(e.className));
+  if (!b || /rf-ds-act/.test(b.className)) return false;
+  b.click();
+  return true;
+};
+
+const botonPrimera = () => {
+  const b = [...document.querySelectorAll('[id*="_ds_"]')]
+    .find(e => /_ds_(f|1)$/.test(e.id) && !/dsbl|rf-ds-act/.test(e.className));
+  if (!b) return false;
+  b.click();
+  return true;
 };
 
 let pagina;
@@ -132,35 +161,45 @@ try {
 
   // ── Paginar ──
   paso = 'paginar';
-  // La llave es la fila completa y no el documento, por si una persona sale dos
-  // veces con estados distintos. Releer una página no duplica: la fila es idéntica.
+  // La llave es la fila sin el estado: releer una página no duplica, y si una
+  // pasada la leyó sin estado y otra con estado, se queda la que lo tiene.
   const vistos = new Map();
-  const guardar = (filas) => filas.forEach(f => vistos.set(`${f.estado}|${f.celdas.join('|')}`, f));
-  guardar(await leerEstable(pagina));
-
-  for (let n = 2; n <= MAX_PAGINAS; n++) {
-    const primera = (await leerPagina(pagina))[0]?.celdas[0];
-
-    // El número de la página si está a la vista; si no, "siguiente".
-    const pulsado = await pagina.evaluate((num) => {
-      const botones = [...document.querySelectorAll('[id*="_ds_"]')];
-      const b = botones.find(e => e.id.endsWith('_ds_' + num))
-        ?? botones.find(e => /_ds_next$/.test(e.id) && !/dsbl/.test(e.className));
-      if (!b || /rf-ds-act/.test(b.className)) return false;
-      b.click();
-      return true;
-    }, n).catch(() => false);
-
-    if (!pulsado) break;
-
-    let cambio = false;
-    for (let i = 0; i < 25; i++) {
-      await esperar(400);
-      if ((await leerPagina(pagina))[0]?.celdas[0] !== primera) { cambio = true; break; }
+  let ultimoEstado = null;
+  const guardar = (filas) => {
+    for (const f of filas) {
+      const llave = f.celdas.join('|');
+      if (!vistos.has(llave) || (!vistos.get(llave).estado && f.estado)) vistos.set(llave, f);
     }
-    if (!cambio) break;
+    ultimoEstado = filas.at(-1)?.estado ?? ultimoEstado;
+  };
 
-    guardar(await leerEstable(pagina));
+  // En el servidor el informe a veces sale corto por 1 o 2 filas, sin repetidos
+  // ni patrón (ELITES 139/141, Construtech 12/13, Work at Home 53/54 la noche del
+  // 14-sep-2026; al depurar al día siguiente salió completo). En vez de adivinar
+  // la causa, si no cuadra se vuelve a la página 1 y se recorre otra vez,
+  // juntando lo leído. `bitacora` queda en la salida para el diagnóstico.
+  const bitacora = [];
+  for (let pasada = 1; pasada <= 3; pasada++) {
+    if (pasada > 1) {
+      const vuelta = await pulsarYEsperar(pagina, botonPrimera);
+      bitacora.push({ pasada, volver: vuelta });
+      if (vuelta !== 'ok') break;
+      ultimoEstado = null;
+    }
+
+    const primeraPagina = await leerEstable(pagina, ultimoEstado);
+    bitacora.push({ pasada, n: 1, filas: primeraPagina.length });
+    guardar(primeraPagina);
+
+    for (let n = 2; n <= MAX_PAGINAS; n++) {
+      const r = await pulsarYEsperar(pagina, botonPagina, n);
+      if (r !== 'ok') break;
+      const filas = await leerEstable(pagina, ultimoEstado);
+      bitacora.push({ pasada, n, filas: filas.length });
+      guardar(filas);
+    }
+
+    if (!totalSura || vistos.size >= totalSura) break;
   }
 
   const afiliados = [...vistos.values()].map(({ celdas: c, estado }) => {
@@ -174,13 +213,16 @@ try {
     };
   });
 
-  if (totalSura && afiliados.length < totalSura) {
-    // Mejor fallar que conciliar con media lista: los que falten saldrían
-    // como "no están en EPS" sin ser cierto.
-    throw new Error(`El informe dice ${totalSura} afiliados pero solo se leyeron ${afiliados.length}.`);
-  }
+  // Si tras las pasadas sigue corto, se entrega igual marcado como incompleto:
+  // quien llama decide. El informe de sobran/faltan lo rechaza (los que falten
+  // saldrían como "no están en EPS" sin ser cierto); el cruce de confirmación lo
+  // acepta, porque solo confirma a quien sí aparece.
+  const incompleto = !!totalSura && afiliados.length < totalSura;
 
-  salir({ ok: true, empresa, total: afiliados.length, afiliados });
+  salir({
+    ok: true, empresa, total: afiliados.length, total_sura: totalSura, incompleto, afiliados,
+    ...(incompleto ? { bitacora } : {}),
+  });
 } catch (e) {
   let captura = null;
   try {

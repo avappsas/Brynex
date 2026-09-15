@@ -156,6 +156,25 @@ class EpsSuraAfiliadosService
      */
     public function afiliadosEnEps(string $nit, Collection $razones): Collection
     {
+        $informe = $this->informe($nit, $razones);
+
+        // Con media lista, los que falten saldrían como "no están en EPS" sin serlo.
+        if ($informe['incompleto']) {
+            throw new RuntimeException("No se pudo leer el informe de EPS SURA: el informe dice {$informe['total_sura']} afiliados pero solo se leyeron {$informe['afiliados']->count()}.");
+        }
+
+        return $informe['afiliados'];
+    }
+
+    /**
+     * El informe tal como salió, aunque haya quedado corto. Sirve a quien solo
+     * busca coincidencias positivas (el cruce de confirmación): una fila que no
+     * se leyó no confirma a nadie por error, solo queda para la próxima.
+     *
+     * @return array{afiliados: Collection<int, array>, incompleto: bool, total_sura: ?int}
+     */
+    public function informe(string $nit, Collection $razones): array
+    {
         $credencial = $this->credencial($nit, $razones);
 
         $resultado = Process::path(base_path())
@@ -181,7 +200,20 @@ class EpsSuraAfiliadosService
             throw new RuntimeException("No se pudo leer el informe de EPS SURA: {$error}");
         }
 
-        return collect($salida['afiliados'] ?? []);
+        $incompleto = (bool) ($salida['incompleto'] ?? false);
+
+        if ($incompleto) {
+            Log::warning('EPS SURA: el informe de afiliados quedó incompleto tras reintentar', [
+                'nit' => $nit, 'total_sura' => $salida['total_sura'] ?? null, 'leidos' => $salida['total'] ?? null,
+                'bitacora' => $salida['bitacora'] ?? null,
+            ]);
+        }
+
+        return [
+            'afiliados'  => collect($salida['afiliados'] ?? []),
+            'incompleto' => $incompleto,
+            'total_sura' => isset($salida['total_sura']) ? (int) $salida['total_sura'] : null,
+        ];
     }
 
     /**
