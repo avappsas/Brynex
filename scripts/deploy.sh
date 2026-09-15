@@ -132,7 +132,9 @@ asegurar_home_web
 
 titulo "Devolviendo los archivos a $WEB_USER"
 # git corre como root, así que lo que escribe queda de root y Apache pierde acceso.
-git diff --name-only "$commit_antes" "$commit_nuevo" | tr '\n' '\0' \
+# Sin los borrados (--diff-filter=d): chown sobre un archivo que ya no existe
+# tumbaba el despliegue a la mitad, con el código ya actualizado.
+git diff --name-only --diff-filter=d "$commit_antes" "$commit_nuevo" | tr '\n' '\0' \
     | xargs -0 --no-run-if-empty chown "$WEB_USER":"$WEB_USER"
 chown -R "$WEB_USER":"$WEB_USER" .git
 
