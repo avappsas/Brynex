@@ -205,12 +205,18 @@ function mostrarEnvioSanitas(res) {
     sannEl('sannEnviado').style.display = 'block';
     sannEl('sannNumero').value = res.radicado || '';
     sannEl('sannEnviadoInfo').innerHTML = res.radicado
-        ? `📨 Sanitas respondió con el radicado <strong>${sannEsc(res.radicado)}</strong>. Confírmalo y guárdalo.`
+        ? `📨 Sanitas respondió con el radicado <strong>${sannEsc(res.radicado)}</strong>. Revísalo y guárdalo.`
         : '📨 Se envió el formulario, pero no se encontró el número en la página. Cópialo de la pestaña de Sanitas.';
     const texto = [res.exito, (res.errores || []).join(' · '), res.texto].filter(Boolean).join(' — ');
     sannEl('sannEnviadoTexto').style.display = texto ? 'block' : 'none';
     sannEl('sannEnviadoTexto').textContent = texto.slice(0, 1500);
     sannEl('sannSesion').innerHTML = '✅ Enviado a Sanitas.';
+
+    // Con el número y la confirmación de Sanitas ("registrada exitosamente") se guarda solo.
+    if (res.radicado && /exitosa/i.test(res.texto || '') && !(res.errores || []).length) {
+        sannEl('sannEnviadoInfo').innerHTML = `📨 Sanitas registró el radicado <strong>${sannEsc(res.radicado)}</strong>. Guardando en BryNex...`;
+        guardarNovedadSanitas();
+    }
 }
 
 async function guardarNovedadSanitas() {
