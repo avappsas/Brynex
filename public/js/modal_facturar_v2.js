@@ -849,11 +849,16 @@ const MF = (function () {
                 if (avisoMes) avisoMes.parentNode.insertBefore(gapPanel, avisoMes.nextSibling);
             }
             if (data.tiene_gap && data.gap_mensaje) {
+                // El independiente que paga el mes en curso ve el hueco pero puede
+                // facturar: el aviso pasa a ámbar y el botón queda activo.
+                const bloquea = data.gap_bloquea !== false;
                 gapPanel.style.display = 'block';
-                gapPanel.innerHTML = '🚫 ' + data.gap_mensaje;
-                // Deshabilitar botón de submit
+                gapPanel.style.borderColor = bloquea ? '#ef4444' : '#f59e0b';
+                gapPanel.style.background = bloquea ? '#fef2f2' : '#fffbeb';
+                gapPanel.style.color = bloquea ? '#991b1b' : '#92400e';
+                gapPanel.innerHTML = (bloquea ? '🚫 ' : '⚠️ ') + data.gap_mensaje;
                 const btn = el('mf-btn-submit');
-                if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
+                if (btn) { btn.disabled = bloquea; btn.style.opacity = bloquea ? '0.5' : '1'; }
             } else {
                 gapPanel.style.display = 'none';
                 const btn = el('mf-btn-submit');

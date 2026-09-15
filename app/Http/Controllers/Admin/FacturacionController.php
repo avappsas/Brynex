@@ -1265,7 +1265,7 @@ class FacturacionController extends Controller
             $cChk = $contratosChk->get($cId);
             if ($cChk) {
                 $gap = $this->verificarOrdenFacturacion($aliadoId, $cChk, $mes, $anio);
-                if ($gap) {
+                if ($gap && $gap['bloquea']) {
                     return response()->json([
                         'error' => true,
                         'mensaje' => $gap['mensaje'],
@@ -3726,6 +3726,7 @@ class FacturacionController extends Controller
             'saldo_pendiente' => $saldo['pendiente'] ?? 0,
             // Información de gap para advertencia en UI
             'tiene_gap' => ! is_null($gap),
+            'gap_bloquea' => (bool) ($gap['bloquea'] ?? false),
             'gap_mes' => $gap['mes'] ?? null,
             'gap_anio' => $gap['anio'] ?? null,
             'gap_mensaje' => $gap['mensaje'] ?? null,
@@ -3903,9 +3904,28 @@ class FacturacionController extends Controller
         $nombreFaltante = \Carbon\Carbon::create($sigAnio, $sigMes, 1)->translatedFormat('F Y');
         $nombreTarget = \Carbon\Carbon::create($anio, $mes, 1)->translatedFormat('F Y');
 
+        // El independiente paga su propia planilla: si dejó meses sin pagar, esos
+        // meses ya no se pueden cotizar, pero el mes en curso sí — y bloquearlo
+        // lo deja sin cobertura también este mes. Se avisa del hueco y se deja
+        // facturar, solo el mes en curso: saltar a un mes futuro sigue sin poder.
+        $hoy = now();
+        $esMesEnCurso = $mes === (int) $hoy->month && $anio === (int) $hoy->year;
+        $esIndependiente = $contrato->esIndependiente()
+            || (bool) ($contrato->razonSocial?->es_independiente);
+
+        if ($esIndependiente && $esMesEnCurso) {
+            return [
+                'mes' => $sigMes,
+                'anio' => $sigAnio,
+                'bloquea' => false,
+                'mensaje' => "Tiene meses sin facturar desde {$nombreFaltante}. Como es independiente, se permite facturar {$nombreTarget}.",
+            ];
+        }
+
         return [
             'mes' => $sigMes,
             'anio' => $sigAnio,
+            'bloquea' => true,
             'mensaje' => "Debe facturar {$nombreFaltante} antes de continuar con {$nombreTarget}.",
         ];
     }
