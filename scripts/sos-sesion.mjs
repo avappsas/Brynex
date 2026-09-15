@@ -370,7 +370,9 @@ const servidor = http.createServer(async (req, res) => {
       if (estado.etapa === 'captcha') {
         const caja = await cajaReto();
         if (caja) {
-          const imagen = await pagina.screenshot({ clip: caja, encoding: 'base64' });
+          // Sin captureBeyondViewport: puppeteer cambiaba el tamaño de la página para
+          // la foto, el reCAPTCHA se redibujaba y borraba las casillas ya marcadas.
+          const imagen = await pagina.screenshot({ clip: caja, encoding: 'base64', captureBeyondViewport: false });
           salida.captcha = { imagen, ancho: Math.round(caja.width), alto: Math.round(caja.height) };
         }
       }
