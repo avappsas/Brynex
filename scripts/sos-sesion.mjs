@@ -381,6 +381,19 @@ const leerCuerpo = async (req) => {
   return d ? JSON.parse(d) : {};
 };
 
+/** Estado actual con la foto del reto, si hay uno visible. */
+async function fotoEstado() {
+  const salida = { ...estado };
+  if (estado.etapa !== 'captcha') return salida;
+  const caja = await cajaReto();
+  if (!caja) return salida;
+  // Sin captureBeyondViewport: puppeteer cambiaba el tamaño de la página para
+  // la foto, el reCAPTCHA se redibujaba y borraba las casillas ya marcadas.
+  const imagen = await pagina.screenshot({ clip: caja, encoding: 'base64', captureBeyondViewport: false, type: 'jpeg', quality: 80 });
+  salida.captcha = { imagen, ancho: Math.round(caja.width), alto: Math.round(caja.height) };
+  return salida;
+}
+
 const OPERACIONES = { consultar: (d) => consultar(d).then(filas => ({ ok: true, filas })), certificado, registrar, adjuntar };
 
 const servidor = http.createServer(async (req, res) => {
@@ -399,25 +412,14 @@ const servidor = http.createServer(async (req, res) => {
         log('Reto cerrado sin resolver: se pide uno nuevo');
         await marcarCaptcha().catch(e => log('No se pudo pedir otro reto', e.message));
       }
-      const salida = { ...estado };
-      if (estado.etapa === 'captcha') {
-        const caja = await cajaReto();
-        if (caja) {
-          // Sin captureBeyondViewport: puppeteer cambiaba el tamaño de la página para
-          // la foto, el reCAPTCHA se redibujaba y borraba las casillas ya marcadas.
-          const imagen = await pagina.screenshot({ clip: caja, encoding: 'base64', captureBeyondViewport: false });
-          const reto = pagina.frames().find(f => /bframe/.test(f.url()));
-          const marcadas = reto ? await reto.evaluate(() => document.querySelectorAll('.rc-imageselect-tileselected').length).catch(() => null) : null;
-          salida.captcha = { imagen, ancho: Math.round(caja.width), alto: Math.round(caja.height), marcadas };
-        }
-      }
+      const salida = await fotoEstado();
       return responder(200, salida);
     }
 
     if (ruta === '/clic') {
       if (estado.etapa !== 'captcha') return responder(409, { ok: false, error: 'No hay captcha pendiente.' });
       const caja = await cajaReto();
-      if (!caja) { await revisarCaptcha(); return responder(200, { ok: true, etapa: estado.etapa }); }
+      if (!caja) { await revisarCaptcha(); return responder(200, { ok: true, ...await fotoEstado() }); }
       const x = Math.max(0, Math.min(caja.width, Number(datos.x)));
       const y = Math.max(0, Math.min(caja.height, Number(datos.y)));
       // Para el log: qué hay bajo el clic dentro del reto (casilla, botón…).
@@ -427,10 +429,13 @@ const servidor = http.createServer(async (req, res) => {
         return e ? `${e.tagName}.${String(e.className).slice(0, 60)}` : null;
       }, x, y).catch(() => null) : null;
       log(`Clic captcha (${Math.round(x)},${Math.round(y)}) → ${objetivo}`);
-      await pagina.mouse.click(caja.x + x, caja.y + y, { delay: 60 });
-      await esperar(1200);
+      const dinamico = reto ? await reto.evaluate(() => /ya no quede|none left/i.test(document.body.innerText)).catch(() => false) : false;
+      await pagina.mouse.click(caja.x + x, caja.y + y, { delay: 40 });
+      // En los retos de cuadros el chulo sale al instante; en los que reemplazan
+      // la imagen, Google tarda ~3 s en poner la nueva. La foto va en la respuesta.
+      await esperar(/BUTTON/.test(objetivo || '') ? 1500 : dinamico ? 3000 : 350);
       await revisarCaptcha();
-      return responder(200, { ok: true, etapa: estado.etapa });
+      return responder(200, { ok: true, ...await fotoEstado() });
     }
 
     if (ruta === '/captcha/reiniciar') {

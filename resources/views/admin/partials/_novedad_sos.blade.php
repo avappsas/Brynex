@@ -165,7 +165,7 @@ function aplicarSesionSos(s) {
     const conCaptcha = etapa === 'captcha' && s.captcha;
     sosnEl('sosnCaptcha').style.display = conCaptcha ? 'block' : 'none';
     if (conCaptcha) {
-        sosnEl('sosnCaptchaImg').src = 'data:image/png;base64,' + s.captcha.imagen;
+        sosnEl('sosnCaptchaImg').src = 'data:image/jpeg;base64,' + s.captcha.imagen;
         sosnAncho = s.captcha.ancho; sosnAlto = s.captcha.alto;
     }
 
@@ -217,12 +217,11 @@ async function clicCaptchaSos(ev) {
     const aviso = sosnEl('sosnCaptchaEstado');
     aviso.textContent = '⏳ Actualizando la imagen…';
     try {
+        // El servidor espera lo justo según el tipo de reto (más en los que
+        // reemplazan la imagen) y devuelve la foto nueva en la misma respuesta.
         const d = await sosnPedir('sesion/clic', 'POST', { x, y }, 30);
         if (!d.ok) { alert(d.error || 'No se pudo enviar el clic.'); return; }
-        // Google tarda unos segundos en desvanecer la casilla y poner otra: no
-        // se deja hacer otro clic hasta ver la imagen ya cambiada.
-        await new Promise(r => setTimeout(r, 2800));
-        await pintarSesionSos();
+        aplicarSesionSos(d.sesion || {});
     } finally {
         img.style.opacity = 1;
         punto.remove();

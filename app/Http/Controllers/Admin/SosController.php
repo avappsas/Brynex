@@ -56,11 +56,17 @@ class SosController extends Controller
         $nit = (string) $contrato->razonSocial?->nit;
 
         try {
-            $request->boolean('reiniciar')
-                ? SosSesion::reiniciarCaptcha($contrato->aliado_id, $nit)
-                : SosSesion::clic($contrato->aliado_id, $nit, (float) $datos['x'], (float) $datos['y']);
+            if ($request->boolean('reiniciar')) {
+                SosSesion::reiniciarCaptcha($contrato->aliado_id, $nit);
 
-            return response()->json(['ok' => true, 'sesion' => $this->estadoSesion($contrato)]);
+                return response()->json(['ok' => true, 'sesion' => $this->estadoSesion($contrato)]);
+            }
+
+            // El clic ya trae la foto nueva del reto: sin otra vuelta al proceso.
+            $sesion = SosSesion::clic($contrato->aliado_id, $nit, (float) $datos['x'], (float) $datos['y']);
+            unset($sesion['ok']);
+
+            return response()->json(['ok' => true, 'sesion' => $sesion]);
         } catch (Throwable $e) {
             return response()->json(['ok' => false, 'error' => $e->getMessage()], 422);
         }
