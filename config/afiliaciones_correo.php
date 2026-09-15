@@ -31,6 +31,15 @@ return [
             'principal'         => ['nombre' => 'Lola Baena', 'correo' => 'lbaena88@gmail.com'],
             'reemplazo'         => null,
         ],
+        // Emssanar: buzón institucional (no asesor). Plan B del portal Boxalud;
+        // responde con la "Certificación de relación laboral" en PDF.
+        'emssanar' => [
+            'nombre_entidad'    => 'Emssanar',
+            'nombre_formulario' => 'Emssanar',
+            'codigo_eps'        => 'ESSC18',
+            'principal'         => ['nombre' => 'Afiliaciones Emssanar', 'correo' => 'afiliate@emssanareps.co'],
+            'reemplazo'         => null,
+        ],
     ],
 
     // Dominios de las entidades cuyos correos revisa el agente del buzón. Lo que
@@ -49,6 +58,7 @@ return [
         'epsdelagente.com.co'   => ['clave' => 'comfenalco', 'tipo' => 'eps', 'nombre' => 'Comfenalco Valle (delagente)'],
         'comfandi.com.co'       => ['clave' => 'comfandi', 'tipo' => 'caja', 'nombre' => 'Comfandi'],
         'emssanar.org.co'       => ['clave' => 'emssanar', 'tipo' => 'eps', 'nombre' => 'Emssanar'],
+        'emssanareps.co'        => ['clave' => 'emssanar', 'tipo' => 'eps', 'nombre' => 'Emssanar'],
         'coosalud.com'          => ['clave' => 'coosalud', 'tipo' => 'eps', 'nombre' => 'Coosalud'],
         'asmetsalud.com'        => ['clave' => 'asmet', 'tipo' => 'eps', 'nombre' => 'Asmet Salud'],
         'famisanar.com.co'      => ['clave' => 'famisanar', 'tipo' => 'eps', 'nombre' => 'Famisanar'],

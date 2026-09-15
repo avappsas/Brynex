@@ -983,6 +983,12 @@ Route::middleware('auth')->group(function () {
             Route::post('/{contrato}/sos/correo/documento', [$sosc, 'correoDocumento'])->name('sos.correo.documento')->middleware('permiso:documentos.subir');
             Route::post('/{contrato}/sos/correo/enviar', [$sosc, 'correoEnviar'])->name('sos.correo.enviar');
             // EPS sin portal de empleador (Comfenalco Valle): afiliación por correo al asesor.
+            // Portal Boxalud (Emssanar): afiliación con la extensión BryNex Portales.
+            $bxc = \App\Http\Controllers\Admin\BoxaludController::class;
+            Route::get('/{contrato}/boxalud/{eps}/precheck', [$bxc, 'precheck'])->name('boxalud.precheck')->where('eps', '[a-z_]+');
+            Route::post('/{contrato}/boxalud/{eps}/credencial', [$bxc, 'credencial'])->name('boxalud.credencial')->where('eps', '[a-z_]+');
+            Route::get('/{contrato}/boxalud/{eps}/archivo/{tipo}', [$bxc, 'archivo'])->name('boxalud.archivo')->where(['eps' => '[a-z_]+', 'tipo' => 'formulario|encuesta']);
+            Route::post('/{contrato}/boxalud/{eps}/aplicar', [$bxc, 'aplicar'])->name('boxalud.aplicar')->where('eps', '[a-z_]+');
             $cae = \App\Http\Controllers\Admin\CorreoAsesorEpsController::class;
             Route::get('/{contrato}/correo-eps/{entidad}', [$cae, 'preparar'])->name('correo-eps.preparar')->where('entidad', '[a-z_]+');
             Route::post('/{contrato}/correo-eps/{entidad}/documento', [$cae, 'documento'])->name('correo-eps.documento')->where('entidad', '[a-z_]+')->middleware('permiso:documentos.subir');

@@ -25,6 +25,12 @@
  *                 celular, correo, tipoNovedad, observaciones, archivo, nombreArchivo}
  *                                      → llena y adjunta; el clic en Enviar lo da la persona
  *  novedadResultado {documento}        → {enviado, radicado, texto, errores, captura}
+ *
+ * Pedidos Boxalud (portal: 'boxalud', Emssanar; datos.host dice cuál):
+ *  boxEstado {host}                    → {abierta, sesion, empresa}
+ *  boxAbrir {host, usuario, contrasena} → abre el login y deja escrito el usuario (y la clave si llegó)
+ *  boxLlenar {…datos del contrato}     → Ingreso de afiliación lleno y documentos adjuntos; ACEPTAR y GUARDAR los pulsa la persona
+ *  boxResultado {host, documento}      → {guardado, numero, texto, mensajes}
  */
 
 const ORIGENES_BRYNEX = ['https://brynex.co', 'https://www.brynex.co', 'http://localhost:8000'];
@@ -41,7 +47,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.canal !== 'brynex-portales' || !ORIGENES_BRYNEX.includes(origen) || sender.id !== chrome.runtime.id) return;
 
   // Ver el estado o abrir la pestaña no espera a que termine un trámite en curso.
-  const directo = ['estado', 'abrir', 'novedadEstado', 'novedadAbrir', 'novedadResultado'].includes(msg.accion);
+  const directo = ['estado', 'abrir', 'novedadEstado', 'novedadAbrir', 'novedadResultado', 'boxEstado', 'boxAbrir', 'boxResultado'].includes(msg.accion);
   (directo ? atender(msg, origen) : enCola(() => atender(msg, origen)))
     .then(sendResponse)
     .catch(e => sendResponse({ ok: false, error: String(e?.message || e).slice(0, 400) }));
@@ -54,6 +60,7 @@ const enCola = (fn) => (cola = cola.then(fn, fn));
 
 async function atender({ portal, accion, datos = {} }, origen) {
   if (portal === 'sanitas') return atenderSanitas(accion, datos, origen);
+  if (portal === 'boxalud') return atenderBoxalud(accion, datos, origen);
   if (portal !== 'sos') throw new Error(`Portal desconocido: ${portal}`);
 
   if (accion === 'estado') return sosEstado();
@@ -733,4 +740,275 @@ function pNovedadResultado(ns, documento) {
   const exito = [...document.querySelectorAll('.alert-success, .portlet-msg-success')].filter(vis).map(e => e.innerText.trim()).join(' ');
   sessionStorage.removeItem('brynexNovedad');
   return { enviado: true, radicado: m ? m[1] : null, texto, exito, errores };
+}
+
+// ── Boxalud (Emssanar): Ingreso de afiliación ─────────────────────────────
+// ASP.NET + DevExpress. Los controles del formulario son globales del mundo MAIN
+// (comboBoxAfiliadoTipoIdentificacion, afiliadoConsultar()…); con su API se
+// llenan igual que a mano. Mapeado el 15-sep-2026 sin guardar ninguna afiliación.
+
+const BOXALUD_HOSTS = ['boxalud.emssanareps.co'];
+const boxBase = (host) => `https://${host}/Externo/BoxaludExternoNS`;
+
+async function pestanaBoxalud(host) {
+  if (!BOXALUD_HOSTS.includes(host)) throw new Error(`Portal Boxalud no permitido: ${host}`);
+  const ps = await chrome.tabs.query({ url: `https://${host}/*` });
+  return ps.find(p => p.active) || ps[0] || null;
+}
+
+function pBoxEstado() {
+  const login = !!document.querySelector('[id$="textName_I"]');
+  const lineas = (document.body?.innerText || '').split('\n').map(l => l.trim()).filter(Boolean);
+  const i = lineas.indexOf('Afiliaciones');
+  const empresa = !login && i > 0 && !/^Plan/.test(lineas[i - 1]) ? lineas[i - 1] : null;
+  return { sesion: !login && !!empresa, login, empresa, pagina: location.pathname.split('/').pop(), titulo: document.title };
+}
+
+async function atenderBoxalud(accion, d, origen) {
+  const host = String(d.host || '');
+  if (accion === 'boxAbrir') {
+    let p = await pestanaBoxalud(host);
+    if (p) {
+      await chrome.tabs.update(p.id, { active: true });
+      await chrome.windows.update(p.windowId, { focused: true });
+    } else {
+      p = await chrome.tabs.create({ url: `https://${host}/Externo/BoxaludExterno/Seguridad/login.aspx`, active: true });
+      await esperarCarga(p.id);
+    }
+    if (d.usuario) {
+      await esperarQue(p.id, (u, c) => {
+        const campo = document.querySelector('[id$="textName_I"]');
+        if (!campo) return true;              // ya tiene sesión
+        const poner = (e, v) => { e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); };
+        poner(campo, u);
+        const clave = document.querySelector('[id$="textPassword_I"]');
+        if (clave && c) poner(clave, c); else clave?.focus();
+        return true;
+      }, [String(d.usuario), d.contrasena ? String(d.contrasena) : ''], 15000);
+    }
+    return { ok: true, abierta: true };
+  }
+
+  const pestana = await pestanaBoxalud(host);
+  if (!pestana) return { ok: true, abierta: false, sesion: false };
+
+  if (accion === 'boxEstado') {
+    let e;
+    try { e = await ejecutar(pestana.id, pBoxEstado); } catch { e = { sesion: false }; }
+    return { ok: true, abierta: true, ...e };
+  }
+  if (accion === 'boxLlenar') return boxaludLlenar(pestana, d, origen);
+  if (accion === 'boxResultado') return { ok: true, ...(await ejecutar(pestana.id, pBoxResultado, [String(d.documento || '')])) };
+
+  throw new Error(`Acción de Boxalud desconocida: ${accion}`);
+}
+
+async function boxaludLlenar(pestana, d, origen) {
+  const tab = pestana.id;
+  const avisos = [];
+  const norm = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+  // 0. Sesión y empresa correctas.
+  const est = await ejecutar(tab, pBoxEstado);
+  if (!est.sesion) return { ok: false, error: 'El portal no tiene la sesión iniciada. Entra con el usuario de la empresa y vuelve a intentar.' };
+  if (!norm(est.empresa).includes(norm(d.empresa).slice(0, 12)) && !norm(d.empresa).includes(norm(est.empresa).slice(0, 12))) {
+    return { ok: false, error: `El portal está abierto con ${est.empresa}, pero el contrato es de ${d.empresa}. Cierra sesión y entra con el usuario de ${d.empresa}.` };
+  }
+
+  // 1. Declaración de la carta de derechos → Diligenciar datos de afiliación.
+  await chrome.tabs.update(tab, { url: `${boxBase(d.host)}/Pages/CartaDerechosDeberes.aspx?NA=true` });
+  await esperarCarga(tab);
+  await clicYEsperar(tab, () => { const b = document.querySelector('[id$="btnSiguiente_I"]'); if (!b) return { __error: 'No apareció la declaración de la carta de derechos.' }; b.click(); return true; });
+  const diligenciar = await esperarQue(tab, () => typeof window.afiliadoAdicionar === 'function' && typeof window.dateEditAfiliacionFechaInicial === 'object', [], 30000);
+  if (!diligenciar) return { ok: false, error: 'No se abrió "Diligenciar datos de afiliación" en el portal.' };
+
+  // 2. Fecha de inicio y modal del afiliado.
+  await ejecutar(tab, (f) => {
+    const [a, m, dd] = f.split('-').map(Number);
+    dateEditAfiliacionFechaInicial.SetDate(new Date(a, m - 1, dd)); dateEditAfiliacionFechaInicial.RaiseValueChangedEvent?.();
+    afiliadoAdicionar();
+    return true;
+  }, [d.fechaIngreso]);
+  const modal = await esperarQue(tab, () => modalDatosAfiliado.IsVisible() && !callbackPanelDatosAfiliado.InCallback() && !loadingPanel.IsVisible(), [], 30000);
+  if (!modal) return { ok: false, error: 'No se abrió el formulario del afiliado.' };
+
+  // 3. Documento → el portal valida en ADRES y precarga (hasta ~1 min).
+  await ejecutar(tab, (tipo, doc) => {
+    comboBoxAfiliadoTipoIdentificacion.SetValue(tipo); comboBoxAfiliadoTipoIdentificacion.RaiseValueChangedEvent?.();
+    textBoxAfiliadoNumeroIdentificacion.SetValue(doc);
+    afiliadoConsultar(false);
+    return true;
+  }, [d.tipoDoc, String(d.documento)]);
+  await esperar(2000);
+  const consulta = await esperarQue(tab, () => {
+    const vis = e => !!(e && (e.offsetWidth || e.offsetHeight));
+    if (window.ModalRedireccionarNovedadAdicion?.IsVisible?.()) return { estado: 'adicion', texto: ModalRedireccionarNovedadAdicion.GetMainElement().innerText.replace(/\s+/g, ' ').trim() };
+    if (callbackPanelDatosAfiliado.InCallback() || loadingPanel.IsVisible()) return null;
+    const mensajes = [...document.querySelectorAll('[id*="pupMensaje"], [id*="ucMensajeAplicacion"] .dxpc-content')].filter(vis).map(e => e.innerText.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    if (textBoxAfiliadoApellido1.GetValue()) return { estado: 'ok', mensajes };
+    return mensajes.length ? { estado: 'mensaje', mensajes } : null;
+  }, [], 150000);
+  if (!consulta) return { ok: false, error: 'El portal no respondió la validación del afiliado en ADRES.' };
+  if (consulta.estado === 'adicion') return { ok: false, adicion: true, error: `El portal pide hacerlo como "Adición de relación laboral": ${consulta.texto}` };
+  if (consulta.estado !== 'ok') return { ok: false, error: `El portal no cargó al afiliado: ${(consulta.mensajes || []).join(' ')}` };
+  avisos.push(...(consulta.mensajes || []));
+
+  // 4. Que sea la misma persona.
+  const apellidoPortal = await ejecutar(tab, () => textBoxAfiliadoApellido1.GetValue());
+  if (norm(apellidoPortal) !== norm(d.apellido)) {
+    return { ok: false, error: `En el portal el documento es de ${apellidoPortal}, que no coincide con el apellido de BryNex (${d.apellido}). Revisa antes de seguir.` };
+  }
+
+  // 5. Contacto y residencia (solo lo vacío; la dirección en nomenclatura DANE).
+  const contacto = await ejecutar(tab, (d) => {
+    const salida = { direccion: null };
+    const caption = (c) => (document.getElementById(c.name)?.closest('.dxflItem, td, div')?.parentElement?.innerText || '').toUpperCase();
+    const poner = (c, v) => { if (c && v && !c.GetValue()) { c.SetValue(v); c.RaiseValueChangedEvent?.(); } };
+    function normalizar(t) {
+      let s = String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+      s = s.replace(/\b(N[OO]\.?|NUMERO|NRO\.?)\s*(?=\d)/g, ' ').replace(/[^A-Z0-9 ]/g, ' ');
+      const tipos = [[/\b(AVENIDA\s+CALLE|AV\s*CALLE|AC)\b/g, 'AC'], [/\b(AVENIDA\s+CARRERA|AV\s*CARRERA|AK)\b/g, 'AK'], [/\b(CALLE|CLL|CLLE|CL|CALL)\b/g, 'CL'], [/\b(CARRERA|CRA|KRA|KR|CR|CRR|K)\b/g, 'CR'], [/\b(AVENIDA|AVE|AV)\b/g, 'AV'], [/\b(DIAGONAL|DIAG|DG)\b/g, 'DG'], [/\b(TRANSVERSAL|TRANSV|TRV|TV)\b/g, 'TV'], [/\b(AUTOPISTA|AUT)\b/g, 'AUT'], [/\b(CIRCUNVALAR|CRV)\b/g, 'CRV']];
+      for (const [re, v] of tipos) s = s.replace(re, v);
+      s = s.replace(/(\d)([A-Z])/g, '$1 $2').replace(/([A-Z])(\d)/g, '$1 $2').replace(/\bN\b(?=\s+\d|$)/g, 'NORTE').replace(/\s+/g, ' ').trim();
+      const m = s.match(/\b(AC|AK|AV|CL|CR|DG|TV|AUT|CRV)\b.*/);
+      return m ? m[0] : s;
+    }
+    if (!textBoxAfiliadoDireccion.GetValue() && d.direccion) {
+      const tok = normalizar(d.direccion).split(' ');
+      for (let n = tok.length; n >= 3; n--) { const x = tok.slice(0, n).join(' '); if (validarDireccionRegex(x, 2)) { salida.direccion = x; break; } }
+      if (salida.direccion) { textBoxAfiliadoDireccion.SetValue(salida.direccion); try { validarDireccion(textBoxAfiliadoDireccion, 2); } catch {} }
+    } else {
+      salida.direccion = textBoxAfiliadoDireccion.GetValue();
+    }
+    const tels = [textBoxAfiliadoTelefono1, textBoxAfiliadoTelefono2, textBoxAfiliadoTelefono3];
+    const fijo = tels.find(c => /FIJO/.test(caption(c)));
+    const celulares = tels.filter(c => c !== fijo);
+    poner(celulares[0], d.celular); poner(celulares[1], d.celular2); poner(fijo, d.fijo);
+    poner(textBoxCorreoElectronico1, d.correo);
+    if (comboBoxAfiliadoOrientacionSexual.GetValue() == null || String(comboBoxAfiliadoOrientacionSexual.GetValue()) === '-1') {
+      comboBoxAfiliadoOrientacionSexual.SetValue(100); comboBoxAfiliadoOrientacionSexual.RaiseValueChangedEvent?.();
+    }
+    return salida;
+  }, [d]);
+  if (!contacto.direccion) avisos.push('La dirección de BryNex no tiene formato válido para el portal: escríbela en el campo Dirección (ej. CR 94 1 A 128).');
+
+  // 6. Relación laboral: fecha y tipo de cotizante (recarga la sección), luego el resto.
+  await ejecutar(tab, (f) => {
+    const [a, m, dd] = f.split('-').map(Number);
+    dateEditRelacionLaboralFechaInicial.SetDate(new Date(a, m - 1, dd)); dateEditRelacionLaboralFechaInicial.RaiseValueChangedEvent?.();
+    const cb = comboBoxRelacionLaboralTipoCotizante;
+    for (let i = 0; i < cb.GetItemCount(); i++) if (String(cb.GetItem(i).value) === '1') cb.SetSelectedIndex(i);
+    cb.RaiseValueChangedEvent();
+    return true;
+  }, [d.fechaIngreso]);
+  await esperar(1500);
+  await esperarQue(tab, () => !callbackPanelDatosRelacionLaboral.InCallback() && !loadingPanel.IsVisible(), [], 30000);
+
+  const laboral = await ejecutar(tab, (d) => {
+    const n = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+    const elegir = (cb, claves) => {
+      for (let i = 0; i < cb.GetItemCount(); i++) { const t = n(cb.GetItem(i).text); if (claves.some(k => t.includes(k))) { cb.SetSelectedIndex(i); cb.RaiseValueChangedEvent?.(); return cb.GetItem(i).text; } }
+      return null;
+    };
+    if (String(comboBoxRelacionLaboralTipoCotizante.GetValue()) !== '1') return { __error: 'El portal no tomó el tipo de cotizante Dependiente.' };
+    const afp = n(d.afp), arl = n(d.arl);
+    const claveAfp = [['PROTECCION', 'PROTECCI'], ['PORVENIR', 'PORVENIR'], ['COLFONDOS', 'COLFONDOS'], ['COLPENSIONES', 'COLPENSIONES'], ['SKANDIA', 'SKANDIA'], ['OLD MUTUAL', 'SKANDIA']].find(([k]) => afp.includes(k));
+    const claveArl = [['SURA', 'SURA'], ['POSITIVA', 'POSITIVA'], ['BOLIVAR', 'BOLIVAR'], ['COLMENA', 'COLMENA'], ['EQUIDAD', 'EQUIDAD'], ['AXA', 'AXA'], ['COLPATRIA', 'AXA'], ['LIBERTY', 'LIBERTY'], ['ALFA', 'ALFA'], ['SANITAS', 'COLSANITAS'], ['MAPFRE', 'MAPFRE']].find(([k]) => arl.includes(k));
+    const salida = {
+      // Contrato sin pensión (p. ej. pensionado o extranjero): "Sin AFP".
+      afp: claveAfp ? elegir(comboBoxRelacionLaboralAFP, [claveAfp[1]]) : (afp.trim() === '' ? elegir(comboBoxRelacionLaboralAFP, ['SIN AFP']) : null),
+      arl: claveArl ? elegir(comboBoxRelacionLaboralARL, [claveArl[1]]) : null,
+    };
+    comboBoxAportanteTipoIdentificacionConsultar.SetValue(1); comboBoxAportanteTipoIdentificacionConsultar.RaiseValueChangedEvent?.();
+    textBoxAportanteNumeroIdentificacionConsultar.SetValue(d.nit);
+    buttonAportanteConsutar.DoClick();
+    return salida;
+  }, [d]);
+  if (!laboral.afp) avisos.push(`No se encontró la AFP "${d.afp}" en el portal: elígela a mano.`);
+  if (!laboral.arl) avisos.push(`No se encontró la ARL "${d.arl}" en el portal: elígela a mano.`);
+
+  await esperar(1500);
+  const aportante = await esperarQue(tab, (nit) => {
+    if (loadingPanel.IsVisible()) return null;
+    const modalTxt = modalDatosAfiliado.GetMainElement().innerText;
+    const i = modalTxt.indexOf('Nombre o razón social:');
+    if (i < 0) return null;
+    const bloque = modalTxt.slice(i, i + 400);
+    if (!bloque.includes(nit)) return null;
+    const lineas = bloque.split('\n').map(l => l.trim()).filter(Boolean);
+    const cartera = (bloque.match(/(\d+)\s*periodos/) || [])[1];
+    return { razon: lineas[4] || lineas[1] || '', cartera: cartera ? Number(cartera) : 0 };
+  }, [d.nit], 30000);
+  if (!aportante) avisos.push('El portal no mostró los datos del aportante: pulsa VALIDAR en la sección del aportante.');
+  else if (aportante.cartera > 0) avisos.push(`El portal marca ${aportante.cartera} periodo(s) en mora del aportante.`);
+
+  await ejecutar(tab, (d) => {
+    const ts = comboBoxRelacionLaboralTipoSalario;
+    for (let i = 0; i < ts.GetItemCount(); i++) if (String(ts.GetItem(i).value) === '2') { ts.SetSelectedIndex(i); ts.RaiseValueChangedEvent?.(); }
+    if (!textBoxRelacionLaboralIngresoMensual.GetValue()) { textBoxRelacionLaboralIngresoMensual.SetValue(String(d.salario)); textBoxRelacionLaboralIngresoMensual.RaiseValueChangedEvent?.(); }
+    if (!textBoxRelacionLaboralCargo.GetValue()) { textBoxRelacionLaboralCargo.SetValue(d.cargo); textBoxRelacionLaboralCargo.RaiseValueChangedEvent?.(); }
+    return true;
+  }, [d]);
+
+  // 7. Documentos: formulario firmado y encuesta de la carta de derechos.
+  await ejecutar(tab, () => { pageControlDatosAfiliado.SetActiveTabIndex(1); return true; });
+  await esperar(2500);
+  const adjuntos = [];
+  for (const doc of d.documentos || []) {
+    const url = new URL(doc.url, origen);
+    if (url.origin !== origen) throw new Error('El documento no viene de BryNex.');
+    const res = await fetch(url, { credentials: 'include' });
+    if (!res.ok || !/pdf/.test(res.headers.get('content-type') || '')) { avisos.push(`BryNex no entregó ${doc.nombre}.`); continue; }
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+
+    const subido = await ejecutar(tab, (tipo, b64, nombre) => {
+      const input = document.querySelector(`input[type=file][id$="Uploader_-1_${tipo}_Pag1_TextBox0_Input"]`);
+      if (!input) return { __error: `No se encontró dónde adjuntar el documento ${tipo}.` };
+      const raw = atob(b64); const u8 = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) u8[i] = raw.charCodeAt(i);
+      const dt = new DataTransfer(); dt.items.add(new File([u8], nombre, { type: 'application/pdf' }));
+      input.files = dt.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      let ctrl = null;
+      ASPx.GetControlCollection().ForEachControl(c => { if (!ctrl && c.name && c.name.endsWith(`Uploader_-1_${tipo}_Pag1`)) ctrl = c; });
+      try { if (ctrl && !ctrl.autoStartUpload && typeof ctrl.UploadFile === 'function') ctrl.UploadFile(); } catch { /* sube solo */ }
+      return true;
+    }, [doc.tipo, btoa(bin), doc.nombre]);
+    const listo = subido && await esperarQue(tab, (tipo) => {
+      const cont = document.getElementById(`formContenedorAfiliadoDocumentos_${tipo}_0_2`);
+      const fila = cont?.closest('tr');
+      return fila && !/no ha sido seleccionado/i.test(fila.innerText) ? fila.innerText.replace(/\s+/g, ' ').trim() : null;
+    }, [doc.tipo], 60000);
+    adjuntos.push({ nombre: doc.nombre, ok: !!listo, estado: listo || 'sin confirmar' });
+    if (!listo) avisos.push(`No se confirmó el adjunto ${doc.nombre}: adjúntalo a mano en la pestaña Documentos.`);
+  }
+
+  // 8. Todo a la vista: la persona revisa, pulsa ACEPTAR en el afiliado y GUARDAR.
+  await ejecutar(tab, (doc) => { sessionStorage.setItem('brynexBoxalud', JSON.stringify({ documento: doc, desde: Date.now() })); return true; }, [String(d.documento)]);
+  await chrome.tabs.update(tab, { active: true });
+  await chrome.windows.update(pestana.windowId, { focused: true });
+
+  return { ok: true, empresa: est.empresa, direccion: contacto.direccion, afp: laboral.afp, arl: laboral.arl, aportante, adjuntos, avisos };
+}
+
+/** Después de GUARDAR: mensajes del portal y, si aparece, el número. */
+function pBoxResultado(documento) {
+  const vis = e => !!(e && (e.offsetWidth || e.offsetHeight));
+  let marca = null;
+  try { marca = JSON.parse(sessionStorage.getItem('brynexBoxalud') || 'null'); } catch { /* sin marca */ }
+  if (!marca || (documento && marca.documento !== documento)) return { guardado: false, sinTramite: true };
+
+  const mensajes = [...document.querySelectorAll('[id*="pupMensaje"], [id*="ucMensajeAplicacion"] .dxpc-content, .dxpc-content')]
+    .filter(vis).map(e => e.innerText.replace(/\s+/g, ' ').trim()).filter(t => t && t.length < 1500);
+  const enModal = typeof window.modalDatosAfiliado === 'object' && window.modalDatosAfiliado.IsVisible?.();
+  const texto = [...new Set(mensajes)].join(' — ');
+  const exito = /(guardad|registrad|radicad|exitos|creada|satisfactori)/i.test(texto);
+  const salioDeDiligenciar = !/Diligenciar/i.test(location.pathname);
+  if (!exito && (enModal || !salioDeDiligenciar)) return { guardado: false, mensajes };
+
+  const m = texto.match(/(?:radicad[oa]|solicitud|afiliaci[oó]n|n[uú]mero|consecutivo)[^0-9]{0,40}(\d{4,})/i);
+  sessionStorage.removeItem('brynexBoxalud');
+  return { guardado: true, numero: m ? m[1] : null, texto: texto || document.body.innerText.replace(/\s+/g, ' ').slice(0, 1500), mensajes, url: location.href };
 }

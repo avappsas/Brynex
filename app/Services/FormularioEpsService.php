@@ -16,7 +16,8 @@ class FormularioEpsService
     {
         return $this->generarDesde(
             $contrato,
-            $contrato->eps,
+            // Contratos viejos sin eps_id: la EPS es la del cliente (como en Afiliaciones).
+            $contrato->eps ?: $contrato->cliente?->eps,
             'formularios/eps',
             'Sin formulario configurado para esta EPS.',
             $incluirBeneficiarios,
@@ -132,7 +133,7 @@ class FormularioEpsService
             'tramite.novedad_x'        => $novedadInicioLaboral ? 'X' : '',
             'novedad.inicio_laboral_x' => $novedadInicioLaboral ? 'X' : '',
             // ── ARL y Pensión ──────────────────────────────────────
-            'eps.nombre'               => strtoupper($contrato->eps?->nombre ?? ''),
+            'eps.nombre'               => strtoupper(($contrato->eps ?: $c?->eps)?->nombre ?? ''),
             'arl.nombre'               => strtoupper($contrato->arl?->nombre_arl ?? $contrato->arl?->razon_social ?? ''),
             'pension.nombre'           => strtoupper($contrato->pension?->razon_social ?? ''),
             // ── Contrato ───────────────────────────────────────────
