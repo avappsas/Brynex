@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Models\BrynexModuloAliado;
 use App\Models\User;
 use App\Services\PermisoService;
 use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
@@ -52,6 +53,20 @@ class AuthServiceProvider extends ServiceProvider
             }
 
             return null;
+        });
+
+        /**
+         * Automatización de portales (ARL por API, portales de EPS, Conciliar EPS
+         * y Buzón). BryNex la usa en cualquier aliado; los usuarios del aliado,
+         * solo si BryNex le activó el módulo `automatizacion_portales` al aliado
+         * activo. No es un permiso del catálogo, así que el Gate::before no la toca.
+         */
+        Gate::define('automatizar-portales', function (User $user) {
+            if ($user->es_brynex) {
+                return true;
+            }
+
+            return BrynexModuloAliado::aliadoTiene((int) session('aliado_id_activo'), 'automatizacion_portales');
         });
     }
 }

@@ -913,23 +913,26 @@ Route::middleware('auth')->group(function () {
 
         // Afiliación directa contra el API de ARL Sura. El precheck no toca el
         // portal: dice qué le falta al contrato antes de intentar nada.
+        // Todo lo que opera el portal exige el módulo de automatización (BryNex o aliado autorizado).
         $aa = \App\Http\Controllers\Admin\ArlAfiliacionController::class;
-        Route::get('/{id}/precheck', [$aa, 'precheck'])->name('precheck');
-        Route::post('/{id}/afiliar', [$aa, 'afiliar'])->name('afiliar');
-        // Anular NO tiene API en Sura: lo hace un navegador sobre el Struts.
-        Route::post('/{id}/anular', [$aa, 'anular'])->name('anular');
-        // El ciclo mensual: anula la cobertura vigente y crea la del mes nuevo.
-        // Sura no deja mover la fecha de una cobertura ya creada.
-        Route::post('/{id}/renovar-sura', [$aa, 'renovar'])->name('renovar-sura');
-        // El certificado cambia de estado al llegar la fecha de cobertura, así
-        // que se puede volver por el bueno sin repetir ningún trámite.
-        Route::get('/{id}/certificado', [$aa, 'certificado'])->name('certificado');
-        // Cierra la cobertura en el portal para el retiro del módulo. Solo toca
-        // Sura: el contrato lo marca después el retiro de siempre.
-        Route::post('/{id}/anular-sura', [$aa, 'anularSura'])->name('anular-sura');
         Route::get('/{id}/datos-retiro', [$aa, 'datosRetiro'])->name('datos-retiro');
-        // Credencial del portal de esa empresa; al guardarla se descubre su póliza.
-        Route::post('/{id}/credencial', [$aa, 'credencial'])->name('credencial');
+        Route::middleware('can:automatizar-portales')->group(function () use ($aa) {
+            Route::get('/{id}/precheck', [$aa, 'precheck'])->name('precheck');
+            Route::post('/{id}/afiliar', [$aa, 'afiliar'])->name('afiliar');
+            // Anular NO tiene API en Sura: lo hace un navegador sobre el Struts.
+            Route::post('/{id}/anular', [$aa, 'anular'])->name('anular');
+            // El ciclo mensual: anula la cobertura vigente y crea la del mes nuevo.
+            // Sura no deja mover la fecha de una cobertura ya creada.
+            Route::post('/{id}/renovar-sura', [$aa, 'renovar'])->name('renovar-sura');
+            // El certificado cambia de estado al llegar la fecha de cobertura, así
+            // que se puede volver por el bueno sin repetir ningún trámite.
+            Route::get('/{id}/certificado', [$aa, 'certificado'])->name('certificado');
+            // Cierra la cobertura en el portal para el retiro del módulo. Solo toca
+            // Sura: el contrato lo marca después el retiro de siempre.
+            Route::post('/{id}/anular-sura', [$aa, 'anularSura'])->name('anular-sura');
+            // Credencial del portal de esa empresa; al guardarla se descubre su póliza.
+            Route::post('/{id}/credencial', [$aa, 'credencial'])->name('credencial');
+        });
     });
 
     // -- Afiliaciones
@@ -938,40 +941,43 @@ Route::middleware('auth')->group(function () {
         $fc = \App\Http\Controllers\Admin\FormularioEpsController::class;
         Route::get('/', [$ac, 'index'])->name('index');
         Route::get('/exportar', [$ac, 'exportar'])->name('exportar');
-        // Conciliación de radicados de EPS SURA contra el portal (proceso en segundo plano).
-        $esc = \App\Http\Controllers\Admin\EpsSuraConciliacionController::class;
-        Route::post('/conciliar-eps-sura', [$esc, 'iniciar'])->name('conciliar-eps-sura');
-        Route::get('/conciliar-eps-sura/estado', [$esc, 'estado'])->name('conciliar-eps-sura.estado');
-        // Conciliación de Sanitas: el Estado de Afiliación lo trae la extensión BryNex Portales.
-        $sanc = \App\Http\Controllers\Admin\SanitasController::class;
-        Route::post('/sanitas/conciliar', [$sanc, 'conciliar'])->name('sanitas.conciliar');
-        Route::get('/sanitas/conciliar/estado', [$sanc, 'estado'])->name('sanitas.conciliar.estado');
-        // Bandeja del agente del buzón de afiliaciones.
-        $buz = \App\Http\Controllers\Admin\BuzonAfiliacionesController::class;
-        Route::get('/buzon', [$buz, 'index'])->name('buzon');
-        Route::post('/buzon/recibido/{id}', [$buz, 'marcar'])->name('buzon.marcar');
-        Route::post('/buzon/enviado/{id}/cerrar', [$buz, 'cerrarEnviado'])->name('buzon.cerrar-enviado');
-        Route::get('/buzon/recibido/{id}/adjunto/{indice}', [$buz, 'adjunto'])->name('buzon.adjunto');
-        // Reingreso en el portal de Nueva EPS desde el radicado de EPS.
-        $nec = \App\Http\Controllers\Admin\NuevaEpsController::class;
-        Route::get('/{contrato}/nueva-eps/precheck', [$nec, 'precheck'])->name('nueva-eps.precheck');
-        Route::post('/{contrato}/nueva-eps/consultar', [$nec, 'consultar'])->name('nueva-eps.consultar');
-        Route::post('/{contrato}/nueva-eps/registrar', [$nec, 'registrar'])->name('nueva-eps.registrar');
-        // Novedad de inicio laboral en Salud Total desde el radicado de EPS.
-        $stc = \App\Http\Controllers\Admin\SaludTotalController::class;
-        Route::get('/{contrato}/salud-total/precheck', [$stc, 'precheck'])->name('salud-total.precheck');
-        Route::post('/{contrato}/salud-total/consultar', [$stc, 'consultar'])->name('salud-total.consultar');
-        Route::post('/{contrato}/salud-total/registrar', [$stc, 'registrar'])->name('salud-total.registrar');
-        // Novedad de inicio laboral en S.O.S.: el portal lo opera la extensión BryNex Portales.
-        $sosc = \App\Http\Controllers\Admin\SosController::class;
-        Route::get('/{contrato}/sos/precheck', [$sosc, 'precheck'])->name('sos.precheck');
-        Route::get('/{contrato}/sos/lado-b', [$sosc, 'ladoB'])->name('sos.lado-b');
-        Route::post('/{contrato}/sos/credencial', [$sosc, 'credencial'])->name('sos.credencial');
-        Route::post('/{contrato}/sos/aplicar', [$sosc, 'aplicar'])->name('sos.aplicar');
-        // Plan B: afiliación por correo al asesor de S.O.S. (portal rechaza o independientes).
-        Route::get('/{contrato}/sos/correo', [$sosc, 'correoPreparar'])->name('sos.correo');
-        Route::post('/{contrato}/sos/correo/documento', [$sosc, 'correoDocumento'])->name('sos.correo.documento')->middleware('permiso:documentos.subir');
-        Route::post('/{contrato}/sos/correo/enviar', [$sosc, 'correoEnviar'])->name('sos.correo.enviar');
+        // Automatización de portales, Conciliar EPS y Buzón: BryNex o aliado autorizado.
+        Route::middleware('can:automatizar-portales')->group(function () {
+            // Conciliación de radicados de EPS SURA contra el portal (proceso en segundo plano).
+            $esc = \App\Http\Controllers\Admin\EpsSuraConciliacionController::class;
+            Route::post('/conciliar-eps-sura', [$esc, 'iniciar'])->name('conciliar-eps-sura');
+            Route::get('/conciliar-eps-sura/estado', [$esc, 'estado'])->name('conciliar-eps-sura.estado');
+            // Conciliación de Sanitas: el Estado de Afiliación lo trae la extensión BryNex Portales.
+            $sanc = \App\Http\Controllers\Admin\SanitasController::class;
+            Route::post('/sanitas/conciliar', [$sanc, 'conciliar'])->name('sanitas.conciliar');
+            Route::get('/sanitas/conciliar/estado', [$sanc, 'estado'])->name('sanitas.conciliar.estado');
+            // Bandeja del agente del buzón de afiliaciones.
+            $buz = \App\Http\Controllers\Admin\BuzonAfiliacionesController::class;
+            Route::get('/buzon', [$buz, 'index'])->name('buzon');
+            Route::post('/buzon/recibido/{id}', [$buz, 'marcar'])->name('buzon.marcar');
+            Route::post('/buzon/enviado/{id}/cerrar', [$buz, 'cerrarEnviado'])->name('buzon.cerrar-enviado');
+            Route::get('/buzon/recibido/{id}/adjunto/{indice}', [$buz, 'adjunto'])->name('buzon.adjunto');
+            // Reingreso en el portal de Nueva EPS desde el radicado de EPS.
+            $nec = \App\Http\Controllers\Admin\NuevaEpsController::class;
+            Route::get('/{contrato}/nueva-eps/precheck', [$nec, 'precheck'])->name('nueva-eps.precheck');
+            Route::post('/{contrato}/nueva-eps/consultar', [$nec, 'consultar'])->name('nueva-eps.consultar');
+            Route::post('/{contrato}/nueva-eps/registrar', [$nec, 'registrar'])->name('nueva-eps.registrar');
+            // Novedad de inicio laboral en Salud Total desde el radicado de EPS.
+            $stc = \App\Http\Controllers\Admin\SaludTotalController::class;
+            Route::get('/{contrato}/salud-total/precheck', [$stc, 'precheck'])->name('salud-total.precheck');
+            Route::post('/{contrato}/salud-total/consultar', [$stc, 'consultar'])->name('salud-total.consultar');
+            Route::post('/{contrato}/salud-total/registrar', [$stc, 'registrar'])->name('salud-total.registrar');
+            // Novedad de inicio laboral en S.O.S.: el portal lo opera la extensión BryNex Portales.
+            $sosc = \App\Http\Controllers\Admin\SosController::class;
+            Route::get('/{contrato}/sos/precheck', [$sosc, 'precheck'])->name('sos.precheck');
+            Route::get('/{contrato}/sos/lado-b', [$sosc, 'ladoB'])->name('sos.lado-b');
+            Route::post('/{contrato}/sos/credencial', [$sosc, 'credencial'])->name('sos.credencial');
+            Route::post('/{contrato}/sos/aplicar', [$sosc, 'aplicar'])->name('sos.aplicar');
+            // Plan B: afiliación por correo al asesor de S.O.S. (portal rechaza o independientes).
+            Route::get('/{contrato}/sos/correo', [$sosc, 'correoPreparar'])->name('sos.correo');
+            Route::post('/{contrato}/sos/correo/documento', [$sosc, 'correoDocumento'])->name('sos.correo.documento')->middleware('permiso:documentos.subir');
+            Route::post('/{contrato}/sos/correo/enviar', [$sosc, 'correoEnviar'])->name('sos.correo.enviar');
+        });
         Route::get('/{contrato}/historial', [$ac, 'historial'])->name('historial');
         Route::get('/{contrato}/formulario/eps', [$fc, 'vista'])->name('formulario.eps');
         Route::get('/{contrato}/formulario/eps/raw', [$fc, 'generar'])->name('formulario.eps.raw');

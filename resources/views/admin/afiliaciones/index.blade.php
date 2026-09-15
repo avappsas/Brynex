@@ -310,8 +310,10 @@ body {
 
         <button type="button" onclick="abrirModalClavesGlobal()" class="btn-export" style="background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#1c1917;border:none;font-weight:800;cursor:pointer;">🔑 Claves</button>
         <a href="{{ route('admin.gestion-arl.index') }}" class="btn-export" style="background:#f97316;">🛡️ ARL</a>
+        @can('automatizar-portales')
         <button type="button" onclick="abrirConciliacionEpsSura()" class="btn-export" style="background:#0033a0;cursor:pointer;" title="Pone al día los radicados de EPS (SURA y Nueva EPS) con lo que dicen los portales">🩺 Conciliar EPS</button>
         <a href="{{ route('admin.afiliaciones.buzon') }}" class="btn-export" style="background:#4338ca;text-decoration:none;" title="Respuestas de los asesores y correos de las entidades que revisa el agente del buzón">📬 Buzón</a>
+        @endcan
     </div>
 </div>
 </form>
@@ -1325,6 +1327,8 @@ function sortClass($col, $currSort, $currDir) {
 // ── Variables globales ──
 let radicadoActivo = null;
 const CSRF = document.querySelector('meta[name="csrf-token"]')?.content;
+// Automatización de portales: usuarios BryNex o aliado autorizado por BryNex.
+const PUEDE_AUTOMATIZAR = @json(Gate::allows('automatizar-portales'));
 
 // ── Helpers ──
 function cerrarModal(id) {
@@ -1540,8 +1544,8 @@ function abrirModalRadicado(radId, radData, ctx = {}, contratoId = null, tieneFo
     const btnAnular = document.getElementById('btnAnularApi');
     const esArlSura = (radData.tipo === 'arl') && /SURA/i.test(ctx.arl || '');
 
-    btnApi.style.display    = (esArlSura && radData.estado !== 'ok') ? 'inline-flex' : 'none';
-    btnAnular.style.display = (esArlSura && radData.estado === 'ok') ? 'inline-flex' : 'none';
+    btnApi.style.display    = (PUEDE_AUTOMATIZAR && esArlSura && radData.estado !== 'ok') ? 'inline-flex' : 'none';
+    btnAnular.style.display = (PUEDE_AUTOMATIZAR && esArlSura && radData.estado === 'ok') ? 'inline-flex' : 'none';
     // El badge de un radicado existente no trae data-contrato-id (solo el de
     // crear), así que el id sale del contexto.
     btnApi._contratoId = btnAnular._contratoId = contratoId || ctx.id || null;
@@ -1549,19 +1553,19 @@ function abrirModalRadicado(radId, radData, ctx = {}, contratoId = null, tieneFo
     // Reingreso por el portal: radicados de EPS de Nueva EPS que aún no están en OK.
     const btnNuevaEps = document.getElementById('btnReingresoNuevaEps');
     const esNuevaEps  = (radData.tipo === 'eps') && /NUEVA\s*EPS/i.test(ctx.eps || '');
-    btnNuevaEps.style.display = (esNuevaEps && radData.estado !== 'ok') ? 'inline-flex' : 'none';
+    btnNuevaEps.style.display = (PUEDE_AUTOMATIZAR && esNuevaEps && radData.estado !== 'ok') ? 'inline-flex' : 'none';
     btnNuevaEps._contratoId = contratoId || ctx.id || null;
 
     // Novedad de inicio laboral: radicados de EPS de Salud Total que aún no están en OK.
     const btnSaludTotal = document.getElementById('btnNovedadSaludTotal');
     const esSaludTotal  = (radData.tipo === 'eps') && /SALUD\s*TOTAL/i.test(ctx.eps || '');
-    btnSaludTotal.style.display = (esSaludTotal && radData.estado !== 'ok') ? 'inline-flex' : 'none';
+    btnSaludTotal.style.display = (PUEDE_AUTOMATIZAR && esSaludTotal && radData.estado !== 'ok') ? 'inline-flex' : 'none';
     btnSaludTotal._contratoId = contratoId || ctx.id || null;
 
     // Novedad de inicio laboral: radicados de EPS de S.O.S. que aún no están en OK.
     const btnSos = document.getElementById('btnNovedadSos');
     const esSos  = (radData.tipo === 'eps') && /^\s*S\.?\s*O\.?\s*S\.?\s*$/i.test(ctx.eps || '');
-    btnSos.style.display = (esSos && radData.estado !== 'ok') ? 'inline-flex' : 'none';
+    btnSos.style.display = (PUEDE_AUTOMATIZAR && esSos && radData.estado !== 'ok') ? 'inline-flex' : 'none';
     btnSos._contratoId = contratoId || ctx.id || null;
     // Contexto del contrato
     document.getElementById('mrad-cotizante').textContent        = ctx.nombre         || '—';
@@ -2586,7 +2590,7 @@ async function conciliarSanitas(simular) {
         const data = await res.json();
         if (!data.ok) throw new Error(data.mensaje || 'No se pudo conciliar.');
         pintarConciliacionEpsSura(data);
-        estado.innerHTML = `${simular ? '<strong>(solo consulta)</strong> ' : ''}${data.empresa}: ${data.afiliados_sanitas} afiliados en Sanitas (${data.habilitados_sanitas} habilitados)` +
+        estado.innerHTML = `${simular ? '<strong>(solo consulta)</strong> ' : ''}${data.empresa}${(data.aliados || []).length > 1 ? ` (aliados: ${data.aliados.join(', ')})` : ''}: ${data.afiliados_sanitas} afiliados en Sanitas (${data.habilitados_sanitas} habilitados)` +
             (data.confirmados_ok ? ` · ${data.confirmados_ok} que ya estaban en OK quedan confirmados` : '') + '.';
         if (!simular && data.cerrados > 0) mostrarToast(`${data.cerrados} radicados de Sanitas pasaron a OK. Recarga para verlos.`, 'success');
     } catch (err) {
@@ -2609,9 +2613,11 @@ function mostrarToast(msg, tipo) {
 @include('admin.partials._modal_claves_globales')
 
 
+@can('automatizar-portales')
 @include('admin.partials._afiliar_arl_sura')
 @include('admin.partials._reingreso_nueva_eps')
 @include('admin.partials._novedad_salud_total')
 @include('admin.partials._novedad_sos')
+@endcan
 
 @endsection

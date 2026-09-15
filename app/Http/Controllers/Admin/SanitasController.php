@@ -28,23 +28,30 @@ class SanitasController extends Controller
             'txt'     => 'required|string|max:5000000',
             'simular' => 'boolean',
         ]);
-        $aliadoId = (int) session('aliado_id_activo');
+        // BryNex concilia la empresa en todos los aliados donde está; el aliado, solo lo suyo.
+        $aliados = Auth::user()->es_brynex ? $servicio->aliadosDelNit($datos['nit']) : [(int) session('aliado_id_activo')];
 
         try {
-            $r = $servicio->conciliar($aliadoId, $datos['nit'], $datos['txt'], (bool) ($datos['simular'] ?? false), Auth::id());
+            $r = $servicio->conciliar($aliados, $datos['nit'], $datos['txt'], (bool) ($datos['simular'] ?? false), Auth::id());
         } catch (Throwable $e) {
             return response()->json(['ok' => false, 'mensaje' => $e->getMessage()], 422);
         }
 
         // El modal muestra la última corrida como las demás entidades.
         $estado = $r + ['corriendo' => false, 'fin' => now()->toIso8601String(), 'mensaje' => 'Terminado.'];
-        Cache::put("sanitas_conciliacion:estado:{$aliadoId}", $estado, now()->addDay());
+        Cache::put($this->claveEstado(), $estado, now()->addDay());
 
         return response()->json(['ok' => true] + $estado);
     }
 
     public function estado()
     {
-        return response()->json(Cache::get('sanitas_conciliacion:estado:'.(int) session('aliado_id_activo')) ?? ['corriendo' => false, 'vacio' => true]);
+        return response()->json(Cache::get($this->claveEstado()) ?? ['corriendo' => false, 'vacio' => true]);
+    }
+
+    /** La corrida consolidada de BryNex no se mezcla con la de cada aliado. */
+    private function claveEstado(): string
+    {
+        return 'sanitas_conciliacion:estado:'.(Auth::user()->es_brynex ? 'brynex' : (int) session('aliado_id_activo'));
     }
 }

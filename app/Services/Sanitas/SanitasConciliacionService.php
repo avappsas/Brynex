@@ -2,6 +2,7 @@
 
 namespace App\Services\Sanitas;
 
+use App\Models\Aliado;
 use App\Models\Contrato;
 use App\Models\Radicado;
 use App\Models\RadicadoMovimiento;
@@ -26,12 +27,19 @@ use RuntimeException;
  * vigentes con Sanitas de esa empresa pasan a OK confirmado si la persona está
  * HABILITADA y el apellido coincide. Además lista a los habilitados de la empresa
  * que BryNex no tiene como contrato vigente con Sanitas.
+ *
+ * Un mismo NIT puede ser razón social en varios aliados (ELITES está en Brygar,
+ * Grupo Fecop, Luis Lopez y BryNex). El usuario BryNex concilia todos a la vez;
+ * el del aliado, solo el suyo.
  */
 class SanitasConciliacionService
 {
     public const CODIGO_EPS = 'EPS005';
 
     public const CONFIRMADOR = 'eps_sanitas';
+
+    /** Si la corrida abarca varios aliados y cada fila debe decir de cuál es. */
+    private bool $conAliado = false;
 
     private const ESTADOS = [Radicado::ESTADO_PENDIENTE, Radicado::ESTADO_TRAMITE, Radicado::ESTADO_ERROR, Radicado::ESTADO_OK];
 
@@ -71,28 +79,41 @@ class SanitasConciliacionService
                 ?? $filas->sortByDesc(fn ($a) => $this->fecha($a['inicio'])?->timestamp ?? 0)->first());
     }
 
+    /** Aliados donde el NIT es razón social (lo que ve un usuario BryNex). */
+    public function aliadosDelNit(string $nit): array
+    {
+        return RazonSocial::where('nit', preg_replace('/\D/', '', $nit))->distinct()->pluck('aliado_id')
+            ->map(fn ($id) => (int) $id)->sort()->values()->all();
+    }
+
     /**
-     * @return array{empresa:string, total:int, cerrados:int, faltan:int, revisar:int, errores:int, sobran:array, simulado:bool, detalle:array}
+     * @param  int[]  $aliadoIds  aliados a conciliar: el activo, o todos los del NIT para BryNex
+     * @return array{empresa:string, aliados:array, total:int, cerrados:int, faltan:int, revisar:int, errores:int, sobran:array, simulado:bool, detalle:array}
      */
-    public function conciliar(int $aliadoId, string $nit, string $txt, bool $simular, ?int $usuarioId): array
+    public function conciliar(array $aliadoIds, string $nit, string $txt, bool $simular, ?int $usuarioId): array
     {
         $nit = preg_replace('/\D/', '', $nit);
-        $rs = RazonSocial::where('aliado_id', $aliadoId)->where('nit', $nit)->first();
-        if (! $rs) {
+        $aliadoIds = array_values(array_unique(array_map('intval', $aliadoIds)));
+        $razones = RazonSocial::whereIn('aliado_id', $aliadoIds)->where('nit', $nit)->get();
+        if ($razones->isEmpty()) {
             throw new RuntimeException("El NIT {$nit} de la sesión de Sanitas no es una razón social de este aliado.");
         }
+        // Solo los aliados que de verdad tienen la empresa; con más de uno se dice de cuál es cada fila.
+        $aliadoIds = $razones->pluck('aliado_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $this->conAliado = count($aliadoIds) > 1;
 
         $enSanitas = $this->leer($txt);
         $detalle = [];
 
-        foreach ($this->candidatos($aliadoId, $nit) as $r) {
+        foreach ($this->candidatos($aliadoIds, $nit) as $r) {
             $detalle[] = $this->cruzar($r, $enSanitas->get(ltrim((string) $r->contrato->cedula, '0')), $simular, $usuarioId);
         }
 
         $cuenta = collect($detalle)->countBy('accion');
 
         return [
-            'empresa'  => $rs->razon_social,
+            'empresa'  => $razones->first()->razon_social,
+            'aliados'  => Aliado::whereIn('id', $aliadoIds)->orderBy('id')->pluck('nombre')->all(),
             'total'    => count($detalle),
             'cerrados' => $cuenta->get('cerrado', 0) + $cuenta->get('cerraria', 0),
             'tramite'  => 0,
@@ -100,7 +121,7 @@ class SanitasConciliacionService
             'revisar'  => $cuenta->get('revisar', 0),
             'confirmados_ok' => $cuenta->get('ya_ok', 0),
             'errores'  => $cuenta->get('error', 0),
-            'sobran'   => $this->sobrantes($aliadoId, $nit, $enSanitas),
+            'sobran'   => $this->sobrantes($aliadoIds, $nit, $enSanitas),
             'afiliados_sanitas' => $enSanitas->count(),
             'habilitados_sanitas' => $enSanitas->where('estado', 'HABILITADO')->count(),
             'simulado' => $simular,
@@ -110,15 +131,15 @@ class SanitasConciliacionService
     }
 
     /** Radicados de EPS sin confirmar de contratos vigentes con Sanitas (la del contrato o, si no tiene, la del cliente). */
-    private function candidatos(int $aliadoId, string $nit): Collection
+    private function candidatos(array $aliadoIds, string $nit): Collection
     {
         return Radicado::query()
-            ->where('radicados.aliado_id', $aliadoId)
+            ->whereIn('radicados.aliado_id', $aliadoIds)
             ->where('radicados.tipo', Radicado::TIPO_EPS)
             ->whereIn('radicados.estado', self::ESTADOS)
             ->whereNull('radicados.confirmado_por')
             ->whereHas('contrato', fn ($c) => $c
-                ->where('aliado_id', $aliadoId)
+                ->whereColumn('contratos.aliado_id', 'radicados.aliado_id')
                 ->where('estado', 'vigente')
                 ->whereDate('fecha_ingreso', '<=', today())
                 ->whereHas('plan', fn ($p) => $p->where('incluye_eps', true))
@@ -126,7 +147,7 @@ class SanitasConciliacionService
                     ->whereHas('eps', fn ($x) => $x->where('codigo', self::CODIGO_EPS))
                     ->orWhere(fn ($sin) => $sin->whereNull('eps_id')->whereHas('cliente.eps', fn ($x) => $x->where('codigo', self::CODIGO_EPS))))
                 ->whereHas('razonSocial', fn ($rs) => $rs->where('es_independiente', false)->where('nit', $nit)))
-            ->with(['contrato.cliente', 'contrato.razonSocial'])
+            ->with(['contrato.cliente', 'contrato.razonSocial', 'contrato.aliado'])
             ->orderBy('radicados.id')
             ->get();
     }
@@ -189,15 +210,15 @@ class SanitasConciliacionService
      * con Sanitas en esa razón social (retirados que siguen activos, otra EPS en
      * BryNex, o personas que no están).
      */
-    private function sobrantes(int $aliadoId, string $nit, Collection $enSanitas): array
+    private function sobrantes(array $aliadoIds, string $nit, Collection $enSanitas): array
     {
         $habilitados = $enSanitas->where('estado', 'HABILITADO');
         if ($habilitados->isEmpty()) {
             return [];
         }
 
-        $contratos = Contrato::with(['eps', 'cliente.eps', 'razonSocial'])
-            ->where('aliado_id', $aliadoId)
+        $contratos = Contrato::with(['eps', 'cliente.eps', 'razonSocial', 'aliado'])
+            ->whereIn('aliado_id', $aliadoIds)
             ->whereIn('cedula', $habilitados->keys()->all())
             ->orderByDesc('id')
             ->get()
@@ -214,15 +235,25 @@ class SanitasConciliacionService
             }
 
             $vigente = $suyos->first(fn ($c) => $c->estado === 'vigente');
+            $referencia = $vigente ?: $suyos->first();
+            $donde = $this->conAliado && $referencia ? ' ('.$this->nombreAliado($referencia).')' : '';
             $motivo = match (true) {
-                $suyos->isEmpty() => 'No tiene contratos en BryNex.',
-                (bool) $vigente   => 'Contrato vigente en BryNex con '.(($vigente->eps ?: $vigente->cliente?->eps)?->nombre ?? 'otra EPS').' en '.($vigente->razonSocial?->razon_social ?? '—').'.',
-                default           => 'Retirado en BryNex (último contrato '.$suyos->first()->estado.') pero sigue habilitado en Sanitas.',
+                $suyos->isEmpty() => $this->conAliado ? 'No tiene contratos en ningún aliado de BryNex.' : 'No tiene contratos en BryNex.',
+                (bool) $vigente   => 'Contrato vigente en BryNex con '.(($vigente->eps ?: $vigente->cliente?->eps)?->nombre ?? 'otra EPS').' en '.($vigente->razonSocial?->razon_social ?? '—').$donde.'.',
+                default           => 'Retirado en BryNex'.$donde.' (último contrato '.$suyos->first()->estado.') pero sigue habilitado en Sanitas.',
             };
-            $salida[] = ['cedula' => (string) $doc, 'nombre' => $a['nombre'], 'desde' => $a['inicio'], 'motivo' => $motivo];
+            $salida[] = [
+                'cedula' => (string) $doc, 'nombre' => $a['nombre'], 'desde' => $a['inicio'], 'motivo' => $motivo,
+                'aliado' => $referencia ? $this->nombreAliado($referencia) : null,
+            ];
         }
 
         return $salida;
+    }
+
+    private function nombreAliado(Contrato $c): string
+    {
+        return $c->aliado?->nombre ?? 'Aliado '.$c->aliado_id;
     }
 
     private function fila(Radicado $r, string $accion, string $mensaje): array
@@ -234,7 +265,8 @@ class SanitasConciliacionService
             'contrato_id'  => $c->id,
             'cedula'       => (string) $c->cedula,
             'nombre'       => trim(($c->cliente?->primer_nombre ?? '').' '.($c->cliente?->primer_apellido ?? '')),
-            'empresa'      => $c->razonSocial?->razon_social,
+            'empresa'      => $c->razonSocial?->razon_social.($this->conAliado ? ' · '.$this->nombreAliado($c) : ''),
+            'aliado'       => $this->nombreAliado($c),
             'estado_antes' => $r->estado,
             'accion'       => $accion,
             'mensaje'      => $mensaje,

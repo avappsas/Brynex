@@ -22,7 +22,8 @@
   $puedeCertificadoArl = $esEdicion
       && str_contains(mb_strtoupper($arlEfectivaNombre ?? ''), 'SURA')
       && $contrato->razonSocial?->arl_poliza
-      && auth()->user()?->can('gestion_arl.ver');
+      && auth()->user()?->can('gestion_arl.ver')
+      && auth()->user()?->can('automatizar-portales');
   // intval evita que PHP emita "1750905.00" que rompe el JS de Alpine
   $defAdmon       = (int) old('administracion',   $contrato->administracion  ?? $defaultTarifas['administracion']    ?? 0);
   $defAdmonAsesor = (int) old('admon_asesor',     $contrato->admon_asesor    ?? $defaultTarifas['admon_asesor']      ?? 0);

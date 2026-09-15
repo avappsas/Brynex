@@ -337,6 +337,7 @@ body{display:flex;flex-direction:column}
             <a class="btn-accion btn-contrato" href="/admin/contratos/{{ $c->id }}/edit" title="Ver/Editar Contrato">
                 📄
             </a>
+            @can('automatizar-portales')
             <button class="btn-accion btn-renovar" onclick="abrirRenovar({{ $ctx }})" title="Mover la cobertura del trabajador a la fecha del mes nuevo en ARL Sura">
                 📅 Renovar
             </button>
@@ -347,10 +348,11 @@ body{display:flex;flex-direction:column}
                     <path d="M6 7.6v3.2m0 0L4.7 9.6M6 10.8l1.3-1.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
             </button>
+            @endcan
             <button class="btn-accion btn-facturar" onclick="abrirFacturar({{ $ctx }})" title="Facturar afiliación ARL">
                 💳 Facturar
             </button>
-            <button class="btn-accion btn-retirar" onclick="abrirRetirar({{ $ctx->id ?? $c->id }}, '{{ addslashes($nombre) }}')" title="Anular la cobertura en Sura y dejar el contrato retirado">
+            <button class="btn-accion btn-retirar" onclick="abrirRetirar({{ $ctx->id ?? $c->id }}, '{{ addslashes($nombre) }}')" title="{{ Gate::allows('automatizar-portales') ? 'Anular la cobertura en Sura y dejar el contrato retirado' : 'Dejar el contrato retirado' }}">
                 ❌
             </button>
         </td>
@@ -477,9 +479,14 @@ body{display:flex;flex-direction:column}
 
     <div id="retirar-contenido" style="display:none;">
         <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:.65rem .8rem;margin-bottom:.75rem;font-size:.75rem;color:#991b1b;line-height:1.55;">
+            @can('automatizar-portales')
             El sistema va a <strong>anular la cobertura en el portal de Sura</strong> y dejar el contrato
             <strong>retirado</strong>, con retiro informativo (0 días cotizados).<br>
             <span style="color:#7f1d1d;">Si Sura ya no deja anularla, se te preguntará antes de hacer nada más.</span>
+            @else
+            El sistema va a dejar el contrato <strong>retirado</strong>, con retiro informativo (0 días cotizados).<br>
+            <span style="color:#7f1d1d;">La cobertura en el portal de Sura la cierras tú.</span>
+            @endcan
         </div>
 
         <div id="retirar-periodo" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:.5rem .75rem;margin-bottom:.75rem;font-size:.75rem;color:#166534;"></div>
@@ -522,7 +529,7 @@ body{display:flex;flex-direction:column}
         <input type="hidden" id="retirar-contrato-id">
         <input type="hidden" id="retirar-mes-plano">
         <input type="hidden" id="retirar-anio-plano">
-        <button class="btn-save" id="retirar-btn" style="background:#b91c1c" onclick="confirmarRetiro()">❌ Anular en Sura y retirar</button>
+        <button class="btn-save" id="retirar-btn" style="background:#b91c1c" onclick="confirmarRetiro()">❌ {{ Gate::allows('automatizar-portales') ? 'Anular en Sura y retirar' : 'Retirar' }}</button>
     </div>
 
     <div id="retirar-resultado" style="display:none;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:.75rem .9rem;font-size:.8rem;color:#166534;"></div>
@@ -543,6 +550,9 @@ body{display:flex;flex-direction:column}
 @push('scripts')
 <script>
 const CSRF = document.querySelector('meta[name="csrf-token"]')?.content;
+// Automatización de portales: usuarios BryNex o aliado autorizado por BryNex.
+const PUEDE_AUTOMATIZAR = @json(Gate::allows('automatizar-portales'));
+const RETIRAR_TEXTO = PUEDE_AUTOMATIZAR ? '❌ Anular en Sura y retirar' : '❌ Retirar';
 
 /* ── Helpers modales ── */
 function cerrarModal(id) {
@@ -965,7 +975,7 @@ async function abrirRetirar(id, nombre) {
         (d.motivos || []).map(m => `<option value="${m.id}">${m.nombre}</option>`).join('');
 
     const btn = document.getElementById('retirar-btn');
-    btn.disabled = false; btn.textContent = '❌ Anular en Sura y retirar';
+    btn.disabled = false; btn.textContent = RETIRAR_TEXTO;
 }
 
 async function confirmarRetiro() {
@@ -974,10 +984,11 @@ async function confirmarRetiro() {
     if (!motivo) { alert('Selecciona el motivo del retiro.'); return; }
 
     const btn   = document.getElementById('retirar-btn');
-    const parar = gaEsperar(btn, 'Anulando en Sura...');
+    const parar = gaEsperar(btn, PUEDE_AUTOMATIZAR ? 'Anulando en Sura...' : 'Retirando...');
 
     try {
-        let r = await pedirAnulacionSura(id, false);
+        // Sin la automatización autorizada, el portal lo maneja la persona: solo se retira en BryNex.
+        let r = PUEDE_AUTOMATIZAR ? await pedirAnulacionSura(id, false) : { ok: true, mensaje: 'La cobertura en ARL Sura no se tocó: ciérrala en el portal.' };
 
         // Falta la clave del portal: se pide aquí y el usuario vuelve a darle.
         if (r.requiere_credencial) {
@@ -1017,7 +1028,7 @@ async function confirmarRetiro() {
     } finally {
         parar();
         btn.disabled = false;
-        if (btn.textContent.startsWith('⏳')) btn.textContent = '❌ Anular en Sura y retirar';
+        if (btn.textContent.startsWith('⏳')) btn.textContent = RETIRAR_TEXTO;
     }
 }
 
