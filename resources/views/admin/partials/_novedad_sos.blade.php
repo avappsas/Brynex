@@ -25,8 +25,10 @@
 .sosn-btn { width:100%;margin-top:.5rem;background:linear-gradient(135deg,#1d4ed8,#2563eb);color:#fff;border:none;border-radius:10px;padding:.6rem 1.2rem;font-size:.86rem;font-weight:700;cursor:pointer }
 .sosn-btn.sec { background:#fff;color:#1d4ed8;border:1px solid #93c5fd }
 .sosn-btn:disabled { opacity:.5;cursor:not-allowed }
-.sosn-captcha { text-align:center;margin:.4rem 0 .6rem }
-.sosn-captcha img { max-width:100%;border:2px solid #2563eb;border-radius:6px;cursor:crosshair }
+.sosn-captcha { text-align:center;margin:.4rem 0 .6rem;position:relative;display:flex;justify-content:center }
+.sosn-captcha-marco { position:relative;display:inline-block;line-height:0 }
+.sosn-captcha img { max-width:100%;border:2px solid #2563eb;border-radius:6px;cursor:crosshair;user-select:none;-webkit-user-select:none;-webkit-user-drag:none }
+.sosn-punto { position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:rgba(220,38,38,.85);border:2px solid #fff;pointer-events:none }
 .sosn-fecha { display:flex;gap:.5rem;align-items:center;font-size:.78rem;margin:.3rem 0 .2rem }
 .sosn-fecha input { border:1px solid #cbd5e1;border-radius:7px;padding:.3rem .5rem;font-size:.8rem }
 </style>
@@ -50,7 +52,10 @@
         {{-- Sesión del portal --}}
         <div class="sosn-info" id="sosnSesion"></div>
         <div id="sosnCaptcha" style="display:none">
-          <div class="sosn-captcha"><img id="sosnCaptchaImg" alt="Captcha de S.O.S." onclick="clicCaptchaSos(event)"></div>
+          <div class="sosn-captcha"><div class="sosn-captcha-marco" id="sosnCaptchaMarco">
+            <img id="sosnCaptchaImg" alt="Captcha de S.O.S." draggable="false" onmousedown="event.preventDefault()" onclick="clicCaptchaSos(event)">
+          </div></div>
+          <div style="text-align:center;font-size:.72rem;color:#64748b;margin:-.2rem 0 .4rem">Un clic por imagen; espera a que se actualice antes del siguiente.</div>
           <div style="display:flex;gap:.4rem">
             <button class="sosn-btn sec" style="margin-top:0" onclick="pintarSesionSos(true)">🔄 Actualizar imagen</button>
             <button class="sosn-btn sec" style="margin-top:0" onclick="reiniciarCaptchaSos()">↩️ Otro captcha</button>
@@ -191,18 +196,33 @@ async function iniciarSesionSos() {
     aplicarSesionSos(d.sesion || {});
 }
 
+let sosnEnviando = false;
 async function clicCaptchaSos(ev) {
+    // Un clic a la vez: dos seguidos marcaban y desmarcaban la misma casilla.
+    if (sosnEnviando) return;
     const img = ev.currentTarget;
     const caja = img.getBoundingClientRect();
     const x = (ev.clientX - caja.left) * (sosnAncho / caja.width);
     const y = (ev.clientY - caja.top) * (sosnAlto / caja.height);
+
+    const punto = document.createElement('div');
+    punto.className = 'sosn-punto';
+    punto.style.left = (ev.clientX - caja.left) + 'px';
+    punto.style.top = (ev.clientY - caja.top) + 'px';
+    sosnEl('sosnCaptchaMarco').appendChild(punto);
+
+    sosnEnviando = true;
     clearInterval(sosnReloj);
     img.style.opacity = .6;
     try {
         const d = await sosnPedir('sesion/clic', 'POST', { x, y }, 30);
         if (!d.ok) alert(d.error || 'No se pudo enviar el clic.');
         else aplicarSesionSos(d.sesion || {});
-    } finally { img.style.opacity = 1; }
+    } finally {
+        img.style.opacity = 1;
+        punto.remove();
+        sosnEnviando = false;
+    }
 }
 
 async function reiniciarCaptchaSos() {

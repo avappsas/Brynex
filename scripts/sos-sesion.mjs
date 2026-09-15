@@ -56,14 +56,28 @@ const ejecutable = await (async () => {
 })();
 if (!ejecutable) { log('No se encontró Chrome'); process.exit(1); }
 
+// En el servidor (Linux) Chrome ignora --lang y el captcha salía en inglés: el
+// idioma va también en la cabecera y en el locale de la página.
 const navegador = await puppeteer.launch({
   executablePath: ejecutable,
   headless: 'new',
-  args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled', '--lang=es-CO'],
+  args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled', '--lang=es-CO', '--accept-lang=es-CO,es'],
+  env: { ...process.env, LANG: 'es_CO.UTF-8', LANGUAGE: 'es_CO:es' },
   defaultViewport: { width: 1280, height: 900 },
 });
 const pagina = await navegador.newPage();
 await pagina.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36');
+await pagina.setExtraHTTPHeaders({ 'Accept-Language': 'es-CO,es;q=0.9' });
+await (await pagina.createCDPSession()).send('Emulation.setLocaleOverride', { locale: 'es-CO' }).catch(() => {});
+// Lo que de verdad decide el idioma del reCAPTCHA es `hl` en la carga de api.js.
+await pagina.setRequestInterception(true);
+pagina.on('request', (req) => {
+  const url = req.url();
+  if (/google\.com\/recaptcha\/api\.js/.test(url) && !/[?&]hl=/.test(url)) {
+    return req.continue({ url: url + (url.includes('?') ? '&' : '?') + 'hl=es-419' }).catch(() => {});
+  }
+  return req.continue().catch(() => {});
+});
 pagina.on('dialog', d => d.accept().catch(() => {}));
 
 const terminar = async (codigo = 0) => {
@@ -150,6 +164,8 @@ async function marcarCaptcha() {
   for (let i = 0; i < 20 && !marcoAncla(); i++) await esperar(500);
   const ancla = marcoAncla();
   if (!ancla) throw new Error('El login de S.O.S. no mostró el captcha.');
+  await ancla.waitForSelector('#recaptcha-anchor', { visible: true, timeout: 30000 });
+  await esperar(800);
   await ancla.click('#recaptcha-anchor');
   await esperar(3000);
   estado.etapa = 'captcha';
@@ -367,6 +383,13 @@ const servidor = http.createServer(async (req, res) => {
       if (!caja) { await revisarCaptcha(); return responder(200, { ok: true, etapa: estado.etapa }); }
       const x = Math.max(0, Math.min(caja.width, Number(datos.x)));
       const y = Math.max(0, Math.min(caja.height, Number(datos.y)));
+      // Para el log: qué hay bajo el clic dentro del reto (casilla, botón…).
+      const reto = pagina.frames().find(f => /bframe/.test(f.url()));
+      const objetivo = reto ? await reto.evaluate((px, py) => {
+        const e = document.elementFromPoint(px, py);
+        return e ? `${e.tagName}.${String(e.className).slice(0, 60)}` : null;
+      }, x, y).catch(() => null) : null;
+      log(`Clic captcha (${Math.round(x)},${Math.round(y)}) → ${objetivo}`);
       await pagina.mouse.click(caja.x + x, caja.y + y, { delay: 60 });
       await esperar(1200);
       await revisarCaptcha();
