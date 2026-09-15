@@ -38,6 +38,7 @@
  *  ccfConsultar {tipoDoc, documento}   → busca al trabajador y devuelve las opciones del portal
  *  ccfPaso {…datos, opciones}          → llena el paso que esté a la vista (Personal, Laboral, Beneficiarios…)
  *  ccfResultado                        → {radicado, numero, texto} tras Finalizar Afiliación
+ *  ccfTrabajadores                     → {nit, empresa, filas} de "Trabajadores por Empresa" (conciliación)
  */
 
 const ORIGENES_BRYNEX = ['https://brynex.co', 'https://www.brynex.co', 'http://localhost:8000'];
@@ -1077,6 +1078,7 @@ async function atenderCcfcv(accion, d = {}) {
   if (accion === 'ccfConsultar') return ccfConsultar(pestana, d);
   if (accion === 'ccfPaso') return { ok: true, ...(await ejecutar(pestana.id, pCcfPaso, [d])) };
   if (accion === 'ccfResultado') return { ok: true, ...(await ejecutar(pestana.id, pCcfResultado)) };
+  if (accion === 'ccfTrabajadores') return ccfTrabajadores(pestana);
 
   throw new Error(`Acción de Comfenalco desconocida: ${accion}`);
 }
@@ -1206,4 +1208,33 @@ function pCcfResultado() {
   const m = texto.match(/n[uú]mero de formulario:?\s*([0-9]{6,})/i) || texto.match(/formulario:?\s*([0-9]{6,})/i);
   if (!m && !/registrad|exito/i.test(texto)) return { radicado: false, texto };
   return { radicado: !!m, numero: m ? m[1] : null, texto: texto.slice(0, 1500) };
+}
+
+/** Lista de "Trabajadores por Empresa" para conciliar los radicados de caja. */
+async function ccfTrabajadores(pestana) {
+  const tab = pestana.id;
+  const est = await ejecutar(tab, pCcfEstado);
+  if (!est.sesion) return { ok: false, error: 'El portal no tiene la sesión iniciada. Entra con el usuario de la empresa.' };
+
+  await chrome.tabs.update(tab, { url: `${CCFCV_BASE}/consultaTrabajadoresEmpresa.html` });
+  await esperarCarga(tab);
+  await esperar(3000);
+
+  const empresa = await ejecutar(tab, () => ({ nit: ($('#txtNumDocumentoEmp').val() || '').replace(/\D/g, ''), razon: $('#txtRazonSocal').val() }));
+  if (!empresa.nit) return { ok: false, error: 'El portal no mostró la empresa de la sesión.' };
+
+  await ejecutar(tab, () => { $('#btnConsultar').click(); return true; });
+  const filas = await esperarQue(tab, () => {
+    const vis = e => !!(e && (e.offsetWidth || e.offsetHeight));
+    const modal = [...document.querySelectorAll('.jconfirm-content')].filter(vis).map(e => e.innerText.replace(/\s+/g, ' ').trim());
+    if (modal.length) return { error: modal.join(' ') };
+    const t = $('#tablaTrabajadores').DataTable();
+    const datos = t ? t.rows().data().toArray() : [];
+    return datos.length ? { datos: datos.map(f => [...f].slice(0, 4).map(x => String(x).replace(/<[^>]*>/g, '').trim())) } : null;
+  }, [], 60000);
+
+  if (!filas) return { ok: false, error: 'El portal no devolvió la lista de trabajadores (¿la empresa no tiene afiliados?).' };
+  if (filas.error) return { ok: false, error: filas.error };
+
+  return { ok: true, nit: empresa.nit, empresa: empresa.razon, filas: filas.datos };
 }

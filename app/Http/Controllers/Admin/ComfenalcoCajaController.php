@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Contrato;
+use App\Services\Caja\ComfenalcoCajaConciliacionService;
 use App\Services\Caja\ComfenalcoCajaService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Throwable;
@@ -58,6 +60,45 @@ class ComfenalcoCajaController extends Controller
         } catch (Throwable $e) {
             return response()->json(['ok' => false, 'error' => $e->getMessage()], 422);
         }
+    }
+
+    /**
+     * Conciliación de los radicados de caja con "Trabajadores por Empresa" que
+     * baja la extensión. BryNex concilia la empresa en todos los aliados del NIT.
+     */
+    public function conciliar(Request $request, ComfenalcoCajaConciliacionService $conciliacion)
+    {
+        $datos = $request->validate([
+            'nit'     => 'required|string|max:20',
+            'filas'   => 'required|array|max:6000',
+            'filas.*' => 'array|max:8',
+            'simular' => 'boolean',
+        ]);
+        $aliados = Auth::user()->es_brynex
+            ? $conciliacion->aliadosDelNit($datos['nit'])
+            : [(int) session('aliado_id_activo')];
+
+        try {
+            $r = $conciliacion->conciliar($aliados, $datos['nit'], $datos['filas'], (bool) ($datos['simular'] ?? false), Auth::id());
+        } catch (Throwable $e) {
+            return response()->json(['ok' => false, 'mensaje' => $e->getMessage()], 422);
+        }
+
+        $estado = $r + ['corriendo' => false, 'fin' => now()->toIso8601String(), 'mensaje' => 'Terminado.'];
+        Cache::put($this->claveEstado(), $estado, now()->addDay());
+
+        return response()->json(['ok' => true] + $estado);
+    }
+
+    public function estado()
+    {
+        return response()->json(Cache::get($this->claveEstado()) ?? ['corriendo' => false, 'vacio' => true]);
+    }
+
+    /** La corrida consolidada de BryNex no se mezcla con la de cada aliado. */
+    private function claveEstado(): string
+    {
+        return 'caja_comfenalco_conciliacion:estado:'.(Auth::user()->es_brynex ? 'brynex' : (int) session('aliado_id_activo'));
     }
 
     /** Siempre del aliado activo: el id llega por la URL. */

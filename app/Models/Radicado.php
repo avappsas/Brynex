@@ -36,6 +36,7 @@ class Radicado extends BaseModel
         'salud_total' => 'Salud Total',
         'eps_sanitas' => 'Sanitas',
         'arl_sura'    => 'ARL Sura',
+        'caja_comfenalco' => 'Comfenalco Valle',
     ];
 
     protected static function booted(): void
