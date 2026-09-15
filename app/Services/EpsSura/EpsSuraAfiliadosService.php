@@ -210,6 +210,7 @@ class EpsSuraAfiliadosService
         }
 
         return [
+            'empresa'    => $salida['empresa'] ?? null,
             'afiliados'  => collect($salida['afiliados'] ?? []),
             'incompleto' => $incompleto,
             'total_sura' => isset($salida['total_sura']) ? (int) $salida['total_sura'] : null,

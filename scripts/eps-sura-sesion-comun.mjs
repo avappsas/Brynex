@@ -79,7 +79,18 @@ export async function entrarEmpresaEps(pagina, { tipoDocumento, usuario, contras
     throw new Error('No apareció ni la selección de empresa ni el menú del portal de EPS.');
   }
   if (pantalla !== SEL_NIT) {
-    return; // una sola empresa: el portal no pregunta
+    // Los enlaces del menú también existen en la pantalla de selección, así que
+    // pueden ganarle al campo del NIT mientras se dibuja. Concluir "una sola
+    // empresa" en ese instante dejaba la sesión en la empresa por defecto del
+    // usuario: el 15-sep-2026 el informe de Global Contact salió de otra
+    // empresa (0 de 77 coincidencias). Solo se da por única si el campo no
+    // aparece en unos segundos.
+    let campo = null;
+    for (let i = 0; i < 10 && !campo; i++) {
+      await esperar(600);
+      campo = await pagina.$(SEL_NIT).catch(() => null);
+    }
+    if (!campo) return; // una sola empresa: el portal no pregunta
   }
 
   await pagina.select('[id="loginEmpresas:tipoDniEmpresa"]', 'NI').catch(() => {});

@@ -159,6 +159,16 @@ try {
   const empresa = (t.match(/Empresa\t([^\n\t]+)/) || [])[1]?.trim() || null;
   const totalSura = Number((t.match(/Total afiliados\t(\d+)/) || [])[1] || 0) || null;
 
+  // El informe tiene que ser de la empresa pedida: cruzarlo con el de otra
+  // confirmaría a quien trabaje en ambas. El encabezado trae
+  // "Identificación NI <nit> Empresa <nombre>"; se compara con o sin dígito de verificación.
+  paso = 'verificar empresa';
+  const nitInforme = (t.match(/Identificaci[oó]n\s+NI\s+(\d+)/i) || [])[1] || null;
+  const nitPedido = String(entrada.nitEmpresa).replace(/\D/g, '');
+  if (!nitInforme || !(nitInforme.startsWith(nitPedido) || nitPedido.startsWith(nitInforme))) {
+    throw new Error(`El informe salió de otra empresa (NIT ${nitInforme ?? 'sin identificar'}${empresa ? ', ' + empresa : ''}), no de ${nitPedido}.`);
+  }
+
   // ── Paginar ──
   paso = 'paginar';
   // La llave es la fila sin el estado: releer una página no duplica, y si una
