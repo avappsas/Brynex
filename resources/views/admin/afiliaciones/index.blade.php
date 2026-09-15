@@ -1011,6 +1011,8 @@ function sortClass($col, $currSort, $currDir) {
                 style="padding:0.3rem 0.8rem;border-radius:7px;border:1px solid #be123c;font-size:0.78rem;font-weight:700;cursor:pointer;">Nueva EPS</button>
             <button type="button" class="ceps-tab" data-entidad="salud_total" onclick="elegirEntidadConciliacion('salud_total')"
                 style="padding:0.3rem 0.8rem;border-radius:7px;border:1px solid #15803d;font-size:0.78rem;font-weight:700;cursor:pointer;">Salud Total</button>
+            <button type="button" class="ceps-tab" data-entidad="sanitas" onclick="elegirEntidadConciliacion('sanitas')"
+                style="padding:0.3rem 0.8rem;border-radius:7px;border:1px solid #0e7490;font-size:0.78rem;font-weight:700;cursor:pointer;">Sanitas</button>
         </div>
 
         <div id="ceps-descripcion-sura" style="font-size:0.78rem;color:#475569;line-height:1.45;margin-bottom:0.8rem;">
@@ -1031,6 +1033,14 @@ function sortClass($col, $currSort, $currDir) {
             con <strong>inconsistencias</strong> queda en error con el motivo. Si no hay novedad pero ya está activo con la empresa, también pasa a OK.
             Los que faltan se tramitan desde el radicado (🏥 Novedad Salud Total).
             <br>Tarda unos segundos por empresa.
+        </div>
+
+        <div id="ceps-descripcion-sanitas" style="display:none;font-size:0.78rem;color:#475569;line-height:1.45;margin-bottom:0.8rem;">
+            Baja el <strong>Estado de Afiliación</strong> de la Oficina Virtual de Empleadores de Sanitas con la sesión abierta en este navegador
+            (extensión BryNex Portales) y lo cruza con los radicados de EPS de esa empresa: quien está <strong>HABILITADO</strong> y coincide el apellido
+            pasa a <strong>OK confirmado</strong>; quien no aparece <strong>falta radicar</strong> (cambio de empleador). También lista a los habilitados
+            en Sanitas que BryNex no tiene como contrato vigente con Sanitas.
+            <div id="ceps-sanitas-sesion" style="margin-top:0.45rem;"></div>
         </div>
 
         <div id="ceps-acciones" style="display:flex;gap:0.5rem;margin-bottom:0.8rem;">
@@ -1056,6 +1066,7 @@ function sortClass($col, $currSort, $currDir) {
                 <tbody id="ceps-filas"></tbody>
             </table>
         </div>
+        <div id="ceps-sobran" style="display:none;margin-top:0.8rem;font-size:0.74rem;"></div>
     </div>
 </div>
 
@@ -2393,7 +2404,7 @@ const CEPS_ACCIONES = {
     revisar:  ['👀 Revisar', '#e0e7ff', '#3730a3'],
     error:    ['❌ Error', '#fee2e2', '#991b1b'],
 };
-const CEPS_NOMBRES = { sura: 'EPS SURA', nueva_eps: 'Nueva EPS', salud_total: 'Salud Total' };
+const CEPS_NOMBRES = { sura: 'EPS SURA', nueva_eps: 'Nueva EPS', salud_total: 'Salud Total', sanitas: 'Sanitas' };
 let _cepsTimer = null;
 let _cepsCorria = false;
 let _cepsEntidad = 'sura';
@@ -2408,7 +2419,7 @@ function elegirEntidadConciliacion(entidad) {
     _cepsCorria = false;
     document.querySelectorAll('.ceps-tab').forEach(b => {
         const activo = b.dataset.entidad === entidad;
-        b.style.background = activo ? ({ sura: '#0033a0', nueva_eps: '#be123c', salud_total: '#15803d' }[entidad]) : '#fff';
+        b.style.background = activo ? ({ sura: '#0033a0', nueva_eps: '#be123c', salud_total: '#15803d', sanitas: '#0e7490' }[entidad]) : '#fff';
         b.style.color = activo ? '#fff' : '#334155';
     });
     Object.keys(CEPS_NOMBRES).forEach(k => {
@@ -2418,6 +2429,7 @@ function elegirEntidadConciliacion(entidad) {
 }
 
 async function iniciarConciliacionEpsSura(simular) {
+    if (_cepsEntidad === 'sanitas') return conciliarSanitas(simular);
     if (!simular && !confirm(`Se consultará el portal de ${CEPS_NOMBRES[_cepsEntidad]} y se actualizarán en BryNex los radicados que el portal confirme. ¿Continuar?`)) return;
     try {
         const res = await fetch(CEPS_URL_INICIAR, {
@@ -2437,7 +2449,9 @@ async function consultarConciliacionEpsSura() {
     clearTimeout(_cepsTimer);
     let data;
     try {
-        data = await (await fetch(CEPS_URL_ESTADO + '?entidad=' + _cepsEntidad, { headers: { 'Accept': 'application/json' } })).json();
+        if (_cepsEntidad === 'sanitas') revisarSesionSanitas();
+        const url = _cepsEntidad === 'sanitas' ? SANITAS_URL_ESTADO : CEPS_URL_ESTADO + '?entidad=' + _cepsEntidad;
+        data = await (await fetch(url, { headers: { 'Accept': 'application/json' } })).json();
     } catch (e) {
         return;
     }
@@ -2489,6 +2503,14 @@ function pintarConciliacionEpsSura(data) {
         resumen.style.display = 'none';
     }
 
+    const sobran = data.sobran || [];
+    const cajaSobran = document.getElementById('ceps-sobran');
+    cajaSobran.style.display = (_cepsEntidad === 'sanitas' && sobran.length) ? 'block' : 'none';
+    cajaSobran.innerHTML = sobran.length ? `<strong>Habilitados en Sanitas sin contrato vigente con Sanitas en BryNex (${sobran.length})</strong>` +
+        `<table style="width:100%;border-collapse:collapse;margin-top:0.35rem;"><tbody>` +
+        sobran.map(x => `<tr style="border-top:1px solid #f1f5f9;"><td style="padding:0.3rem 0.5rem;white-space:nowrap;">${esc(x.cedula)}</td><td style="padding:0.3rem 0.5rem;">${esc(x.nombre)}</td><td style="padding:0.3rem 0.5rem;white-space:nowrap;">desde ${esc(x.desde || '—')}</td><td style="padding:0.3rem 0.5rem;color:#475569;">${esc(x.motivo)}</td></tr>`).join('') +
+        `</tbody></table>` : '';
+
     const filas = data.detalle || [];
     tabla.style.display = filas.length ? 'table' : 'none';
     document.getElementById('ceps-filas').innerHTML = filas.map(f => {
@@ -2501,6 +2523,77 @@ function pintarConciliacionEpsSura(data) {
             <td style="padding:0.35rem 0.5rem;color:#475569;">${esc(f.mensaje)}</td>
         </tr>`;
     }).join('');
+}
+
+// ── Sanitas: conciliación con la extensión BryNex Portales ──
+const SANITAS_URL_CONCILIAR = @json(route('admin.afiliaciones.sanitas.conciliar'));
+const SANITAS_URL_ESTADO = @json(route('admin.afiliaciones.sanitas.conciliar.estado'));
+
+function brynexExt(portal, accion, datos = {}, limiteSeg = 120) {
+    return new Promise((resolve) => {
+        if (!document.documentElement.dataset.brynexPortales) {
+            resolve({ ok: false, sinExtension: true, error: 'La extensión BryNex Portales no está instalada en este navegador.' });
+            return;
+        }
+        const id = Date.now() + '-' + Math.random().toString(36).slice(2);
+        const oyente = (ev) => {
+            if (ev.source !== window || ev.data?.canal !== 'brynex-portales' || ev.data.tipo !== 'respuesta' || ev.data.id !== id) return;
+            window.removeEventListener('message', oyente); clearTimeout(alarma);
+            resolve(ev.data.respuesta || { ok: false, error: 'Respuesta vacía de la extensión.' });
+        };
+        window.addEventListener('message', oyente);
+        const alarma = setTimeout(() => { window.removeEventListener('message', oyente); resolve({ ok: false, error: 'La extensión no respondió a tiempo.' }); }, limiteSeg * 1000);
+        window.postMessage({ canal: 'brynex-portales', tipo: 'pedido', id, portal, accion, datos }, window.location.origin);
+    });
+}
+
+async function revisarSesionSanitas() {
+    const caja = document.getElementById('ceps-sanitas-sesion');
+    const e = await brynexExt('sanitas', 'estado', {}, 30);
+    const botonAbrir = `<button type="button" onclick="brynexExt('sanitas','abrir')" class="btn-export" style="background:#0e7490;cursor:pointer;margin-left:0.4rem;">🌐 Abrir Sanitas</button>`;
+    if (e.sinExtension) {
+        caja.innerHTML = '🧩 Falta la extensión <strong>BryNex Portales</strong> (versión 1.1.0 o superior) en este navegador.';
+    } else if (!e.ok) {
+        caja.innerHTML = '⚠️ ' + e.error;
+    } else if (!e.sesion) {
+        caja.innerHTML = '🔐 Abre la Oficina Virtual de Empleadores de Sanitas en otra pestaña e inicia sesión (captcha y código al correo); luego vuelve aquí.' + botonAbrir +
+            (e.captcha ? '<br>⚠️ Sanitas está pidiendo el captcha anti-robots en esa pestaña: resuélvelo allá.' : '');
+    } else {
+        caja.innerHTML = `✅ Sesión de Sanitas abierta: <strong>${e.empresa}</strong> (NIT ${e.nit}). Se concilian los radicados de esa empresa.`;
+    }
+    return e;
+}
+
+async function conciliarSanitas(simular) {
+    const e = await revisarSesionSanitas();
+    if (!e.ok || !e.sesion) { mostrarToast('Primero inicia sesión en la Oficina Virtual de Sanitas.', 'error'); return; }
+    if (!simular && !confirm(`Se cruzará el Estado de Afiliación de Sanitas de ${e.empresa} y los radicados que estén HABILITADOS pasarán a OK confirmado. ¿Continuar?`)) return;
+
+    const estado = document.getElementById('ceps-estado');
+    estado.style.display = 'block';
+    estado.innerHTML = `⏳ Bajando el Estado de Afiliación de ${e.empresa}…`;
+    document.getElementById('ceps-acciones').style.display = 'none';
+
+    try {
+        const rep = await brynexExt('sanitas', 'estadoAfiliacion', {}, 120);
+        if (!rep.ok) throw new Error(rep.error || 'No se pudo bajar el Estado de Afiliación.');
+        estado.innerHTML = '⏳ Cruzando con los radicados de BryNex…';
+        const res = await fetch(SANITAS_URL_CONCILIAR, {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': CSRF, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ nit: rep.nit, txt: rep.txt, simular }),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.mensaje || 'No se pudo conciliar.');
+        pintarConciliacionEpsSura(data);
+        estado.innerHTML = `${simular ? '<strong>(solo consulta)</strong> ' : ''}${data.empresa}: ${data.afiliados_sanitas} afiliados en Sanitas (${data.habilitados_sanitas} habilitados)` +
+            (data.confirmados_ok ? ` · ${data.confirmados_ok} que ya estaban en OK quedan confirmados` : '') + '.';
+        if (!simular && data.cerrados > 0) mostrarToast(`${data.cerrados} radicados de Sanitas pasaron a OK. Recarga para verlos.`, 'success');
+    } catch (err) {
+        estado.innerHTML = '❌ ' + err.message;
+    } finally {
+        document.getElementById('ceps-acciones').style.display = 'flex';
+    }
 }
 
 // ── Toast ──

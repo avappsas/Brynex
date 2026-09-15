@@ -34,6 +34,7 @@ class Radicado extends BaseModel
         'nueva_eps'   => 'Nueva EPS',
         'eps_sura'    => 'EPS SURA',
         'salud_total' => 'Salud Total',
+        'eps_sanitas' => 'Sanitas',
         'arl_sura'    => 'ARL Sura',
     ];
 

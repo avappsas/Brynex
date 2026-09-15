@@ -942,6 +942,10 @@ Route::middleware('auth')->group(function () {
         $esc = \App\Http\Controllers\Admin\EpsSuraConciliacionController::class;
         Route::post('/conciliar-eps-sura', [$esc, 'iniciar'])->name('conciliar-eps-sura');
         Route::get('/conciliar-eps-sura/estado', [$esc, 'estado'])->name('conciliar-eps-sura.estado');
+        // Conciliación de Sanitas: el Estado de Afiliación lo trae la extensión BryNex Portales.
+        $sanc = \App\Http\Controllers\Admin\SanitasController::class;
+        Route::post('/sanitas/conciliar', [$sanc, 'conciliar'])->name('sanitas.conciliar');
+        Route::get('/sanitas/conciliar/estado', [$sanc, 'estado'])->name('sanitas.conciliar.estado');
         // Bandeja del agente del buzón de afiliaciones.
         $buz = \App\Http\Controllers\Admin\BuzonAfiliacionesController::class;
         Route::get('/buzon', [$buz, 'index'])->name('buzon');

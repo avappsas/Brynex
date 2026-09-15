@@ -44,6 +44,7 @@ let cola = Promise.resolve();
 const enCola = (fn) => (cola = cola.then(fn, fn));
 
 async function atender({ portal, accion, datos = {} }, origen) {
+  if (portal === 'sanitas') return atenderSanitas(accion, datos);
   if (portal !== 'sos') throw new Error(`Portal desconocido: ${portal}`);
 
   if (accion === 'estado') return sosEstado();
@@ -451,4 +452,74 @@ async function sosAdjuntar(tabId, { tipo, documento, desde, hasta, archivo }, or
   const despues = await sosConsultar(tabId, { tipo, documento, desde, hasta });
   const ahora = despues.find(f => f.radicado === fila.radicado);
   return { ok: !!ahora && !/cara b/i.test(ahora.estado), radicado: fila.radicado, estado: ahora?.estado, novedad: ahora || null };
+}
+
+// ── Sanitas (Oficina Virtual de Empleadores) ──────────────────────────────
+// Detrás de Radware: todo se pide desde la propia pestaña de la persona, con
+// su sesión, sin navegar por el sitio (navegar mucho dispara el captcha).
+
+const SANITAS_EMPLEADORES = 'https://www.epssanitas.com/usuarios/group/empleadores';
+const SANITAS_PORTLET_ESTADO = 'consultarestadosafiliados_WAR_radicacionincapacidadesportlet';
+
+async function pestanaSanitas() {
+  const pestanas = await chrome.tabs.query({ url: ['https://www.epssanitas.com/*', 'https://epssanitas.com/*'] });
+  // Mejor una que ya esté dentro de la Oficina Virtual.
+  return pestanas.find(p => /\/group\/empleadores/.test(p.url || '')) || pestanas[0] || null;
+}
+
+async function atenderSanitas(accion, datos) {
+  if (accion === 'abrir') {
+    const p = await pestanaSanitas();
+    if (p) {
+      await chrome.tabs.update(p.id, { active: true });
+      await chrome.windows.update(p.windowId, { focused: true });
+    } else {
+      await chrome.tabs.create({ url: `${SANITAS_EMPLEADORES}/inicio`, active: true });
+    }
+    return { ok: true, abierta: true };
+  }
+
+  const pestana = await pestanaSanitas();
+  if (!pestana) return { ok: true, abierta: false, sesion: false };
+
+  if (accion === 'estado') {
+    return { ok: true, abierta: true, ...(await sanitasSesion(pestana.id)) };
+  }
+
+  if (accion === 'estadoAfiliacion') {
+    const s = await sanitasSesion(pestana.id);
+    if (!s.sesion) throw new Error('La pestaña de Sanitas no tiene la Oficina Virtual de Empleadores abierta. Inicia sesión y vuelve a intentar.');
+    const txt = await ejecutar(pestana.id, async (base, portlet) => {
+      const u = `${base}/estado-de-afiliacion?p_p_id=${portlet}&p_p_lifecycle=2&p_p_state=normal&p_p_mode=view&p_p_cacheability=cacheLevelPage&p_p_col_id=column-1&p_p_col_count=1&_${portlet}_tipoReporte=txt&_${portlet}_accion=desrcargarReporte`;
+      const r = await fetch(u, { credentials: 'include' });
+      const t = new TextDecoder('utf-8').decode(await r.arrayBuffer());
+      if (!/numero identificaci/i.test(t.slice(0, 400))) return { __error: 'Sanitas no entregó el Estado de Afiliación (¿se cerró la sesión o salió el captcha?).' };
+      return t;
+    }, [SANITAS_EMPLEADORES, SANITAS_PORTLET_ESTADO]);
+    return { ok: true, nit: s.nit, empresa: s.empresa, txt };
+  }
+
+  throw new Error(`Acción de Sanitas desconocida: ${accion}`);
+}
+
+/**
+ * ¿Hay sesión en la Oficina Virtual? Pide los datos de la empresa como hace la
+ * página del estado de afiliación (JSON con nombre y NIT); sin sesión no es JSON.
+ * Esa misma llamada deja listo el reporte que luego se descarga.
+ */
+async function sanitasSesion(tabId) {
+  try {
+    return await ejecutar(tabId, async (base, portlet) => {
+      const u = `${base}/estado-de-afiliacion?p_p_id=${portlet}&p_p_lifecycle=2&p_p_state=normal&p_p_mode=view&p_p_cacheability=cacheLevelPage&p_p_col_id=column-1&p_p_col_count=1&_${portlet}_accion=consultaDatosEmpresa`;
+      const r = await fetch(u, { method: 'POST', credentials: 'include' });
+      const t = await r.text();
+      let d;
+      try { d = JSON.parse(t); } catch { return { sesion: false, captcha: /perfdrive|radware|captcha/i.test(r.url + t.slice(0, 2000)) }; }
+      const b = d?.datosBasicos;
+      if (!b?.identificacion?.numIdentificacion) return { sesion: false };
+      return { sesion: true, empresa: b.nombreCompleto, nit: String(b.identificacion.numIdentificacion) };
+    }, [SANITAS_EMPLEADORES, SANITAS_PORTLET_ESTADO]);
+  } catch {
+    return { sesion: false };
+  }
 }
