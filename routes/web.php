@@ -983,6 +983,11 @@ Route::middleware('auth')->group(function () {
             Route::post('/{contrato}/sos/correo/documento', [$sosc, 'correoDocumento'])->name('sos.correo.documento')->middleware('permiso:documentos.subir');
             Route::post('/{contrato}/sos/correo/enviar', [$sosc, 'correoEnviar'])->name('sos.correo.enviar');
             // EPS sin portal de empleador (Comfenalco Valle): afiliación por correo al asesor.
+            // Caja Comfenalco Valle: afiliación por su Sucursal Virtual con la extensión.
+            $ccc = \App\Http\Controllers\Admin\ComfenalcoCajaController::class;
+            Route::get('/{contrato}/caja-comfenalco/precheck', [$ccc, 'precheck'])->name('caja-comfenalco.precheck');
+            Route::post('/{contrato}/caja-comfenalco/credencial', [$ccc, 'credencial'])->name('caja-comfenalco.credencial');
+            Route::post('/{contrato}/caja-comfenalco/aplicar', [$ccc, 'aplicar'])->name('caja-comfenalco.aplicar');
             // Portal Boxalud (Emssanar): afiliación con la extensión BryNex Portales.
             $bxc = \App\Http\Controllers\Admin\BoxaludController::class;
             Route::get('/{contrato}/boxalud/{eps}/precheck', [$bxc, 'precheck'])->name('boxalud.precheck')->where('eps', '[a-z_]+');

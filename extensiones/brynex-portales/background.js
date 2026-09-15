@@ -31,6 +31,13 @@
  *  boxAbrir {host, usuario, contrasena} → abre el login y deja escrito el usuario (y la clave si llegó)
  *  boxLlenar {…datos del contrato}     → Ingreso de afiliación lleno y documentos adjuntos; ACEPTAR y GUARDAR los pulsa la persona
  *  boxResultado {host, documento}      → {guardado, numero, texto, mensajes}
+ *
+ * Pedidos caja Comfenalco Valle (portal: 'ccfcv', Sucursal Virtual Afiliación):
+ *  ccfEstado                           → {abierta, sesion, empresa, pagina}
+ *  ccfAbrir {usuario, contrasena}      → abre el login y deja escrito el usuario
+ *  ccfConsultar {tipoDoc, documento}   → busca al trabajador y devuelve las opciones del portal
+ *  ccfPaso {…datos, opciones}          → llena el paso que esté a la vista (Personal, Laboral, Beneficiarios…)
+ *  ccfResultado                        → {radicado, numero, texto} tras Finalizar Afiliación
  */
 
 const ORIGENES_BRYNEX = ['https://brynex.co', 'https://www.brynex.co', 'http://localhost:8000'];
@@ -47,7 +54,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.canal !== 'brynex-portales' || !ORIGENES_BRYNEX.includes(origen) || sender.id !== chrome.runtime.id) return;
 
   // Ver el estado o abrir la pestaña no espera a que termine un trámite en curso.
-  const directo = ['estado', 'abrir', 'novedadEstado', 'novedadAbrir', 'novedadResultado', 'boxEstado', 'boxAbrir', 'boxResultado'].includes(msg.accion);
+  const directo = ['estado', 'abrir', 'novedadEstado', 'novedadAbrir', 'novedadResultado', 'boxEstado', 'boxAbrir', 'boxResultado', 'ccfEstado', 'ccfAbrir', 'ccfPaso', 'ccfResultado'].includes(msg.accion);
   (directo ? atender(msg, origen) : enCola(() => atender(msg, origen)))
     .then(sendResponse)
     .catch(e => sendResponse({ ok: false, error: String(e?.message || e).slice(0, 400) }));
@@ -61,6 +68,7 @@ const enCola = (fn) => (cola = cola.then(fn, fn));
 async function atender({ portal, accion, datos = {} }, origen) {
   if (portal === 'sanitas') return atenderSanitas(accion, datos, origen);
   if (portal === 'boxalud') return atenderBoxalud(accion, datos, origen);
+  if (portal === 'ccfcv') return atenderCcfcv(accion, datos);
   if (portal !== 'sos') throw new Error(`Portal desconocido: ${portal}`);
 
   if (accion === 'estado') return sosEstado();
@@ -1011,4 +1019,191 @@ function pBoxResultado(documento) {
   const m = texto.match(/(?:radicad[oa]|solicitud|afiliaci[oó]n|n[uú]mero|consecutivo)[^0-9]{0,40}(\d{4,})/i);
   sessionStorage.removeItem('brynexBoxalud');
   return { guardado: true, numero: m ? m[1] : null, texto: texto || document.body.innerText.replace(/\s+/g, ' ').slice(0, 1500), mensajes, url: location.href };
+}
+
+// ── Caja Comfenalco Valle: Sucursal Virtual Afiliación ────────────────────
+// jQuery + Chosen. Los combos se llenan con .val().trigger('change') y hay que
+// refrescar Chosen; los pasos los avanza la persona (Continuar) y ella acepta los
+// términos y pulsa Finalizar. La extensión solo llena lo que esté vacío.
+
+const CCFCV_HOST = 'virtual.comfenalcovalle.com.co';
+const CCFCV_BASE = `https://${CCFCV_HOST}/ServiciosWebRyA`;
+
+async function pestanaCcfcv() {
+  const ps = await chrome.tabs.query({ url: `https://${CCFCV_HOST}/*` });
+  return ps.find(p => /ServiciosWebRyA/.test(p.url || '')) || ps[0] || null;
+}
+
+function pCcfEstado() {
+  const login = /index\.html/.test(location.pathname) || !!document.querySelector('.btn-iniciar-sesion');
+  let empresa = null;
+  try { empresa = (JSON.parse(localStorage.getItem('empresa') || 'null') || {}).razonSocial || null; } catch { /* sin empresa */ }
+  if (!empresa) empresa = document.querySelector('#btnEmpresa, .nombre-empresa')?.innerText?.trim() || $('#txtRazonSocal').val() || null;
+  return { sesion: !!localStorage.getItem('usuario') && !login, empresa, pagina: location.pathname.split('/').pop() };
+}
+
+async function atenderCcfcv(accion, d = {}) {
+  if (accion === 'ccfAbrir') {
+    let p = await pestanaCcfcv();
+    if (p) {
+      await chrome.tabs.update(p.id, { active: true });
+      await chrome.windows.update(p.windowId, { focused: true });
+    } else {
+      p = await chrome.tabs.create({ url: `${CCFCV_BASE}/index.html?tipoUsuario=e`, active: true });
+      await esperarCarga(p.id);
+    }
+    if (d.usuario) {
+      await esperarQue(p.id, (u, c) => {
+        const campo = document.querySelector('input[type=email], input[name*=usuario], #txtUsuario, #usuario');
+        if (!campo) return true;
+        const poner = (e, v) => { e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); };
+        poner(campo, u);
+        const clave = document.querySelector('input[type=password]');
+        if (clave && c) poner(clave, c); else clave?.focus();
+        return true;
+      }, [String(d.usuario), d.contrasena ? String(d.contrasena) : ''], 12000);
+    }
+    return { ok: true, abierta: true };
+  }
+
+  const pestana = await pestanaCcfcv();
+  if (!pestana) return { ok: true, abierta: false, sesion: false };
+
+  if (accion === 'ccfEstado') {
+    let e;
+    try { e = await ejecutar(pestana.id, pCcfEstado); } catch { e = { sesion: false }; }
+    return { ok: true, abierta: true, ...e };
+  }
+  if (accion === 'ccfConsultar') return ccfConsultar(pestana, d);
+  if (accion === 'ccfPaso') return { ok: true, ...(await ejecutar(pestana.id, pCcfPaso, [d])) };
+  if (accion === 'ccfResultado') return { ok: true, ...(await ejecutar(pestana.id, pCcfResultado)) };
+
+  throw new Error(`Acción de Comfenalco desconocida: ${accion}`);
+}
+
+/** Busca al trabajador en "Realizar Afiliación" y devuelve lo que ofrece el portal. */
+async function ccfConsultar(pestana, d) {
+  const tab = pestana.id;
+  const est = await ejecutar(tab, pCcfEstado);
+  if (!est.sesion) return { ok: false, error: 'El portal no tiene la sesión iniciada. Entra con el usuario de la empresa.' };
+
+  if (!/consultarTrabajador/.test(est.pagina || '')) {
+    await chrome.tabs.update(tab, { url: `${CCFCV_BASE}/consultarTrabajador.html` });
+    await esperarCarga(tab);
+    await esperar(2500);
+  }
+  const empresa = await ejecutar(tab, () => ({ nit: $('#txtNumDocumentoEmp').val(), razon: $('#txtRazonSocal').val() }));
+  if (String(empresa.nit || '').replace(/\D/g, '') !== String(d.nit)) {
+    return { ok: false, error: `El portal está abierto con el NIT ${empresa.nit} (${empresa.razon}), y el contrato es de ${d.empresa}. Entra con el usuario de esa empresa.` };
+  }
+
+  await ejecutar(tab, (tipo, doc) => {
+    $('#cmbTipoDocumento').val(String(tipo)).trigger('change').trigger('chosen:updated');
+    $('#txtNumDocumento').val(doc).trigger('change');
+    $('#btnConsultar').click();
+    return true;
+  }, [d.tipoDoc, String(d.documento)]);
+
+  const r = await esperarQue(tab, () => {
+    const vis = e => !!(e.offsetWidth || e.offsetHeight);
+    const modal = [...document.querySelectorAll('.jconfirm-content')].filter(vis).map(e => e.innerText.replace(/\s+/g, ' ').trim());
+    if (modal.length) return { modal };
+    const ops = [...document.querySelectorAll("#panelAcciones div[id*='opcion']")].filter(vis)
+      .map(o => ({ id: o.id, texto: o.innerText.replace(/\s+/g, ' ').trim().slice(0, 160), boton: o.querySelector('a[id], button[id]')?.id }));
+    if (!ops.length) return null;
+    const familia = [...document.querySelectorAll('table')].filter(vis).find(t => /Parentesco/i.test(t.innerText));
+    return { opciones: ops, nombre: ($('#txtNombres').val() || '') + ' ' + ($('#txtApellidos').val() || ''), familia: familia ? familia.innerText.replace(/\s+/g, ' ').trim().slice(0, 500) : null };
+  }, [], 40000);
+
+  if (!r) return { ok: false, error: 'El portal no respondió la consulta del trabajador.' };
+  if (r.modal) return { ok: false, error: r.modal.join(' ') };
+
+  return { ok: true, ...r };
+}
+
+/**
+ * Llena el paso que esté a la vista. Se llama cada pocos segundos desde BryNex:
+ * la persona pulsa Continuar y en el siguiente llamado se llena el paso nuevo.
+ */
+function pCcfPaso(d) {
+  const vis = e => !!(e && (e.offsetWidth || e.offsetHeight));
+  const sel = (id, v) => { const e = document.getElementById(id); if (!e || v == null || v === '') return false; $(e).val(String(v)).trigger('change').trigger('chosen:updated'); return true; };
+  const txt = (id, v) => { const e = document.getElementById(id); if (!e || !v || e.value) return false; $(e).val(v).trigger('change'); return true; };
+  const norm = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  const porTexto = (id, texto, parcial = true) => {
+    const s = document.getElementById(id); if (!s || !texto) return null;
+    const t = norm(texto);
+    const op = [...s.options].find(o => norm(o.text) === t)
+      || (parcial ? [...s.options].find(o => o.value !== '-1' && (norm(o.text).startsWith(t) || t.startsWith(norm(o.text)))) : null)
+      || (parcial ? [...s.options].find(o => o.value !== '-1' && norm(o.text).includes(t.split(' ')[0]) && t.split(' ')[0].length > 3) : null);
+    if (!op) return null;
+    $(s).val(op.value).trigger('change').trigger('chosen:updated');
+    return op.text.trim();
+  };
+  const direccion = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+
+  const paso = [...document.querySelectorAll('fieldset, .sf-step')].filter(vis)
+    .map(f => f.querySelector('legend, h4, .titulo')?.innerText?.trim()).filter(Boolean)[0] || '';
+  const hecho = [];
+  const falta = [];
+
+  if (/Personal/i.test(paso)) {
+    sel('cmbTipoAfiliadoPersonal', 1) && hecho.push('tipo de afiliado: Dependiente');
+    sel('cmbClasesAfiliado', 1) && hecho.push('clase: Dependiente');
+    sel('cmbEstadosCivilPersonal', d.estadoCivil) && hecho.push('estado civil');
+    sel('cmbPaisResidenciaPersonal', 42);
+    if ($('#cmbDepartamentos option').length > 1) {
+      const dep = porTexto('cmbDepartamentos', d.departamento);
+      dep ? hecho.push('departamento: ' + dep) : falta.push('departamento ' + d.departamento);
+    }
+    if ($('#cmbMunicipioResidencia option').length > 1) {
+      const mun = porTexto('cmbMunicipioResidencia', d.municipio);
+      mun ? hecho.push('municipio: ' + mun) : falta.push('municipio ' + d.municipio);
+    }
+    if ($('#BarrioResidencia option').length > 1 && ($('#BarrioResidencia').val() || '-1') === '-1') {
+      const b = porTexto('BarrioResidencia', String(d.barrio || '').replace(/^(EL|LA|LOS|LAS)\s+/i, ''));
+      b ? hecho.push('barrio: ' + b) : falta.push('barrio ' + (d.barrio || '—'));
+    }
+    txt('txtDireccionResidenciaPersonal', direccion(d.direccion)) && hecho.push('dirección: ' + direccion(d.direccion));
+    txt('txtCelularPersonal', d.celular) && hecho.push('celular');
+    txt('txtCorreoPersonal', d.correo) && hecho.push('correo');
+    if (($('#cmbOrientacionSexualPersonal').val() || '-1') === '-1') sel('cmbOrientacionSexualPersonal', 4);
+    if (($('#cmbFactorVulnerabilidadPersonal').val() || '-1') === '-1') sel('cmbFactorVulnerabilidadPersonal', 12);
+    if (($('#cmbPertenenciaEtnicaPersonal').val() || '-1') === '-1') sel('cmbPertenenciaEtnicaPersonal', 7);
+  } else if (/Laboral/i.test(paso)) {
+    const suc = document.getElementById('cmbSucursalEmpresa');
+    if (suc && suc.options.length > 1 && ($('#cmbSucursalEmpresa').val() || '-1') === '-1') { $(suc).val(suc.options[1].value).trigger('change').trigger('chosen:updated'); hecho.push('sucursal'); }
+    txt('txtFechaIngresoLaboral', d.fechaIngreso) && hecho.push('fecha de ingreso: ' + d.fechaIngreso);
+    sel('cmbTipoContratoLaboral', d.tipoContrato) && hecho.push('tipo de contrato');
+    if (($('#txtCargoLaboral').val() || '-1') === '-1') {
+      const c = porTexto('txtCargoLaboral', d.cargoTexto);
+      c ? hecho.push('cargo: ' + c) : falta.push('cargo (búscalo en la lista: ' + d.cargoTexto + ')');
+    }
+    sel('cmbTipoSalarioLaboral', 23) && hecho.push('tipo de salario: Fijo');
+    txt('txtValorSalarioBasicoLaboral', String(d.salario)) && hecho.push('salario');
+    if (($('#cmbFormaPagoLaboral').val() || '-1') === '-1' && d.formaPago) { sel('cmbFormaPagoLaboral', d.formaPago) && hecho.push('forma de pago del subsidio'); }
+  } else if (/Otro Empleador/i.test(paso)) {
+    hecho.push('no aplica: continúa');
+  } else if (/Beneficiarios/i.test(paso)) {
+    hecho.push(d.beneficiarios ? 'agrega los beneficiarios a mano y continúa' : 'sin beneficiarios: continúa');
+  } else if (/Conyuge|Cónyuge/i.test(paso)) {
+    falta.push('los datos del cónyuge los escribes tú');
+  } else if (/Anexos/i.test(paso)) {
+    const tabla = [...document.querySelectorAll('table')].filter(vis).find(t => /Obligatorio/i.test(t.innerText));
+    const pendientes = tabla ? [...tabla.querySelectorAll('tbody tr')].filter(r => /SI/.test(r.cells[1]?.innerText || '') && !(r.cells[2]?.innerText || '').trim()).map(r => r.cells[0].innerText.trim()) : [];
+    pendientes.length ? falta.push('adjunta: ' + pendientes.join(', ')) : hecho.push('anexos obligatorios completos');
+  }
+
+  const errores = [...document.querySelectorAll('.jconfirm-content')].filter(vis).map(e => e.innerText.replace(/\s+/g, ' ').trim().slice(0, 300));
+  return { paso, hecho, falta, errores };
+}
+
+/** Lee el mensaje de éxito con el número de formulario después de Finalizar Afiliación. */
+function pCcfResultado() {
+  const vis = e => !!(e && (e.offsetWidth || e.offsetHeight));
+  const textos = [...document.querySelectorAll('.jconfirm-content, .jconfirm-box')].filter(vis).map(e => e.innerText.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const texto = [...new Set(textos)].join(' — ');
+  const m = texto.match(/n[uú]mero de formulario:?\s*([0-9]{6,})/i) || texto.match(/formulario:?\s*([0-9]{6,})/i);
+  if (!m && !/registrad|exito/i.test(texto)) return { radicado: false, texto };
+  return { radicado: !!m, numero: m ? m[1] : null, texto: texto.slice(0, 1500) };
 }

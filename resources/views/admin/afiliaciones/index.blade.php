@@ -460,6 +460,7 @@ function sortClass($col, $currSort, $currDir) {
         $ctxArl            = $c->arl_efectiva_nombre ?? ($c->cliente?->arl?->nombre_arl ?? '—');
         $ctxPension        = $c->pension?->razon_social ?? ($c->cliente?->pension?->razon_social ?? '—');
         $ctxEps            = $c->eps?->nombre ?? ($c->cliente?->eps?->nombre ?? '—');
+        $ctxCaja           = $c->caja?->nombre ?? '';
         $ctxSalario        = $c->salario ?? '';
         $ctxFechaIngreso   = ((int)$c->tipo_modalidad_id === 15)
             ? ($c->fecha_arl ? $c->fecha_arl->format('d/m/Y') : '—')
@@ -484,6 +485,7 @@ function sortClass($col, $currSort, $currDir) {
             'arl'             => $ctxArl,
             'pension'         => $ctxPension,
             'eps'             => $ctxEps,
+            'caja'            => $ctxCaja,
             'salario'         => $ctxSalario,
             'fecha_ingreso'   => $ctxFechaIngreso,
             'cargo'           => $ctxCargo,
@@ -811,6 +813,12 @@ function sortClass($col, $currSort, $currDir) {
                     style="display:none;align-items:center;gap:0.35rem;padding:0.3rem 0.85rem;background:linear-gradient(135deg,#0e7490,#0891b2);color:#fff;border:none;border-radius:7px;font-size:0.75rem;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(8,145,178,0.3);"
                     onclick="novedadSanitasDesdeRadicado()">
                     🏥 Radicar Sanitas
+                </button>
+                {{-- Caja Comfenalco Valle: afiliación por su Sucursal Virtual con la extensión --}}
+                <button id="btnCajaComfenalco" type="button"
+                    style="display:none;align-items:center;gap:0.35rem;padding:0.3rem 0.85rem;background:linear-gradient(135deg,#047857,#059669);color:#fff;border:none;border-radius:7px;font-size:0.75rem;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(5,150,105,0.3);"
+                    onclick="cajaComfenalcoDesdeRadicado()">
+                    🏢 Afiliar a la caja
                 </button>
                 {{-- Portal Boxalud (Emssanar): Ingreso de afiliación con la extensión --}}
                 <button id="btnBoxalud" type="button"
@@ -1596,6 +1604,12 @@ function abrirModalRadicado(radId, radData, ctx = {}, contratoId = null, tieneFo
     btnSanitas.style.display = (PUEDE_AUTOMATIZAR && esSanitas && radData.estado !== 'ok') ? 'inline-flex' : 'none';
     btnSanitas._contratoId = contratoId || ctx.id || null;
 
+    // Caja Comfenalco Valle: radicados de caja que aún no están en OK.
+    const btnCaja = document.getElementById('btnCajaComfenalco');
+    const esCajaComf = (radData.tipo === 'caja') && /COMFENALCO\s*VALLE/i.test(ctx.caja || '');
+    btnCaja.style.display = (PUEDE_AUTOMATIZAR && esCajaComf && radData.estado !== 'ok') ? 'inline-flex' : 'none';
+    btnCaja._contratoId = contratoId || ctx.id || null;
+
     // Portal Boxalud (Emssanar), mientras no esté en OK. El correo queda como plan B dentro del modal.
     const btnBox = document.getElementById('btnBoxalud');
     const boxEps = (radData.tipo === 'eps') ? BOXALUD_EPS.find(c => c.patron.test(ctx.eps || '')) : null;
@@ -1729,6 +1743,13 @@ function novedadSosDesdeRadicado() {
     if (!contratoId) { alert('No se pudo identificar el contrato.'); return; }
     cerrarModal('modalRadicado');
     abrirNovedadSos(contratoId);
+}
+
+function cajaComfenalcoDesdeRadicado() {
+    const btn = document.getElementById('btnCajaComfenalco');
+    if (!btn._contratoId) { alert('No se pudo identificar el contrato.'); return; }
+    cerrarModal('modalRadicado');
+    abrirCajaComfenalco(btn._contratoId);
 }
 
 function boxaludDesdeRadicado() {
@@ -2686,6 +2707,7 @@ function mostrarToast(msg, tipo) {
 @include('admin.partials._novedad_sanitas')
 @include('admin.partials._correo_eps')
 @include('admin.partials._novedad_boxalud')
+@include('admin.partials._afiliar_caja_comfenalco')
 @endcan
 
 @endsection
