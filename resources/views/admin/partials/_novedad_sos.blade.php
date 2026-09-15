@@ -55,7 +55,7 @@
           <div class="sosn-captcha"><div class="sosn-captcha-marco" id="sosnCaptchaMarco">
             <img id="sosnCaptchaImg" alt="Captcha de S.O.S." draggable="false" onmousedown="event.preventDefault()" onclick="clicCaptchaSos(event)">
           </div></div>
-          <div style="text-align:center;font-size:.72rem;color:#64748b;margin:-.2rem 0 .4rem">Un clic por imagen; espera a que se actualice antes del siguiente.</div>
+          <div id="sosnCaptchaEstado" style="text-align:center;font-size:.72rem;color:#64748b;margin:-.2rem 0 .4rem">Un clic por imagen; espera a que se actualice antes del siguiente.</div>
           <div style="display:flex;gap:.4rem">
             <button class="sosn-btn sec" style="margin-top:0" onclick="pintarSesionSos(true)">🔄 Actualizar imagen</button>
             <button class="sosn-btn sec" style="margin-top:0" onclick="reiniciarCaptchaSos()">↩️ Otro captcha</button>
@@ -153,7 +153,7 @@ function aplicarSesionSos(s) {
     const textos = {
         cerrada: 'Sin sesión en S.O.S. para esta empresa.',
         abriendo: '⏳ Abriendo el portal de S.O.S. en el servidor…',
-        captcha: '🧩 Resuelve el captcha: haz clic sobre las imágenes que pide y luego en <strong>VERIFY</strong>. Si pide otra ronda, sigue igual.',
+        captcha: '🧩 Resuelve el captcha: haz clic sobre las imágenes que pide y luego en <strong>VERIFICAR</strong>. Si al marcar una aparece otra en su lugar, es normal: marca también las nuevas que cumplan. Si pide otra ronda, sigue igual.',
         entrando: '⏳ Captcha resuelto. Entrando con la clave del módulo de claves…',
         lista: '✅ Sesión iniciada en S.O.S.',
         vencida: '⌛ S.O.S. cerró la sesión por inactividad.',
@@ -213,14 +213,20 @@ async function clicCaptchaSos(ev) {
 
     sosnEnviando = true;
     clearInterval(sosnReloj);
-    img.style.opacity = .6;
+    img.style.opacity = .5;
+    const aviso = sosnEl('sosnCaptchaEstado');
+    aviso.textContent = '⏳ Actualizando la imagen…';
     try {
         const d = await sosnPedir('sesion/clic', 'POST', { x, y }, 30);
-        if (!d.ok) alert(d.error || 'No se pudo enviar el clic.');
-        else aplicarSesionSos(d.sesion || {});
+        if (!d.ok) { alert(d.error || 'No se pudo enviar el clic.'); return; }
+        // Google tarda unos segundos en desvanecer la casilla y poner otra: no
+        // se deja hacer otro clic hasta ver la imagen ya cambiada.
+        await new Promise(r => setTimeout(r, 2800));
+        await pintarSesionSos();
     } finally {
         img.style.opacity = 1;
         punto.remove();
+        aviso.textContent = 'Un clic por imagen; espera a que se actualice antes del siguiente.';
         sosnEnviando = false;
     }
 }
