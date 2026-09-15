@@ -234,11 +234,22 @@ class SosCorreoService
         ]);
     }
 
-    /** Hasta cuándo se espera respuesta: el día hábil siguiente a la hora configurada. */
-    public function vencimiento(Carbon $desde): Carbon
+    /**
+     * Hasta cuándo se espera respuesta: enviado en la mañana de un día hábil, hasta
+     * las 6:00 p. m. de ese día; en la tarde o en día no hábil, hasta las 12:00 m.
+     * del siguiente día hábil.
+     */
+    public function vencimiento(\Carbon\CarbonInterface $desde): Carbon
     {
-        $dia = $desde->copy()->addDay()->setTime((int) config('afiliaciones_correo.hora_vencimiento', 12), 0);
-        while ($dia->isWeekend() || in_array($dia->format('Y-m-d'), MoraClienteService::festivosColombia((int) $dia->format('Y')), true)) {
+        $habil = fn ($d) => ! $d->isWeekend()
+            && ! in_array($d->format('Y-m-d'), MoraClienteService::festivosColombia((int) $d->format('Y')), true);
+
+        if ($habil($desde) && $desde->hour < (int) config('afiliaciones_correo.corte_manana', 12)) {
+            return Carbon::instance($desde)->setTime((int) config('afiliaciones_correo.vence_manana', 18), 0);
+        }
+
+        $dia = Carbon::instance($desde)->addDay()->setTime((int) config('afiliaciones_correo.vence_siguiente', 12), 0);
+        while (! $habil($dia)) {
             $dia->addDay();
         }
 

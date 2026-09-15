@@ -15,7 +15,7 @@ class CorreoAfiliacion extends BaseModel
     protected $fillable = [
         'aliado_id', 'contrato_id', 'radicado_id', 'entidad', 'motivo', 'buzon', 'para', 'cc',
         'asunto', 'cuerpo', 'adjuntos', 'message_id', 'estado', 'enviado_at', 'vence_at',
-        'respondido_at', 'respuesta_de', 'respuesta_resumen', 'error', 'usuario_id',
+        'respondido_at', 'respuesta_de', 'respuesta_resumen', 'error', 'usuario_id', 'avisado_vencido_at',
     ];
 
     protected $casts = [
@@ -23,6 +23,7 @@ class CorreoAfiliacion extends BaseModel
         'enviado_at'    => 'datetime',
         'vence_at'      => 'datetime',
         'respondido_at' => 'datetime',
+        'avisado_vencido_at' => 'datetime',
     ];
 
     public function contrato(): BelongsTo

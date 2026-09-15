@@ -23,7 +23,47 @@ return [
         ],
     ],
 
-    // Sin respuesta al vencer se avisa. En el buzón la mediana es ~19 h y casi
-    // siempre responde el día hábil siguiente: se espera hasta ese día a esta hora.
-    'hora_vencimiento' => 12,
+    // Dominios de las entidades cuyos correos revisa el agente del buzón. Lo que
+    // llega de otros remitentes no se toca, salvo que responda un correo enviado
+    // desde BryNex (hay asesores que responden desde Gmail).
+    'entidades' => [
+        'sos.com.co'            => ['clave' => 'sos', 'tipo' => 'eps', 'nombre' => 'S.O.S.'],
+        'nuevaeps.com.co'       => ['clave' => 'nueva_eps', 'tipo' => 'eps', 'nombre' => 'Nueva EPS'],
+        'saludtotal.com.co'     => ['clave' => 'salud_total', 'tipo' => 'eps', 'nombre' => 'Salud Total'],
+        'epssura.com'           => ['clave' => 'sura', 'tipo' => 'eps', 'nombre' => 'EPS SURA'],
+        'sura.com.co'           => ['clave' => 'sura', 'tipo' => 'eps_arl', 'nombre' => 'SURA'],
+        'comunicaciones.sura.com' => ['clave' => 'sura', 'tipo' => 'eps_arl', 'nombre' => 'SURA'],
+        'epssanitas.com'        => ['clave' => 'sanitas', 'tipo' => 'eps', 'nombre' => 'Sanitas'],
+        'colsanitas.com'        => ['clave' => 'sanitas', 'tipo' => 'eps', 'nombre' => 'Sanitas'],
+        'comfenalcovalle.com.co' => ['clave' => 'comfenalco', 'tipo' => 'eps_caja', 'nombre' => 'Comfenalco Valle'],
+        'comfandi.com.co'       => ['clave' => 'comfandi', 'tipo' => 'caja', 'nombre' => 'Comfandi'],
+        'emssanar.org.co'       => ['clave' => 'emssanar', 'tipo' => 'eps', 'nombre' => 'Emssanar'],
+        'coosalud.com'          => ['clave' => 'coosalud', 'tipo' => 'eps', 'nombre' => 'Coosalud'],
+        'asmetsalud.com'        => ['clave' => 'asmet', 'tipo' => 'eps', 'nombre' => 'Asmet Salud'],
+        'famisanar.com.co'      => ['clave' => 'famisanar', 'tipo' => 'eps', 'nombre' => 'Famisanar'],
+        'compensar.com'         => ['clave' => 'compensar', 'tipo' => 'eps_caja', 'nombre' => 'Compensar'],
+        'positiva.gov.co'       => ['clave' => 'positiva', 'tipo' => 'arl', 'nombre' => 'Positiva'],
+        'segurosbolivar.com'    => ['clave' => 'bolivar', 'tipo' => 'arl', 'nombre' => 'Seguros Bolívar'],
+        'axacolpatria.co'       => ['clave' => 'colpatria', 'tipo' => 'arl', 'nombre' => 'AXA Colpatria'],
+        'colmena.com.co'        => ['clave' => 'colmena', 'tipo' => 'arl', 'nombre' => 'Colmena'],
+        'colpensiones.gov.co'   => ['clave' => 'colpensiones', 'tipo' => 'afp', 'nombre' => 'Colpensiones'],
+        'porvenir.com.co'       => ['clave' => 'porvenir', 'tipo' => 'afp', 'nombre' => 'Porvenir'],
+        'proteccion.com.co'     => ['clave' => 'proteccion', 'tipo' => 'afp', 'nombre' => 'Protección'],
+    ],
+
+    // Remitentes masivos de esas entidades (boletines, publicidad): se ignoran.
+    // Se compara con la dirección completa (suracomunicaciones@, epssura@comunicaciones.sura.com…).
+    'remitentes_masivos' => '/no-?reply|noresponder|comunica|masivo|mailing|boletin|newsletter|mercadeo|marketing|publicidad|encuesta/i',
+
+    // Plazo de respuesta del asesor (regla de Brygar): si se envía en la mañana de
+    // un día hábil, se espera hasta las 6:00 p. m. de ese día; si se envía en la
+    // tarde (o en día no hábil), hasta las 12:00 m. del siguiente día hábil.
+    'corte_manana'    => 12,
+    'vence_manana'    => 18,
+    'vence_siguiente' => 12,
+
+    // A qué WhatsApp llegan el resumen diario y los avisos que no tienen dueño.
+    'whatsapp_avisos' => [
+        2 => ['3158204135', '3117762689'],
+    ],
 ];

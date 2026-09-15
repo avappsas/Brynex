@@ -942,6 +942,12 @@ Route::middleware('auth')->group(function () {
         $esc = \App\Http\Controllers\Admin\EpsSuraConciliacionController::class;
         Route::post('/conciliar-eps-sura', [$esc, 'iniciar'])->name('conciliar-eps-sura');
         Route::get('/conciliar-eps-sura/estado', [$esc, 'estado'])->name('conciliar-eps-sura.estado');
+        // Bandeja del agente del buzón de afiliaciones.
+        $buz = \App\Http\Controllers\Admin\BuzonAfiliacionesController::class;
+        Route::get('/buzon', [$buz, 'index'])->name('buzon');
+        Route::post('/buzon/recibido/{id}', [$buz, 'marcar'])->name('buzon.marcar');
+        Route::post('/buzon/enviado/{id}/cerrar', [$buz, 'cerrarEnviado'])->name('buzon.cerrar-enviado');
+        Route::get('/buzon/recibido/{id}/adjunto/{indice}', [$buz, 'adjunto'])->name('buzon.adjunto');
         // Reingreso en el portal de Nueva EPS desde el radicado de EPS.
         $nec = \App\Http\Controllers\Admin\NuevaEpsController::class;
         Route::get('/{contrato}/nueva-eps/precheck', [$nec, 'precheck'])->name('nueva-eps.precheck');

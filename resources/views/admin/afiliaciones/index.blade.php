@@ -311,6 +311,7 @@ body {
         <button type="button" onclick="abrirModalClavesGlobal()" class="btn-export" style="background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#1c1917;border:none;font-weight:800;cursor:pointer;">🔑 Claves</button>
         <a href="{{ route('admin.gestion-arl.index') }}" class="btn-export" style="background:#f97316;">🛡️ ARL</a>
         <button type="button" onclick="abrirConciliacionEpsSura()" class="btn-export" style="background:#0033a0;cursor:pointer;" title="Pone al día los radicados de EPS (SURA y Nueva EPS) con lo que dicen los portales">🩺 Conciliar EPS</button>
+        <a href="{{ route('admin.afiliaciones.buzon') }}" class="btn-export" style="background:#4338ca;text-decoration:none;" title="Respuestas de los asesores y correos de las entidades que revisa el agente del buzón">📬 Buzón</a>
     </div>
 </div>
 </form>

@@ -109,6 +109,27 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/eps-confirmacion.log'));
 
+        // Agente del buzón de afiliaciones (seguridadsocial.brygar@gmail.com): cada
+        // 30 min lee lo que llega de las entidades, aplica los radicados que
+        // envían los asesores y avisa por WhatsApp. Solo lectura en Gmail.
+        // Ejecución manual: php artisan correos:revisar-buzon --aliado=2 --simular
+        $schedule->command('correos:revisar-buzon --aliado=2 --dias=2')
+            ->everyThirtyMinutes()
+            ->timezone('America/Bogota')
+            ->name('correos-revisar-buzon')
+            ->withoutOverlapping(25)
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/correos-buzon.log'));
+
+        // Resumen de afiliaciones por correo a los WhatsApp del aliado, L-V 5:30 p. m.
+        $schedule->command('correos:resumen-afiliaciones --aliado=2')
+            ->weekdays()
+            ->dailyAt('17:30')
+            ->timezone('America/Bogota')
+            ->name('correos-resumen-afiliaciones')
+            ->withoutOverlapping(10)
+            ->appendOutputTo(storage_path('logs/correos-buzon.log'));
+
         // ── Reset mensual de n_plano ──────────────────────────────────
         // El día 1 de cada mes a las 00:01 (hora Colombia) resetea n_plano=1
         // y avanza mes_pagos/anio_pagos en todas las razones sociales.
