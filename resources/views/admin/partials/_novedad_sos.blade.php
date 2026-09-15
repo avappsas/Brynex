@@ -28,6 +28,12 @@
 .sosn-btn:disabled { opacity:.5;cursor:not-allowed }
 .sosn-fecha { display:flex;gap:.5rem;align-items:center;font-size:.78rem;margin:.3rem 0 .2rem }
 .sosn-fecha input { border:1px solid #cbd5e1;border-radius:7px;padding:.3rem .5rem;font-size:.8rem }
+.sosn-correo { border:1px solid #c7d2fe;border-radius:10px;padding:.7rem .8rem;margin-top:.8rem;background:#fafbff }
+.sosn-correo h4 { margin:0 0 .5rem;font-size:.84rem;color:#312e81 }
+.sosn-campo { display:block;font-size:.72rem;color:#475569;font-weight:600;margin:.45rem 0 .15rem }
+.sosn-campo + input, .sosn-campo + textarea, .sosn-input { width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:.35rem .5rem;font-size:.78rem;font-family:inherit }
+.sosn-adj { font-size:.74rem;margin:.2rem 0 0 1rem;padding:0;line-height:1.6 }
+.sosn-chip { display:inline-block;margin-top:.25rem;font-size:.7rem;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:999px;padding:.05rem .5rem;cursor:pointer }
 .sosn-pasos { font-size:.74rem;color:#475569;margin:.4rem 0 0 1.1rem;padding:0;line-height:1.6 }
 </style>
 
@@ -62,6 +68,34 @@
           </div>
           <div id="sosnFechaNota" style="font-size:.72rem;color:#64748b"></div>
           <button class="sosn-btn" id="sosnBtnRegistrar" onclick="registrarSos()">🏥 Registrar y adjuntar lado B</button>
+        </div>
+
+        {{-- Plan B: correo al asesor de S.O.S. --}}
+        <button class="sosn-btn sec" id="sosnBtnCorreo" style="display:none" onclick="abrirCorreoSos('manual')">📧 Enviar por correo al asesor de S.O.S.</button>
+        <div class="sosn-correo" id="sosnCorreo" style="display:none">
+          <h4>📧 Afiliación por correo al asesor de S.O.S.</h4>
+          <div class="sosn-aviso" id="sosnCorreoMotivo" style="display:none"></div>
+          <div class="sosn-prob" id="sosnCorreoProblemas" style="display:none"></div>
+          <div id="sosnCorreoSubir" style="display:none;font-size:.74rem;margin-bottom:.5rem">
+            <label class="sosn-campo" for="sosnCorreoArchivo">Subir copia del documento de identidad (PDF o imagen)</label>
+            <input type="file" id="sosnCorreoArchivo" accept=".pdf,.jpg,.jpeg,.png" class="sosn-input" onchange="subirDocumentoSos()">
+          </div>
+          <div class="sosn-aviso" id="sosnCorreoAvisos" style="display:none"></div>
+
+          <label class="sosn-campo" for="sosnCorreoPara">Para</label>
+          <input id="sosnCorreoPara" class="sosn-input">
+          <span class="sosn-chip" id="sosnCorreoReemplazo" style="display:none" onclick="usarReemplazoSos()"></span>
+          <label class="sosn-campo" for="sosnCorreoCc">CC (opcional)</label>
+          <input id="sosnCorreoCc" class="sosn-input">
+          <label class="sosn-campo" for="sosnCorreoAsunto">Asunto</label>
+          <input id="sosnCorreoAsunto" class="sosn-input">
+          <label class="sosn-campo" for="sosnCorreoCuerpo">Mensaje</label>
+          <textarea id="sosnCorreoCuerpo" rows="12" class="sosn-input"></textarea>
+          <label id="sosnCorreoBenefFila" style="display:none;font-size:.74rem;margin-top:.4rem"><input type="checkbox" id="sosnCorreoBenef" checked onchange="abrirCorreoSos(sosnCorreoMotivoActual, true)"> Incluir beneficiarios</label>
+          <div class="sosn-campo">Adjuntos</div>
+          <ul class="sosn-adj" id="sosnCorreoAdjuntos"></ul>
+          <div id="sosnCorreoInfo" style="font-size:.72rem;color:#64748b;margin-top:.4rem"></div>
+          <button class="sosn-btn" id="sosnBtnEnviarCorreo" onclick="enviarCorreoSos()">📧 Enviar correo</button>
         </div>
       </div>
 
@@ -150,7 +184,14 @@ async function abrirNovedadSos(contratoId) {
     const problemas = sosnPrep.problemas || [];
     sosnEl('sosnProblemas').style.display = problemas.length ? 'block' : 'none';
     sosnEl('sosnProblemasLista').innerHTML = problemas.map(p => `<li>${sosnEsc(p)}</li>`).join('');
-    if (problemas.length) { sosnEl('sosnSesion').style.display = 'none'; return; }
+    // El correo al asesor sirve aunque el portal no aplique (p. ej. independientes).
+    sosnEl('sosnBtnCorreo').style.display = 'block';
+    sosnEl('sosnCorreo').style.display = 'none';
+    if (problemas.length) {
+        sosnEl('sosnSesion').style.display = 'none';
+        if ((sosnPrep.resumen || {}).independiente) abrirCorreoSos('independiente');
+        return;
+    }
     sosnEl('sosnSesion').style.display = 'block';
 
     await revisarSesionSos();
@@ -261,6 +302,13 @@ async function registrarSos() {
             const [a, m, d] = fecha.split('-');
             const envio = { ...sosnPrep.portal.envio, fecha: `${d}/${m}/${a}` };
             const resultado = await sosnExt('registrar', envio, 300);
+            if (!resultado.ok && ['cargar', 'validar'].includes(resultado.paso)) {
+                // Plan B: S.O.S. no dejó registrar (la X): se envía por correo al asesor.
+                parar();
+                btn.disabled = false; btn.textContent = '🏥 Registrar y adjuntar lado B';
+                abrirCorreoSos('portal_rechazo', resultado.error);
+                return;
+            }
             let novedad = null;
             if (resultado.ok) {
                 const hoy = new Date();
@@ -299,5 +347,103 @@ async function registrarSos() {
         btn.disabled = false; btn.textContent = '🔁 Reintentar';
         alert(e.message + '\n\nAntes de reintentar pulsa "Consultar": si algo quedó radicado, aparecerá.');
     }
+}
+
+// ── Plan B: correo al asesor ────────────────────────────────────────────
+let sosnCorreoMotivoActual = 'manual', sosnCorreoPrep = null;
+
+async function abrirCorreoSos(motivo, conservarTexto = false, detalle = '') {
+    if (typeof conservarTexto === 'string') { detalle = conservarTexto; conservarTexto = false; }
+    sosnCorreoMotivoActual = motivo;
+    const caja = sosnEl('sosnCorreo');
+    caja.style.display = 'block';
+    sosnEl('sosnBtnCorreo').style.display = 'none';
+    const benef = sosnEl('sosnCorreoBenef').checked ? 1 : 0;
+    const previo = conservarTexto ? { para: sosnEl('sosnCorreoPara').value, cc: sosnEl('sosnCorreoCc').value } : null;
+
+    let d;
+    try { d = await sosnPedir(`correo?motivo=${motivo}&con_beneficiarios=${benef}`); }
+    catch (e) { alert('No se pudo preparar el correo.'); return; }
+    if (!d.ok) { alert(d.error || 'No se pudo preparar el correo.'); return; }
+    sosnCorreoPrep = d;
+
+    const motivoTxt = { portal_rechazo: '❌ S.O.S. no validó la novedad en el portal' + (detalle ? ` (${sosnEsc(detalle)})` : '') + '. Se envía la afiliación por correo al asesor.',
+        independiente: '👤 Independiente: el portal de empleadores no aplica. Se envía por correo al asesor.' }[motivo];
+    sosnEl('sosnCorreoMotivo').innerHTML = motivoTxt || '';
+    sosnEl('sosnCorreoMotivo').style.display = motivoTxt ? 'block' : 'none';
+
+    const prob = d.problemas || [];
+    sosnEl('sosnCorreoProblemas').innerHTML = prob.map(p => '• ' + sosnEsc(p)).join('<br>');
+    sosnEl('sosnCorreoProblemas').style.display = prob.length ? 'block' : 'none';
+    sosnEl('sosnCorreoSubir').style.display = prob.some(p => /documento de identidad/i.test(p)) ? 'block' : 'none';
+    const av = d.avisos || [];
+    sosnEl('sosnCorreoAvisos').innerHTML = av.map(a => '⚠️ ' + sosnEsc(a)).join('<br>');
+    sosnEl('sosnCorreoAvisos').style.display = av.length ? 'block' : 'none';
+
+    sosnEl('sosnCorreoPara').value = previo ? previo.para : d.para.correo;
+    sosnEl('sosnCorreoCc').value = previo ? previo.cc : '';
+    sosnEl('sosnCorreoAsunto').value = d.asunto;
+    sosnEl('sosnCorreoCuerpo').value = d.cuerpo;
+    const rem = sosnEl('sosnCorreoReemplazo');
+    rem.style.display = d.reemplazo ? 'inline-block' : 'none';
+    if (d.reemplazo) rem.textContent = `↪ ¿${d.para.nombre} de vacaciones? Enviar a ${d.reemplazo.nombre} (${d.reemplazo.correo})`;
+    sosnEl('sosnCorreoBenefFila').style.display = d.beneficiarios ? 'block' : 'none';
+
+    sosnEl('sosnCorreoAdjuntos').innerHTML = (d.adjuntos || []).map(a => `<li>📎 ${sosnEsc(a.nombre)} <span style="color:#94a3b8">— ${sosnEsc(a.origen)}</span></li>`).join('');
+    const previos = (d.previos || []).map(p => `${sosnEsc(p.estado)} · ${sosnEsc((p.enviado_at || '').slice(0, 16).replace('T', ' '))} → ${sosnEsc(p.para)}`).join('<br>');
+    sosnEl('sosnCorreoInfo').innerHTML = `Sale desde <strong>${sosnEsc(d.buzon)}</strong>. Si no hay respuesta, se avisa el ${sosnEsc(d.vence)}.` +
+        (previos ? `<br>Correos anteriores:<br>${previos}` : '');
+
+    const btn = sosnEl('sosnBtnEnviarCorreo');
+    btn.disabled = prob.length > 0;
+    btn.textContent = prob.length ? '🚫 Resuelve lo que falta para enviar' : '📧 Enviar correo';
+    caja.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function usarReemplazoSos() {
+    if (!sosnCorreoPrep?.reemplazo) return;
+    sosnEl('sosnCorreoPara').value = sosnCorreoPrep.reemplazo.correo;
+    sosnEl('sosnCorreoCc').value = sosnCorreoPrep.para.correo;
+    sosnEl('sosnCorreoCuerpo').value = sosnEl('sosnCorreoCuerpo').value.replace(/^Un cordial saludo, [^.\n]+\./, 'Un cordial saludo, ' + sosnCorreoPrep.reemplazo.nombre.split(' ')[0] + '.');
+}
+
+async function subirDocumentoSos() {
+    const input = sosnEl('sosnCorreoArchivo');
+    if (!input.files.length) return;
+    const fd = new FormData();
+    fd.append('archivo', input.files[0]);
+    const r = await fetch(`/admin/afiliaciones/${sosnContratoId}/sos/correo/documento`, {
+        method: 'POST', body: fd, headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': SOSN_CSRF },
+    });
+    const d = await r.json().catch(() => ({}));
+    input.value = '';
+    if (!r.ok || !d.ok) { alert(d.message || d.error || 'No se pudo subir el documento.'); return; }
+    abrirCorreoSos(sosnCorreoMotivoActual, true);
+}
+
+async function enviarCorreoSos() {
+    const para = sosnEl('sosnCorreoPara').value.trim();
+    if (!para) { alert('Indica a quién va el correo.'); return; }
+    if (!confirm(`¿Enviar la afiliación por correo a ${para}?\n\nSale desde ${sosnCorreoPrep?.buzon} con ${(sosnCorreoPrep?.adjuntos || []).length} adjuntos.`)) return;
+
+    const btn = sosnEl('sosnBtnEnviarCorreo');
+    const parar = sosnEsperar(btn, 'Enviando correo...');
+    let d;
+    try {
+        d = await sosnPedir('correo/enviar', 'POST', {
+            para, cc: sosnEl('sosnCorreoCc').value.trim(),
+            asunto: sosnEl('sosnCorreoAsunto').value, cuerpo: sosnEl('sosnCorreoCuerpo').value,
+            motivo: sosnCorreoMotivoActual, con_beneficiarios: sosnEl('sosnCorreoBenef').checked,
+        }, 120);
+    } catch (e) { d = { ok: false, error: 'Se perdió la conexión. Revisa en Gmail (Enviados) antes de reintentar.' }; }
+    parar();
+
+    if (!d.ok) { btn.disabled = false; btn.textContent = '📧 Reintentar envío'; alert(d.error || d.message || 'No se pudo enviar.'); return; }
+
+    sosnEl('sosnContenido').style.display = 'none';
+    const caja = sosnEl('sosnResultado');
+    caja.innerHTML = `📧 Correo enviado a <strong>${sosnEsc(d.para)}</strong>.<br><span style="color:#475569">El radicado de EPS quedó en trámite. Si S.O.S. no responde, se avisa el ${sosnEsc(d.vence)}.</span>`;
+    caja.style.display = 'block';
+    setTimeout(() => location.reload(), 5000);
 }
 </script>

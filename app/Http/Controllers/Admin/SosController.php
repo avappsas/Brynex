@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Contrato;
+use App\Services\Sos\SosCorreoService;
 use App\Services\Sos\SosNovedadService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -89,6 +90,47 @@ class SosController extends Controller
             }
 
             return response()->json($this->servicio->aplicar($contrato, $datos, Auth::id()));
+        } catch (Throwable $e) {
+            return response()->json(['ok' => false, 'error' => $e->getMessage()], 422);
+        }
+    }
+
+    // ── Plan B: afiliación por correo al asesor ────────────────────────────
+
+    /** Vista previa del correo al asesor: destinatario, asunto, texto, adjuntos y lo que falta. */
+    public function correoPreparar(Request $request, SosCorreoService $correo, int $contratoId)
+    {
+        $motivo = in_array($request->query('motivo'), ['portal_rechazo', 'independiente', 'manual'], true) ? $request->query('motivo') : 'manual';
+
+        return response()->json(['ok' => true] + $correo->preparar(
+            $this->contrato($contratoId), $motivo, $request->boolean('con_beneficiarios', true)
+        ));
+    }
+
+    /** Sube la copia del documento de identidad del cliente, para poder enviarla. */
+    public function correoDocumento(Request $request, SosCorreoService $correo, int $contratoId)
+    {
+        $request->validate(['archivo' => 'required|file|max:10240|mimes:pdf,jpg,jpeg,png']);
+        $doc = $correo->subirDocumento($this->contrato($contratoId), $request->file('archivo'), Auth::id());
+
+        return response()->json(['ok' => true, 'documento_id' => $doc->id]);
+    }
+
+    public function correoEnviar(Request $request, SosCorreoService $correo, int $contratoId)
+    {
+        $datos = $request->validate([
+            'para'              => 'required|string|max:500',
+            'cc'                => 'nullable|string|max:500',
+            'asunto'            => 'required|string|max:300',
+            'cuerpo'            => 'required|string|max:10000',
+            'motivo'            => 'required|in:portal_rechazo,independiente,manual',
+            'con_beneficiarios' => 'nullable|boolean',
+        ]);
+
+        try {
+            $registro = $correo->enviar($this->contrato($contratoId), $datos, Auth::id());
+
+            return response()->json(['ok' => true, 'correo_id' => $registro->id, 'para' => $registro->para, 'vence' => $registro->vence_at?->format('d/m/Y H:i')]);
         } catch (Throwable $e) {
             return response()->json(['ok' => false, 'error' => $e->getMessage()], 422);
         }

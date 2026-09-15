@@ -98,6 +98,7 @@ class SosNovedadService
             'fecha_maxima'  => $maximo->toDateString(),
             'en_plazo'      => $enPlazo,
             'usuario_portal' => $rs ? $this->usuarioPortal((string) $rs->nit) : null,
+            'independiente' => (bool) $rs?->es_independiente,
         ];
 
         return ['problemas' => $problemas, 'resumen' => $resumen, 'portal' => $problemas ? null : [

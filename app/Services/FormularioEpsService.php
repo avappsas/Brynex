@@ -176,6 +176,16 @@ class FormularioEpsService
             'cliente.firma'            => $c?->cedula ? $this->firmaCliente($c) : '',
         ];
 
+        // Independientes: la sección del aportante/empleador va vacía. S.O.S. lo
+        // devolvió así ("el campo de empleador (V) se deja vacío", sep-2026).
+        if ($rs?->es_independiente) {
+            foreach (array_keys($datos) as $clave) {
+                if (str_starts_with($clave, 'empresa.')) {
+                    $datos[$clave] = '';
+                }
+            }
+        }
+
         // ── Beneficiarios ───────────────────────────────────────────
         if ($incluirBeneficiarios && $c) {
             foreach ($c->beneficiarios()->get() as $i => $b) {

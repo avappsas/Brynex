@@ -958,6 +958,10 @@ Route::middleware('auth')->group(function () {
         Route::get('/{contrato}/sos/lado-b', [$sosc, 'ladoB'])->name('sos.lado-b');
         Route::post('/{contrato}/sos/credencial', [$sosc, 'credencial'])->name('sos.credencial');
         Route::post('/{contrato}/sos/aplicar', [$sosc, 'aplicar'])->name('sos.aplicar');
+        // Plan B: afiliación por correo al asesor de S.O.S. (portal rechaza o independientes).
+        Route::get('/{contrato}/sos/correo', [$sosc, 'correoPreparar'])->name('sos.correo');
+        Route::post('/{contrato}/sos/correo/documento', [$sosc, 'correoDocumento'])->name('sos.correo.documento')->middleware('permiso:documentos.subir');
+        Route::post('/{contrato}/sos/correo/enviar', [$sosc, 'correoEnviar'])->name('sos.correo.enviar');
         Route::get('/{contrato}/historial', [$ac, 'historial'])->name('historial');
         Route::get('/{contrato}/formulario/eps', [$fc, 'vista'])->name('formulario.eps');
         Route::get('/{contrato}/formulario/eps/raw', [$fc, 'generar'])->name('formulario.eps.raw');

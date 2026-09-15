@@ -1,0 +1,348 @@
+<?php
+
+namespace App\Services\Sos;
+
+use App\Models\Contrato;
+use App\Models\CorreoAfiliacion;
+use App\Models\DocumentoCliente;
+use App\Models\Radicado;
+use App\Services\Correo\BuzonGmail;
+use App\Services\EpsPortal\EpsRadicado;
+use App\Services\FormularioEpsService;
+use App\Services\MoraClienteService;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use RuntimeException;
+use Throwable;
+
+/**
+ * Plan B de S.O.S.: la afiliación por correo al asesor comercial.
+ *
+ * Se usa cuando el portal marca la X (validación no favorable) y para los
+ * independientes, que el portal de empleadores no cubre. Replica lo que Brygar
+ * hacía a mano desde seguridadsocial.brygar@gmail.com (156 hilos desde 2021):
+ * formulario firmado + cédula (+ documentos de beneficiarios), y el asesor
+ * responde con `CC{cédula}_N.pdf` radicado, casi siempre al día hábil siguiente.
+ */
+class SosCorreoService
+{
+    public const ENTIDAD = 'sos';
+
+    public function __construct(private FormularioEpsService $formularios) {}
+
+    /**
+     * Arma el correo sin enviarlo: destinatario, asunto, texto, adjuntos y lo que falta.
+     */
+    public function preparar(Contrato $contrato, string $motivo = 'manual', bool $conBeneficiarios = true): array
+    {
+        $contrato->loadMissing(['cliente.eps', 'cliente.municipio', 'cliente.departamento', 'eps', 'plan', 'razonSocial']);
+        $cliente = $contrato->cliente;
+        $rs      = $contrato->razonSocial;
+        $eps     = $contrato->eps ?: $cliente?->eps;
+        $problemas = [];
+        $avisos    = [];
+
+        if ($eps?->codigo !== SosNovedadService::CODIGO_EPS) {
+            $problemas[] = 'La EPS del contrato no es S.O.S.';
+        }
+        if (! $cliente) {
+            $problemas[] = 'El contrato no tiene cliente en BryNex.';
+        }
+        if (! $contrato->plan?->incluye_eps) {
+            $problemas[] = 'El plan del contrato no incluye EPS.';
+        }
+
+        $independiente = (bool) $rs?->es_independiente;
+        $nombre        = $cliente ? $this->nombre($cliente) : '';
+        $tipoDoc       = strtoupper((string) $cliente?->tipo_doc) ?: 'CC';
+
+        $cedula = $cliente ? $this->documentoIdentidad($contrato) : null;
+        if ($cliente && ! $cedula) {
+            $problemas[] = 'Falta la copia del documento de identidad del cliente: súbela aquí antes de enviar.';
+        }
+
+        $beneficiarios = $cliente ? $cliente->beneficiarios()->where('aliado_id', $contrato->aliado_id)->get() : collect();
+        $docsBenef = $conBeneficiarios && $beneficiarios->isNotEmpty()
+            ? DocumentoCliente::where('aliado_id', $contrato->aliado_id)->where('cc_cliente', $contrato->cedula)
+                ->whereNotNull('doc_beneficiario')->orderBy('id')->get()
+            : collect();
+        if ($conBeneficiarios && $beneficiarios->isNotEmpty() && $docsBenef->isEmpty()) {
+            $avisos[] = 'El cliente tiene beneficiarios pero no hay documentos de ellos cargados (registro civil, declaración extrajuicio…).';
+        }
+
+        $residencia = trim(implode(', ', array_filter([$cliente?->municipio?->nombre, $cliente?->departamento?->nombre])));
+        if ($cliente && ! $cliente->municipio_id) {
+            $avisos[] = 'El cliente no tiene municipio de residencia: S.O.S. puede devolverlo si no coincide con su sistema.';
+        }
+
+        [$principal, $reemplazo] = $this->asesores($contrato);
+
+        $tipoTxt = $independiente ? 'Independiente' : 'Dependiente';
+        $asunto = 'Solicitud de Afiliación EPS S.O.S. '.($independiente ? 'Independiente ' : '')
+            .($conBeneficiarios && $beneficiarios->isNotEmpty() ? 'con Beneficiarios ' : '')
+            ."– {$nombre} – {$tipoDoc} {$contrato->cedula}".($independiente ? '' : ' – '.$rs?->razon_social);
+
+        $lineas = [
+            'Un cordial saludo, '.Str::before($principal['nombre'], ' ').'.',
+            '',
+            "Solicito muy amablemente la afiliación a la EPS S.O.S. del cotizante {$tipoTxt}:",
+            '',
+            "• Nombre: {$nombre}",
+            "• Documento: {$tipoDoc} {$contrato->cedula}",
+        ];
+        if (! $independiente) {
+            $lineas[] = "• Empresa: {$rs?->razon_social} (NIT {$rs?->nit})";
+        }
+        $lineas[] = '• Fecha de ingreso: '.($contrato->fecha_ingreso?->format('d/m/Y') ?? '—');
+        if ($residencia) {
+            $lineas[] = "• Municipio de residencia: {$residencia}";
+        }
+        if ($conBeneficiarios && $beneficiarios->isNotEmpty()) {
+            $lineas[] = '• Beneficiarios: '.$beneficiarios->map(fn ($b) => trim("{$b->nombres} ({$b->parentesco}, {$b->tipo_doc} {$b->n_documento})"))->implode('; ');
+        }
+        if ($motivo === 'portal_rechazo') {
+            $lineas[] = '';
+            $lineas[] = 'El portal de empleadores no permitió registrar la novedad (validación no favorable).';
+        }
+        $lineas = array_merge($lineas, [
+            '',
+            'Adjunto el formulario debidamente firmado, la carta de derechos y la copia del documento de identidad'
+                .($docsBenef->isNotEmpty() ? ', junto con los documentos de los beneficiarios' : '').'.',
+            '',
+            'Quedo atenta a cualquier requerimiento. Muchas gracias por su colaboración.',
+            '',
+            'Brygar Seguridad Social',
+        ]);
+
+        $adjuntos = [
+            ['clave' => 'formulario', 'nombre' => $this->archivo("Formulario_S.O.S._{$nombre}", 'pdf'), 'origen' => 'Se genera al enviar (3 páginas, firmado)'],
+            ['clave' => 'carta', 'nombre' => $this->archivo("Carta_derechos_{$nombre}", 'pdf'), 'origen' => 'Página 3 del formulario'],
+        ];
+        if ($cedula) {
+            $adjuntos[] = ['clave' => 'doc:'.$cedula->id, 'nombre' => $this->archivo("{$tipoDoc} {$nombre}", pathinfo($cedula->ruta, PATHINFO_EXTENSION)), 'origen' => 'Documentos del cliente'];
+        }
+        foreach ($docsBenef as $d) {
+            $adjuntos[] = ['clave' => 'doc:'.$d->id, 'nombre' => $this->archivo(Str::upper(str_replace('_', ' ', $d->tipo_documento))." {$d->doc_beneficiario}", pathinfo($d->ruta, PATHINFO_EXTENSION)), 'origen' => 'Beneficiario '.$d->doc_beneficiario];
+        }
+
+        $previos = CorreoAfiliacion::where('contrato_id', $contrato->id)->where('entidad', self::ENTIDAD)
+            ->orderByDesc('id')->limit(5)->get(['id', 'para', 'asunto', 'estado', 'enviado_at', 'vence_at', 'respondido_at']);
+        if ($previos->contains(fn ($p) => $p->estado === 'enviado')) {
+            $avisos[] = 'Ya hay un correo enviado a S.O.S. para este contrato esperando respuesta. Enviar otro sirve como recordatorio.';
+        }
+
+        return [
+            'problemas'     => $problemas,
+            'avisos'        => $avisos,
+            'independiente' => $independiente,
+            'buzon'         => config("afiliaciones_correo.buzones.{$contrato->aliado_id}"),
+            'para'          => $principal,
+            'reemplazo'     => $reemplazo,
+            'asunto'        => $asunto,
+            'cuerpo'        => implode("\n", $lineas),
+            'adjuntos'      => $adjuntos,
+            'beneficiarios' => $beneficiarios->count(),
+            'vence'         => $this->vencimiento(now())->format('d/m/Y H:i'),
+            'previos'       => $previos,
+        ];
+    }
+
+    /**
+     * Envía el correo (con lo que la persona revisó en la vista previa) y deja el
+     * radicado en trámite.
+     *
+     * @param  array{para:string, cc?:?string, asunto:string, cuerpo:string, motivo:string, con_beneficiarios?:bool}  $datos
+     */
+    public function enviar(Contrato $contrato, array $datos, ?int $usuarioId): CorreoAfiliacion
+    {
+        $prep = $this->preparar($contrato, $datos['motivo'], (bool) ($datos['con_beneficiarios'] ?? true));
+        if ($prep['problemas']) {
+            throw new RuntimeException(implode(' ', $prep['problemas']));
+        }
+
+        $para = $this->correos($datos['para']);
+        $cc   = $this->correos($datos['cc'] ?? '');
+        if (! $para) {
+            throw new RuntimeException('Indica a quién va el correo.');
+        }
+
+        $buzon    = BuzonGmail::delAliado($contrato->aliado_id);
+        $radicado = EpsRadicado::deContrato($contrato);
+        [$adjuntos, $guardados] = $this->armarAdjuntos($contrato, $prep['adjuntos'], (bool) ($datos['con_beneficiarios'] ?? true));
+
+        $registro = CorreoAfiliacion::create([
+            'aliado_id'   => $contrato->aliado_id,
+            'contrato_id' => $contrato->id,
+            'radicado_id' => $radicado->id,
+            'entidad'     => self::ENTIDAD,
+            'motivo'      => $datos['motivo'],
+            'buzon'       => $buzon->cuenta(),
+            'para'        => implode(', ', $para),
+            'cc'          => $cc ? implode(', ', $cc) : null,
+            'asunto'      => $datos['asunto'],
+            'cuerpo'      => $datos['cuerpo'],
+            'adjuntos'    => $guardados,
+            'message_id'  => 'pendiente',
+            'estado'      => 'fallido',
+            'usuario_id'  => $usuarioId,
+        ]);
+
+        try {
+            $messageId = $buzon->enviar($para, $datos['asunto'], $datos['cuerpo'], $adjuntos, $cc, 'Brygar Seguridad social');
+        } catch (Throwable $e) {
+            $registro->update(['error' => mb_substr($e->getMessage(), 0, 500)]);
+            throw new RuntimeException('Gmail no envió el correo: '.$e->getMessage());
+        }
+
+        $vence = $this->vencimiento(now());
+        $registro->update(['message_id' => $messageId, 'estado' => 'enviado', 'enviado_at' => now(), 'vence_at' => $vence, 'error' => null]);
+
+        $motivos = ['portal_rechazo' => 'el portal no validó la novedad', 'independiente' => 'independiente', 'manual' => 'envío manual'];
+        EpsRadicado::marcar($radicado, null, Radicado::ESTADO_TRAMITE, $guardados[0]['ruta'] ?? null,
+            sprintf('S.O.S.: afiliación enviada por correo a %s el %s (%s). Se espera respuesta hasta el %s.',
+                implode(', ', $para), now()->format('d/m/Y H:i'), $motivos[$datos['motivo']] ?? $datos['motivo'], $vence->format('d/m/Y H:i')),
+            $usuarioId);
+
+        EpsRadicado::bitacora($contrato, $radicado, self::ENTIDAD, 'correo_asesor', 'exitosa', null,
+            ['para' => $para, 'cc' => $cc, 'asunto' => $datos['asunto'], 'adjuntos' => array_column($guardados, 'nombre'), 'correo_id' => $registro->id],
+            ['message_id' => $messageId], null, $usuarioId, $guardados[0]['ruta'] ?? null);
+
+        return $registro;
+    }
+
+    /** Sube la copia del documento de identidad del cliente desde el modal. */
+    public function subirDocumento(Contrato $contrato, UploadedFile $archivo, ?int $usuarioId): DocumentoCliente
+    {
+        $contrato->loadMissing('cliente');
+        $tipo = strtoupper((string) $contrato->cliente?->tipo_doc) === 'TI' ? 'tarjeta_identidad' : 'cedula';
+        $ruta = "documentos/{$contrato->aliado_id}/{$contrato->cedula}/{$tipo}_".time().'_'.Str::random(6).'.'.strtolower($archivo->getClientOriginalExtension());
+        Storage::disk('local')->put($ruta, file_get_contents($archivo->getRealPath()));
+
+        return DocumentoCliente::create([
+            'aliado_id'      => $contrato->aliado_id,
+            'cc_cliente'     => $contrato->cedula,
+            'tipo_documento' => $tipo,
+            'nombre_archivo' => $archivo->getClientOriginalName(),
+            'ruta'           => $ruta,
+            'subido_por'     => $usuarioId,
+        ]);
+    }
+
+    /** Hasta cuándo se espera respuesta: el día hábil siguiente a la hora configurada. */
+    public function vencimiento(Carbon $desde): Carbon
+    {
+        $dia = $desde->copy()->addDay()->setTime((int) config('afiliaciones_correo.hora_vencimiento', 12), 0);
+        while ($dia->isWeekend() || in_array($dia->format('Y-m-d'), MoraClienteService::festivosColombia((int) $dia->format('Y')), true)) {
+            $dia->addDay();
+        }
+
+        return $dia;
+    }
+
+    /**
+     * @return array{0: array, 1: array} adjuntos para enviar [nombre, contenido, tipo] y lo que queda registrado [nombre, ruta]
+     */
+    private function armarAdjuntos(Contrato $contrato, array $previstos, bool $conBeneficiarios): array
+    {
+        $disco = Storage::disk('local');
+        $contrato->loadMissing(['cliente.municipio', 'cliente.departamento', 'cliente.beneficiarios', 'razonSocial', 'eps', 'arl', 'pension']);
+
+        $rutaFormulario = EpsRadicado::guardarPdf($contrato, $this->formularios->generar($contrato, $conBeneficiarios, []), 'eps_formulario_sos_correo');
+        if (! $rutaFormulario) {
+            throw new RuntimeException('No se pudo generar el formulario de EPS del contrato.');
+        }
+
+        $rutaCarta = preg_replace('/\.pdf$/', '_carta_derechos.pdf', $rutaFormulario);
+        exec(sprintf(
+            '%s -q -dNOPAUSE -dBATCH -dSAFER -sDEVICE=pdfwrite -dFirstPage=3 -dLastPage=3 -o %s %s 2>&1',
+            is_executable('/usr/bin/gs') ? '/usr/bin/gs' : 'gs',
+            escapeshellarg($disco->path($rutaCarta)), escapeshellarg($disco->path($rutaFormulario))
+        ), $salida, $codigo);
+        if ($codigo !== 0 || ! $disco->exists($rutaCarta)) {
+            throw new RuntimeException('No se pudo separar la carta de derechos: '.implode(' ', $salida));
+        }
+
+        $enviar = [];
+        $guardados = [];
+        foreach ($previstos as $a) {
+            $ruta = match (true) {
+                $a['clave'] === 'formulario' => $rutaFormulario,
+                $a['clave'] === 'carta'      => $rutaCarta,
+                str_starts_with($a['clave'], 'doc:') => DocumentoCliente::where('aliado_id', $contrato->aliado_id)
+                    ->where('cc_cliente', $contrato->cedula)->whereKey((int) substr($a['clave'], 4))->value('ruta'),
+                default => null,
+            };
+            if (! $ruta || ! $disco->exists($ruta)) {
+                throw new RuntimeException("No se encontró el archivo de «{$a['nombre']}».");
+            }
+            $enviar[] = ['nombre' => $a['nombre'], 'contenido' => $disco->get($ruta), 'tipo' => $disco->mimeType($ruta) ?: 'application/octet-stream'];
+            $guardados[] = ['nombre' => $a['nombre'], 'ruta' => $ruta];
+        }
+
+        $total = array_sum(array_map(fn ($a) => strlen($a['contenido']), $enviar));
+        if ($total > 20 * 1024 * 1024) {
+            throw new RuntimeException('Los adjuntos pesan más de 20 MB y Gmail los rechazaría.');
+        }
+
+        return [$enviar, $guardados];
+    }
+
+    /** El documento de identidad más reciente del cliente (no de beneficiarios). */
+    private function documentoIdentidad(Contrato $contrato): ?DocumentoCliente
+    {
+        return DocumentoCliente::where('aliado_id', $contrato->aliado_id)
+            ->where('cc_cliente', $contrato->cedula)
+            ->whereNull('doc_beneficiario')
+            ->whereIn('tipo_documento', ['cedula', 'tarjeta_identidad'])
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    /**
+     * Asesor de la razón social: "correo de la entidad" de su clave de S.O.S. en el
+     * módulo de claves (o el link, donde se guardó al principio); si no, el de config.
+     *
+     * @return array{0: array{nombre:string, correo:string}, 1: ?array{nombre:string, correo:string}}
+     */
+    private function asesores(Contrato $contrato): array
+    {
+        $conf = config('afiliaciones_correo.asesores.sos');
+        $clave = DB::table('clave_accesos')
+            ->where('aliado_id', $contrato->aliado_id)
+            ->where('razon_social_id', $contrato->razon_social_id)
+            ->where('tipo', 'EPS')->where('entidad', 'like', '%SOS%')->where('activo', true)
+            ->first(['correo_entidad', 'link_acceso']);
+
+        $correo = collect([$clave?->correo_entidad, $clave?->link_acceso])
+            ->map(fn ($v) => trim((string) $v))
+            ->first(fn ($v) => filter_var($v, FILTER_VALIDATE_EMAIL));
+
+        $principal = $correo && strcasecmp($correo, $conf['principal']['correo']) !== 0
+            ? ['nombre' => 'Asesor S.O.S.', 'correo' => $correo]
+            : $conf['principal'];
+
+        return [$principal, $conf['reemplazo'] ?? null];
+    }
+
+    private function nombre($cliente): string
+    {
+        return trim(preg_replace('/\s+/', ' ', mb_strtoupper(implode(' ', array_filter([
+            $cliente->primer_nombre, $cliente->segundo_nombre, $cliente->primer_apellido, $cliente->segundo_apellido,
+        ])))));
+    }
+
+    private function archivo(string $base, string $extension): string
+    {
+        return trim(preg_replace('/[^\pL\pN ._-]+/u', '', $base)).'.'.strtolower($extension ?: 'pdf');
+    }
+
+    /** @return string[] */
+    private function correos(string $lista): array
+    {
+        return collect(preg_split('/[,;\s]+/', $lista))->map(fn ($c) => trim($c))
+            ->filter(fn ($c) => filter_var($c, FILTER_VALIDATE_EMAIL))->unique()->values()->all();
+    }
+}
