@@ -812,6 +812,12 @@ function sortClass($col, $currSort, $currDir) {
                     onclick="novedadSanitasDesdeRadicado()">
                     🏥 Radicar Sanitas
                 </button>
+                {{-- EPS sin portal de empleador (Comfenalco Valle): afiliación por correo al asesor --}}
+                <button id="btnCorreoEps" type="button"
+                    style="display:none;align-items:center;gap:0.35rem;padding:0.3rem 0.85rem;background:linear-gradient(135deg,#15803d,#16a34a);color:#fff;border:none;border-radius:7px;font-size:0.75rem;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(22,163,74,0.3);"
+                    onclick="correoEpsDesdeRadicado()">
+                    📧 Afiliar por correo
+                </button>
                 {{-- Cuando ya está afiliado: deshacer, solo dentro de los 30 días --}}
                 <button id="btnAnularApi" type="button"
                     style="display:none;align-items:center;gap:0.35rem;padding:0.3rem 0.85rem;background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;border-radius:7px;font-size:0.75rem;font-weight:700;cursor:pointer;"
@@ -1335,6 +1341,8 @@ let radicadoActivo = null;
 const CSRF = document.querySelector('meta[name="csrf-token"]')?.content;
 // Automatización de portales: usuarios BryNex o aliado autorizado por BryNex.
 const PUEDE_AUTOMATIZAR = @json(Gate::allows('automatizar-portales'));
+// EPS sin portal de empleador que se afilian por correo al asesor (config afiliaciones_correo.asesores).
+const CORREO_EPS = [{ entidad: 'comfenalco', nombre: 'Comfenalco Valle', patron: /COMFENALCO\s*VALLE|DELAGENTE/i }];
 
 // ── Helpers ──
 function cerrarModal(id) {
@@ -1579,6 +1587,14 @@ function abrirModalRadicado(radId, radData, ctx = {}, contratoId = null, tieneFo
     const esSanitas  = (radData.tipo === 'eps') && /SANITAS/i.test(ctx.eps || '');
     btnSanitas.style.display = (PUEDE_AUTOMATIZAR && esSanitas && radData.estado !== 'ok') ? 'inline-flex' : 'none';
     btnSanitas._contratoId = contratoId || ctx.id || null;
+
+    // EPS que se afilian por correo al asesor (hoy Comfenalco Valle), mientras no esté en OK.
+    const btnCorreo = document.getElementById('btnCorreoEps');
+    const correoEps = (radData.tipo === 'eps') ? CORREO_EPS.find(c => c.patron.test(ctx.eps || '')) : null;
+    btnCorreo.style.display = (PUEDE_AUTOMATIZAR && correoEps && radData.estado !== 'ok') ? 'inline-flex' : 'none';
+    btnCorreo._contratoId = contratoId || ctx.id || null;
+    btnCorreo._entidad = correoEps?.entidad || null;
+    if (correoEps) btnCorreo.textContent = `📧 Afiliar ${correoEps.nombre} por correo`;
     // Contexto del contrato
     document.getElementById('mrad-cotizante').textContent        = ctx.nombre         || '—';
     document.getElementById('mrad-empresa').textContent          = ctx.razon_social    || '—';
@@ -1697,6 +1713,13 @@ function novedadSosDesdeRadicado() {
     if (!contratoId) { alert('No se pudo identificar el contrato.'); return; }
     cerrarModal('modalRadicado');
     abrirNovedadSos(contratoId);
+}
+
+function correoEpsDesdeRadicado() {
+    const btn = document.getElementById('btnCorreoEps');
+    if (!btn._contratoId || !btn._entidad) { alert('No se pudo identificar el contrato.'); return; }
+    cerrarModal('modalRadicado');
+    abrirCorreoEps(btn._contratoId, btn._entidad);
 }
 
 function novedadSanitasDesdeRadicado() {
@@ -2638,6 +2661,7 @@ function mostrarToast(msg, tipo) {
 @include('admin.partials._novedad_salud_total')
 @include('admin.partials._novedad_sos')
 @include('admin.partials._novedad_sanitas')
+@include('admin.partials._correo_eps')
 @endcan
 
 @endsection

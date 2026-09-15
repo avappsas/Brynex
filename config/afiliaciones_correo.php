@@ -21,6 +21,16 @@ return [
             'principal'      => ['nombre' => 'Juan Carlos Torres', 'correo' => 'jtorres.qta@sos.com.co'],
             'reemplazo'      => ['nombre' => 'Marien Ruiz Mina', 'correo' => 'mrmina@sos.com.co'],
         ],
+        // EPS sin portal de empleador: se afilian solo por correo (CorreoAsesorEpsService).
+        // Comfenalco Valle (delagente): la asesora responde el mismo día con el
+        // certificado o el radicado en PDF; pide el formulario como "Reporte de novedades".
+        'comfenalco' => [
+            'nombre_entidad'    => 'Comfenalco Valle',
+            'nombre_formulario' => 'Comfenalco Valle',
+            'codigo_eps'        => 'EPS012',
+            'principal'         => ['nombre' => 'Lola Baena', 'correo' => 'lbaena88@gmail.com'],
+            'reemplazo'         => null,
+        ],
     ],
 
     // Dominios de las entidades cuyos correos revisa el agente del buzón. Lo que
@@ -36,6 +46,7 @@ return [
         'epssanitas.com'        => ['clave' => 'sanitas', 'tipo' => 'eps', 'nombre' => 'Sanitas'],
         'colsanitas.com'        => ['clave' => 'sanitas', 'tipo' => 'eps', 'nombre' => 'Sanitas'],
         'comfenalcovalle.com.co' => ['clave' => 'comfenalco', 'tipo' => 'eps_caja', 'nombre' => 'Comfenalco Valle'],
+        'epsdelagente.com.co'   => ['clave' => 'comfenalco', 'tipo' => 'eps', 'nombre' => 'Comfenalco Valle (delagente)'],
         'comfandi.com.co'       => ['clave' => 'comfandi', 'tipo' => 'caja', 'nombre' => 'Comfandi'],
         'emssanar.org.co'       => ['clave' => 'emssanar', 'tipo' => 'eps', 'nombre' => 'Emssanar'],
         'coosalud.com'          => ['clave' => 'coosalud', 'tipo' => 'eps', 'nombre' => 'Coosalud'],

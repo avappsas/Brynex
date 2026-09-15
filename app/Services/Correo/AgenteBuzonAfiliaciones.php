@@ -127,6 +127,7 @@ class AgenteBuzonAfiliaciones
         $radicado = $enviado->radicado_id ? Radicado::find($enviado->radicado_id) : ($contrato ? EpsRadicado::deContrato($contrato) : null);
         $texto    = Str::limit($m['texto'], 400);
         $quien    = $m['de_nombre'] ?: $m['de'];
+        $eps      = config("afiliaciones_correo.asesores.{$enviado->entidad}.nombre_entidad") ?? Str::upper($enviado->entidad);
 
         // Aviso automático de vacaciones: el trámite sigue esperando; se sugiere el reemplazo.
         if (preg_match('/vacaci|fuera de (la )?oficina|out of office|ausente|respuesta autom/iu', $m['asunto'].' '.$m['texto'])) {
@@ -144,14 +145,14 @@ class AgenteBuzonAfiliaciones
         if ($pdf && $contrato && $radicado) {
             $ruta = $this->copiarAlRadicado($contrato, $pdf['ruta'], 'eps_radicado_'.$enviado->entidad);
             EpsRadicado::marcar($radicado, null, Radicado::ESTADO_OK, $ruta,
-                "S.O.S. respondió el correo ({$quien}, {$m['fecha']->format('d/m/Y H:i')}) con el formulario radicado ({$pdf['nombre']})."
+                "{$eps} respondió el correo ({$quien}, {$m['fecha']->format('d/m/Y H:i')}) con el soporte ({$pdf['nombre']})."
                 .($texto ? " Mensaje: «{$texto}»" : ''), $enviado->usuario_id);
             EpsRadicado::bitacora($contrato, $radicado, $enviado->entidad, 'correo_respuesta', 'exitosa', null,
                 ['correo_id' => $enviado->id, 'de' => $m['de']], ['adjunto' => $pdf['nombre'], 'texto' => $texto], null, $enviado->usuario_id, $ruta);
             $enviado->update(['estado' => 'respondido', 'respondido_at' => $m['fecha'], 'respuesta_de' => $m['de'], 'respuesta_resumen' => $texto]);
             CorreoRecibido::create($base + ['clasificacion' => 'respuesta_asesor', 'correo_afiliacion_id' => $enviado->id, 'contrato_id' => $contrato->id,
                 'radicado_id' => $radicado->id, 'estado' => 'aplicado', 'accion' => "Radicado de EPS en OK con {$pdf['nombre']}."]);
-            $this->whatsapp($enviado->usuario_id, "✅ S.O.S. radicó la afiliación de {$nombre} (CC {$contrato->cedula}). El radicado de EPS quedó en OK con el formulario radicado.");
+            $this->whatsapp($enviado->usuario_id, "✅ {$eps} respondió la afiliación de {$nombre} (CC {$contrato->cedula}) con {$pdf['nombre']}. El radicado de EPS quedó en OK con ese soporte.");
             $this->anotar('aplicado', "{$nombre}: radicado en OK con {$pdf['nombre']}");
 
             return;
@@ -160,14 +161,14 @@ class AgenteBuzonAfiliaciones
         // Respondió sin el formulario radicado: una observación o una pregunta.
         if ($radicado && $contrato) {
             EpsRadicado::marcar($radicado, null, $radicado->estado === Radicado::ESTADO_OK ? Radicado::ESTADO_OK : Radicado::ESTADO_TRAMITE, null,
-                "S.O.S. respondió el correo sin radicado ({$quien}, {$m['fecha']->format('d/m/Y H:i')}): «{$texto}»", $enviado->usuario_id);
+                "{$eps} respondió el correo sin radicado ({$quien}, {$m['fecha']->format('d/m/Y H:i')}): «{$texto}»", $enviado->usuario_id);
         }
         if ($enviado->estado !== 'respondido') {
             $enviado->update(['estado' => 'observaciones', 'respondido_at' => $m['fecha'], 'respuesta_de' => $m['de'], 'respuesta_resumen' => $texto]);
         }
         CorreoRecibido::create($base + ['clasificacion' => 'respuesta_asesor', 'correo_afiliacion_id' => $enviado->id, 'contrato_id' => $enviado->contrato_id,
             'radicado_id' => $radicado?->id, 'estado' => 'por_revisar', 'accion' => 'Respuesta sin formulario radicado: revisar lo que pide.']);
-        $this->whatsapp($enviado->usuario_id, "⚠️ S.O.S. respondió la afiliación de {$nombre} sin radicado: «".Str::limit($m['texto'], 250)."». Revísalo en BryNex.");
+        $this->whatsapp($enviado->usuario_id, "⚠️ {$eps} respondió la afiliación de {$nombre} sin radicado: «".Str::limit($m['texto'], 250)."». Revísalo en BryNex.");
         $this->anotar('por_revisar', "{$nombre}: respuesta sin radicado");
     }
 

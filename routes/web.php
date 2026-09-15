@@ -982,6 +982,11 @@ Route::middleware('auth')->group(function () {
             Route::get('/{contrato}/sos/correo', [$sosc, 'correoPreparar'])->name('sos.correo');
             Route::post('/{contrato}/sos/correo/documento', [$sosc, 'correoDocumento'])->name('sos.correo.documento')->middleware('permiso:documentos.subir');
             Route::post('/{contrato}/sos/correo/enviar', [$sosc, 'correoEnviar'])->name('sos.correo.enviar');
+            // EPS sin portal de empleador (Comfenalco Valle): afiliación por correo al asesor.
+            $cae = \App\Http\Controllers\Admin\CorreoAsesorEpsController::class;
+            Route::get('/{contrato}/correo-eps/{entidad}', [$cae, 'preparar'])->name('correo-eps.preparar')->where('entidad', '[a-z_]+');
+            Route::post('/{contrato}/correo-eps/{entidad}/documento', [$cae, 'documento'])->name('correo-eps.documento')->where('entidad', '[a-z_]+')->middleware('permiso:documentos.subir');
+            Route::post('/{contrato}/correo-eps/{entidad}/enviar', [$cae, 'enviar'])->name('correo-eps.enviar')->where('entidad', '[a-z_]+');
         });
         Route::get('/{contrato}/historial', [$ac, 'historial'])->name('historial');
         Route::get('/{contrato}/formulario/eps', [$fc, 'vista'])->name('formulario.eps');
