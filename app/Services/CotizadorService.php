@@ -124,9 +124,9 @@ class CotizadorService
             // Tiempo Parcial Independiente: los días no están en el catálogo,
             // los elige el contrato mes a mes y llegan en la petición.
             if ($tipoModalidad->diasEnElContrato()) {
-                $diasAfpReq  = (int) ($p['dias_tp_afp'] ?? 0);
+                $diasAfpReq = (int) ($p['dias_tp_afp'] ?? 0);
                 $diasCajaReq = (int) ($p['dias_tp_caja'] ?? 0);
-                $diasP['afp']  = $diasAfpReq  ?: 7;
+                $diasP['afp'] = $diasAfpReq ?: 7;
                 $diasP['caja'] = $diasCajaReq ?: $diasP['afp'];
             }
             $factorMap = [7 => 0.25, 14 => 0.50, 21 => 0.75, 30 => 1.00];
@@ -205,10 +205,18 @@ class CotizadorService
             $caja = ($cajaMes === Contrato::CARGO_SIN_CCF)
                 ? $cajaMes
                 : ($dias < 30 ? $r($cajaMes * $dias / 30) : $cajaMes);
-            $ss = $eps + $arl + $pen + $caja;
             $diasArl = $dias;
             $diasAfp = $dias;
             $diasCaja = $dias;
+
+            // Solo Caja (-5 y -10): los días de la caja los fija la modalidad, no
+            // el mes. Igual que en Contrato::calcularCotizacion() y que la planilla.
+            if ($caja > 0 && $caja !== Contrato::CARGO_SIN_CCF
+                && in_array($tipoModalidadIdInt, TipoModalidad::IDS_SOLO_CAJA, true)) {
+                $diasCaja = max(1, min($dias ?: 30, (int) ($tipoModalidad->dias_caja ?? 30)));
+                $caja = $r((int) round($ibc * $diasCaja / 30) * $pctCaja / 100);
+            }
+            $ss = $eps + $arl + $pen + $caja;
         }
 
         // Admon total = administracion + admon_asesor

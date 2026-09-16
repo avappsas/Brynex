@@ -398,8 +398,8 @@ class Contrato extends BaseModel
         $afp = $this->dias_tp_afp ?? $mod->dias_afp ?? 30;
 
         return [
-            'arl'  => 30,   // la ARL de tiempo parcial siempre se paga por el mes completo
-            'afp'  => (int) $afp,
+            'arl' => 30,   // la ARL de tiempo parcial siempre se paga por el mes completo
+            'afp' => (int) $afp,
             'caja' => (int) ($this->dias_tp_caja ?? $mod->dias_caja ?? $afp),
         ];
     }
@@ -532,6 +532,16 @@ class Contrato extends BaseModel
                 $pen = ($plan && $plan->incluye_pension) ? $r($ibcProp * $pctPen / 100) : 0;
                 $caja = ($plan && $plan->incluye_caja) ? $r($ibcProp * $pctCaja / 100) : 0;
                 $parafiscales = $pagaParafiscales ? $r($ibcProp * $pctSena / 100) + $r($ibcProp * $pctIcbf / 100) : 0;
+            }
+
+            // ── Solo Caja (-5 y -10): los días de la caja los fija la modalidad
+            // Es lo que hace la planilla —PilaCotizanteDosPasos::diasVendidos lee
+            // `tipo_modalidad.dias_caja`—, así que la cotización tiene que usar el
+            // mismo número: con los 30 del contrato, "Caja 14 días" le cobraba al
+            // cliente el doble de lo que el operador le liquida.
+            if ($caja > 0 && in_array((int) $this->tipo_modalidad_id, TipoModalidad::IDS_SOLO_CAJA, true)) {
+                $diasCaja = max(1, min($dias ?: 30, (int) ($mod->dias_caja ?? 30)));
+                $caja = $r((int) round($ibc * $diasCaja / 30) * $pctCaja / 100);
             }
 
             // ── Cargo sin-CCF: dependiente E o Ingreso-Retiro sin caja ─────
