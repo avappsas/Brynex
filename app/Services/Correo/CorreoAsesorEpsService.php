@@ -79,6 +79,11 @@ class CorreoAsesorEpsService
         if ($cliente && ! $cedula) {
             $avisos[] = 'No hay copia del documento de identidad del cliente (se envía preferiblemente). Puedes subirla aquí o enviar sin ella.';
         }
+        // Sin firma dibujada el formulario sale con ese espacio en blanco y la
+        // EPS lo devuelve, así que aquí no es un aviso más: el envío se frena.
+        if ($cliente && ! FormularioEpsService::tieneFirma($cliente)) {
+            $avisos[] = 'Falta la firma del contratista: ábrele el formulario y pídele que la dibuje (✍️ Firmar). Sin ella no se puede enviar.';
+        }
         if ($cliente && (! $cliente->direccion_vivienda || ! $cliente->celular)) {
             $avisos[] = 'Al cliente le falta dirección o celular: el asesor puede pedirlos.';
         }
@@ -231,6 +236,13 @@ class CorreoAsesorEpsService
     {
         $disco = \Illuminate\Support\Facades\Storage::disk('local');
         $contrato->loadMissing(['cliente.municipio', 'cliente.departamento', 'cliente.beneficiarios', 'razonSocial', 'eps', 'arl', 'pension']);
+
+        // Comfenalco Valle devolvió una afiliación el 16-sep-2026 porque la firma
+        // iba en letra del PDF; ahora el formulario sale en blanco si nadie la
+        // dibujó, y mandarlo así solo gasta otro viaje de ida y vuelta.
+        if (! FormularioEpsService::tieneFirma($contrato->cliente)) {
+            throw new RuntimeException('El formulario no tiene la firma del contratista. Ábrelo y dibújala en «✍️ Firmar» antes de enviarlo: las EPS devuelven los formularios sin firma a mano alzada.');
+        }
 
         $rutaFormulario = EpsRadicado::guardarPdf($contrato, $this->formularios->generar($contrato, true, []), "eps_formulario_{$entidad}_correo");
         if (! $rutaFormulario) {
