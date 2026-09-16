@@ -88,6 +88,9 @@ class FormularioEpsController extends Controller
             'urlVista' => route($rutaVista, ['contrato' => $contrato->id]),
             'urlRaw' => route($rutaRaw, ['contrato' => $contrato->id]),
             'urlFirma' => route('admin.afiliaciones.formulario.eps.firma', $contrato->id),
+            // Sin firma dibujada el formulario sale con el espacio en blanco, así
+            // que la vista abre el modal sola para pedirla.
+            'tieneFirma' => FormularioEpsService::tieneFirma($cliente),
         ]);
     }
 

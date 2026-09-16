@@ -50,24 +50,11 @@
         }
         .modal h2 { color:#e2e8f0; font-size:1rem; font-weight:700; }
 
-        /* Tabs */
-        .tabs { display:flex; gap:0.4rem; border-bottom:1px solid #1e3a5f; padding-bottom:0.5rem; }
-        .tab-btn { background:none; border:none; color:#64748b; font-size:0.82rem; font-weight:600;
-            padding:0.3rem 0.8rem; border-radius:6px; cursor:pointer; transition:all .15s; }
-        .tab-btn.activo { background:#1e3a5f; color:#93c5fd; }
-
-        /* Panel texto-firma */
         .tab-panel { display:none; }
         .tab-panel.activo { display:block; }
 
-        .firma-preview {
-            background:#fff; border-radius:8px; min-height:120px;
-            display:flex; align-items:center; justify-content:center;
-            font-family:'Dancing Script', cursive; font-size:2.8rem; color:#1e293b;
-            padding:1rem; text-align:center; line-height:1.1; word-break:break-word;
-        }
-        .size-slider { width:100%; accent-color:#3b82f6; }
-        label.sl { font-size:0.72rem; color:#64748b; display:block; margin-bottom:0.3rem; }
+        .firma-aviso { font-size:0.78rem; color:#cbd5e1; line-height:1.45; margin:0 0 0.8rem; }
+        .firma-aviso strong { color:#fbbf24; }
 
         /* Panel canvas */
         #canvasFirma {
@@ -116,9 +103,9 @@
     @endif
 
     {{-- Botón firmar --}}
-    <button class="btn btn-warning" onclick="abrirModalFirma()">
-        ✍️ Firmar
-        <span class="firma-guardada" id="firmaOk">✅</span>
+    <button class="btn btn-warning" onclick="abrirModalFirma()" id="btnFirmar">
+        <span id="btnFirmarTexto">{{ $tieneFirma ? '✍️ Firmar' : '✍️ Falta la firma' }}</span>
+        <span class="firma-guardada {{ $tieneFirma ? 'ok' : '' }}" id="firmaOk">✅</span>
     </button>
 
     <button class="btn btn-primary" onclick="document.getElementById('pdfFrame').contentWindow.print()">
@@ -154,31 +141,24 @@
 <div class="modal-overlay" id="modalFirma">
 <div class="modal">
 
-    <h2>✍️ Agregar firma del cliente</h2>
+    <h2>✍️ Firma del contratista</h2>
 
-    <div class="tabs">
-        <button class="tab-btn activo" onclick="switchTab('texto')">🔤 Nombre como firma</button>
-        <button class="tab-btn"        onclick="switchTab('canvas')">✏️ Dibujar firma</button>
-    </div>
+    {{-- Las EPS devuelven el formulario si la firma va en letra del PDF, así que
+         aquí solo se dibuja: Comfenalco Valle lo exigió por escrito el 16-sep-2026. --}}
+    <p class="firma-aviso">
+        Dibuja la firma de <strong>{{ $nombreCompleto }}</strong> con el mouse o el dedo.
+        Las EPS <strong>rechazan</strong> los formularios cuya firma es el nombre escrito con letra del PDF:
+        tiene que ser a mano alzada.
+    </p>
 
-    {{-- Tab: texto estilo firma --}}
-    <div class="tab-panel activo" id="tabTexto">
-        <div class="firma-preview" id="firmaTextoPreview">{{ $nombreCompleto }}</div>
-        <div style="margin-top:0.75rem;">
-            <label class="sl">Tamaño de la firma</label>
-            <input type="range" class="size-slider" id="firmaSize" min="1.5" max="5" step="0.1" value="2.8"
-                oninput="document.getElementById('firmaTextoPreview').style.fontSize = this.value + 'rem'">
-        </div>
-    </div>
-
-    {{-- Tab: canvas dibujo --}}
-    <div class="tab-panel" id="tabCanvas">
-        <canvas id="canvasFirma" width="300" height="100"></canvas>
+    {{-- Canvas de dibujo --}}
+    <div class="tab-panel activo" id="tabCanvas">
+        <canvas id="canvasFirma" width="600" height="200"></canvas>
         <div class="canvas-tools">
             <label>Color:</label>
             <input type="color" id="colorFirma" value="#1e293b">
             <label>Grosor:</label>
-            <input type="range" id="grosorFirma" min="1" max="8" value="2.5" step="0.5">
+            <input type="range" id="grosorFirma" min="2" max="12" value="4" step="0.5">
             <button class="btn btn-secondary" style="padding:0.25rem 0.65rem;font-size:0.72rem;" onclick="limpiarCanvas()">🗑 Limpiar</button>
         </div>
     </div>
@@ -196,7 +176,7 @@ const FIRMA_URL  = "{{ $urlFirma }}";
 const PDF_BASE   = "{{ $urlRaw }}";
 const BEN_PARAM  = {{ $conBeneficiarios ? 'true' : 'false' }};
 const CSRF       = document.querySelector('meta[name="csrf-token"]').content;
-let tabActivo    = 'texto';
+const TIENE_FIRMA = {{ $tieneFirma ? 'true' : 'false' }};
 
 // Construye la URL del iframe con beneficiarios + params custom
 function buildPdfUrl() {
@@ -231,18 +211,15 @@ function cerrarModalFirma() {
     document.getElementById('modalFirma').classList.remove('open');
 }
 
-// ── Tabs ─────────────────────────────────────────────
-function switchTab(tab) {
-    tabActivo = tab;
-    document.querySelectorAll('.tab-btn').forEach((b,i) =>
-        b.classList.toggle('activo', (i === 0 && tab==='texto') || (i===1 && tab==='canvas')));
-    document.getElementById('tabTexto').classList.toggle('activo', tab === 'texto');
-    document.getElementById('tabCanvas').classList.toggle('activo', tab === 'canvas');
+// Sin firma guardada el formulario sale con el espacio en blanco: se pide de
+// entrada en vez de dejar que alguien lo imprima así.
+if (!TIENE_FIRMA) {
+    window.addEventListener('DOMContentLoaded', abrirModalFirma);
 }
 
 // ── Guardar firma ─────────────────────────────────────
 async function guardarFirma() {
-    const dataUrl = tabActivo === 'texto' ? capturarTexto() : capturarCanvas();
+    const dataUrl = capturarCanvas();
     if (!dataUrl) return;
 
     // Enviar como FormData para evitar límites de JSON
@@ -258,6 +235,7 @@ async function guardarFirma() {
             const j = JSON.parse(txt);
             if (j.ok) {
                 document.getElementById('firmaOk').classList.add('ok');
+                document.getElementById('btnFirmarTexto').textContent = '✍️ Firmar';
                 cerrarModalFirma();
                 // Recargar iframe con todos los params actuales
                 document.getElementById('pdfFrame').src = buildPdfUrl() + '&_t=' + Date.now();
@@ -269,26 +247,9 @@ async function guardarFirma() {
     alert('Error al guardar firma:\n' + txt.slice(0, 300));
 }
 
-// ── Texto como firma ──────────────────────────────────
-function capturarTexto() {
-    const preview = document.getElementById('firmaTextoPreview');
-    const size    = parseFloat(document.getElementById('firmaSize').value);
-    // Canvas pequeño = PNG ligero, fondo transparente
-    const canvas  = document.createElement('canvas');
-    canvas.width  = 300;
-    canvas.height = 90;
-    const ctx = canvas.getContext('2d');
-    // Sin fillRect = fondo transparente
-    ctx.fillStyle    = '#1e293b';
-    ctx.font         = `bold ${Math.round(size * 12)}px 'Dancing Script', cursive`;
-    ctx.textAlign    = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(preview.textContent.trim(), 150, 45);
-    return canvas.toDataURL('image/png');
-}
-
 // ── Canvas dibujo ─────────────────────────────────────
 let canvasInicializado = false;
+let hayTrazo = false;
 let dibujando = false;
 let lastX = 0, lastY = 0;
 
@@ -309,6 +270,7 @@ function initCanvas() {
 
     const start = (e) => {
         dibujando = true;
+        hayTrazo = true;
         [lastX, lastY] = pos(e);
     };
     const draw = (e) => {
@@ -338,12 +300,17 @@ function limpiarCanvas() {
     const c = document.getElementById('canvasFirma');
     const ctx = c.getContext('2d');
     ctx.clearRect(0, 0, c.width, c.height); // clearRect = transparente
+    hayTrazo = false;
 }
 
 function capturarCanvas() {
-    const c = document.getElementById('canvasFirma');
-    // Verificar si está vacío (compare con canvas blanco)
-    return c.toDataURL('image/png');
+    // Guardar un canvas en blanco deja el formulario sin firma pero con el
+    // ✅ puesto, que es peor que no tener nada.
+    if (!hayTrazo) {
+        alert('Dibuja la firma antes de guardar.');
+        return null;
+    }
+    return document.getElementById('canvasFirma').toDataURL('image/png');
 }
 </script>
 </body>
