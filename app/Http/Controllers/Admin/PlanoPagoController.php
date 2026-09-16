@@ -120,6 +120,13 @@ class PlanoPagoController extends Controller
                 // cada fila se liquida por su cuenta, ver PlanillaApiController::liquidarIndependiente)
                 ->leftJoin(DB::raw('(SELECT plano_id, MAX(id) AS max_id FROM operador_planillas_api WHERE deleted_at IS NULL AND plano_id IS NOT NULL GROUP BY plano_id) AS opa_max'), 'opa_max.plano_id', '=', 'p.id')
                 ->leftJoin('operador_planillas_api AS opa', 'opa.id', '=', 'opa_max.max_id')
+                // Si el número confirmado cruza con el operador, y a qué hora se pagó
+                ->leftJoin('planillas_verificacion_operador AS pv', function ($join) {
+                    $join->on('pv.numero_planilla', '=', 'p.numero_planilla')->on('pv.aliado_id', '=', 'p.aliado_id');
+                })
+                ->leftJoin('planillas_pago_operador AS ppo', function ($join) {
+                    $join->on('ppo.numero_planilla', '=', 'p.numero_planilla')->on('ppo.aliado_id', '=', 'p.aliado_id');
+                })
                 ->where('p.aliado_id', $aliadoId)
                 ->whereNull('p.deleted_at')
                 ->where(function ($q) use ($nPlanoFiltro) {
@@ -193,6 +200,9 @@ class PlanoPagoController extends Controller
                     'opa.url_pago             AS url_pago_api',
                     'opa.estado               AS estado_api',
                     'opa.mensaje_error        AS mensaje_error_api',
+                    'pv.estado                AS verif_estado',
+                    'pv.mensaje               AS verif_mensaje',
+                    'ppo.fecha_pago           AS pago_operador_fecha',
                     // Empresa del cliente
                     'em.empresa AS nombre_empresa',
                     // Tipo modalidad
@@ -216,6 +226,9 @@ class PlanoPagoController extends Controller
             } elseif ($estadoPago === 'pagadas') {
                 $query->whereNotNull('p.numero_planilla')
                       ->where('p.numero_planilla', '!=', '');
+            } elseif ($estadoPago === 'no_cruzan') {
+                // Confirmadas con un número que el operador no reconoce
+                $query->whereIn('pv.estado', ['no_encontrada', 'invalida', 'sin_acceso']);
             }
 
             $planos = $query->orderBy('rs.razon_social')->orderBy('p.primer_ape')->get();

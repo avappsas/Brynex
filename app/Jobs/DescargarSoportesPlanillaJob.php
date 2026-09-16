@@ -140,7 +140,7 @@ class DescargarSoportesPlanillaJob implements ShouldQueue
                 // una sola que falle puede ser solo esa persona.
                 $planillaNueva = $pendientes->count() === $planos->count();
                 if ($planillaNueva && $bajados === 0 && count($fallos) >= min(2, $pendientes->count())) {
-                    $this->sinPago($this->motivo($r['message'] ?? ''), $r['message'] ?? '', $plano, $alertas);
+                    $this->sinPago($this->motivo($r['message'] ?? ''), $r['message'] ?? '', $plano, $soportes, $alertas);
 
                     return;
                 }
@@ -167,16 +167,20 @@ class DescargarSoportesPlanillaJob implements ShouldQueue
     /** no_pagada: reintentar · config: avisar ya · error: reintentar (red, portal caído). */
     private function motivo(string $mensaje): string
     {
-        return match (true) {
-            str_contains($mensaje, 'no figura pagada'), str_contains($mensaje, 'No se encontraron datos') => 'no_pagada',
-            str_contains($mensaje, 'sin credenciales'), str_contains($mensaje, 'no existe en el operador'),
-            str_contains($mensaje, 'sin permisos'), str_contains($mensaje, 'login fue rechazado'),
-            str_contains($mensaje, 'no tiene NIT') => 'config',
-            default => 'error',
+        if (str_contains($mensaje, 'no es un número de planilla válido')) {
+            return 'config';
+        }
+
+        return match (EnlaceInformeIndividualService::estadoPorMensaje($mensaje)) {
+            'no_encontrada', null => str_contains($mensaje, 'sin credenciales') && ! str_contains($mensaje, 'no figura')
+                ? 'config'
+                : 'no_pagada',
+            'sin_acceso' => 'config',
+            default      => 'error',
         };
     }
 
-    private function sinPago(string $motivo, string $mensaje, Plano $plano, AlertaOperativaService $alertas): void
+    private function sinPago(string $motivo, string $mensaje, Plano $plano, EnlaceInformeIndividualService $soportes, AlertaOperativaService $alertas): void
     {
         $esperas = config('planillas.soportes_esperas_minutos', [10]);
         $siguiente = $this->intento + 1;
@@ -187,6 +191,13 @@ class DescargarSoportesPlanillaJob implements ShouldQueue
         }
 
         if ($motivo !== 'config' && isset($esperas[$siguiente])) {
+            // Mientras le queden intentos no se da por mal digitada: el pago
+            // puede estar en tránsito.
+            $soportes->registrarVerificacion(
+                $plano, $this->operadorPlanillaId, 'verificando',
+                "Aún no aparece en el operador; nuevo intento en {$esperas[$siguiente]} min ({$siguiente} de ".count($esperas).').'
+            );
+
             self::dispatch($this->aliadoId, $this->numeroPlanilla, $this->operadorPlanillaId, $this->usuarioId, $siguiente)
                 ->delay(now()->addMinutes($esperas[$siguiente]));
 

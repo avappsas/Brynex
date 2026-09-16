@@ -362,13 +362,30 @@ table.hi-tbl{width:100%;border-collapse:collapse;font-size:.77rem}
                             📄 Recibo
                         </button>
                         
-                        {{-- PDF Planilla --}}
-                        @if($numeroPlanillaOp && in_array($operadorId, $operadoresConfiguradosIds))
-                        <a href="{{ route('admin.planos.certificado_pdf') }}?cedula={{ $f->cedula }}&numero_planilla={{ $numeroPlanillaOp }}{{ $operadorId ? '&forzar_operador_id=' . $operadorId : '' }}"
+                        {{-- PDF Planilla: la real del operador (ARUS/Simple) si se puede; si no, la de BryNex --}}
+                        @php
+                            $verif = $numeroPlanillaOp ? $verificacionPlanillas->get($numeroPlanillaOp) : null;
+                            $pagoOp = $numeroPlanillaOp ? $pagosOperador->get($numeroPlanillaOp) : null;
+                            $tituloPlanilla = $pagoOp
+                                ? 'Planilla real del operador · pagada '.sqldate($pagoOp, 'd/m/Y H:i:s')
+                                : ($aliadoConSoporteOperador ? 'Descargar la planilla del operador (si no está, se genera la de BryNex)' : 'Descargar PDF Planilla');
+                        @endphp
+                        @if($numeroPlanillaOp && ($aliadoConSoporteOperador || in_array($operadorId, $operadoresConfiguradosIds)))
+                        <a href="{{ route('admin.planos.certificado_pdf') }}?cedula={{ $f->cedula }}&numero_planilla={{ urlencode($numeroPlanillaOp) }}{{ $operadorId ? '&forzar_operador_id=' . $operadorId : '' }}"
                            onclick="this.href = this.href.split('&t=')[0] + '&t=' + new Date().getTime()"
-                           target="_blank" class="btn-act-sm" style="background:#0f172a;color:#fff;border-color:#0f172a;" title="Descargar PDF Planilla">
+                           target="_blank" class="btn-act-sm" style="background:#0f172a;color:#fff;border-color:#0f172a;" title="{{ $tituloPlanilla }}">
                             ⬇️ Planilla
                         </a>
+                        @endif
+                        @if($verif && in_array($verif->estado, ['no_encontrada', 'invalida']))
+                        <span class="btn-act-sm" style="background:#fef2f2;color:#b91c1c;border-color:#f87171;cursor:help"
+                              title="{{ $verif->estado === 'invalida' ? 'No es un número de planilla: corrígelo en la confirmación del pago.' : 'La planilla '.$numeroPlanillaOp.' no aparece en el operador: revisa el número. '.$verif->mensaje }}">⚠️ No cruza</span>
+                        @elseif($verif && $verif->estado === 'sin_acceso')
+                        <span class="btn-act-sm" style="background:#fffbeb;color:#92400e;border-color:#fbbf24;cursor:help"
+                              title="No se pudo verificar en el operador: {{ $verif->mensaje }}">🔒 Sin acceso</span>
+                        @elseif($verif && $verif->estado === 'verificando')
+                        <span class="btn-act-sm" style="background:#f8fafc;color:#475569;border-color:#cbd5e1;cursor:help"
+                              title="{{ $verif->mensaje }}">⏳ Verificando</span>
                         @endif
                         
                         @if($f->plano)

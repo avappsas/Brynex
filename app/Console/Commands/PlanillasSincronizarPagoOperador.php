@@ -27,6 +27,7 @@ class PlanillasSincronizarPagoOperador extends Command
                             {--planilla= : Solo este número de planilla}
                             {--desde= : Planos desde este período, AAAA-MM (por defecto, dos meses atrás)}
                             {--limite=50 : Cuántas planillas como máximo}
+                            {--reintentar : Volver a consultar las que ya se marcaron como no encontradas, inválidas o sin acceso}
                             {--dry-run : Listar qué se consultaría, sin tocar el operador}';
 
     protected $description = 'Guarda la fecha y hora exactas de pago de cada planilla, leída del informe del operador';
@@ -47,6 +48,12 @@ class PlanillasSincronizarPagoOperador extends Command
             ->leftJoin('planillas_pago_operador AS po', function ($j) {
                 $j->on('po.numero_planilla', '=', 'g.numero_planilla')->on('po.aliado_id', '=', 'g.aliado_id');
             })
+            ->leftJoin('planillas_verificacion_operador AS pv', function ($j) {
+                $j->on('pv.numero_planilla', '=', 'g.numero_planilla')->on('pv.aliado_id', '=', 'g.aliado_id');
+            })
+            ->when(! $this->option('reintentar'), fn ($q) => $q->where(
+                fn ($w) => $w->whereNull('pv.estado')->orWhereNotIn('pv.estado', ['no_encontrada', 'invalida', 'sin_acceso'])
+            ))
             ->where('g.tipo', 'pago_planilla')
             ->whereIn('g.pagado_a', $operadores->keys())
             ->whereNull('po.id')

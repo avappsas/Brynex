@@ -4295,6 +4295,22 @@ class FacturacionController extends Controller
 
         $operadoresTodosMap = \DB::table('operadores_planilla')->pluck('id', 'nombre');
 
+        // Lo que dijo el operador de cada número de planilla (si cruza, a qué hora
+        // se pagó) y si este aliado puede bajar los soportes reales de ARUS o Simple.
+        $verificacionPlanillas = empty($numeroPlanillas) ? collect() : \DB::table('planillas_verificacion_operador')
+            ->where('aliado_id', $aliadoId)
+            ->whereIn('numero_planilla', $numeroPlanillas)
+            ->get(['numero_planilla', 'estado', 'mensaje', 'verificada_at'])
+            ->keyBy('numero_planilla');
+        $pagosOperador = empty($numeroPlanillas) ? collect() : \DB::table('planillas_pago_operador')
+            ->where('aliado_id', $aliadoId)
+            ->whereIn('numero_planilla', $numeroPlanillas)
+            ->pluck('fecha_pago', 'numero_planilla');
+        $aliadoConSoporteOperador = \App\Models\OperadorCredencial::where('aliado_id', $aliadoId)
+            ->whereIn('operador_planilla_id', \DB::table('operadores_planilla')
+                ->whereIn('codigo', array_keys(\App\Services\SuaporteApiService::HOSTS))->pluck('id'))
+            ->exists();
+
         $feEstados = $this->estadosFacturaElectronica($facturas, $aliadoId);
 
         return view('admin.facturacion.historial', compact(
@@ -4302,7 +4318,8 @@ class FacturacionController extends Controller
             'filtroAnio', 'filtroRs', 'sinFiltros',
             'aniosDisp', 'rsSocDisp', 'meses', 'contratosporRS',
             'soportesPlanilla', 'operadoresPlanillaInfo', 'gastosPlanilla',
-            'operadoresTodosMap', 'feEstados'
+            'operadoresTodosMap', 'feEstados',
+            'verificacionPlanillas', 'pagosOperador', 'aliadoConSoporteOperador'
         ));
     }
 

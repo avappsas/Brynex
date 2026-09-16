@@ -410,6 +410,10 @@
     white-space:nowrap; cursor:pointer; transition:background .15s;
 }
 .chip-planilla:hover { background:#f0fdf4; }
+/* Lo que dijo el operador del número confirmado (planillas_verificacion_operador) */
+.chip-planilla.no-cruza    { color:#b91c1c; border-color:#f87171; background:#fef2f2; }
+.chip-planilla.sin-acceso  { color:#92400e; border-color:#fbbf24; background:#fffbeb; }
+.chip-planilla.verificando { color:#475569; border-color:#cbd5e1; }
 
 /* ── Custom RS Dropdown ────────────────────────────────────────────── */
 .rs-wrap { position:relative; }
@@ -810,10 +814,12 @@
                 <select name="estado_pago" onchange="autoSubmit()"
                     style="padding-right:.9rem;min-width:105px;
                            {{ $estadoPago === 'pendientes' ? 'border-color:#f59e0b;background:#fffbeb;color:#92400e;font-weight:700' :
-                              ($estadoPago === 'pagadas'    ? 'border-color:#10b981;background:#f0fdf4;color:#065f46;font-weight:700' : '') }}">
+                              ($estadoPago === 'pagadas'    ? 'border-color:#10b981;background:#f0fdf4;color:#065f46;font-weight:700' :
+                              ($estadoPago === 'no_cruzan'  ? 'border-color:#f87171;background:#fef2f2;color:#b91c1c;font-weight:700' : '')) }}">
                     <option value="todas"      {{ $estadoPago === 'todas'      ? 'selected' : '' }}>🔘 Todas</option>
                     <option value="pendientes" {{ $estadoPago === 'pendientes' ? 'selected' : '' }}>⏳ Pendientes</option>
                     <option value="pagadas"    {{ $estadoPago === 'pagadas'    ? 'selected' : '' }}>✅ Pagadas</option>
+                    <option value="no_cruzan"  {{ $estadoPago === 'no_cruzan'  ? 'selected' : '' }}>⚠️ No cruzan con el operador</option>
                 </select>
             </div>
 
@@ -962,12 +968,7 @@
             @if(!$esIndependiente)
             <td id="planilla-{{ $p->id }}" style="text-align:center" data-order="{{ $p->numero_planilla ?? '' }}">
                 @if($p->numero_planilla)
-                @php
-                    $horaConf = $p->updated_at ? sqldate($p->updated_at, 'd/m/y H:i') : '';
-                @endphp
-                <span class="chip-planilla" data-num="{{ $p->numero_planilla }}"
-                      onclick="copiarPlanilla(this)"
-                      title="Planilla: {{ $p->numero_planilla }}{{ $horaConf ? ' · confirmada '.$horaConf : '' }} (clic para copiar)">✅ {{ $p->numero_planilla }}</span>
+                @include('admin.planos._chip_planilla', ['p' => $p])
                 @else
                 <span style="color:#cbd5e1">—</span>
                 @endif
@@ -996,9 +997,7 @@
             {{-- Columna Acción: Liquidar (PSE) / Pagar / Pagado --}}
             <td class="td-pago" id="accion-{{ $p->id }}" data-order="{{ $p->numero_planilla ?? '' }}">
                 @if($p->numero_planilla)
-                <span class="chip-planilla" data-num="{{ $p->numero_planilla }}"
-                      onclick="copiarPlanilla(this)"
-                      title="Planilla: {{ $p->numero_planilla }} (clic para copiar)">✅ {{ $p->numero_planilla }}</span>
+                @include('admin.planos._chip_planilla', ['p' => $p])
                 @else
                 <div style="display:flex;align-items:center;gap:.3rem;flex-wrap:nowrap">
                     @if($p->numero_planilla_api)

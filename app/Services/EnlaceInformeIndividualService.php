@@ -102,21 +102,39 @@ class EnlaceInformeIndividualService
         }
 
         $mensajes = [];
+        $conCredenciales = [];
 
         foreach ($operadores as $operador) {
             $cred = OperadorCredencial::paraOperador(
                 (int) $plano->aliado_id, (int) $operador->id, $plano->razon_social_id ? (int) $plano->razon_social_id : null
             )->first();
 
-            if (! $cred) {
+            if ($cred) {
+                $conCredenciales[] = [$operador, $cred];
+            } else {
                 $mensajes[] = "{$operador->nombre}: sin credenciales.";
-                continue;
             }
+        }
 
+        if (! $conCredenciales) {
+            return ['success' => false, 'message' => implode(' ', $mensajes)];
+        }
+
+        // Un número que no es de planilla ("INFORMATIVO", "33", ".") no se le
+        // pregunta al operador: se marca de una vez para que alguien lo corrija.
+        if (self::numeroParaOperador($plano->numero_planilla) === null) {
+            $mensaje = "«{$plano->numero_planilla}» no es un número de planilla válido.";
+            $this->registrarVerificacion($plano, $operadorPlanillaId, 'invalida', $mensaje);
+
+            return ['success' => false, 'message' => $mensaje];
+        }
+
+        foreach ($conCredenciales as [$operador, $cred]) {
             try {
                 $pdf = $this->descargar($plano, $operador->codigo, $cred);
                 Storage::disk('local')->put($ruta, $pdf);
                 $this->registrarPago($plano, (int) $operador->id, $pdf);
+                $this->registrarVerificacion($plano, (int) $operador->id, 'encontrada', null);
 
                 return ['success' => true, 'pdf' => $pdf, 'origen' => 'operador'];
             } catch (Throwable $e) {
@@ -130,7 +148,85 @@ class EnlaceInformeIndividualService
             'motivos'  => $mensajes,
         ]);
 
+        $estado = self::estadoPorMensaje(implode(' ', $mensajes));
+        if ($estado !== null) {
+            $this->registrarVerificacion(
+                $plano,
+                count($conCredenciales) === 1 ? (int) $conCredenciales[0][0]->id : $operadorPlanillaId,
+                $estado,
+                implode(' ', $mensajes)
+            );
+        }
+
         return ['success' => false, 'message' => implode(' ', $mensajes)];
+    }
+
+    /**
+     * El número tal como lo busca el operador. En las confirmaciones hay números
+     * con un sufijo propio ("1084713676/2", "1083803025-1") que en el operador
+     * son "1084713676"; lo que no es un número de planilla devuelve null.
+     */
+    public static function numeroParaOperador(?string $numero): ?string
+    {
+        $numero = trim((string) $numero);
+
+        if (preg_match('/^\d{6,12}$/', $numero)) {
+            return $numero;
+        }
+
+        if (preg_match('/^(\d{6,12})\s*[\/\-]\s*\d{1,2}$/', $numero, $m)) {
+            return $m[1];
+        }
+
+        return null;
+    }
+
+    /**
+     * Qué dice de la planilla un fallo del operador, o null si el fallo es de la
+     * persona y no de la planilla ("No se encontraron datos": esa cédula no está,
+     * pero la planilla sí) o si no hubo a quién preguntar.
+     */
+    public static function estadoPorMensaje(string $mensaje): ?string
+    {
+        return match (true) {
+            str_contains($mensaje, 'no figura pagada')                => 'no_encontrada',
+            str_contains($mensaje, 'no existe en el operador'),
+            str_contains($mensaje, 'sin permisos'),
+            str_contains($mensaje, 'login fue rechazado'),
+            str_contains($mensaje, 'no tiene NIT')                    => 'sin_acceso',
+            str_contains($mensaje, 'No se encontraron datos'),
+            ! str_contains($mensaje, ':')                             => null,
+            default                                                   => 'error',
+        };
+    }
+
+    /**
+     * Guarda si la planilla cruza con el operador. Una que ya cruzó no se
+     * degrada por un fallo posterior: ese fallo es de una persona o del portal.
+     */
+    public function registrarVerificacion(Plano $plano, ?int $operadorPlanillaId, string $estado, ?string $mensaje): void
+    {
+        try {
+            $llave = ['aliado_id' => $plano->aliado_id, 'numero_planilla' => (string) $plano->numero_planilla];
+            $actual = DB::table('planillas_verificacion_operador')->where($llave)->value('estado');
+
+            if ($actual === 'encontrada' && $estado !== 'encontrada') {
+                return;
+            }
+
+            DB::table('planillas_verificacion_operador')->updateOrInsert($llave, [
+                'operador_planilla_id' => $operadorPlanillaId,
+                'estado'               => $estado,
+                'mensaje'              => $mensaje !== null ? mb_substr($mensaje, 0, 500) : null,
+                'verificada_at'        => now(),
+                'updated_at'           => now(),
+            ] + ($actual === null ? ['created_at' => now()] : []));
+        } catch (Throwable $e) {
+            Log::warning('Informe individual: no se pudo guardar la verificación', [
+                'planilla' => $plano->numero_planilla,
+                'error'    => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -173,7 +269,7 @@ class EnlaceInformeIndividualService
 
             $informe = self::leerInforme($pdf);
 
-            if (empty($informe['fecha_pago']) || ($informe['numero_planilla'] ?? null) !== (string) $plano->numero_planilla) {
+            if (empty($informe['fecha_pago']) || ($informe['numero_planilla'] ?? null) !== self::numeroParaOperador($plano->numero_planilla)) {
                 return;
             }
 
@@ -292,6 +388,8 @@ class EnlaceInformeIndividualService
     {
         $host = SuaporteApiService::hostDeOperador($codigoOperador);
         $pagina = $host.self::PAGINA;
+        $numero = self::numeroParaOperador($plano->numero_planilla)
+            ?? throw new RuntimeException("«{$plano->numero_planilla}» no es un número de planilla válido.");
 
         [$tipoAportante, $numeroAportante] = $this->aportanteDe($plano);
         $llave = "{$codigoOperador}|{$cred->id}|{$tipoAportante}{$numeroAportante}";
@@ -358,7 +456,7 @@ class EnlaceInformeIndividualService
         $respuesta = $this->ajax($http, $pagina, $viewState, 'tx_ntu:obtenerPeriodos', 'click', 'click', [
             'javax.faces.partial.execute' => 'tx_ntu:obtenerPeriodos tx_ntu:numeroPlanilla tx_ntu:estadoPago tx_ntu:codigoEmpresaConsultante',
             'javax.faces.partial.render'  => 'tx_ntu:panelPeriodos',
-            'tx_ntu:numeroPlanilla'       => (string) $plano->numero_planilla,
+            'tx_ntu:numeroPlanilla'       => $numero,
             'tx_ntu:estadoPago'           => $estadosPago,
             'tx_ntu:codigoEmpresaConsultante' => '',
         ]);
@@ -367,7 +465,7 @@ class EnlaceInformeIndividualService
         preg_match('/name="(tx_ntu:tableComponentePlanilla:0:j_idt\d+)"/', $respuesta, $radio);
 
         if (empty($radio[1])) {
-            throw new RuntimeException("la planilla {$plano->numero_planilla} no figura pagada para este aportante.");
+            throw new RuntimeException("la planilla {$numero} no figura pagada para este aportante.");
         }
 
         $seleccion = [$radio[1] => 'true'];
@@ -388,7 +486,7 @@ class EnlaceInformeIndividualService
             'tx_ntu:estadoPago' => $estadosPago,
             'tx_ntu:codigoEmpresaConsultante' => '',
             'tx_ntu:operador' => $codigoOperadorPortal,
-            'tx_ntu:numeroPlanilla' => (string) $plano->numero_planilla,
+            'tx_ntu:numeroPlanilla' => $numero,
             'tx_fechaInicial:fechaServidor' => $hoy->format('d/m/Y'),
             'tx_fechaInicial:textoFecha' => '',
             'tx_fechaFinal:fechaServidor' => $hoy->format('d/m/Y'),
