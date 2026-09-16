@@ -997,6 +997,7 @@ Route::middleware('auth')->group(function () {
             Route::post('/{contrato}/caja-comfenalco/aplicar', [$ccc, 'aplicar'])->name('caja-comfenalco.aplicar');
             Route::post('/caja-comfenalco/conciliar', [$ccc, 'conciliar'])->name('caja-comfenalco.conciliar');
             Route::get('/caja-comfenalco/conciliar/estado', [$ccc, 'estado'])->name('caja-comfenalco.conciliar.estado');
+            Route::post('/caja-comfenalco/beneficiarios', [$ccc, 'beneficiarios'])->name('caja-comfenalco.beneficiarios');
             // Caja Comfandi: afiliación por su Sucursal Virtual Empresas con la extensión.
             $cfd = \App\Http\Controllers\Admin\ComfandiCajaController::class;
             Route::get('/{contrato}/caja-comfandi/precheck', [$cfd, 'precheck'])->name('caja-comfandi.precheck');

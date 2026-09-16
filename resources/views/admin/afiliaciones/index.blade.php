@@ -1114,6 +1114,15 @@ function sortClass($col, $currSort, $currDir) {
             quien ya aparece afiliado y coincide el apellido pasa a <strong>OK confirmado</strong>; quien no aparece <strong>falta afiliar</strong>
             (🏢 Afiliar a la caja). También lista a los afiliados de la caja que BryNex no tiene como contrato vigente con esa caja.
             <div id="ceps-caja-sesion" style="margin-top:0.45rem;"></div>
+            <div style="margin-top:0.5rem;">
+                <button type="button" onclick="bajarFamiliasComfenalco()" class="btn-export" style="background:#0f766e;cursor:pointer;">
+                    👪 Bajar beneficiarios del grupo familiar
+                </button>
+                <span style="font-size:0.7rem;color:#64748b;margin-left:0.4rem;">
+                    Consulta el grupo familiar de cada trabajador, uno por uno, y guarda en BryNex los que falten. Tarda un rato.
+                </span>
+                <div id="ceps-caja-familias" style="font-size:0.72rem;color:#475569;margin-top:0.3rem;"></div>
+            </div>
         </div>
 
         <div id="ceps-descripcion-caja_comfandi" style="display:none;font-size:0.78rem;color:#475569;line-height:1.45;margin-bottom:0.8rem;">
@@ -2740,6 +2749,42 @@ async function revisarSesionCajaConciliacion() {
     if (!e.abierta || !e.sesion) { caja.innerHTML = '⚠️ Inicia sesión en la Sucursal Virtual con el usuario de la empresa.' + abrir; return null; }
     caja.innerHTML = `✅ Portal abierto${e.empresa ? ' con <strong>' + e.empresa + '</strong>' : ''}.` + abrir;
     return e;
+}
+
+const CAJA_URL_BENEFICIARIOS = @json(route('admin.afiliaciones.caja-comfenalco.beneficiarios'));
+
+/**
+ * Baja los beneficiarios de Comfenalco. Va aparte de la conciliación porque
+ * hay que preguntar trabajador por trabajador: con 51 personas son 51
+ * consultas, y no tiene sentido repetirlo en cada cruce.
+ */
+async function bajarFamiliasComfenalco() {
+    const caja = document.getElementById('ceps-caja-familias');
+    const sesion = await revisarSesionCajaConciliacion();
+    if (!sesion) { alert('Primero inicia sesión en la Sucursal Virtual de Comfenalco.'); return; }
+
+    caja.innerHTML = '⏳ Bajando la lista de trabajadores afiliados...';
+    const rep = await cajaExt('ccfTrabajadores', {}, 150);
+    if (!rep.ok) { caja.innerHTML = '❌ ' + (rep.error || 'No se pudo bajar la lista.'); return; }
+    if (!coincideRazon(rep.nit, rep.empresa)) { caja.innerHTML = 'Cancelado: la empresa del portal no es la que escogiste.'; return; }
+
+    const documentos = (rep.filas || []).map(f => String(f[0] || '').replace(/\D/g, '')).filter(Boolean);
+    if (!documentos.length) { caja.innerHTML = '❌ La empresa no tiene trabajadores afiliados.'; return; }
+
+    caja.innerHTML = `⏳ Consultando el grupo familiar de ${documentos.length} trabajadores (unos segundos cada uno)...`;
+    const fam = await cajaExt('ccfGrupoFamiliar', { documentos }, 900);
+    if (!fam.ok) { caja.innerHTML = '❌ ' + (fam.error || 'No se pudo consultar el grupo familiar.'); return; }
+
+    const res = await fetch(CAJA_URL_BENEFICIARIOS, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
+        body: JSON.stringify({ nit: rep.nit, familias: fam.familias }),
+    });
+    const data = await res.json();
+    if (!data.ok) { caja.innerHTML = '❌ ' + (data.mensaje || 'No se pudieron guardar.'); return; }
+
+    caja.innerHTML = `✅ ${data.nuevos} beneficiarios nuevos guardados, de ${data.personas} trabajadores`
+        + ` (se consultaron ${fam.consultados}${fam.fallos ? `, ${fam.fallos} sin respuesta` : ''}).`;
 }
 
 async function conciliarCajaComfenalco(simular) {

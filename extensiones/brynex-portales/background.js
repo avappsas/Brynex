@@ -39,6 +39,7 @@
  *  ccfPaso {…datos, opciones}          → llena el paso que esté a la vista (Personal, Laboral, Beneficiarios…)
  *  ccfResultado                        → {radicado, numero, texto} tras Finalizar Afiliación
  *  ccfTrabajadores                     → {nit, empresa, filas} de "Trabajadores por Empresa" (conciliación)
+ *  ccfGrupoFamiliar {documentos}       → {familias} beneficiarios de cada trabajador, uno por consulta
  *
  * Pedidos caja Comfandi (portal: 'cfd', Sucursal Virtual Empresas):
  *  cfdEstado                           → {abierta, sesion, empresa, pagina}
@@ -1109,6 +1110,7 @@ async function atenderCcfcv(accion, d = {}) {
   if (accion === 'ccfPaso') return { ok: true, ...(await ejecutar(pestana.id, pCcfPaso, [d])) };
   if (accion === 'ccfResultado') return { ok: true, ...(await ejecutar(pestana.id, pCcfResultado)) };
   if (accion === 'ccfTrabajadores') return ccfTrabajadores(pestana);
+  if (accion === 'ccfGrupoFamiliar') return ccfGrupoFamiliar(pestana, d);
 
   throw new Error(`Acción de Comfenalco desconocida: ${accion}`);
 }
@@ -2053,4 +2055,82 @@ async function pFspCertificado(documento) {
   } catch (e) {
     return { listo: true, mensaje: 'No se pudo pedir el certificado al Fondo: ' + (e?.message || e) };
   }
+}
+
+/**
+ * Grupo familiar de cada trabajador afiliado en Comfenalco.
+ *
+ * A diferencia de Comfandi, que entrega toda la empresa en un Excel, aquí hay
+ * que preguntar uno por uno en "Afiliación grupo familiar": la consulta recibe
+ * un documento y devuelve la tabla `tablaGrupo` con el cotizante y sus
+ * beneficiarios. Por eso se hace aparte de la conciliación y no en cada corrida.
+ *
+ * La tabla trae [documento "CC - 123", nombre, parentesco, edad, calidad,
+ * categoría]; el cotizante es la persona misma y se descarta. No hay fecha de
+ * nacimiento, solo la edad.
+ */
+async function ccfGrupoFamiliar(pestana, d = {}) {
+  const tab = pestana.id;
+  const est = await ejecutar(tab, pCcfEstado);
+  if (!est.sesion) return { ok: false, error: 'El portal no tiene la sesión iniciada.' };
+
+  const documentos = (d.documentos || []).map(x => String(x).replace(/\D/g, '')).filter(Boolean).slice(0, 400);
+  if (!documentos.length) return { ok: false, error: 'No llegaron documentos que consultar.' };
+
+  if (!/consultaGrupoFamiliar/.test(est.pagina || '')) {
+    await chrome.tabs.update(tab, { url: `${CCFCV_BASE}/consultaGrupoFamiliar.html` });
+    await esperarCarga(tab);
+    await esperar(2500);
+  }
+
+  const familias = {};
+  let fallos = 0;
+
+  for (const doc of documentos) {
+    const r = await ejecutar(tab, (tipo, numero) => {
+      $('#cmbTipoDocumento').val(String(tipo)).trigger('change').trigger('chosen:updated');
+      $('#txtNumDocumento').val(numero).trigger('change');
+      const t = $('#tablaGrupo').DataTable ? null : null;
+      // Se marca la tabla para saber si la respuesta es nueva o la anterior.
+      const tabla = document.querySelector('#tablaGrupo');
+      if (tabla) tabla.dataset.brynexPrevio = tabla.innerText.slice(0, 120);
+      $('#btnConsultar').click();
+      return true;
+    }, [d.tipoDoc || 1, doc]).catch(() => null);
+
+    if (!r) { fallos++; continue; }
+
+    const filas = await esperarQue(tab, (numero) => {
+      const t = document.querySelector('#tablaGrupo');
+      if (!t) return null;
+      const tr = [...t.querySelectorAll('tbody tr')];
+      if (!tr.length) return null;
+      const datos = tr.map(f => [...f.querySelectorAll('td')].map(c => (c.innerText || '').replace(/\s+/g, ' ').trim()));
+      // La respuesta es de esta persona cuando el cotizante es su documento.
+      const suya = datos.some(f => (f[0] || '').replace(/\D/g, '').endsWith(numero));
+      return suya ? datos : null;
+    }, [doc], 25000);
+
+    if (!filas) { fallos++; continue; }
+
+    const suyos = filas
+      .filter(f => /BENEFICIARIO/i.test(f[4] || ''))
+      .map(f => {
+        const partes = (f[0] || '').split('-').map(x => x.trim());
+        return {
+          tipo_doc: partes.length > 1 ? partes[0].toUpperCase() : null,
+          documento: (partes[partes.length - 1] || '').replace(/\D/g, '').replace(/^0+/, ''),
+          nombre: f[1] || '',
+          parentesco: f[2] || null,
+          edad: f[3] || null,
+          categoria: f[5] || null,
+        };
+      })
+      .filter(b => b.documento);
+
+    if (suyos.length) familias[doc] = suyos;
+    await esperar(600);
+  }
+
+  return { ok: true, familias, consultados: documentos.length, fallos };
 }
