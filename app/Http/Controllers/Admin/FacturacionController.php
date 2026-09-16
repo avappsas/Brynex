@@ -2464,16 +2464,15 @@ class FacturacionController extends Controller
                 $pagadoReal = (int) $factura->valor_consignado
                             + (int) $factura->valor_efectivo
                             + (int) $factura->anticipo_aplicado;
-                if ($factura->es_prestamo) {
-                    // Préstamo: graba el saldo REAL pendiente (puede ser pago parcial o $0).
-                    $saldoProximo = $pagadoReal - (int) $factura->total;
-                } else {
-                    if ($esMasivo && $saldoEmpresaAplicar > 0) {
-                        $saldoProximo = -$vSaldoFavor;
-                    } else {
-                        $saldoProximo = $pagadoReal - (int) $factura->total;
-                    }
-                }
+                // Con crédito de empresa se grababa `-$vSaldoFavor` sin mirar el
+                // pago: el crédito se daba por consumido aunque la empresa
+                // consignara el total completo. HECTOR JOSE CASTAÑEDA (Formalizate,
+                // recibo #92216, 15-sep-2026) pagó sus $15.250.000 enteros y perdió
+                // $1.122.144 a favor. Lo pagado menos el total ya consume
+                // exactamente el crédito que el pago necesitó: si la empresa pagó
+                // el total menos su crédito, el saldo queda en menos el crédito; si
+                // pagó completo, queda en cero y el crédito sigue vivo.
+                $saldoProximo = $pagadoReal - (int) $factura->total;
                 $factura->update(['saldo_proximo' => $saldoProximo]);
 
                 // Si es un retiro y la factura se generó en estado pagada/prestamo, retirar contrato
