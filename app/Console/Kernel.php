@@ -109,6 +109,18 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/eps-confirmacion.log'));
 
+        // El mismo cruce, pero de ARL Colmena contra su informe de vigentes.
+        // Media hora después del de EPS SURA: los dos levantan un navegador y
+        // el servidor no tiene por qué cargar con los dos a la vez.
+        // Ejecución manual: php artisan arl:confirmar-colmena --nit=901709476 --simular
+        $schedule->command('arl:confirmar-colmena')
+            ->dailyAt('21:30')
+            ->timezone('America/Bogota')
+            ->name('arl-confirmar-colmena')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/arl-confirmacion.log'));
+
         // Agente del buzón de afiliaciones (seguridadsocial.brygar@gmail.com): cada
         // 30 min lee lo que llega de las entidades, aplica los radicados que
         // envían los asesores y avisa por WhatsApp. Solo lectura en Gmail.
