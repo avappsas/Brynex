@@ -23,21 +23,51 @@ use Illuminate\Support\Facades\DB;
 class SaldosMarcarRuido extends Command
 {
     protected $signature = 'saldos:marcar-ruido
-                            {aliado : ID del aliado}
-                            {--tope=500 : Hasta cuánto se considera residuo del reparto}
+                            {aliado?    : ID del aliado; sin él, recorre todos}
+                            {--tope=1000 : Hasta cuánto se considera residuo del reparto}
                             {--dry-run  : Mostrar sin escribir}
                             {--force    : Aplicar sin preguntar}';
 
     protected $description = 'Da por consumidos los saldos a favor que son residuo del reparto proporcional (por debajo del tope).';
+
+    /** Los cambios hechos por comandos se atribuyen al usuario BryNex. */
+    private const USUARIO_COMANDOS = 2;
 
     /** Los mismos estados en que una factura le reconoce saldo al cliente. */
     private const ESTADOS = ['pagada', 'prestamo', 'abono'];
 
     public function handle(): int
     {
-        $aliadoId = (int) $this->argument('aliado');
         $tope = (int) $this->option('tope');
         $dry = (bool) $this->option('dry-run');
+
+        if ($this->argument('aliado') !== null) {
+            $this->procesar((int) $this->argument('aliado'), $tope, $dry);
+
+            return Command::SUCCESS;
+        }
+
+        // Sin aliado es la corrida mensual programada: solo los aliados que
+        // tienen algún saldo a favor, cada uno con su propio ajuste y bitácora.
+        $aliados = DB::table('facturas')
+            ->whereNull('deleted_at')
+            ->whereIn('estado', self::ESTADOS)
+            ->where('saldo_proximo', '>', 0)
+            ->distinct()
+            ->orderBy('aliado_id')
+            ->pluck('aliado_id');
+
+        foreach ($aliados as $aliadoId) {
+            $this->newLine();
+            $this->line("── Aliado {$aliadoId} ──");
+            $this->procesar((int) $aliadoId, $tope, $dry);
+        }
+
+        return Command::SUCCESS;
+    }
+
+    private function procesar(int $aliadoId, int $tope, bool $dry): void
+    {
 
         $conSaldo = DB::table('facturas')
             ->where('aliado_id', $aliadoId)
@@ -67,13 +97,13 @@ class SaldosMarcarRuido extends Command
         if ($ruido->isEmpty()) {
             $this->info("No quedan residuos por marcar en el aliado {$aliadoId}.");
 
-            return Command::SUCCESS;
+            return;
         }
 
         if ($ruido->isEmpty()) {
             $this->info("No hay saldos por debajo de \${$tope} en el aliado {$aliadoId}.");
 
-            return Command::SUCCESS;
+            return;
         }
 
         // Por cliente: el ajuste vive a nivel de cédula, no de factura.
@@ -107,7 +137,7 @@ class SaldosMarcarRuido extends Command
             // otra factura en rojo se comió el residuo. No hay nada que ajustar.
             $this->info('Los residuos que quedan son de clientes sin saldo a favor vivo: nada que marcar.');
 
-            return Command::SUCCESS;
+            return;
         }
 
         $total = array_sum(array_column($plan, 'valor'));
@@ -129,13 +159,13 @@ class SaldosMarcarRuido extends Command
         }
 
         if ($dry) {
-            return Command::SUCCESS;
+            return;
         }
 
         if (! $this->option('force') && ! $this->confirm('¿Marcar estos saldos como consumidos?', false)) {
             $this->warn('Cancelado.');
 
-            return Command::SUCCESS;
+            return;
         }
 
         $motivo = SaldoAjuste::MOTIVO_ALIADO." — residuo del reparto (menor a \${$tope})";
@@ -147,7 +177,7 @@ class SaldosMarcarRuido extends Command
                     'cedula' => $p['cedula'],
                     'valor' => $p['valor'],
                     'motivo' => $motivo,
-                    'usuario_id' => null,   // corrección de mantenimiento, no de una persona
+                    'usuario_id' => self::USUARIO_COMANDOS,
                     'detalle' => $p['facturas']->map(fn ($f) => [
                         'factura_id' => $f->id,
                         'numero_factura' => $f->numero_factura,
@@ -164,12 +194,12 @@ class SaldosMarcarRuido extends Command
             registroId: null,
             descripcion: count($plan).' saldo(s) a favor por $'.number_format($total, 0, ',', '.')
                 .' dados por consumidos: residuo del reparto proporcional',
-            detalle: ['tope' => (int) $this->option('tope'), 'clientes' => array_column($plan, 'cedula')],
+            detalle: ['tope' => $tope, 'clientes' => array_column($plan, 'cedula')],
             alidoId: $aliadoId
         );
 
         $this->info('✅ '.count($plan).' cliente(s) ajustado(s) por $'.number_format($total, 0, ',', '.').'.');
 
-        return Command::SUCCESS;
+        return;
     }
 }

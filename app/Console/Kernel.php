@@ -325,6 +325,21 @@ class Kernel extends ConsoleKernel
         // algo distinto de lo que el cliente pagó, para ver si el arreglo aguanta
         // dos ciclos de facturación completos.
         //
+        // ── Residuos del reparto en los saldos a favor ─────────────────────
+        // El 1 de cada mes a las 6:00 AM, antes de que empiece la facturación:
+        // da por consumidos los lotes cuyo saldo a favor entero es menor a
+        // $1.000 (pesos sueltos del redondeo), para que no se apliquen solos en
+        // la factura del mes ni ensucien la pantalla de saldos. No toca
+        // facturas —deja un SaldoAjuste que se puede deshacer— y no repite lo
+        // ya marcado.
+        // Ejecución manual: php artisan saldos:marcar-ruido --dry-run
+        $schedule->command('saldos:marcar-ruido --tope=1000 --force')
+            ->monthlyOn(1, '06:00')
+            ->timezone('America/Bogota')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/saldos-residuos.log'));
+
         // 7:30 PM Colombia: pasada la jornada, con lo facturado del día ya
         // registrado. Solo avisa por WhatsApp cuando aparece un caso NUEVO —
         // lo ya revisado queda en la baseline y no vuelve a sonar.
