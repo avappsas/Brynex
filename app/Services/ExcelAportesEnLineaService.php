@@ -157,7 +157,7 @@ class ExcelAportesEnLineaService
      * necesita exactamente los mismos datos con otro envase (la plantilla del
      * portal).
      *
-     * @return array{0:object,1:\Illuminate\Support\Collection,2:string,3:string,4:string,5:?string}
+     * @return array{0:object,1:\Illuminate\Support\Collection,2:string,3:string,4:string,5:?string,6:bool}
      */
     protected function recolectar(array $params): array
     {
@@ -279,12 +279,15 @@ class ExcelAportesEnLineaService
             ? $periodoSS
             : sprintf('%04d-%02d', $anioPago, $mesPago);
 
-        return [$rs, $planos, $periodoSS, $periodoSalud, $tipoPlanilla, $nombreArl];
+        return [$rs, $planos, $periodoSS, $periodoSalud, $tipoPlanilla, $nombreArl, $soloY];
     }
 
     public function generar(array $params): Spreadsheet
     {
-        [$rs, $planos, $periodoSS, $periodoSalud, $tipoPlanilla, $nombreArl] = $this->recolectar($params);
+        // $soloY se calculaba en recolectar() pero no se devolvía: desde bee4416
+        // (31-ago-2026) buildEncabezado() lo recibía indefinido y la descarga
+        // respondía 500 para cualquier razón social.
+        [$rs, $planos, $periodoSS, $periodoSalud, $tipoPlanilla, $nombreArl, $soloY] = $this->recolectar($params);
 
         // ── Construir Spreadsheet ─────────────────────────────────────────
         $spreadsheet = new Spreadsheet();
