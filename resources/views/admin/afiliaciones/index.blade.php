@@ -1078,6 +1078,8 @@ function sortClass($col, $currSort, $currDir) {
                 style="padding:0.3rem 0.8rem;border-radius:7px;border:1px solid #047857;font-size:0.78rem;font-weight:700;cursor:pointer;">Caja Comfenalco</button>
             <button type="button" class="ceps-tab" data-entidad="caja_comfandi" onclick="elegirEntidadConciliacion('caja_comfandi')"
                 style="padding:0.3rem 0.8rem;border-radius:7px;border:1px solid #1e3a8a;font-size:0.78rem;font-weight:700;cursor:pointer;">Caja Comfandi</button>
+            <button type="button" class="ceps-tab" data-entidad="pension" onclick="elegirEntidadConciliacion('pension')"
+                style="padding:0.3rem 0.8rem;border-radius:7px;border:1px solid #7c3aed;font-size:0.78rem;font-weight:700;cursor:pointer;">Pensión (RUAF)</button>
         </div>
 
         <div id="ceps-descripcion-sura" style="font-size:0.78rem;color:#475569;line-height:1.45;margin-bottom:0.8rem;">
@@ -1134,6 +1136,19 @@ function sortClass($col, $currSort, $currDir) {
             el motivo antes de volver a radicar, y sin radicado <strong>falta afiliar</strong> (🏢 Afiliar a Comfandi).
             También lista a los afiliados de la caja que BryNex no tiene como contrato vigente con Comfandi.
             <div id="ceps-comfandi-sesion" style="margin-top:0.45rem;"></div>
+        </div>
+
+        <div id="ceps-descripcion-pension" style="display:none;font-size:0.78rem;color:#475569;line-height:1.45;margin-bottom:0.8rem;">
+            En pensión el vínculo es <strong>persona ↔ fondo</strong>, no persona ↔ empresa: el empleador solo cotiza. Por eso no hay
+            portal de empleador y la fuente oficial es el <strong>RUAF</strong>, que se consulta por el operador de planilla
+            (el mismo de la consulta de clientes). Si el RUAF confirma que la persona está en el <strong>mismo fondo</strong> del contrato,
+            el radicado pasa a <strong>OK confirmado</strong>; si figura en <strong>otro fondo</strong> queda para revisar el traslado
+            —se está cotizando al fondo equivocado—; y si <strong>no tiene fondo</strong>, falta tramitar la vinculación.
+            <label style="display:flex;align-items:center;gap:0.35rem;margin-top:0.5rem;font-weight:700;color:#334155;">
+                <input type="checkbox" id="ceps-pension-ok" checked>
+                Revisar también los que ya están en OK (detecta traslados de fondo)
+            </label>
+            <div style="margin-top:0.3rem;color:#64748b;">Tarda unos 2 segundos por persona: con toda la cartera vigente, unos minutos.</div>
         </div>
 
         <div id="ceps-acciones" style="display:flex;gap:0.5rem;margin-bottom:0.8rem;">
@@ -2590,10 +2605,11 @@ const CEPS_ACCIONES = {
     tramite:  ['🔵 En trámite', '#dbeafe', '#1e40af'],
     sin_cambio: ['🔵 En trámite (sin cambios)', '#dbeafe', '#1e40af'],
     falta:   ['⏳ Falta en la EPS', '#fef3c7', '#92400e'],
+    confirmado: ['✔ Ya confirmado', '#f1f5f9', '#334155'],
     revisar:  ['👀 Revisar', '#e0e7ff', '#3730a3'],
     error:    ['❌ Error', '#fee2e2', '#991b1b'],
 };
-const CEPS_NOMBRES = { sura: 'EPS SURA', nueva_eps: 'Nueva EPS', salud_total: 'Salud Total', sanitas: 'Sanitas', caja_comfenalco: 'Caja Comfenalco Valle', caja_comfandi: 'Caja Comfandi' };
+const CEPS_NOMBRES = { sura: 'EPS SURA', nueva_eps: 'Nueva EPS', salud_total: 'Salud Total', sanitas: 'Sanitas', caja_comfenalco: 'Caja Comfenalco Valle', caja_comfandi: 'Caja Comfandi', pension: 'el RUAF' };
 let _cepsTimer = null;
 let _cepsCorria = false;
 let _cepsEntidad = 'sura';
@@ -2608,14 +2624,20 @@ function elegirEntidadConciliacion(entidad) {
     _cepsCorria = false;
     document.querySelectorAll('.ceps-tab').forEach(b => {
         const activo = b.dataset.entidad === entidad;
-        b.style.background = activo ? ({ sura: '#0033a0', nueva_eps: '#be123c', salud_total: '#15803d', sanitas: '#0e7490', caja_comfenalco: '#047857', caja_comfandi: '#1e3a8a' }[entidad] || '#334155') : '#fff';
+        b.style.background = activo ? ({ sura: '#0033a0', nueva_eps: '#be123c', salud_total: '#15803d', sanitas: '#0e7490', caja_comfenalco: '#047857', caja_comfandi: '#1e3a8a', pension: '#7c3aed' }[entidad] || '#334155') : '#fff';
         const t = document.getElementById('ceps-titulo');
-        if (t) t.textContent = (['caja_comfenalco', 'caja_comfandi'].includes(entidad) ? '🏢 Conciliar radicados de caja con ' : '🩺 Conciliar radicados de EPS con ') + (CEPS_NOMBRES[entidad] || 'el portal');
+        if (t) t.textContent = entidad === 'pension'
+            ? '🏦 Conciliar radicados de pensión con el RUAF'
+            : (['caja_comfenalco', 'caja_comfandi'].includes(entidad) ? '🏢 Conciliar radicados de caja con ' : '🩺 Conciliar radicados de EPS con ') + (CEPS_NOMBRES[entidad] || 'el portal');
         b.style.color = activo ? '#fff' : '#334155';
     });
     Object.keys(CEPS_NOMBRES).forEach(k => {
         document.getElementById('ceps-descripcion-' + k).style.display = k === entidad ? 'block' : 'none';
     });
+    // El selector de razón social existe para comprobar la sesión del portal;
+    // el RUAF se consulta por cédula, así que ahí no pinta nada.
+    const razon = document.getElementById('ceps-razon');
+    if (razon) razon.closest('div').style.display = entidad === 'pension' ? 'none' : 'block';
     consultarConciliacionEpsSura();
 }
 
@@ -2623,12 +2645,14 @@ async function iniciarConciliacionEpsSura(simular) {
     if (_cepsEntidad === 'sanitas') return conciliarSanitas(simular);
     if (_cepsEntidad === 'caja_comfenalco') return conciliarCajaComfenalco(simular);
     if (_cepsEntidad === 'caja_comfandi') return conciliarCajaComfandi(simular);
-    if (!simular && !confirm(`Se consultará el portal de ${CEPS_NOMBRES[_cepsEntidad]} y se actualizarán en BryNex los radicados que el portal confirme. ¿Continuar?`)) return;
+    if (!simular && !confirm(_cepsEntidad === 'pension'
+        ? 'Se consultará el RUAF por cada persona y se cerrarán en BryNex los radicados de pensión que confirme. ¿Continuar?'
+        : `Se consultará el portal de ${CEPS_NOMBRES[_cepsEntidad]} y se actualizarán en BryNex los radicados que el portal confirme. ¿Continuar?`)) return;
     try {
         const res = await fetch(CEPS_URL_INICIAR, {
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': CSRF, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({ simular, entidad: _cepsEntidad }),
+            body: JSON.stringify({ simular, entidad: _cepsEntidad, incluir_ok: !!document.getElementById('ceps-pension-ok')?.checked }),
         });
         const data = await res.json();
         if (!data.ok) { mostrarToast(data.mensaje || 'No se pudo iniciar.', 'error'); }
@@ -2691,7 +2715,8 @@ function pintarConciliacionEpsSura(data) {
         resumen.innerHTML = [
             [data.simulado ? 'Se cerrarían' : 'Cerrados', data.cerrados, '#dcfce7', '#166534'],
             ...(data.tramite !== undefined ? [['En trámite', data.tramite, '#dbeafe', '#1e40af']] : []),
-            ['Faltan en la EPS', data.faltan, '#fef3c7', '#92400e'],
+            ...(data.sin_cambio ? [['Ya confirmados', data.sin_cambio, '#f1f5f9', '#334155']] : []),
+            [_cepsEntidad === 'pension' ? 'Sin fondo en RUAF' : 'Faltan en la EPS', data.faltan, '#fef3c7', '#92400e'],
             ['Revisar', data.revisar, '#e0e7ff', '#3730a3'],
             ['Errores', data.errores, '#fee2e2', '#991b1b'],
         ].map(([t, n, bg, fg]) => `<span style="background:${bg};color:${fg};padding:0.2rem 0.6rem;border-radius:6px;font-weight:700;">${t}: ${n}</span>`).join('')

@@ -39,6 +39,7 @@ class Radicado extends BaseModel
         'caja_comfenalco' => 'Comfenalco Valle',
         'caja_comfandi' => 'Comfandi',
         'arl_colmena' => 'ARL Colmena',
+        'ruaf' => 'RUAF',
     ];
 
     protected static function booted(): void

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Console\Commands\EpsSuraConciliar;
 use App\Console\Commands\NuevaEpsConciliar;
+use App\Console\Commands\PensionConciliar;
 use App\Console\Commands\SaludTotalConciliar;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
@@ -12,8 +13,8 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * Botón de Afiliaciones que concilia los radicados de EPS con los portales
- * (EPS SURA, Nueva EPS y Salud Total).
+ * Botón de Afiliaciones que concilia los radicados con las fuentes oficiales:
+ * los portales de EPS (SURA, Nueva EPS y Salud Total) y el RUAF para pensión.
  *
  * El trabajo real lo hace el comando de cada EPS en un proceso aparte (ver
  * `eps:conciliar-sura` para el porqué); aquí solo se lanza y se lee su progreso.
@@ -25,6 +26,7 @@ class EpsSuraConciliacionController extends Controller
         'sura'      => [EpsSuraConciliar::class, 'eps:conciliar-sura'],
         'nueva_eps' => [NuevaEpsConciliar::class, 'eps:conciliar-nueva-eps'],
         'salud_total' => [SaludTotalConciliar::class, 'eps:conciliar-salud-total'],
+        'pension'     => [PensionConciliar::class, 'pension:conciliar'],
     ];
 
     public function __construct()
@@ -52,20 +54,23 @@ class EpsSuraConciliacionController extends Controller
 
         Cache::put($clase::claveEstado($aliadoId), [
             'corriendo' => true,
-            'inicio'    => now()->toIso8601String(),
-            'mensaje'   => 'Iniciando…',
-            'detalle'   => [],
-            'simulado'  => $simular,
+            'inicio' => now()->toIso8601String(),
+            'mensaje' => 'Iniciando…',
+            'detalle' => [],
+            'simulado' => $simular,
         ], now()->addDay());
 
         exec(sprintf(
-            'nohup %s %s %s --aliado=%d --usuario=%d%s < /dev/null > %s 2>&1 &',
+            'nohup %s %s %s --aliado=%d --usuario=%d%s%s < /dev/null > %s 2>&1 &',
             escapeshellarg(self::binarioPhp()),
             escapeshellarg(base_path('artisan')),
             $comando,
             $aliadoId,
             (int) Auth::id(),
             $simular ? ' --simular' : '',
+            // Solo lo entiende pension:conciliar: revisar también los OK es lo
+            // que destapa los traslados de fondo que nadie registró.
+            $comando === 'pension:conciliar' && $request->boolean('incluir_ok', true) ? ' --incluir-ok' : '',
             escapeshellarg(storage_path('logs/eps-conciliacion.log'))
         ));
 
