@@ -37,6 +37,7 @@ class Radicado extends BaseModel
         'eps_sanitas' => 'Sanitas',
         'arl_sura'    => 'ARL Sura',
         'caja_comfenalco' => 'Comfenalco Valle',
+        'caja_comfandi' => 'Comfandi',
         'arl_colmena' => 'ARL Colmena',
     ];
 

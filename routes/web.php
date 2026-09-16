@@ -990,6 +990,11 @@ Route::middleware('auth')->group(function () {
             Route::post('/{contrato}/caja-comfenalco/aplicar', [$ccc, 'aplicar'])->name('caja-comfenalco.aplicar');
             Route::post('/caja-comfenalco/conciliar', [$ccc, 'conciliar'])->name('caja-comfenalco.conciliar');
             Route::get('/caja-comfenalco/conciliar/estado', [$ccc, 'estado'])->name('caja-comfenalco.conciliar.estado');
+            // Caja Comfandi: afiliación por su Sucursal Virtual Empresas con la extensión.
+            $cfd = \App\Http\Controllers\Admin\ComfandiCajaController::class;
+            Route::get('/{contrato}/caja-comfandi/precheck', [$cfd, 'precheck'])->name('caja-comfandi.precheck');
+            Route::post('/{contrato}/caja-comfandi/credencial', [$cfd, 'credencial'])->name('caja-comfandi.credencial');
+            Route::post('/{contrato}/caja-comfandi/aplicar', [$cfd, 'aplicar'])->name('caja-comfandi.aplicar');
             // Portal Boxalud (Emssanar): afiliación con la extensión BryNex Portales.
             $bxc = \App\Http\Controllers\Admin\BoxaludController::class;
             Route::get('/{contrato}/boxalud/{eps}/precheck', [$bxc, 'precheck'])->name('boxalud.precheck')->where('eps', '[a-z_]+');

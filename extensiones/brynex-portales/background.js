@@ -39,6 +39,13 @@
  *  ccfPaso {…datos, opciones}          → llena el paso que esté a la vista (Personal, Laboral, Beneficiarios…)
  *  ccfResultado                        → {radicado, numero, texto} tras Finalizar Afiliación
  *  ccfTrabajadores                     → {nit, empresa, filas} de "Trabajadores por Empresa" (conciliación)
+ *
+ * Pedidos caja Comfandi (portal: 'cfd', Sucursal Virtual Empresas):
+ *  cfdEstado                           → {abierta, sesion, empresa, pagina}
+ *  cfdAbrir {usuario, contrasena}      → abre el login y deja escrito el NIT
+ *  cfdConsultar {…datos}               → abre Afiliación individual y consulta al trabajador
+ *  cfdLlenar {…datos}                  → llena el formulario; Finalizar lo pulsa la persona
+ *  cfdResultado                        → {radicado, numero, texto} tras Finalizar
  */
 
 const ORIGENES_BRYNEX = ['https://brynex.co', 'https://www.brynex.co', 'http://localhost:8000'];
@@ -55,7 +62,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.canal !== 'brynex-portales' || !ORIGENES_BRYNEX.includes(origen) || sender.id !== chrome.runtime.id) return;
 
   // Ver el estado o abrir la pestaña no espera a que termine un trámite en curso.
-  const directo = ['estado', 'abrir', 'novedadEstado', 'novedadAbrir', 'novedadResultado', 'boxEstado', 'boxAbrir', 'boxResultado', 'ccfEstado', 'ccfAbrir', 'ccfPaso', 'ccfResultado'].includes(msg.accion);
+  const directo = ['estado', 'abrir', 'novedadEstado', 'novedadAbrir', 'novedadResultado', 'boxEstado', 'boxAbrir', 'boxResultado', 'ccfEstado', 'ccfAbrir', 'ccfPaso', 'ccfResultado', 'cfdEstado', 'cfdAbrir', 'cfdLlenar', 'cfdResultado'].includes(msg.accion);
   (directo ? atender(msg, origen) : enCola(() => atender(msg, origen)))
     .then(sendResponse)
     .catch(e => sendResponse({ ok: false, error: String(e?.message || e).slice(0, 400) }));
@@ -70,6 +77,7 @@ async function atender({ portal, accion, datos = {} }, origen) {
   if (portal === 'sanitas') return atenderSanitas(accion, datos, origen);
   if (portal === 'boxalud') return atenderBoxalud(accion, datos, origen);
   if (portal === 'ccfcv') return atenderCcfcv(accion, datos);
+  if (portal === 'cfd') return atenderCfd(accion, datos);
   if (portal !== 'sos') throw new Error(`Portal desconocido: ${portal}`);
 
   if (accion === 'estado') return sosEstado();
@@ -1251,4 +1259,252 @@ async function ccfTrabajadores(pestana) {
   if (filas.error) return { ok: false, error: filas.error };
 
   return { ok: true, nit: empresa.nit, empresa: empresa.razon, filas: filas.datos };
+}
+
+// ── Caja Comfandi (Sucursal Virtual Empresas, Next.js) ───────────────────
+
+const CFD_HOST = 'afiliaciones.sucursalcomfandi.com';
+const CFD_BASE = `https://${CFD_HOST}/sakaar`;
+
+async function pestanaCfd() {
+  const ps = await chrome.tabs.query({ url: [`https://${CFD_HOST}/*`, 'https://iam.comfandi.com.co/*'] });
+  return ps.find(p => (p.url || '').includes(CFD_HOST)) || ps[0] || null;
+}
+
+function pCfdEstado() {
+  if (!/sucursalcomfandi/.test(location.host)) return { sesion: false, enLogin: true, pagina: 'login' };
+  const t = document.body.innerText || '';
+  const m = t.match(/actualmente est[aá]s en:\s*\n+\s*([^\n]+)/i);
+  const enGuest = /\/guest/.test(location.pathname) || /Para acceder a tu cuenta/i.test(t);
+  return { sesion: !!m && !enGuest, empresa: m ? m[1].trim() : null, pagina: location.pathname };
+}
+
+async function atenderCfd(accion, d = {}) {
+  if (accion === 'cfdAbrir') {
+    let p = await pestanaCfd();
+    if (p) {
+      await chrome.tabs.update(p.id, { active: true });
+      await chrome.windows.update(p.windowId, { focused: true });
+    } else {
+      p = await chrome.tabs.create({ url: `${CFD_BASE}/guest`, active: true });
+      await esperarCarga(p.id);
+    }
+    const estado = await ejecutar(p.id, pCfdEstado).catch(() => ({ sesion: false }));
+    if (!estado.sesion && d.usuario) {
+      // El login vive en iam.comfandi.com.co; se deja el tipo NIT y el número escritos.
+      await esperarQue(p.id, (u) => {
+        const n = document.querySelector('input[name=identificationNumber]');
+        if (!n) return false;
+        const poner = (e, v) => {
+          const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+          set.call(e, v);
+          e.dispatchEvent(new Event('input', { bubbles: true }));
+          e.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+        const tipo = document.querySelector('input[name=identification_type_up]');
+        if (tipo && tipo.value !== 'NIT') poner(tipo, 'NIT');
+        poner(n, u);
+        document.querySelector('input[name=password]')?.focus();
+        return true;
+      }, [String(d.usuario).replace(/\D/g, '')], 30000);
+    }
+    return { ok: true, abierta: true };
+  }
+
+  const pestana = await pestanaCfd();
+  if (!pestana) return { ok: true, abierta: false, sesion: false };
+
+  if (accion === 'cfdEstado') {
+    let e;
+    try { e = await ejecutar(pestana.id, pCfdEstado); } catch { e = { sesion: false }; }
+    return { ok: true, abierta: true, ...e };
+  }
+  if (accion === 'cfdConsultar') return cfdConsultar(pestana, d);
+  if (accion === 'cfdLlenar') return { ok: true, ...(await ejecutar(pestana.id, pCfdLlenar, [d])) };
+  if (accion === 'cfdResultado') return { ok: true, ...(await ejecutar(pestana.id, pCfdResultado)) };
+
+  throw new Error(`Acción de Comfandi desconocida: ${accion}`);
+}
+
+/**
+ * Abre Afiliación individual y consulta al trabajador. Antes mira el Listado de
+ * trabajadores: si ya está afiliado no hay nada que radicar, y eso se avisa.
+ */
+async function cfdConsultar(pestana, d) {
+  const tab = pestana.id;
+  const est = await ejecutar(tab, pCfdEstado);
+  if (!est.sesion) return { ok: false, error: 'El portal no tiene la sesión iniciada. Entra con el NIT de la empresa y selecciona la empresa.' };
+
+  const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (est.empresa && norm(est.empresa).slice(0, 12) && !norm(d.empresa).startsWith(norm(est.empresa).slice(0, 12))) {
+    return { ok: false, error: `El portal está abierto con ${est.empresa} y el contrato es de ${d.empresa}. Cambia de empresa arriba o entra con ese NIT.` };
+  }
+
+  // ¿Ya está en el listado de trabajadores?
+  await chrome.tabs.update(tab, { url: `${CFD_BASE}/workers` });
+  await esperarCarga(tab);
+  await esperar(3500);
+  const ya = await ejecutar(tab, (doc) => {
+    const f = [...document.querySelectorAll('tr')].find(e => (e.innerText || '').replace(/\s/g, '').includes(doc));
+    if (!f) return null;
+    const c = [...f.querySelectorAll('td')].map(x => x.innerText.trim());
+    return { nombre: c[1] || '', desde: c[4] || c[3] || '' };
+  }, [String(d.documento)]).catch(() => null);
+  if (ya) return { ok: true, yaAfiliado: true, nombre: ya.nombre, desde: ya.desde };
+
+  await chrome.tabs.update(tab, { url: `${CFD_BASE}/individual` });
+  await esperarCarga(tab);
+  await esperar(3000);
+
+  const puesto = await esperarQue(tab, (tipo, doc) => {
+    const s = document.getElementById('selectdocument'), i = document.getElementById('inputdocument');
+    if (!s || !i) return false;
+    const set = (e, v) => {
+      const p = e instanceof HTMLSelectElement ? window.HTMLSelectElement.prototype : window.HTMLInputElement.prototype;
+      Object.getOwnPropertyDescriptor(p, 'value').set.call(e, v);
+      e.dispatchEvent(new Event('input', { bubbles: true }));
+      e.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    set(s, tipo); set(i, doc);
+    return true;
+  }, [String(d.tipoDoc), String(d.documento)], 25000);
+  if (!puesto) return { ok: false, error: 'No apareció el cuadro de tipo y número de documento.' };
+
+  await ejecutar(tab, () => {
+    const b = [...document.querySelectorAll('button')].find(x => /Afiliar trabajador/i.test(x.innerText));
+    if (!b) return { __error: 'No se encontró el botón Afiliar trabajador.' };
+    ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(t => b.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+    return true;
+  });
+
+  // Ventana de confirmación con la empresa y el NIT.
+  const confirmar = await esperarQue(tab, () => {
+    const b = [...document.querySelectorAll('button')].find(x => /^Continuar$/i.test(x.innerText.trim()));
+    if (!b) return null;
+    const texto = document.body.innerText.replace(/\s+/g, ' ');
+    ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(t => b.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+    return { texto: texto.slice(0, 400) };
+  }, [], 45000);
+  if (!confirmar) {
+    const msg = await ejecutar(tab, () => document.body.innerText.replace(/\s+/g, ' ').slice(0, 300)).catch(() => '');
+    return { ok: false, error: 'El portal no ofreció Continuar tras la consulta. ' + msg };
+  }
+
+  await esperar(3000);
+  const datos = await esperarQue(tab, () => {
+    const i = [...document.querySelectorAll('input')].find(e => e.placeholder === 'Primer nombre');
+    const a = [...document.querySelectorAll('input')].find(e => e.placeholder === 'Primer apellido');
+    return i && i.value ? { nombre: `${i.value} ${a?.value || ''}`.trim(), precargado: i.disabled } : null;
+  }, [], 30000);
+
+  return { ok: true, yaAfiliado: false, nombre: datos?.nombre || '', precargado: !!datos?.precargado };
+}
+
+/**
+ * Llena el formulario de Afiliación individual. Es idempotente: BryNex lo llama
+ * cada pocos segundos, así que solo toca lo que siga vacío.
+ */
+function pCfdLlenar(d) {
+  const MESES = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
+  const norm = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  const set = (e, v) => {
+    if (!e || v == null || v === '') return false;
+    const p = e instanceof HTMLSelectElement ? window.HTMLSelectElement.prototype : window.HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(p, 'value').set.call(e, String(v));
+    e.dispatchEvent(new Event('input', { bubbles: true }));
+    e.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  };
+  const porPlaceholder = ph => [...document.querySelectorAll('input')].find(e => e.placeholder === ph);
+  const combo = etiqueta => [...document.querySelectorAll('select')].find(s => (s.options[0]?.text || '').trim() === etiqueta);
+
+  const hecho = [], falta = [];
+  const texto = (ph, v, nombre) => { const e = porPlaceholder(ph); if (e && !e.disabled && !e.value && set(e, v)) hecho.push(nombre); };
+  const elegir = (etiqueta, v, nombre) => {
+    const s = combo(etiqueta); if (!s || s.value || v == null || v === '') return;
+    if (![...s.options].some(o => o.value === String(v))) { falta.push(`${nombre}: el portal no tiene el valor ${v}`); return; }
+    set(s, v) && hecho.push(nombre);
+  };
+  const elegirTexto = (etiqueta, t, nombre) => {
+    const s = combo(etiqueta); if (!s || s.value || !t) return;
+    const q = norm(t);
+    const op = [...s.options].find(o => norm(o.text) === q)
+      || [...s.options].find(o => o.value && norm(o.text).includes(q))
+      || [...s.options].find(o => o.value && q.split(' ')[0].length > 3 && norm(o.text).includes(q.split(' ')[0]));
+    if (!op) { falta.push(`${nombre}: no se encontró "${t}" en la lista, escógelo tú`); return; }
+    set(s, op.value) && hecho.push(`${nombre}: ${op.text.trim()}`);
+  };
+
+  if (!document.getElementById('inputdocument') && !porPlaceholder('Primer nombre')) {
+    return { paso: 'Sin formulario a la vista', hecho, falta: ['Abre Afiliación individual'], errores: [] };
+  }
+
+  elegir('Selecciona Género', d.genero, 'género');
+  elegir('Selecciona Estado civil', d.estadoCivil, 'estado civil');
+  elegir('Selecciona Orientación sexual', d.orientacion, 'orientación sexual');
+  elegir('Selecciona Nivel académico', d.nivel, 'nivel académico');
+  elegir('Selecciona Nacionalidad', d.nacionalidad, 'nacionalidad');
+  elegir('Selecciona Factor de Vulnerabilidad', d.vulnerabilidad, 'factor de vulnerabilidad');
+  elegir('Selecciona Pertenencia Étnica', d.etnia, 'pertenencia étnica');
+  elegir('Selecciona Ciudad', d.ciudad, 'ciudad');
+  elegir('Selecciona Departamento', d.departamento, 'departamento');
+  texto('Dirección del trabajador:', d.direccion, 'dirección: ' + d.direccion);
+  texto('Celular', d.celular, 'celular');
+  texto('Email', d.correo, 'correo');
+  elegir('Selecciona Horas diarias contratadas', d.horas, 'horas diarias');
+  elegir('Selecciona Tipo salario', d.tipoSalario, 'tipo de salario');
+  texto('Sueldo declarado', String(d.salario), 'sueldo');
+  elegir('Selecciona Tipo de contrato', d.tipoContrato, 'tipo de contrato');
+  elegirTexto('Selecciona Ocupación', d.ocupacionTexto, 'ocupación');
+  elegir('Selecciona Ciudad donde labora el trabajador', d.ciudadLabor, 'ciudad donde labora');
+
+  // La fecha de ingreso es un react-multi-date-picker: no acepta texto, hay que
+  // abrir el calendario y escoger el día.
+  const fecha = porPlaceholder('Fecha de ingreso');
+  if (fecha && !fecha.value && d.fechaIngreso) {
+    const [anio, mes, dia] = d.fechaIngreso.split('-').map(Number);
+    if (!document.querySelector('.rmdp-wrapper, .rmdp-calendar')) {
+      fecha.focus();
+      ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(t => fecha.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+    }
+    const w = document.querySelector('.rmdp-wrapper, .rmdp-calendar');
+    if (!w) {
+      falta.push('fecha de ingreso: abre el calendario con un clic y escoge el ' + d.fechaIngreso.split('-').reverse().join('/'));
+    } else {
+      const cab = (w.querySelector('.rmdp-header')?.innerText || '').replace(/\s+/g, ' ').trim();
+      const m = cab.match(/([A-Za-zÁÉÍÓÚáéíóú]+)[, ]+(\d{4})/);
+      if (m) {
+        const actual = MESES.indexOf(norm(m[1])) + 1;
+        const saltos = (Number(m[2]) - anio) * 12 + (actual - mes);
+        if (saltos !== 0) {
+          const flecha = w.querySelector(saltos > 0 ? '.rmdp-left' : '.rmdp-right');
+          (flecha?.querySelector('span') || flecha)?.click();
+          falta.push('fecha de ingreso: buscando ' + d.fechaIngreso.split('-').reverse().join('/') + ' en el calendario');
+        } else {
+          const celda = [...w.querySelectorAll('.rmdp-day')]
+            .filter(x => !/rmdp-deactive|rmdp-disabled/.test(x.className))
+            .find(x => x.innerText.trim() === String(dia));
+          if (!celda) falta.push('fecha de ingreso: el calendario no deja escoger ese día, escógelo tú');
+          else { (celda.querySelector('span') || celda).click(); hecho.push('fecha de ingreso: ' + d.fechaIngreso.split('-').reverse().join('/')); }
+        }
+      }
+    }
+  } else if (fecha && fecha.value) {
+    hecho.push('fecha de ingreso: ' + fecha.value.replace(/\s/g, ''));
+  }
+
+  const errores = [...new Set([...document.querySelectorAll('*')]
+    .filter(e => e.children.length === 0 && /obligatori|inv[aá]lid|no es v[aá]lid/i.test(e.innerText || ''))
+    .map(e => e.innerText.trim()).filter(t => t.length < 120))];
+
+  return { paso: 'Afiliación individual', hecho, falta, errores: errores.slice(0, 6) };
+}
+
+/** Lee el número de radicado (002-002-…) después de Finalizar. */
+function pCfdResultado() {
+  const t = (document.body.innerText || '').replace(/\s+/g, ' ');
+  const m = t.match(/\b(\d{3}-\d{3}-\d{6,})\b/);
+  const exito = /exitos|radicad[oa]|registrad[oa]|recibimos tu solicitud/i.test(t);
+  if (!m && !exito) return { radicado: false };
+  return { radicado: !!m, numero: m ? m[1] : null, texto: t.slice(0, 1200) };
 }

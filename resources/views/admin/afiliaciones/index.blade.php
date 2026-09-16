@@ -820,6 +820,12 @@ function sortClass($col, $currSort, $currDir) {
                     onclick="cajaComfenalcoDesdeRadicado()">
                     🏢 Afiliar a la caja
                 </button>
+                {{-- Caja Comfandi: afiliación por su Sucursal Virtual Empresas con la extensión --}}
+                <button id="btnCajaComfandi" type="button"
+                    style="display:none;align-items:center;gap:0.35rem;padding:0.3rem 0.85rem;background:linear-gradient(135deg,#1e3a8a,#2563eb);color:#fff;border:none;border-radius:7px;font-size:0.75rem;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(37,99,235,0.3);"
+                    onclick="cajaComfandiDesdeRadicado()">
+                    🏢 Afiliar a Comfandi
+                </button>
                 {{-- Portal Boxalud (Emssanar): Ingreso de afiliación con la extensión --}}
                 <button id="btnBoxalud" type="button"
                     style="display:none;align-items:center;gap:0.35rem;padding:0.3rem 0.85rem;background:linear-gradient(135deg,#4d7c0f,#65a30d);color:#fff;border:none;border-radius:7px;font-size:0.75rem;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(101,163,13,0.3);"
@@ -1620,6 +1626,12 @@ function abrirModalRadicado(radId, radData, ctx = {}, contratoId = null, tieneFo
     btnCaja.style.display = (PUEDE_AUTOMATIZAR && esCajaComf && radData.estado !== 'ok') ? 'inline-flex' : 'none';
     btnCaja._contratoId = contratoId || ctx.id || null;
 
+    // Caja Comfandi: radicados de caja que aún no están en OK.
+    const btnCajaCfd = document.getElementById('btnCajaComfandi');
+    const esComfandi = (radData.tipo === 'caja') && /COMFANDI/i.test(ctx.caja || '');
+    btnCajaCfd.style.display = (PUEDE_AUTOMATIZAR && esComfandi && radData.estado !== 'ok') ? 'inline-flex' : 'none';
+    btnCajaCfd._contratoId = contratoId || ctx.id || null;
+
     // Portal Boxalud (Emssanar), mientras no esté en OK. El correo queda como plan B dentro del modal.
     const btnBox = document.getElementById('btnBoxalud');
     const boxEps = (radData.tipo === 'eps') ? BOXALUD_EPS.find(c => c.patron.test(ctx.eps || '')) : null;
@@ -1760,6 +1772,13 @@ function cajaComfenalcoDesdeRadicado() {
     if (!btn._contratoId) { alert('No se pudo identificar el contrato.'); return; }
     cerrarModal('modalRadicado');
     abrirCajaComfenalco(btn._contratoId);
+}
+
+function cajaComfandiDesdeRadicado() {
+    const btn = document.getElementById('btnCajaComfandi');
+    if (!btn._contratoId) { alert('No se pudo identificar el contrato.'); return; }
+    cerrarModal('modalRadicado');
+    abrirCajaComfandi(btn._contratoId);
 }
 
 function boxaludDesdeRadicado() {
@@ -2780,6 +2799,7 @@ function mostrarToast(msg, tipo) {
 @include('admin.partials._correo_eps')
 @include('admin.partials._novedad_boxalud')
 @include('admin.partials._afiliar_caja_comfenalco')
+@include('admin.partials._afiliar_caja_comfandi')
 @endcan
 
 @endsection

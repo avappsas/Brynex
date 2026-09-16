@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "BryNex Portales",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Hace los trámites de afiliación de BryNex en los portales de las EPS (S.O.S., Sanitas) con la sesión que la persona abre en su propio navegador.",
   "permissions": ["scripting", "tabs"],
   "host_permissions": [
@@ -12,6 +12,8 @@
     "https://boxalud.emssanareps.co/*",
     "https://virtual.comfenalcovalle.com.co/*",
     "https://authcomfeempresasprod.web.app/*",
+    "https://afiliaciones.sucursalcomfandi.com/*",
+    "https://iam.comfandi.com.co/*",
     "https://brynex.co/*",
     "https://www.brynex.co/*",
     "http://localhost:8000/*"
