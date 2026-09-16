@@ -332,8 +332,10 @@
       $fspGrupoSel = old('grupo_fondo_solidaridad', $contrato->grupo_fondo_solidaridad ?? '');
     @endphp
     @if($fsp)
-    <div x-show="esFondoSolidaridad" x-cloak
-         style="margin-top:0.5rem;border:1px solid #bfdbfe;background:#eff6ff;border-radius:8px;padding:0.55rem 0.7rem;display:grid;grid-template-columns:1fr 1.15fr;gap:0.8rem;">
+    {{-- x-show y la cuadrícula van en elementos distintos: al mostrar, Alpine
+         borra el display del estilo y el grid se volvía block (una columna). --}}
+    <div x-show="esFondoSolidaridad" x-cloak>
+    <div style="margin-top:0.5rem;border:1px solid #bfdbfe;background:#eff6ff;border-radius:8px;padding:0.55rem 0.7rem;display:grid;grid-template-columns:1fr 1.15fr;gap:0.8rem;">
       <div>
         <label class="lb" style="color:#1d4ed8;">Grupo del Fondo de Solidaridad</label>
         <select name="grupo_fondo_solidaridad" id="sel_grupo_fsp" x-model="grupoFsp" @change="onGrupoFspChange" {!! $prot !!} style="{{ $S }}"
@@ -348,8 +350,8 @@
         <template x-if="grupoFspDatos">
           <div style="margin-top:0.35rem;font-size:0.7rem;color:#1e3a8a;line-height:1.45;">
             Pensión <b x-text="grupoFspDatos.pct_pension.toString().replace('.', ',') + ' %'"></b> <span x-text="fmt(grupoFspDatos.pension)"></span>
-            + salud 12,5 % <span x-text="fmt(grupoFspDatos.salud)"></span>
-            = <b x-text="fmt(grupoFspDatos.total)"></b> al mes.
+            <span x-show="!esPlanSoloAfp">+ salud 12,5 % <span x-text="fmt(grupoFspDatos.salud)"></span></span>
+            = <b x-text="fmt(esPlanSoloAfp ? grupoFspDatos.pension : grupoFspDatos.total)"></b> al mes.
             <span style="color:#64748b;">El Estado subsidia el <span x-text="grupoFspDatos.subsidio"></span> % de la pensión, sobre un salario mínimo.</span>
           </div>
         </template>
@@ -392,6 +394,7 @@
         </div>
         <div style="color:#64748b;">ℹ️ Semanas: mínimo 300, se ven en la historia laboral de Colpensiones. Enlace confirma la inscripción cada mes al liquidar.</div>
       </div>
+    </div>
     </div>
     @endif
 
@@ -3863,7 +3866,10 @@ function cotizador() {
         },
 
         /** Cambió el grupo: cambia la tarifa de pensión y si se ofrece Solo AFP. */
-        onGrupoFspChange() {
+        onGrupoFspChange(e) {
+            // El @change corre antes de que x-model actualice grupoFsp: sin esto
+            // la cotización salía con el grupo anterior.
+            if (e?.target) this.grupoFsp = e.target.value;
             filtrarPlanes(this.tipoModalidadId, true);
             this.recalcular();
         },
