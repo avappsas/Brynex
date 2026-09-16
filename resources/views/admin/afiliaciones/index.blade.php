@@ -1060,6 +1060,8 @@ function sortClass($col, $currSort, $currDir) {
                 style="padding:0.3rem 0.8rem;border-radius:7px;border:1px solid #0e7490;font-size:0.78rem;font-weight:700;cursor:pointer;">Sanitas</button>
             <button type="button" class="ceps-tab" data-entidad="caja_comfenalco" onclick="elegirEntidadConciliacion('caja_comfenalco')"
                 style="padding:0.3rem 0.8rem;border-radius:7px;border:1px solid #047857;font-size:0.78rem;font-weight:700;cursor:pointer;">Caja Comfenalco</button>
+            <button type="button" class="ceps-tab" data-entidad="caja_comfandi" onclick="elegirEntidadConciliacion('caja_comfandi')"
+                style="padding:0.3rem 0.8rem;border-radius:7px;border:1px solid #1e3a8a;font-size:0.78rem;font-weight:700;cursor:pointer;">Caja Comfandi</button>
         </div>
 
         <div id="ceps-descripcion-sura" style="font-size:0.78rem;color:#475569;line-height:1.45;margin-bottom:0.8rem;">
@@ -1096,6 +1098,16 @@ function sortClass($col, $currSort, $currDir) {
             quien ya aparece afiliado y coincide el apellido pasa a <strong>OK confirmado</strong>; quien no aparece <strong>falta afiliar</strong>
             (🏢 Afiliar a la caja). También lista a los afiliados de la caja que BryNex no tiene como contrato vigente con esa caja.
             <div id="ceps-caja-sesion" style="margin-top:0.45rem;"></div>
+        </div>
+
+        <div id="ceps-descripcion-caja_comfandi" style="display:none;font-size:0.78rem;color:#475569;line-height:1.45;margin-bottom:0.8rem;">
+            Baja del portal de Comfandi el <strong>Listado de trabajadores</strong> y la pestaña <strong>Radicados</strong> con la sesión
+            abierta en este navegador (extensión BryNex Portales) y los cruza con los <strong>radicados de caja</strong> de esa empresa:
+            quien ya aparece afiliado y coincide el apellido pasa a <strong>OK confirmado</strong>. A los que todavía no aparecen los explica
+            el radicado del portal: <strong>en proceso</strong> queda en trámite con su número, <strong>rechazado</strong> se marca para revisar
+            el motivo antes de volver a radicar, y sin radicado <strong>falta afiliar</strong> (🏢 Afiliar a Comfandi).
+            También lista a los afiliados de la caja que BryNex no tiene como contrato vigente con Comfandi.
+            <div id="ceps-comfandi-sesion" style="margin-top:0.45rem;"></div>
         </div>
 
         <div id="ceps-acciones" style="display:flex;gap:0.5rem;margin-bottom:0.8rem;">
@@ -2555,7 +2567,7 @@ const CEPS_ACCIONES = {
     revisar:  ['👀 Revisar', '#e0e7ff', '#3730a3'],
     error:    ['❌ Error', '#fee2e2', '#991b1b'],
 };
-const CEPS_NOMBRES = { sura: 'EPS SURA', nueva_eps: 'Nueva EPS', salud_total: 'Salud Total', sanitas: 'Sanitas', caja_comfenalco: 'Caja Comfenalco Valle' };
+const CEPS_NOMBRES = { sura: 'EPS SURA', nueva_eps: 'Nueva EPS', salud_total: 'Salud Total', sanitas: 'Sanitas', caja_comfenalco: 'Caja Comfenalco Valle', caja_comfandi: 'Caja Comfandi' };
 let _cepsTimer = null;
 let _cepsCorria = false;
 let _cepsEntidad = 'sura';
@@ -2570,7 +2582,7 @@ function elegirEntidadConciliacion(entidad) {
     _cepsCorria = false;
     document.querySelectorAll('.ceps-tab').forEach(b => {
         const activo = b.dataset.entidad === entidad;
-        b.style.background = activo ? ({ sura: '#0033a0', nueva_eps: '#be123c', salud_total: '#15803d', sanitas: '#0e7490', caja_comfenalco: '#047857' }[entidad] || '#334155') : '#fff';
+        b.style.background = activo ? ({ sura: '#0033a0', nueva_eps: '#be123c', salud_total: '#15803d', sanitas: '#0e7490', caja_comfenalco: '#047857', caja_comfandi: '#1e3a8a' }[entidad] || '#334155') : '#fff';
         b.style.color = activo ? '#fff' : '#334155';
     });
     Object.keys(CEPS_NOMBRES).forEach(k => {
@@ -2582,6 +2594,7 @@ function elegirEntidadConciliacion(entidad) {
 async function iniciarConciliacionEpsSura(simular) {
     if (_cepsEntidad === 'sanitas') return conciliarSanitas(simular);
     if (_cepsEntidad === 'caja_comfenalco') return conciliarCajaComfenalco(simular);
+    if (_cepsEntidad === 'caja_comfandi') return conciliarCajaComfandi(simular);
     if (!simular && !confirm(`Se consultará el portal de ${CEPS_NOMBRES[_cepsEntidad]} y se actualizarán en BryNex los radicados que el portal confirme. ¿Continuar?`)) return;
     try {
         const res = await fetch(CEPS_URL_INICIAR, {
@@ -2603,8 +2616,10 @@ async function consultarConciliacionEpsSura() {
     try {
         if (_cepsEntidad === 'sanitas') revisarSesionSanitas();
         if (_cepsEntidad === 'caja_comfenalco') revisarSesionCajaConciliacion();
+        if (_cepsEntidad === 'caja_comfandi') revisarSesionComfandiConciliacion();
         const url = _cepsEntidad === 'sanitas' ? SANITAS_URL_ESTADO
-            : (_cepsEntidad === 'caja_comfenalco' ? CAJA_URL_ESTADO : CEPS_URL_ESTADO + '?entidad=' + _cepsEntidad);
+            : (_cepsEntidad === 'caja_comfenalco' ? CAJA_URL_ESTADO
+                : (_cepsEntidad === 'caja_comfandi' ? COMFANDI_URL_ESTADO : CEPS_URL_ESTADO + '?entidad=' + _cepsEntidad));
         data = await (await fetch(url, { headers: { 'Accept': 'application/json' } })).json();
     } catch (e) {
         return;
@@ -2659,8 +2674,8 @@ function pintarConciliacionEpsSura(data) {
 
     const sobran = data.sobran || [];
     const cajaSobran = document.getElementById('ceps-sobran');
-    cajaSobran.style.display = (['sanitas', 'caja_comfenalco'].includes(_cepsEntidad) && sobran.length) ? 'block' : 'none';
-    cajaSobran.innerHTML = sobran.length ? `<strong>${_cepsEntidad === 'caja_comfenalco' ? 'Afiliados a la caja sin contrato vigente con esa caja en BryNex' : 'Habilitados en Sanitas sin contrato vigente con Sanitas en BryNex'} (${sobran.length})</strong>` +
+    cajaSobran.style.display = (['sanitas', 'caja_comfenalco', 'caja_comfandi'].includes(_cepsEntidad) && sobran.length) ? 'block' : 'none';
+    cajaSobran.innerHTML = sobran.length ? `<strong>${['caja_comfenalco', 'caja_comfandi'].includes(_cepsEntidad) ? 'Afiliados a la caja sin contrato vigente con esa caja en BryNex' : 'Habilitados en Sanitas sin contrato vigente con Sanitas en BryNex'} (${sobran.length})</strong>` +
         `<table style="width:100%;border-collapse:collapse;margin-top:0.35rem;"><tbody>` +
         sobran.map(x => `<tr style="border-top:1px solid #f1f5f9;"><td style="padding:0.3rem 0.5rem;white-space:nowrap;">${esc(x.cedula)}</td><td style="padding:0.3rem 0.5rem;">${esc(x.nombre)}</td><td style="padding:0.3rem 0.5rem;white-space:nowrap;">desde ${esc(x.desde || '—')}</td><td style="padding:0.3rem 0.5rem;color:#475569;">${esc(x.motivo)}</td></tr>`).join('') +
         `</tbody></table>` : '';
@@ -2729,6 +2744,58 @@ async function conciliarCajaComfenalco(simular) {
         if (!data.ok) throw new Error(data.mensaje || 'No se pudo conciliar.');
         pintarConciliacionEpsSura(data);
         estado.innerHTML = `${simular ? '<strong>(solo consulta)</strong> ' : ''}${data.empresa}${(data.aliados || []).length > 1 ? ` (aliados: ${data.aliados.join(', ')})` : ''}: ${data.afiliados_caja} afiliados en la caja` +
+            (data.confirmados_ok ? ` · ${data.confirmados_ok} que ya estaban en OK quedan confirmados` : '') + '.';
+        if (!simular && data.cerrados > 0) mostrarToast(`${data.cerrados} radicados de caja pasaron a OK. Recarga para verlos.`, 'success');
+    } catch (err) {
+        estado.innerHTML = '❌ ' + err.message;
+    } finally {
+        document.getElementById('ceps-acciones').style.display = 'flex';
+    }
+}
+
+// ── Caja Comfandi: conciliación con la extensión BryNex Portales ──
+const COMFANDI_URL_CONCILIAR = @json(route('admin.afiliaciones.caja-comfandi.conciliar'));
+const COMFANDI_URL_ESTADO = @json(route('admin.afiliaciones.caja-comfandi.conciliar.estado'));
+
+function comfandiExt(accion, datos = {}, limiteSeg = 120) {
+    return brynexExt('cfd', accion, datos, limiteSeg);
+}
+
+async function revisarSesionComfandiConciliacion() {
+    const caja = document.getElementById('ceps-comfandi-sesion');
+    const e = await comfandiExt('cfdEstado', {}, 25);
+    const abrir = `<button type="button" onclick="comfandiExt('cfdAbrir')" class="btn-export" style="background:#1e3a8a;cursor:pointer;margin-left:0.4rem;">🌐 Abrir la Sucursal Virtual</button>`;
+    if (e.sinExtension) { caja.innerHTML = '🧩 Instala o recarga la extensión BryNex Portales (1.8.0) y recarga esta página.'; return null; }
+    if (!e.abierta || !e.sesion) {
+        caja.innerHTML = '⚠️ Inicia sesión con el NIT de la empresa y selecciona la empresa (si ofrece la verificación en dos pasos, «Omitir por ahora»).' + abrir;
+        return null;
+    }
+    caja.innerHTML = `✅ Portal abierto${e.empresa ? ' con <strong>' + e.empresa + '</strong>' : ''}.` + abrir;
+    return e;
+}
+
+async function conciliarCajaComfandi(simular) {
+    const estado = document.getElementById('ceps-estado');
+    if (!await revisarSesionComfandiConciliacion()) { alert('Primero inicia sesión en la Sucursal Virtual Empresas de Comfandi.'); return; }
+    if (!simular && !confirm('Se bajarán el listado de trabajadores y los radicados de la empresa, y se pondrán en OK los radicados de caja que Comfandi confirme. ¿Continuar?')) return;
+
+    document.getElementById('ceps-acciones').style.display = 'none';
+    estado.style.display = 'block';
+    estado.innerHTML = '⏳ Bajando el listado de trabajadores y los radicados del portal...';
+    try {
+        const rep = await comfandiExt('cfdTrabajadores', {}, 240);
+        if (!rep.ok) throw new Error(rep.error || 'No se pudo bajar la información del portal.');
+        estado.innerHTML = `⏳ Cruzando ${rep.filas.length} afiliados y ${rep.radicados.length} radicados de ${rep.empresa || rep.nit} con BryNex...`;
+        const res = await fetch(COMFANDI_URL_CONCILIAR, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
+            body: JSON.stringify({ nit: rep.nit, filas: rep.filas, radicados: rep.radicados, simular }),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.mensaje || 'No se pudo conciliar.');
+        pintarConciliacionEpsSura(data);
+        estado.innerHTML = `${simular ? '<strong>(solo consulta)</strong> ' : ''}${data.empresa}${(data.aliados || []).length > 1 ? ` (aliados: ${data.aliados.join(', ')})` : ''}: ` +
+            `${data.afiliados_caja} afiliados en la caja y ${data.radicados_portal} radicados en el portal` +
             (data.confirmados_ok ? ` · ${data.confirmados_ok} que ya estaban en OK quedan confirmados` : '') + '.';
         if (!simular && data.cerrados > 0) mostrarToast(`${data.cerrados} radicados de caja pasaron a OK. Recarga para verlos.`, 'success');
     } catch (err) {

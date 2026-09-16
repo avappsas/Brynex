@@ -46,6 +46,7 @@
  *  cfdConsultar {…datos}               → abre Afiliación individual y consulta al trabajador
  *  cfdLlenar {…datos}                  → llena el formulario; Finalizar lo pulsa la persona
  *  cfdResultado                        → {radicado, numero, texto} tras Finalizar
+ *  cfdTrabajadores                     → {nit, empresa, filas, radicados} para la conciliación
  */
 
 const ORIGENES_BRYNEX = ['https://brynex.co', 'https://www.brynex.co', 'http://localhost:8000'];
@@ -1322,6 +1323,7 @@ async function atenderCfd(accion, d = {}) {
   if (accion === 'cfdConsultar') return cfdConsultar(pestana, d);
   if (accion === 'cfdLlenar') return { ok: true, ...(await ejecutar(pestana.id, pCfdLlenar, [d])) };
   if (accion === 'cfdResultado') return { ok: true, ...(await ejecutar(pestana.id, pCfdResultado)) };
+  if (accion === 'cfdTrabajadores') return cfdTrabajadores(pestana);
 
   throw new Error(`Acción de Comfandi desconocida: ${accion}`);
 }
@@ -1509,4 +1511,93 @@ function pCfdResultado() {
   const exito = /exitos|radicad[oa]|registrad[oa]|recibimos tu solicitud/i.test(t);
   if (!m && !exito) return { radicado: false };
   return { radicado: !!m, numero: m ? m[1] : null, texto: t.slice(0, 1200) };
+}
+
+/**
+ * Lee una tabla del portal recorriendo TODAS sus páginas.
+ *
+ * Las tablas de Comfandi paginan de a 5 y el selector de tamaño es un combo
+ * propio, así que en vez de pelearse con él se pulsa "Siguiente" hasta que la
+ * primera fila deja de cambiar. `columnas` dice qué celdas llevarse y en qué
+ * orden; el resto se descarta (la de "Detalle" es un icono).
+ */
+async function cfdTabla(tab, columnas, limitePaginas = 60) {
+  const filas = [];
+  let anterior = null;
+
+  for (let i = 0; i < limitePaginas; i++) {
+    const pagina = await esperarQue(tab, (cols) => {
+      const t = document.querySelector('table');
+      if (!t) return null;
+      const tr = [...t.querySelectorAll('tbody tr')];
+      if (!tr.length) return { datos: [], huella: 'vacia' };
+      const datos = tr.map(f => {
+        const c = [...f.querySelectorAll('td')].map(x => (x.innerText || '').replace(/\s+/g, ' ').trim());
+        return cols.map(i => c[i] ?? '');
+      });
+      return { datos, huella: JSON.stringify(datos[0] || []) };
+    }, [columnas], 30000);
+
+    if (!pagina) break;
+    if (pagina.huella === anterior) break;          // la página no cambió: ya está la última
+    anterior = pagina.huella;
+    filas.push(...pagina.datos);
+
+    const hay = await ejecutar(tab, () => {
+      const b = [...document.querySelectorAll('button')].find(x => /^\s*Siguiente\s*$/i.test(x.innerText) && !x.disabled);
+      if (!b) return false;
+      ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(t => b.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+      return true;
+    }).catch(() => false);
+    if (!hay) break;
+    await esperar(1500);
+  }
+
+  return filas;
+}
+
+/** El NIT de la empresa de la sesión, para amarrar la conciliación a la razón social. */
+async function cfdNitEmpresa(tab) {
+  await chrome.tabs.update(tab, { url: `${CFD_BASE}/admin/users` });
+  await esperarCarga(tab);
+  await esperar(3000);
+
+  return await esperarQue(tab, () => {
+    const t = document.querySelector('table');
+    const fila = t && [...t.querySelectorAll('tbody tr')].find(f => /\d{6,}/.test(f.innerText));
+    const m = fila && fila.innerText.match(/\b(\d{8,12})\b/);
+    const e = document.body.innerText.match(/actualmente est[aá]s en:\s*\n+\s*([^\n]+)/i);
+    return m ? { nit: m[1], empresa: e ? e[1].trim() : null } : null;
+  }, [], 25000);
+}
+
+/** Listado de trabajadores + Radicados, para conciliar los radicados de caja. */
+async function cfdTrabajadores(pestana) {
+  const tab = pestana.id;
+  const est = await ejecutar(tab, pCfdEstado);
+  if (!est.sesion) return { ok: false, error: 'El portal no tiene la sesión iniciada. Entra con el NIT de la empresa y selecciona la empresa.' };
+
+  const empresa = await cfdNitEmpresa(tab);
+  if (!empresa?.nit) return { ok: false, error: 'No se pudo leer el NIT de la empresa en Administración de usuarios.' };
+
+  // Listado de trabajadores: [nombre, "CC 123", ingreso empresa, ingreso caja]
+  // se reordena a [documento, nombre, ingreso empresa, ingreso caja].
+  await chrome.tabs.update(tab, { url: `${CFD_BASE}/workers` });
+  await esperarCarga(tab);
+  await esperar(3500);
+  const filas = await cfdTabla(tab, [2, 1, 3, 4]);
+
+  // Radicados: hay que pulsar Buscar para que cargue la tabla.
+  await chrome.tabs.update(tab, { url: `${CFD_BASE}/filed` });
+  await esperarCarga(tab);
+  await esperar(3500);
+  await ejecutar(tab, () => {
+    const b = [...document.querySelectorAll('button')].find(x => /^\s*Buscar\s*$/i.test(x.innerText));
+    if (b) ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(t => b.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+    return true;
+  }).catch(() => null);
+  await esperar(3000);
+  const radicados = await cfdTabla(tab, [0, 2, 3, 4, 5, 6]);
+
+  return { ok: true, nit: empresa.nit, empresa: empresa.empresa, filas, radicados };
 }
