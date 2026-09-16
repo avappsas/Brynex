@@ -1055,6 +1055,13 @@ class PlanoPagoController extends Controller
 
             DB::commit();
 
+            // Los informes del operador se bajan en segundo plano, con espera
+            // para que el pago alcance a verse allá, y quedan listos para el
+            // envío por WhatsApp. Si nunca aparece se avisa: número mal digitado.
+            \App\Jobs\DescargarSoportesPlanillaJob::programar(
+                (int) $aliadoId, (string) $validated['numero_planilla'], $validated['operador'], $usuarioId
+            );
+
             return response()->json([
                 'ok'                => true,
                 'mensaje'           => "Pago confirmado. Se actualizaron {$cantActualizados} registros con la planilla {$validated['numero_planilla']}.",
@@ -1207,6 +1214,23 @@ class PlanoPagoController extends Controller
             // (hoy: operador sin plantilla PDF autorizada).
             $destinatarios = $destinatarios->filter(fn($d) => $d['envio_estado'] === 'omitido');
         }
+
+        // ¿Ya está en disco el PDF del operador? Con él sale el soporte real; sin
+        // él se intenta bajar al enviar, y si no se puede, sale el de BryNex.
+        $tiposDoc = \App\Models\Plano::whereIn('id', $destinatarios->pluck('plano_id')->filter()->unique())
+            ->pluck('tipo_doc', 'id');
+        $destinatarios = $destinatarios->map(function ($d) use ($aliadoId, $tiposDoc) {
+            $d['soporte_operador_listo'] = !empty($d['numero_planilla']) && Storage::disk('local')->exists(
+                \App\Services\EnlaceInformeIndividualService::rutaEnDisco((object) [
+                    'aliado_id'       => $aliadoId,
+                    'numero_planilla' => $d['numero_planilla'],
+                    'tipo_doc'        => $tiposDoc[$d['plano_id']] ?? 'CC',
+                    'no_identifi'     => $d['cliente_cedula'],
+                ])
+            );
+
+            return $d;
+        });
 
         // Búsqueda de texto en las columnas
         $q = $request->input('q');

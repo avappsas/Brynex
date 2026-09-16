@@ -27,6 +27,24 @@ class PlanillaEnvioWhatsappJob implements ShouldQueue
 
     public function handle(WhatsappApiService $apiService, EnlaceInformeIndividualService $soportes): void
     {
+        // La cola `database` le entrega a otro worker toda tarea que pase de
+        // `retry_after` (90 s), y un envío de cien planillas tarda varios
+        // minutos: sin candado, los dos workers mandaban los mismos mensajes.
+        $candado = \Illuminate\Support\Facades\Cache::lock("envio-planillas-whatsapp:{$this->envioId}", $this->timeout + 60);
+
+        if (! $candado->get()) {
+            return;
+        }
+
+        try {
+            $this->procesar($apiService, $soportes);
+        } finally {
+            $candado->release();
+        }
+    }
+
+    private function procesar(WhatsappApiService $apiService, EnlaceInformeIndividualService $soportes): void
+    {
         $envio = PlanillaEnvioWhatsapp::with(['detalles'])->find($this->envioId);
 
         if (!$envio || $envio->estado === 'completado') {

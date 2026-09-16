@@ -376,7 +376,11 @@
                                 <span style="display: inline-block; margin-left: 4px; font-size: 0.65rem; background: #fef3c7; color: #92400e; border: 1px solid #fde68a; border-radius: 4px; padding: 0 4px;" title="Sin plantilla PDF autorizada">⚠️ Sin PDF</span>
                             </template>
                         </td>
-                        <td style="padding: 0.6rem 0.75rem; font-family: monospace; color: #475569;" x-text="d.numero_planilla"></td>
+                        <td style="padding: 0.6rem 0.75rem; font-family: monospace; color: #475569;">
+                            <span x-text="d.numero_planilla"></span>
+                            <span x-show="d.soporte_operador_listo" title="El PDF del operador ya está en el servidor: se envía el soporte real"
+                                  style="margin-left: 0.3rem; font-family: inherit; font-size: 0.65rem; font-weight: 600; color: #15803d; background: #dcfce7; border-radius: 999px; padding: 0.05rem 0.4rem;">✔ real</span>
+                        </td>
                         <td style="padding: 0.6rem 0.75rem; color: #475569;" x-text="d.empresa_nombre"></td>
                         <td style="padding: 0.6rem 0.75rem; color: #475569; text-align: center;" x-text="d.wa_numero || 'Sin Celular'"></td>
                         <td style="padding: 0.6rem 0.75rem; text-align: center;">

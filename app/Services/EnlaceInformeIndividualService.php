@@ -269,8 +269,12 @@ class EnlaceInformeIndividualService
         ];
     }
 
-    /** Dónde queda el PDF de un cotizante: una carpeta por aliado y planilla. */
-    public static function rutaEnDisco(Plano $plano): string
+    /**
+     * Dónde queda el PDF de un cotizante: una carpeta por aliado y planilla.
+     * Sirve con el modelo o con cualquier fila que traiga aliado_id,
+     * numero_planilla, tipo_doc y no_identifi.
+     */
+    public static function rutaEnDisco(object $plano): string
     {
         $limpiar = fn ($v) => preg_replace('/[^A-Za-z0-9]/', '', (string) $v);
 
