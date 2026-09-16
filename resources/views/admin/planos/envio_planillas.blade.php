@@ -1454,10 +1454,12 @@ function enviosPlanillaApp() {
             const mesNombre = mesesEs[(this.filtroMes - 1)] || `Mes${this.filtroMes}`;
 
             const nombreCompleto = (cliente.cliente_nombre || cliente.nombre_destinatario || 'Cliente');
+            // Igual que PlanillaWhatsappService::generarNombreArchivoPdf: mayúsculas
+            // y sin tildes ni eñes ("PEñA" → "PENA", no "PEnA").
             const nombreLimpio = nombreCompleto
-                .replace(/[áÁ]/g,'a').replace(/[éÉ]/g,'e').replace(/[íÍ]/g,'i')
-                .replace(/[óÓ]/g,'o').replace(/[úÚ]/g,'u').replace(/[ñÑ]/g,'n')
-                .replace(/[^a-zA-Z0-9\s]/g, '')
+                .toUpperCase()
+                .normalize('NFD').replace(/[̀-ͯ]/g, '')
+                .replace(/[^A-Z0-9\s]/g, '')
                 .trim().replace(/\s+/g, '_');
 
             return `Planilla_SS_${nombreLimpio}_${mesNombre}_${this.filtroAnio}.pdf`;

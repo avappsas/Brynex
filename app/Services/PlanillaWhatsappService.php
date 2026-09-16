@@ -278,14 +278,11 @@ class PlanillaWhatsappService
             9 => 'Septiembre', 10 => 'Octubre', 11 => 'Noviembre', 12 => 'Diciembre',
         ];
 
-        // Limpiar nombre: eliminar acentos y caracteres especiales, reemplazar espacios
-        $nombreLimpio = $nombreCompleto;
-        $nombreLimpio = str_replace(
-            ['á','é','í','ó','ú','Á','É','Í','Ó','Ú','ñ','Ñ'],
-            ['a','e','i','o','u','A','E','I','O','U','n','N'],
-            $nombreLimpio
-        );
-        $nombreLimpio = preg_replace('/[^a-zA-Z0-9\s]/', '', $nombreLimpio);
+        // Limpiar nombre: mayúsculas, sin tildes ni eñes, espacios a guion bajo.
+        // Primero a mayúsculas: hay nombres guardados como "PEñA", con la eñe
+        // en minúscula, y cambiarla por "n" dejaba el archivo como "PEnA".
+        $nombreLimpio = \Illuminate\Support\Str::ascii(mb_strtoupper($nombreCompleto, 'UTF-8'));
+        $nombreLimpio = preg_replace('/[^A-Z0-9\s]/', '', $nombreLimpio);
         $nombreLimpio = str_replace(' ', '_', trim($nombreLimpio));
         $nombreLimpio = preg_replace('/_+/', '_', $nombreLimpio);
 
