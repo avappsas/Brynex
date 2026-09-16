@@ -46,8 +46,28 @@ class ComfandiCajaConciliacionService
     /** Aliados donde el NIT es razón social (lo que ve un usuario BryNex), sin el de pruebas. */
     public function aliadosDelNit(string $nit): array
     {
-        return RazonSocial::where('nit', preg_replace('/\D/', '', $nit))->where('aliado_id', '<>', self::ALIADO_PRUEBAS)
+        return RazonSocial::where('nit', $this->nitBryNex($nit))->where('aliado_id', '<>', self::ALIADO_PRUEBAS)
             ->distinct()->pluck('aliado_id')->map(fn ($id) => (int) $id)->sort()->values()->all();
+    }
+
+    /**
+     * El NIT como lo guarda BryNex, a partir del que muestra el portal.
+     *
+     * Comfandi lo escribe con el dígito de verificación pegado —CONSTRUTECH es
+     * 9016037383 allá y 901603738 aquí—, así que si el número completo no es
+     * ninguna razón social se prueba sin el último dígito. Se comprueba contra
+     * la tabla en vez de recortar a ciegas: hay NITs legítimos de 10 dígitos.
+     */
+    private function nitBryNex(string $nit): string
+    {
+        $limpio = preg_replace('/\D/', '', $nit);
+        if ($limpio === '' || RazonSocial::where('nit', $limpio)->exists()) {
+            return $limpio;
+        }
+
+        $sinDv = substr($limpio, 0, -1);
+
+        return strlen($limpio) >= 10 && RazonSocial::where('nit', $sinDv)->exists() ? $sinDv : $limpio;
     }
 
     /**
@@ -56,11 +76,13 @@ class ComfandiCajaConciliacionService
      */
     public function conciliar(array $aliadoIds, string $nit, array $filas, array $radicados, bool $simular, ?int $usuarioId): array
     {
-        $nit = preg_replace('/\D/', '', $nit);
+        $delPortal = preg_replace('/\D/', '', $nit);
+        $nit = $this->nitBryNex($nit);
         $aliadoIds = array_values(array_unique(array_map('intval', $aliadoIds)));
         $razones = RazonSocial::whereIn('aliado_id', $aliadoIds)->where('nit', $nit)->get();
         if ($razones->isEmpty()) {
-            throw new RuntimeException("El NIT {$nit} de la sesión de Comfandi no es una razón social de este aliado.");
+            throw new RuntimeException("El NIT {$delPortal} de la sesión de Comfandi no es una razón social de este aliado"
+                .($nit !== $delPortal ? " (tampoco {$nit}, sin el dígito de verificación)." : '.'));
         }
         $aliadoIds = $razones->pluck('aliado_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
         $this->conAliado = count($aliadoIds) > 1;
