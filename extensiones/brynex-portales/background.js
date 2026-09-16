@@ -48,6 +48,11 @@
  *  cfdResultado                        → {radicado, numero, texto} tras Finalizar
  *  cfdTrabajadores                     → {nit, empresa, filas, radicados} para la conciliación
  *  cfdListado                          → {nit, empresa, archivoUrl} del Excel del portal (listado + beneficiarios)
+ *
+ * Pedidos Fondo de Solidaridad Pensional (portal: 'fsp', certificado del PSAP en Equiedad):
+ *  fspAbrir {tipoDoc, documento}       → abre la consulta del certificado con tipo y número escritos
+ *  fspCertificado {documento}          → {listo: false} mientras no marquen el captcha;
+ *                                        {listo: true, pdf, nombre} o {listo: true, mensaje} después
  */
 
 const ORIGENES_BRYNEX = ['https://brynex.co', 'https://www.brynex.co', 'http://localhost:8000'];
@@ -64,7 +69,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.canal !== 'brynex-portales' || !ORIGENES_BRYNEX.includes(origen) || sender.id !== chrome.runtime.id) return;
 
   // Ver el estado o abrir la pestaña no espera a que termine un trámite en curso.
-  const directo = ['estado', 'abrir', 'novedadEstado', 'novedadAbrir', 'novedadResultado', 'boxEstado', 'boxAbrir', 'boxResultado', 'ccfEstado', 'ccfAbrir', 'ccfPaso', 'ccfResultado', 'cfdEstado', 'cfdAbrir', 'cfdLlenar', 'cfdResultado'].includes(msg.accion);
+  const directo = ['estado', 'abrir', 'novedadEstado', 'novedadAbrir', 'novedadResultado', 'boxEstado', 'boxAbrir', 'boxResultado', 'ccfEstado', 'ccfAbrir', 'ccfPaso', 'ccfResultado', 'cfdEstado', 'cfdAbrir', 'cfdLlenar', 'cfdResultado', 'fspAbrir', 'fspCertificado'].includes(msg.accion);
   (directo ? atender(msg, origen) : enCola(() => atender(msg, origen)))
     .then(sendResponse)
     .catch(e => sendResponse({ ok: false, error: String(e?.message || e).slice(0, 400) }));
@@ -80,6 +85,7 @@ async function atender({ portal, accion, datos = {} }, origen) {
   if (portal === 'boxalud') return atenderBoxalud(accion, datos, origen);
   if (portal === 'ccfcv') return atenderCcfcv(accion, datos);
   if (portal === 'cfd') return atenderCfd(accion, datos);
+  if (portal === 'fsp') return atenderFsp(accion, datos);
   if (portal !== 'sos') throw new Error(`Portal desconocido: ${portal}`);
 
   if (accion === 'estado') return sosEstado();
@@ -1913,4 +1919,122 @@ async function cfdFilaListado(tab) {
     const c = [...f.querySelectorAll('td')].map(x => (x.innerText || '').replace(/\s+/g, ' ').trim());
     return { numero: c[0], fecha: c[4] || null };
   }).catch(() => null);
+}
+
+// ── Fondo de Solidaridad Pensional: certificado del PSAP ─────────────────
+//
+// La consulta es pública pero tiene reCAPTCHA, así que desde el servidor no se
+// puede pedir. La extensión deja escritos el tipo y el número; la persona marca
+// el captcha y la extensión envía el formulario ella misma con fetch para
+// quedarse con el PDF y dárselo a BryNex, en vez de que se descargue.
+//
+// El formulario es JSF/PrimeFaces sin AJAX: la respuesta es el PDF o la misma
+// página con un Growl que dice por qué no (p. ej. "el documento X no se
+// encuentra en el programa de PSAP"). Los ids son autogenerados (j_idt19…), por
+// eso los campos se buscan por su forma y no por el id.
+
+const FSP_CERTIFICADO = 'https://nelfsp.equiedad.com.co:8001/faces/GenerarCertificadoPsapCAPTCHA.xhtml';
+
+async function pestanaFsp() {
+  // Los patrones de URL no admiten puerto: este coincide con el :8001.
+  const ps = await chrome.tabs.query({ url: 'https://nelfsp.equiedad.com.co/*' });
+  return ps.find(p => (p.url || '').includes('GenerarCertificadoPsap')) || null;
+}
+
+async function atenderFsp(accion, d = {}) {
+  if (accion === 'fspAbrir') {
+    let p = await pestanaFsp();
+    if (p) {
+      // Se recarga para arrancar con un captcha sin usar.
+      const carga = esperarCarga(p.id);
+      await chrome.tabs.update(p.id, { url: FSP_CERTIFICADO, active: true });
+      await carga;
+    } else {
+      p = await chrome.tabs.create({ url: FSP_CERTIFICADO, active: true });
+      await esperarCarga(p.id);
+    }
+    await chrome.windows.update(p.windowId, { focused: true });
+
+    const lleno = await esperarQue(p.id, pFspLlenar, [d.tipoDoc || 'CC', String(d.documento || '')], 20000);
+    if (!lleno) return { ok: false, error: 'La página del Fondo no mostró el formulario del certificado.' };
+    return { ok: true };
+  }
+
+  if (accion === 'fspCertificado') {
+    const p = await pestanaFsp();
+    if (!p) return { ok: false, cerrada: true, error: 'Se cerró la pestaña del Fondo de Solidaridad.' };
+    return { ok: true, ...(await ejecutar(p.id, pFspCertificado, [String(d.documento || '')])) };
+  }
+
+  throw new Error(`Acción desconocida: ${accion}`);
+}
+
+function pFspLlenar(tipo, documento) {
+  const form = document.querySelector('form[id*="consultabeneficiarios"]') || document.forms[0];
+  const W = window.PrimeFaces?.widgets || {};
+  const select = form?.querySelector('select');
+  const oculto = form?.querySelector('input[type=hidden][name$="_hinput"]');
+  if (!select || !oculto) return false;
+
+  // Widgets de PrimeFaces: escribirle al <select> o al input a secas no cambia
+  // lo que el formulario envía (el número vive en el oculto _hinput).
+  const widget = (el, sufijo) => W['widget_' + el.id.replace(sufijo, '').replace(/:/g, '_')];
+  const wTipo = widget(select, /_input$/);
+  const wNumero = widget(oculto, /_hinput$/);
+  if (!wTipo || !wNumero) return false;
+
+  const tipos = [...select.options].map(o => o.value);
+  const tipoPortal = { NUIP: 'NU', NU: 'NU', CE: 'CE', TI: 'TI' }[String(tipo).toUpperCase()] || 'CC';
+  wTipo.selectValue(tipos.includes(tipoPortal) ? tipoPortal : 'CC');
+  wNumero.setValue(documento);
+
+  if (!document.getElementById('brynex-fsp-aviso')) {
+    const aviso = document.createElement('div');
+    aviso.id = 'brynex-fsp-aviso';
+    aviso.textContent = 'BryNex: marca «No soy un robot». El certificado se guarda solo en BryNex, no hace falta pulsar Descargar.';
+    aviso.style.cssText = 'margin:10px auto;max-width:520px;padding:10px 14px;border-radius:8px;background:#eff6ff;border:1px solid #93c5fd;color:#1e3a8a;font:14px sans-serif;text-align:center;';
+    form.parentElement.insertBefore(aviso, form);
+  }
+  return oculto.value === documento;
+}
+
+async function pFspCertificado(documento) {
+  const form = document.querySelector('form[id*="consultabeneficiarios"]') || document.forms[0];
+  const token = form?.querySelector('[name="g-recaptcha-response"]')?.value || '';
+  if (!token) return { listo: false };
+
+  const oculto = form.querySelector('input[type=hidden][name$="_hinput"]');
+  if (documento && oculto && oculto.value !== documento) {
+    return { listo: true, mensaje: `En la pestaña del Fondo quedó escrito otro documento (${oculto.value}). Vuelve a pedir el certificado desde BryNex.` };
+  }
+
+  const aviso = document.getElementById('brynex-fsp-aviso');
+  const avisar = (texto, color) => { if (aviso) { aviso.textContent = texto; aviso.style.color = color; } };
+
+  const datos = new FormData(form);
+  const boton = form.querySelector('button[type=submit]');
+  if (boton?.name) datos.append(boton.name, '');
+
+  try {
+    const r = await fetch(form.action, { method: 'POST', body: new URLSearchParams(datos), credentials: 'include' });
+    const bytes = new Uint8Array(await r.arrayBuffer());
+    // Un captcha sirve para una sola consulta.
+    try { window.grecaptcha?.reset(); } catch { /* sin captcha a la vista */ }
+
+    if (bytes.length > 4 && String.fromCharCode(...bytes.slice(0, 4)) === '%PDF') {
+      let bin = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      const nombre = (r.headers.get('content-disposition') || '').match(/filename="?([^";]+)/i)?.[1] || null;
+      avisar('BryNex: certificado recibido. Ya puedes cerrar esta pestaña.', '#166534');
+      return { listo: true, pdf: btoa(bin), nombre };
+    }
+
+    const html = new TextDecoder('utf-8').decode(bytes);
+    const detalles = [...html.matchAll(/detail:"((?:[^"\\]|\\.)*)"/g)].map(m => m[1].replace(/\\(.)/g, '$1'));
+    const mensaje = detalles.join(' · ') || `El Fondo no entregó el certificado (respuesta ${r.status}).`;
+    avisar('BryNex: ' + mensaje, '#991b1b');
+    return { listo: true, mensaje };
+  } catch (e) {
+    return { listo: true, mensaje: 'No se pudo pedir el certificado al Fondo: ' + (e?.message || e) };
+  }
 }

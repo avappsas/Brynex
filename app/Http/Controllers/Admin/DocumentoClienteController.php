@@ -68,7 +68,7 @@ class DocumentoClienteController extends Controller
         // Guardar en disco privado
         Storage::disk('local')->put($ruta, file_get_contents($archivo->getRealPath()));
 
-        DocumentoCliente::create([
+        $documento = DocumentoCliente::create([
             'aliado_id'        => $alidoId,
             'cc_cliente'       => $cedula,
             'doc_beneficiario' => $request->doc_beneficiario ?: null,
@@ -81,7 +81,11 @@ class DocumentoClienteController extends Controller
         // El formulario de contrato sube el certificado del Fondo de Solidaridad
         // por fetch, sin salir de la página: necesita la respuesta en JSON.
         if ($request->expectsJson()) {
-            return response()->json(['success' => true, 'message' => 'Documento subido correctamente.']);
+            return response()->json([
+                'success' => true,
+                'message' => 'Documento subido correctamente.',
+                'url' => route('admin.documentos.download', $documento->id),
+            ]);
         }
 
         return back()->with('success', 'Documento subido correctamente.');

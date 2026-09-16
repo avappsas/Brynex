@@ -1518,6 +1518,9 @@ class ContratoController extends Controller
                 'url' => route('admin.documentos.download', $certificado->id),
             ] : null,
             'urlSubirCertificado' => $cliente ? route('admin.clientes.documentos.store', $cliente->cedula) : null,
+            // Para que la extensión BryNex Portales deje la consulta del Fondo ya llena.
+            'documento' => $cliente?->cedula ? (string) $cliente->cedula : null,
+            'tipoDoc' => $cliente?->tipo_doc ?: 'CC',
             // Se baja a mano: tiene reCAPTCHA y no se puede consultar desde el servidor.
             'urlConsultaCertificado' => 'https://nelfsp.equiedad.com.co:8001/faces/GenerarCertificadoPsapCAPTCHA.xhtml',
         ];

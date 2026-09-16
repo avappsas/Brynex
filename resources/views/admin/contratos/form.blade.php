@@ -382,7 +382,12 @@
           </template>
           <template x-if="!certificadoFsp">
             <span><span style="color:#b45309;">⚠️</span> Falta el certificado de inscripción.
-              <a href="{{ $fsp['urlConsultaCertificado'] }}" target="_blank" rel="noopener" style="color:#1d4ed8;">Bajarlo en el Fondo ↗</a>
+              {{-- Con la extensión BryNex Portales la consulta se abre con la cédula
+                   escrita y el PDF llega solo después del captcha; sin ella, el enlace
+                   abre la página vacía como siempre. --}}
+              <a href="{{ $fsp['urlConsultaCertificado'] }}" target="_blank" rel="noopener" style="color:#1d4ed8;"
+                 @click="traerCertificadoFsp($event)"
+                 x-text="fspTrayendo ? 'Esperando el captcha…' : 'Traer del Fondo ↗'"></a>
               @if($fsp['urlSubirCertificado'])
               · <label style="color:#1d4ed8;cursor:pointer;text-decoration:underline;">
                   <span x-text="subiendoCertificadoFsp ? 'Subiendo…' : 'Subir PDF'"></span>
@@ -392,6 +397,11 @@
             </span>
           </template>
         </div>
+        <div x-show="fspTrayendo" x-cloak style="color:#1d4ed8;">
+          ⏳ Marca «No soy un robot» en la pestaña del Fondo: el certificado se guarda solo.
+          <a href="#" @click.prevent="fspTrayendo = false" style="color:#64748b;">cancelar</a>
+        </div>
+        <div x-show="fspMensaje" x-cloak style="color:#b91c1c;" x-text="fspMensaje"></div>
         <div style="color:#64748b;">ℹ️ Semanas: mínimo 300, se ven en la historia laboral de Colpensiones. Enlace confirma la inscripción cada mes al liquidar.</div>
       </div>
     </div>
@@ -2173,6 +2183,24 @@ const MODALIDADES_DIAS_CONTRATO = @json($modalidadesDiasContrato ?? [18]);
 // Fondo de Solidaridad (PSAP, cotizante 33): id de la modalidad, grupos con lo
 // que paga cada uno, Colpensiones y el certificado de inscripción del cliente.
 const FONDO_SOLIDARIDAD = @json($fondoSolidaridad ?? null);
+// Pedido a la extensión BryNex Portales, portal del Fondo de Solidaridad (ver puente.js).
+function fspExt(accion, datos = {}, limiteSeg = 60) {
+    return new Promise((resolve) => {
+        if (!document.documentElement.dataset.brynexPortales) {
+            resolve({ ok: false, sinExtension: true, error: 'La extensión BryNex Portales no está instalada en este navegador.' });
+            return;
+        }
+        const id = Date.now() + '-' + Math.random().toString(36).slice(2);
+        const oyente = (ev) => {
+            if (ev.source !== window || ev.data?.canal !== 'brynex-portales' || ev.data.tipo !== 'respuesta' || ev.data.id !== id) return;
+            window.removeEventListener('message', oyente); clearTimeout(alarma);
+            resolve(ev.data.respuesta || { ok: false, error: 'Respuesta vacía de la extensión.' });
+        };
+        window.addEventListener('message', oyente);
+        const alarma = setTimeout(() => { window.removeEventListener('message', oyente); resolve({ ok: false, error: 'La extensión no respondió a tiempo.' }); }, limiteSeg * 1000);
+        window.postMessage({ canal: 'brynex-portales', tipo: 'pedido', id, portal: 'fsp', accion, datos }, window.location.origin);
+    });
+}
 // ¿El aliado tiene catálogo de seguros? Sin él no hay "Plan de seguro" que
 // escoger y el valor se escribe a mano, así que no se puede ocultar.
 const HAY_CATALOGO_SEGUROS = {{ ($segurosCatalogo ?? collect())->isNotEmpty() ? 'true' : 'false' }};
@@ -3450,6 +3478,8 @@ function cotizador() {
         pensionSel:      '',
         certificadoFsp:  FONDO_SOLIDARIDAD?.certificado || null,
         subiendoCertificadoFsp: false,
+        fspTrayendo:     false,
+        fspMensaje:      '',
         esUpc: false,
         // Solo seguro: sin entidades, sin salario y sin planilla. Lo único que se cobra
         // es el seguro, así que el panel de cotización no depende del salario.
@@ -3905,14 +3935,22 @@ function cotizador() {
          */
         subirCertificadoFsp(e) {
             const archivo = e.target.files?.[0];
-            if (!archivo || !FONDO_SOLIDARIDAD?.urlSubirCertificado) return;
+            if (!archivo) return;
+            this.guardarCertificadoFsp(archivo)
+                .catch(err => alert(err.message))
+                .finally(() => { e.target.value = ''; });
+        },
+
+        /** Guarda el certificado en los documentos del cliente y marca el requisito. */
+        guardarCertificadoFsp(archivo) {
+            if (!FONDO_SOLIDARIDAD?.urlSubirCertificado) return Promise.reject(new Error('Guarde primero el cliente.'));
 
             const datos = new FormData();
             datos.append('archivo', archivo);
             datos.append('tipo_documento', 'certificado_fsp');
 
             this.subiendoCertificadoFsp = true;
-            fetch(FONDO_SOLIDARIDAD.urlSubirCertificado, {
+            return fetch(FONDO_SOLIDARIDAD.urlSubirCertificado, {
                 method: 'POST',
                 headers: {
                     'Accept': 'application/json',
@@ -3926,11 +3964,50 @@ function cotizador() {
                 const hoy = new Date();
                 this.certificadoFsp = {
                     fecha: hoy.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' }),
-                    url: null,
+                    url: j?.url || null,
                 };
             })
-            .catch(err => alert(err.message))
-            .finally(() => { this.subiendoCertificadoFsp = false; e.target.value = ''; });
+            .finally(() => { this.subiendoCertificadoFsp = false; });
+        },
+
+        /**
+         * Pide el certificado al Fondo con la extensión BryNex Portales: abre la
+         * consulta con la cédula escrita, espera a que la persona marque el
+         * captcha y guarda el PDF que devuelve. Sin extensión el enlace sigue su
+         * curso y abre la página vacía.
+         */
+        async traerCertificadoFsp(e) {
+            if (!document.documentElement.dataset.brynexPortales || !FONDO_SOLIDARIDAD?.documento) return;
+            e.preventDefault();
+            if (this.fspTrayendo) return;
+
+            this.fspMensaje  = '';
+            this.fspTrayendo = true;
+            const datos = { tipoDoc: FONDO_SOLIDARIDAD.tipoDoc, documento: FONDO_SOLIDARIDAD.documento };
+
+            const abierta = await fspExt('fspAbrir', datos, 60);
+            if (!abierta.ok) { this.fspTrayendo = false; this.fspMensaje = abierta.error || 'No se pudo abrir la consulta del Fondo.'; return; }
+
+            // Hasta 5 minutos para marcar el captcha.
+            const limite = Date.now() + 5 * 60 * 1000;
+            while (this.fspTrayendo && Date.now() < limite) {
+                await new Promise(r => setTimeout(r, 2000));
+                if (!this.fspTrayendo) return;   // canceló
+
+                const r = await fspExt('fspCertificado', { documento: FONDO_SOLIDARIDAD.documento }, 60);
+                if (!r.ok) { this.fspTrayendo = false; this.fspMensaje = r.error || 'La extensión no respondió.'; return; }
+                if (!r.listo) continue;
+
+                this.fspTrayendo = false;
+                if (!r.pdf) { this.fspMensaje = 'El Fondo dice: ' + (r.mensaje || 'no entregó el certificado.'); return; }
+
+                const bytes = Uint8Array.from(atob(r.pdf), c => c.charCodeAt(0));
+                const archivo = new File([bytes], r.nombre || `certificado_psap_${FONDO_SOLIDARIDAD.documento}.pdf`, { type: 'application/pdf' });
+                try { await this.guardarCertificadoFsp(archivo); }
+                catch (err) { this.fspMensaje = err.message; }
+                return;
+            }
+            if (this.fspTrayendo) { this.fspTrayendo = false; this.fspMensaje = 'Pasaron 5 minutos sin marcar el captcha. Vuelve a intentarlo.'; }
         },
 
         onPlanChange(e) {
