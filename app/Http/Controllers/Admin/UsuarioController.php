@@ -41,7 +41,7 @@ class UsuarioController extends Controller
             )
             ->when($buscar, function ($q) use ($buscar) {
                 $q->where(function ($sub) use ($buscar) {
-                    $sub->where('nombre', 'like', "%{$buscar}%")
+                    $sub->whereSinTildes('nombre', $buscar)
                         ->orWhere('cedula', 'like', "%{$buscar}%");
                 });
             })

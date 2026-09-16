@@ -164,13 +164,15 @@
 @push('scripts')
 <script>
 const cards = document.querySelectorAll('.emp-card');
+// Sin tildes: "construccion" debe encontrar a "Construcción" y al revés.
+const norm = t => (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 document.getElementById('buscadorEmpresa').addEventListener('input', function() {
-    const q = this.value.toLowerCase().trim();
+    const q = norm(this.value.trim());
     let visibles = 0;
 
     // Ocultar/mostrar cards
     cards.forEach(c => {
-        const match = !q || c.dataset.nombre.includes(q) || c.dataset.nit.includes(q);
+        const match = !q || norm(c.dataset.nombre).includes(q) || c.dataset.nit.includes(q);
         c.style.display = match ? '' : 'none';
         if (match) visibles++;
     });

@@ -170,8 +170,8 @@ class CobrosController extends Controller
             $q->where(function ($sq) use ($buscar) {
                 $sq->where('cedula', 'like', "%$buscar%")
                    ->orWhereHas('cliente', fn($cq) => $cq
-                       ->where('primer_nombre',   'like', "%$buscar%")
-                       ->orWhere('primer_apellido','like', "%$buscar%"));
+                       ->whereSinTildes('primer_nombre', $buscar)
+                       ->orWhereSinTildes('primer_apellido', $buscar));
             });
         }
 
@@ -228,8 +228,8 @@ class CobrosController extends Controller
             $qRet->where(function ($sq) use ($buscar) {
                 $sq->where('cedula', 'like', "%$buscar%")
                    ->orWhereHas('cliente', fn($cq) => $cq
-                       ->where('primer_nombre',   'like', "%$buscar%")
-                       ->orWhere('primer_apellido','like', "%$buscar%"));
+                       ->whereSinTildes('primer_nombre', $buscar)
+                       ->orWhereSinTildes('primer_apellido', $buscar));
             });
         }
         if ($tipoModalFiltro) $qRet->where('tipo_modalidad_id', $tipoModalFiltro);
@@ -276,8 +276,8 @@ class CobrosController extends Controller
             $qRetNormal->where(function ($sq) use ($buscar) {
                 $sq->where('cedula', 'like', "%$buscar%")
                    ->orWhereHas('cliente', fn($cq) => $cq
-                       ->where('primer_nombre',   'like', "%$buscar%")
-                       ->orWhere('primer_apellido','like', "%$buscar%"));
+                       ->whereSinTildes('primer_nombre', $buscar)
+                       ->orWhereSinTildes('primer_apellido', $buscar));
             });
         }
         if ($tipoModalFiltro) $qRetNormal->where('tipo_modalidad_id', $tipoModalFiltro);
@@ -342,8 +342,8 @@ class CobrosController extends Controller
             $qRetInf->where(function ($sq) use ($buscar) {
                 $sq->where('cedula', 'like', "%$buscar%")
                    ->orWhereHas('cliente', fn($cq) => $cq
-                       ->where('primer_nombre',   'like', "%$buscar%")
-                       ->orWhere('primer_apellido','like', "%$buscar%"));
+                       ->whereSinTildes('primer_nombre', $buscar)
+                       ->orWhereSinTildes('primer_apellido', $buscar));
             });
         }
         if ($tipoModalFiltro) $qRetInf->where('tipo_modalidad_id', $tipoModalFiltro);
@@ -1081,7 +1081,7 @@ class CobrosController extends Controller
         }
 
         if ($buscar) {
-            $q->where('empresa', 'like', "%$buscar%");
+            $q->whereSinTildes('empresa', $buscar);
         }
 
         $encargadoFiltro = $request->get('encargado_id');
@@ -2216,7 +2216,7 @@ class CobrosController extends Controller
         }
 
         if ($buscar) {
-            $q->where('empresa', 'like', "%$buscar%");
+            $q->whereSinTildes('empresa', $buscar);
         }
 
         $encargadoFiltro = $request->get('encargado_id');

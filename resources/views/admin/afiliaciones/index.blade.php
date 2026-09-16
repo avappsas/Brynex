@@ -2761,10 +2761,15 @@ function comfandiExt(accion, datos = {}, limiteSeg = 120) {
     return brynexExt('cfd', accion, datos, limiteSeg);
 }
 
+async function abrirPortalComfandiConciliacion() {
+    const r = await comfandiExt('cfdAbrir', {}, 60);
+    if (r?.avisoTipo) document.getElementById('ceps-comfandi-sesion').innerHTML += `<br>⚠️ ${r.avisoTipo}`;
+}
+
 async function revisarSesionComfandiConciliacion() {
     const caja = document.getElementById('ceps-comfandi-sesion');
     const e = await comfandiExt('cfdEstado', {}, 25);
-    const abrir = `<button type="button" onclick="comfandiExt('cfdAbrir')" class="btn-export" style="background:#1e3a8a;cursor:pointer;margin-left:0.4rem;">🌐 Abrir la Sucursal Virtual</button>`;
+    const abrir = `<button type="button" onclick="abrirPortalComfandiConciliacion()" class="btn-export" style="background:#1e3a8a;cursor:pointer;margin-left:0.4rem;">🌐 Abrir la Sucursal Virtual</button>`;
     if (e.sinExtension) { caja.innerHTML = '🧩 Instala o recarga la extensión BryNex Portales (1.8.0) y recarga esta página.'; return null; }
     if (!e.abierta || !e.sesion) {
         caja.innerHTML = '⚠️ Inicia sesión con el NIT de la empresa y selecciona la empresa (si ofrece la verificación en dos pasos, «Omitir por ahora»).' + abrir;

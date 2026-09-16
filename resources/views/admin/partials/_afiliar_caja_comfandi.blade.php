@@ -194,7 +194,12 @@ async function revisarSesionComfandi() {
 async function abrirPortalComfandi() {
     let cred = {};
     try { cred = await cfdPedir('credencial', 'POST'); } catch (e) {}
-    await cfdExt('cfdAbrir', { usuario: cred.usuario || '', contrasena: cred.contrasena || '' }, 40);
+    const r = await cfdExt('cfdAbrir', { usuario: cred.usuario || '', contrasena: cred.contrasena || '' }, 60);
+    // El tipo de documento del login es un combo propio y a veces se queda en
+    // CC: con el NIT en el campo, el portal responde "Documento o contraseña
+    // incorrectos" aunque la clave esté bien. Mejor avisarlo que dejarlo
+    // descubrir a punta de intentos.
+    if (r?.avisoTipo) cfdEl('cfdSesion').innerHTML += `<br>⚠️ ${cfdEsc(r.avisoTipo)}`;
 }
 
 // Comfandi exige que el sueldo declarado sea proporcional a la jornada: 240

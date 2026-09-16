@@ -46,12 +46,10 @@ class ClienteController extends Controller
                     $palabras = array_filter(explode(' ', trim($buscar)));
                     $q->orWhere(function ($inner) use ($palabras) {
                         foreach ($palabras as $palabra) {
-                            // Cada palabra debe matchear en ALGUNO de los 4 campos de nombre.
-                            // Las columnas son Modern_Spanish_CI_AS (distingue tildes): "José"
-                            // no encontraba a "JOSE". El COLLATE _AI ignora las tildes.
+                            // Cada palabra debe matchear en ALGUNO de los 4 campos de nombre
                             $inner->where(function ($sub) use ($palabra) {
                                 foreach (['primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido'] as $campo) {
-                                    $sub->orWhereRaw("{$campo} COLLATE Modern_Spanish_CI_AI LIKE ?", ["%{$palabra}%"]);
+                                    $sub->orWhereSinTildes($campo, $palabra);
                                 }
                             });
                         }

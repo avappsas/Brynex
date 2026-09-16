@@ -114,10 +114,10 @@ class AfiliacionController extends Controller
                           $qCli->orWhere(function ($inner) use ($palabras) {
                               foreach ($palabras as $palabra) {
                                   $inner->where(function ($sub) use ($palabra) {
-                                      $sub->where('primer_nombre',    'LIKE', "%{$palabra}%")
-                                          ->orWhere('segundo_nombre',  'LIKE', "%{$palabra}%")
-                                          ->orWhere('primer_apellido', 'LIKE', "%{$palabra}%")
-                                          ->orWhere('segundo_apellido','LIKE', "%{$palabra}%");
+                                      $sub->whereSinTildes('primer_nombre', $palabra)
+                                          ->orWhereSinTildes('segundo_nombre', $palabra)
+                                          ->orWhereSinTildes('primer_apellido', $palabra)
+                                          ->orWhereSinTildes('segundo_apellido', $palabra);
                                   });
                               }
                           });
@@ -298,10 +298,10 @@ class AfiliacionController extends Controller
                           $qCli->orWhere(function ($inner) use ($palabras) {
                               foreach ($palabras as $palabra) {
                                   $inner->where(function ($sub) use ($palabra) {
-                                      $sub->where('primer_nombre',    'LIKE', "%{$palabra}%")
-                                          ->orWhere('segundo_nombre',  'LIKE', "%{$palabra}%")
-                                          ->orWhere('primer_apellido', 'LIKE', "%{$palabra}%")
-                                          ->orWhere('segundo_apellido','LIKE', "%{$palabra}%");
+                                      $sub->whereSinTildes('primer_nombre', $palabra)
+                                          ->orWhereSinTildes('segundo_nombre', $palabra)
+                                          ->orWhereSinTildes('primer_apellido', $palabra)
+                                          ->orWhereSinTildes('segundo_apellido', $palabra);
                                   });
                               }
                           });

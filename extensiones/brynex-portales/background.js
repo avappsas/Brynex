@@ -1292,22 +1292,48 @@ async function atenderCfd(accion, d = {}) {
     }
     const estado = await ejecutar(p.id, pCfdEstado).catch(() => ({ sesion: false }));
     if (!estado.sesion && d.usuario) {
-      // El login vive en iam.comfandi.com.co; se deja el tipo NIT y el número escritos.
+      // El login vive en iam.comfandi.com.co. El tipo de documento NO es un
+      // <select>: es un combo propio con un input oculto detrás, así que
+      // escribirle "NIT" al oculto no cambia lo que el formulario envía y el
+      // portal responde "Documento o contraseña incorrectos" con la clave
+      // buena. Hay que abrir la lista y pulsar la opción, como una persona.
+      const clic = (e) => ['pointerdown', 'mousedown', 'mouseup', 'click']
+        .forEach(t => e.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+
+      await esperarQue(p.id, () => {
+        const oculto = document.querySelector('input[name=identification_type_up]');
+        if (!oculto) return false;
+        if (oculto.value === 'NIT') return true;                 // ya está elegido
+        const caja = [...document.querySelectorAll('input')].find(e => /tipo de documento/i.test(e.placeholder || ''));
+        if (caja) { caja.click(); caja.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); }
+        return false;
+      }, [], 20000);
+
+      await esperarQue(p.id, () => {
+        const oculto = document.querySelector('input[name=identification_type_up]');
+        if (oculto && oculto.value === 'NIT') return true;
+        const op = [...document.querySelectorAll('li,div,span,p,button')]
+          .filter(e => e.children.length === 0)
+          .find(e => /^\s*NIT\b/i.test(e.innerText || ''));
+        if (!op) return false;
+        ['pointerdown', 'mousedown', 'mouseup', 'click']
+          .forEach(t => op.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+        return false;                                            // se confirma en la vuelta siguiente
+      }, [], 20000);
+
       await esperarQue(p.id, (u) => {
         const n = document.querySelector('input[name=identificationNumber]');
         if (!n) return false;
-        const poner = (e, v) => {
-          const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-          set.call(e, v);
-          e.dispatchEvent(new Event('input', { bubbles: true }));
-          e.dispatchEvent(new Event('change', { bubbles: true }));
-        };
-        const tipo = document.querySelector('input[name=identification_type_up]');
-        if (tipo && tipo.value !== 'NIT') poner(tipo, 'NIT');
-        poner(n, u);
+        const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        set.call(n, u);
+        n.dispatchEvent(new Event('input', { bubbles: true }));
+        n.dispatchEvent(new Event('change', { bubbles: true }));
         document.querySelector('input[name=password]')?.focus();
         return true;
-      }, [String(d.usuario).replace(/\D/g, '')], 30000);
+      }, [String(d.usuario).replace(/\D/g, '')], 20000);
+
+      const tipo = await ejecutar(p.id, () => document.querySelector('input[name=identification_type_up]')?.value || '').catch(() => '');
+      return { ok: true, abierta: true, tipoDocumento: tipo, avisoTipo: tipo === 'NIT' ? null : 'Escoge "NIT" en Tipo de documento antes de entrar: el usuario de la empresa es el NIT, no una cédula.' };
     }
     return { ok: true, abierta: true };
   }

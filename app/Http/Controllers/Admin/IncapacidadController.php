@@ -174,8 +174,8 @@ class IncapacidadController extends Controller
                             ->from('clientes')
                             ->where(function ($sub) use ($busqueda) {
                                 $sub->where('cedula', 'like', '%'.$busqueda.'%')
-                                    ->orWhere(DB::raw("CONCAT(primer_nombre,' ',primer_apellido)"), 'like', '%'.$busqueda.'%')
-                                    ->orWhere(DB::raw("CONCAT(primer_nombre,' ',segundo_nombre,' ',primer_apellido,' ',segundo_apellido)"), 'like', '%'.$busqueda.'%');
+                                    ->orWhereSinTildes("CONCAT(primer_nombre,' ',primer_apellido)", $busqueda)
+                                    ->orWhereSinTildes("CONCAT(primer_nombre,' ',segundo_nombre,' ',primer_apellido,' ',segundo_apellido)", $busqueda);
                             });
                     });
             });

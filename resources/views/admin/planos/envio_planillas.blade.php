@@ -962,22 +962,24 @@ function enviosPlanillaApp() {
 
         aplicarFiltrosTabla() {
             let resultado = [...this.destinatarios];
+            // Sin tildes: "jose" debe encontrar a "José" y al revés.
+            const norm = t => (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
             // Búsqueda global
             if (this.busquedaGlobal.trim() !== '') {
-                const search = this.busquedaGlobal.toLowerCase().trim();
+                const search = norm(this.busquedaGlobal.trim());
                 resultado = resultado.filter(d => 
-                    d.nombre_destinatario.toLowerCase().includes(search) ||
+                    norm(d.nombre_destinatario).includes(search) ||
                     d.cliente_cedula.includes(search) ||
                     (d.numero_planilla && d.numero_planilla.includes(search)) ||
-                    (d.empresa_nombre && d.empresa_nombre.toLowerCase().includes(search))
+                    norm(d.empresa_nombre).includes(search)
                 );
             }
 
             // Búsquedas específicas por columna
             if (this.filtroNombre.trim() !== '') {
-                const nom = this.filtroNombre.toLowerCase().trim();
-                resultado = resultado.filter(d => d.nombre_destinatario.toLowerCase().includes(nom));
+                const nom = norm(this.filtroNombre.trim());
+                resultado = resultado.filter(d => norm(d.nombre_destinatario).includes(nom));
             }
             if (this.filtroCedula.trim() !== '') {
                 const ced = this.filtroCedula.trim();
@@ -991,8 +993,8 @@ function enviosPlanillaApp() {
                 resultado = resultado.filter(d => d.numero_planilla && d.numero_planilla.toLowerCase().includes(pla));
             }
             if (this.filtroEmpresa.trim() !== '') {
-                const emp = this.filtroEmpresa.toLowerCase().trim();
-                resultado = resultado.filter(d => (d.empresa_nombre || '').toLowerCase().includes(emp));
+                const emp = norm(this.filtroEmpresa.trim());
+                resultado = resultado.filter(d => norm(d.empresa_nombre).includes(emp));
             }
             
             // Actualizar empresa en la URL

@@ -502,7 +502,7 @@ class WhatsappChatController extends Controller
 
         if ($buscar) {
             $query->where(function ($q) use ($buscar) {
-                $q->where('nombre_contacto', 'like', "%{$buscar}%")
+                $q->whereSinTildes('nombre_contacto', $buscar)
                   ->orWhere('wa_contact_id', 'like', "%{$buscar}%");
             });
         }

@@ -287,9 +287,11 @@ function saldosFavor() {
         },
 
         filtrar() {
-            const q = this.busqueda.trim().toLowerCase();
+            // Sin tildes: "jose" debe encontrar a "José" y al revés.
+            const norm = t => (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+            const q = norm(this.busqueda.trim());
             document.querySelectorAll('.sf-fila').forEach(fila => {
-                const pasaTexto = !q || fila.dataset.busqueda.includes(q);
+                const pasaTexto = !q || norm(fila.dataset.busqueda).includes(q);
                 const pasaTipo = !this.soloRevisar || fila.dataset.revisar === '1';
                 fila.style.display = (pasaTexto && pasaTipo) ? '' : 'none';
             });

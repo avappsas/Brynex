@@ -202,8 +202,8 @@ class InformeController extends Controller
         if ($buscar) {
             $query->where(function($q) use($buscar){
                 $q->where('c.cedula','like',"%$buscar%")
-                  ->orWhere('cl.primer_nombre','like',"%$buscar%")
-                  ->orWhere('cl.primer_apellido','like',"%$buscar%");
+                  ->orWhereSinTildes('cl.primer_nombre', $buscar)
+                  ->orWhereSinTildes('cl.primer_apellido', $buscar);
             });
         }
 

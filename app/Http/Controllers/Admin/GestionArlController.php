@@ -79,10 +79,10 @@ class GestionArlController extends Controller
                   ->orWhereHas('cliente', function ($q2) use ($palabras) {
                       foreach ($palabras as $palabra) {
                           $q2->where(function ($q3) use ($palabra) {
-                              $q3->where('primer_nombre',    'like', "%{$palabra}%")
-                                 ->orWhere('segundo_nombre', 'like', "%{$palabra}%")
-                                 ->orWhere('primer_apellido','like', "%{$palabra}%")
-                                 ->orWhere('segundo_apellido','like', "%{$palabra}%");
+                              $q3->whereSinTildes('primer_nombre', $palabra)
+                                 ->orWhereSinTildes('segundo_nombre', $palabra)
+                                 ->orWhereSinTildes('primer_apellido', $palabra)
+                                 ->orWhereSinTildes('segundo_apellido', $palabra);
                           });
                       }
                   });

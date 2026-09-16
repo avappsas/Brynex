@@ -46,6 +46,18 @@ class AppServiceProvider extends ServiceProvider
         Paginator::defaultView('vendor.pagination.custom');
         Paginator::defaultSimpleView('vendor.pagination.custom');
 
+        // Búsqueda por nombre sin distinguir tildes: las columnas son Modern_Spanish_CI_AS,
+        // que sí las distingue, y "José" no encontraba a "JOSE". $columna va crudo al SQL
+        // (admite 'cl.primer_nombre' o un CONCAT(...)): nunca pasarle texto del usuario.
+        \Illuminate\Database\Query\Builder::macro('whereSinTildes', function (string $columna, $valor, string $boolean = 'and') {
+            $collate = $this->getConnection()->getDriverName() === 'sqlsrv' ? ' COLLATE Modern_Spanish_CI_AI' : '';
+
+            return $this->whereRaw("{$columna}{$collate} LIKE ?", ['%'.(string) $valor.'%'], $boolean);
+        });
+        \Illuminate\Database\Query\Builder::macro('orWhereSinTildes', function (string $columna, $valor) {
+            return $this->whereSinTildes($columna, $valor, 'or');
+        });
+
         // SQL Server: forzar SET options requeridos por columnas computadas / índices filtrados.
         // Usa evento lazy para no crashear en entornos locales sin driver sqlsrv.
         \Illuminate\Support\Facades\Event::listen(

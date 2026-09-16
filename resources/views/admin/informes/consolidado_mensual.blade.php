@@ -886,7 +886,9 @@
 
     function aplicarFiltrosModal() {
         const cedula = document.getElementById('filtro-cedula').value.toLowerCase().trim();
-        const nombre = document.getElementById('filtro-nombre').value.toLowerCase().trim();
+        // Sin tildes: "jose" debe encontrar a "José" y al revés.
+        const norm = t => (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        const nombre = norm(document.getElementById('filtro-nombre').value.trim());
         const modalidad = document.getElementById('filtro-modalidad').value.toLowerCase().trim();
         const ingreso = document.getElementById('filtro-ingreso').value.toLowerCase().trim();
         const retiro = document.getElementById('filtro-retiro').value.toLowerCase().trim();
@@ -895,7 +897,7 @@
 
         personasFiltradas = personasOriginal.filter(p => {
             return p.cedula.toLowerCase().includes(cedula) &&
-                   p.nombre_completo.toLowerCase().includes(nombre) &&
+                   norm(p.nombre_completo).includes(nombre) &&
                    ((p.modalidad || '') + ' ' + (p.plan || '')).toLowerCase().includes(modalidad) &&
                    p.fecha_ingreso.toLowerCase().includes(ingreso) &&
                    p.fecha_retiro.toLowerCase().includes(retiro) &&

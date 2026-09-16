@@ -48,8 +48,8 @@ class ContratoController extends Controller
             ->when($buscar, function ($q) use ($buscar) {
                 $q->where(function ($inner) use ($buscar) {
                     $inner->where('cedula', 'like', "%{$buscar}%")
-                        ->orWhereHas('cliente', fn ($c) => $c->where('primer_nombre', 'like', "%{$buscar}%")
-                            ->orWhere('primer_apellido', 'like', "%{$buscar}%"));
+                        ->orWhereHas('cliente', fn ($c) => $c->whereSinTildes('primer_nombre', $buscar)
+                            ->orWhereSinTildes('primer_apellido', $buscar));
                 });
             })
             ->with(['cliente', 'razonSocial', 'plan', 'tipoModalidad', 'asesor'])

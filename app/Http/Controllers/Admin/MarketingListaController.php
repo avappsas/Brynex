@@ -94,7 +94,7 @@ class MarketingListaController extends Controller
         if ($request->filled('buscar')) {
             $buscar = $request->get('buscar');
             $query->where(function ($q) use ($buscar) {
-                $q->where('nombres', 'like', "%{$buscar}%")
+                $q->whereSinTildes('nombres', $buscar)
                   ->orWhere('celular', 'like', "%{$buscar}%")
                   ->orWhere('cedula', 'like', "%{$buscar}%");
             });

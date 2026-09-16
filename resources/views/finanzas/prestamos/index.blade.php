@@ -109,7 +109,7 @@
                      }
                  }"
                  x-show="buscar.length <= 5 || 
-                         '{{ strtolower($p->nombre_deudor) }}'.includes(buscar.toLowerCase()) || 
+                         '{{ Str::lower(Str::ascii($p->nombre_deudor)) }}'.includes(buscar.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()) || 
                          '{{ $p->cedula_deudor }}'.includes(buscar) || 
                          '{{ $p->telefono_deudor }}'.includes(buscar)"
                  style="border-top: 4px solid {{ $colorMora }}">

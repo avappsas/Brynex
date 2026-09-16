@@ -41,7 +41,7 @@ class RazonSocialController extends Controller
 
         if ($buscar) {
             $query->where(function($q) use ($buscar) {
-                $q->where('rs.razon_social', 'LIKE', "%{$buscar}%")
+                $q->whereSinTildes('rs.razon_social', $buscar)
                   ->orWhere(DB::raw('CAST(rs.nit AS CHAR)'), 'LIKE', "%{$buscar}%");
             });
         }

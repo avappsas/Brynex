@@ -775,8 +775,8 @@ class ExtractoBancoController extends Controller
                 $q->where('cs.referencia', 'like', "%$texto%")
                     ->orWhere('f.numero_factura', 'like', "%$texto%")
                     ->orWhere('f.cedula', 'like', "%$texto%")
-                    ->orWhere('em.empresa', 'like', "%$texto%")
-                    ->orWhere('cl.primer_apellido', 'like', "%$texto%");
+                    ->orWhereSinTildes('em.empresa', $texto)
+                    ->orWhereSinTildes('cl.primer_apellido', $texto);
             });
         } else {
             // Sin búsqueda, lo más probable: mismo valor y fechas cercanas.
