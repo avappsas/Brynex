@@ -220,14 +220,19 @@ class PilaCotizanteDosPasos
 
         // Solo Caja: los días los fija la modalidad y no el contrato —"Caja 30
         // días" y "Caja 14 días" son la misma cosa con distinto número en
-        // `tipo_modalidad.dias_caja`—. El IBC va proporcional exacto, sin
-        // redondear a la centena: el operador lo compara contra salario × días
-        // y avisa con eo.val.2.261 si no coincide al peso.
+        // `tipo_modalidad.dias_caja`—.
+        //
+        // El IBC es el salario del contrato **tal cual, sin prorratear**: en
+        // estas modalidades el salario que se guarda ya es el proporcional a lo
+        // que se vende, igual que en Tiempo Parcial —un TP(14) se guarda con
+        // 875.453, no con el mínimo completo— y el piso de validación es esa
+        // misma fracción (ver TipoModalidad::factorSalario). Prorratearlo otra
+        // vez por 14/30 lo partía a la mitad dos veces y el plano salía con
+        // 408.545 en lugar de los 875.453 que son media jornada del mínimo
+        // (SMMLV/4 × 2 semanas del Decreto 2616).
         if (! $sinCaja) {
-            $dias = self::diasVendidos($p, 'dias_caja');
-
-            $res['diasCcf'] = $dias;
-            $res['ibcCcf'] = self::ibcProporcional($ibcFull, $dias);
+            $res['diasCcf'] = self::diasVendidos($p, 'dias_caja');
+            $res['ibcCcf'] = $ibcFull;
             $res['vCcf'] = PilaCotizanteCalculator::roundPila(
                 $res['ibcCcf'] * (float) $res['tarifaCcfStr']
             );

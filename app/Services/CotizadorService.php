@@ -208,14 +208,6 @@ class CotizadorService
             $diasArl = $dias;
             $diasAfp = $dias;
             $diasCaja = $dias;
-
-            // Solo Caja (-5 y -10): los días de la caja los fija la modalidad, no
-            // el mes. Igual que en Contrato::calcularCotizacion() y que la planilla.
-            if ($caja > 0 && $caja !== Contrato::CARGO_SIN_CCF
-                && in_array($tipoModalidadIdInt, TipoModalidad::IDS_SOLO_CAJA, true)) {
-                $diasCaja = max(1, min($dias ?: 30, (int) ($tipoModalidad->dias_caja ?? 30)));
-                $caja = $r((int) round($ibc * $diasCaja / 30) * $pctCaja / 100);
-            }
             $ss = $eps + $arl + $pen + $caja;
         }
 

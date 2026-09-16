@@ -534,16 +534,6 @@ class Contrato extends BaseModel
                 $parafiscales = $pagaParafiscales ? $r($ibcProp * $pctSena / 100) + $r($ibcProp * $pctIcbf / 100) : 0;
             }
 
-            // ── Solo Caja (-5 y -10): los días de la caja los fija la modalidad
-            // Es lo que hace la planilla —PilaCotizanteDosPasos::diasVendidos lee
-            // `tipo_modalidad.dias_caja`—, así que la cotización tiene que usar el
-            // mismo número: con los 30 del contrato, "Caja 14 días" le cobraba al
-            // cliente el doble de lo que el operador le liquida.
-            if ($caja > 0 && in_array((int) $this->tipo_modalidad_id, TipoModalidad::IDS_SOLO_CAJA, true)) {
-                $diasCaja = max(1, min($dias ?: 30, (int) ($mod->dias_caja ?? 30)));
-                $caja = $r((int) round($ibc * $diasCaja / 30) * $pctCaja / 100);
-            }
-
             // ── Cargo sin-CCF: dependiente E o Ingreso-Retiro sin caja ─────
             // Se cobra $100 fijos a la caja cuando el plan no incluye CCF.
             // Solo aplica en planilla (dias > 0), no en afiliación pura.
