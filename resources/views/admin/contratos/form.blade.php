@@ -3865,12 +3865,37 @@ function cotizador() {
             return !!d && d.pen === '1' && d.eps !== '1' && d.arl !== '1' && d.caja !== '1';
         },
 
-        /** Cambió el grupo: cambia la tarifa de pensión y si se ofrece Solo AFP. */
+        /**
+         * Cambió el grupo: cambia la tarifa de pensión y el plan que le toca.
+         * El desempleado arranca en Solo AFP y el resto en EPS + AFP; se puede
+         * cambiar a mano después. Solo corre cuando el usuario cambia el grupo:
+         * al abrir un contrato guardado se respeta el plan que ya tiene.
+         */
         onGrupoFspChange(e) {
             // El @change corre antes de que x-model actualice grupoFsp: sin esto
             // la cotización salía con el grupo anterior.
             if (e?.target) this.grupoFsp = e.target.value;
             filtrarPlanes(this.tipoModalidadId, true);
+
+            const soloAfp = !!FONDO_SOLIDARIDAD?.grupos?.[this.grupoFsp]?.solo_afp;
+            const selPlan = document.getElementById('sel_plan');
+            const opcion  = [...(selPlan?.options || [])].find(o => {
+                const d = o.dataset;
+                return o.value && d.pen === '1' && d.arl !== '1' && d.caja !== '1'
+                    && (soloAfp ? d.eps !== '1' : d.eps === '1');
+            });
+
+            if (opcion && selPlan.value !== opcion.value) {
+                selPlan.value = opcion.value;
+                this.planId   = opcion.value;
+                const hiddenPlan = document.querySelector('input[type=hidden][name=plan_id]');
+                if (hiddenPlan) hiddenPlan.value = opcion.value;
+                // Mismo camino que elegir el plan a mano: entidades, avisos y tarifas
+                // (que a su vez recalcula la cotización).
+                this.onPlanChange({ target: selPlan });
+                return;
+            }
+
             this.recalcular();
         },
 
