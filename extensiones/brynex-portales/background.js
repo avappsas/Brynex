@@ -1548,35 +1548,40 @@ function pCfdResultado() {
  * orden; el resto se descarta (la de "Detalle" es un icono).
  */
 async function cfdTabla(tab, columnas, limitePaginas = 60) {
+  // Lee la página que esté a la vista. `distintaDe` sirve para esperar a que la
+  // tabla se refresque de verdad tras pulsar Siguiente: el portal tarda en
+  // repintar y, con una espera fija, se volvía a leer la misma página, la
+  // huella coincidía y el recorrido se cortaba en la primera.
+  const leer = (distintaDe) => esperarQue(tab, (cols, previa) => {
+    const t = document.querySelector('table');
+    if (!t) return null;
+    const tr = [...t.querySelectorAll('tbody tr')];
+    if (!tr.length) return previa === null ? { datos: [], huella: 'vacia' } : null;
+    const datos = tr.map(f => {
+      const c = [...f.querySelectorAll('td')].map(x => (x.innerText || '').replace(/\s+/g, ' ').trim());
+      return cols.map(i => c[i] ?? '');
+    });
+    const huella = JSON.stringify(datos[0] || []);
+    if (previa !== null && huella === previa) return null;   // todavía es la anterior
+    return { datos, huella };
+  }, [columnas, distintaDe ?? null], distintaDe ? 15000 : 30000);
+
   const filas = [];
-  let anterior = null;
+  let huella = null;
 
   for (let i = 0; i < limitePaginas; i++) {
-    const pagina = await esperarQue(tab, (cols) => {
-      const t = document.querySelector('table');
-      if (!t) return null;
-      const tr = [...t.querySelectorAll('tbody tr')];
-      if (!tr.length) return { datos: [], huella: 'vacia' };
-      const datos = tr.map(f => {
-        const c = [...f.querySelectorAll('td')].map(x => (x.innerText || '').replace(/\s+/g, ' ').trim());
-        return cols.map(i => c[i] ?? '');
-      });
-      return { datos, huella: JSON.stringify(datos[0] || []) };
-    }, [columnas], 30000);
-
-    if (!pagina) break;
-    if (pagina.huella === anterior) break;          // la página no cambió: ya está la última
-    anterior = pagina.huella;
+    const pagina = await leer(huella);
+    if (!pagina) break;                              // no cambió: era la última
+    huella = pagina.huella;
     filas.push(...pagina.datos);
 
     const hay = await ejecutar(tab, () => {
       const b = [...document.querySelectorAll('button')].find(x => /^\s*Siguiente\s*$/i.test(x.innerText) && !x.disabled);
-      if (!b) return false;
+      if (!b || b.getAttribute('aria-disabled') === 'true') return false;
       ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(t => b.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
       return true;
     }).catch(() => false);
     if (!hay) break;
-    await esperar(1500);
   }
 
   return filas;
