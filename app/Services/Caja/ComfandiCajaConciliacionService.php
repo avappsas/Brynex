@@ -74,7 +74,7 @@ class ComfandiCajaConciliacionService
      * @param  array  $filas  del Listado de trabajadores: [documento, nombre, ingreso empresa, ingreso caja]
      * @param  array  $radicados  de la pestaña Radicados: [numero, tipo, estado, fecha, beneficiario, trabajador]
      */
-    public function conciliar(array $aliadoIds, string $nit, array $filas, array $radicados, bool $simular, ?int $usuarioId): array
+    public function conciliar(array $aliadoIds, string $nit, array $filas, array $radicados, bool $simular, ?int $usuarioId, bool $radicadosOk = true): array
     {
         $delPortal = preg_replace('/\D/', '', $nit);
         $nit = $this->nitBryNex($nit);
@@ -92,7 +92,7 @@ class ComfandiCajaConciliacionService
         $detalle = [];
         foreach ($this->candidatos($aliadoIds, $nit) as $r) {
             $doc = ltrim((string) $r->contrato->cedula, '0');
-            $detalle[] = $this->cruzar($r, $enCaja->get($doc), $tramites->get($doc), $simular, $usuarioId);
+            $detalle[] = $this->cruzar($r, $enCaja->get($doc), $tramites->get($doc), $simular, $usuarioId, $radicadosOk);
         }
         $cuenta = collect($detalle)->countBy('accion');
 
@@ -109,6 +109,7 @@ class ComfandiCajaConciliacionService
             'sobran' => $this->sobrantes($aliadoIds, $nit, $enCaja),
             'afiliados_caja' => $enCaja->count(),
             'radicados_portal' => $tramites->count(),
+            'radicados_leidos' => $radicadosOk,
             'simulado' => $simular,
             'detalle' => array_values(array_filter($detalle, fn ($f) => $f['accion'] !== 'ya_ok')),
         ];
@@ -172,10 +173,10 @@ class ComfandiCajaConciliacionService
             ->get();
     }
 
-    private function cruzar(Radicado $r, ?array $a, ?array $tramite, bool $simular, ?int $usuarioId): array
+    private function cruzar(Radicado $r, ?array $a, ?array $tramite, bool $simular, ?int $usuarioId, bool $radicadosOk): array
     {
         if (! $a) {
-            return $this->sinAfiliar($r, $tramite, $simular, $usuarioId);
+            return $this->sinAfiliar($r, $tramite, $simular, $usuarioId, $radicadosOk);
         }
 
         $apellido = $this->texto((string) $r->contrato->cliente?->primer_apellido);
@@ -221,8 +222,15 @@ class ComfandiCajaConciliacionService
      * No está afiliado todavía: lo que se haga depende de si hay una solicitud
      * en el portal y de cómo quedó.
      */
-    private function sinAfiliar(Radicado $r, ?array $tramite, bool $simular, ?int $usuarioId): array
+    private function sinAfiliar(Radicado $r, ?array $tramite, bool $simular, ?int $usuarioId, bool $radicadosOk): array
     {
+        // Sin la pestaña Radicados no se puede distinguir a quien nunca se
+        // radicó de quien está esperando respuesta: decir "falta" llevaría a
+        // radicarlo por segunda vez, así que se manda a revisar.
+        if (! $tramite && ! $radicadosOk) {
+            return $this->fila($r, 'revisar', 'No aparece afiliado y no se pudo leer la pestaña Radicados del portal: revisa allá si ya tiene una solicitud antes de volver a radicar.');
+        }
+
         if (! $tramite) {
             return $r->estado === Radicado::ESTADO_OK
                 ? $this->fila($r, 'revisar', 'Está en OK en BryNex pero no aparece entre los trabajadores afiliados de la empresa en Comfandi, ni tiene radicado en el portal.')

@@ -1613,17 +1613,36 @@ async function cfdTrabajadores(pestana) {
   await esperar(3500);
   const filas = await cfdTabla(tab, [2, 1, 3, 4]);
 
-  // Radicados: hay que pulsar Buscar para que cargue la tabla.
+  // Radicados: la tabla no carga sola, hay que pulsar Buscar. Si esto falla y
+  // se devuelve una lista vacía, BryNex da por no radicado a quien sí lo está y
+  // manda a radicarlo otra vez — por eso se espera al botón, se espera a la
+  // respuesta y se informa si no se pudo leer.
   await chrome.tabs.update(tab, { url: `${CFD_BASE}/filed` });
   await esperarCarga(tab);
-  await esperar(3500);
-  await ejecutar(tab, () => {
-    const b = [...document.querySelectorAll('button')].find(x => /^\s*Buscar\s*$/i.test(x.innerText));
-    if (b) ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(t => b.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
-    return true;
-  }).catch(() => null);
-  await esperar(3000);
-  const radicados = await cfdTabla(tab, [0, 2, 3, 4, 5, 6]);
 
-  return { ok: true, nit: empresa.nit, empresa: empresa.empresa, filas, radicados };
+  const pulsado = await esperarQue(tab, () => {
+    const b = [...document.querySelectorAll('button')].find(x => /^\s*Buscar\s*$/i.test(x.innerText) && !x.disabled);
+    if (!b) return false;
+    ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(t => b.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+    return true;
+  }, [], 30000);
+
+  // La consulta respondió cuando hay tabla con filas o cuando dice que no hay.
+  const respondio = pulsado && await esperarQue(tab, () => {
+    const t = document.querySelector('table');
+    if (t && t.querySelectorAll('tbody tr').length) return 'con datos';
+    return /No hay datos/i.test(document.body.innerText || '') ? 'sin datos' : null;
+  }, [], 40000);
+
+  const radicados = respondio === 'con datos' ? await cfdTabla(tab, [0, 2, 3, 4, 5, 6]) : [];
+
+  return {
+    ok: true,
+    nit: empresa.nit,
+    empresa: empresa.empresa,
+    filas,
+    radicados,
+    // false = no se pudo leer la pestaña; distinto de "la leí y está vacía".
+    radicadosOk: !!respondio,
+  };
 }

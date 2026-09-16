@@ -2794,13 +2794,14 @@ async function conciliarCajaComfandi(simular) {
         const res = await fetch(COMFANDI_URL_CONCILIAR, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
-            body: JSON.stringify({ nit: rep.nit, filas: rep.filas, radicados: rep.radicados, simular }),
+            body: JSON.stringify({ nit: rep.nit, filas: rep.filas, radicados: rep.radicados, radicados_ok: rep.radicadosOk !== false, simular }),
         });
         const data = await res.json();
         if (!data.ok) throw new Error(data.mensaje || 'No se pudo conciliar.');
         pintarConciliacionEpsSura(data);
         estado.innerHTML = `${simular ? '<strong>(solo consulta)</strong> ' : ''}${data.empresa}${(data.aliados || []).length > 1 ? ` (aliados: ${data.aliados.join(', ')})` : ''}: ` +
             `${data.afiliados_caja} afiliados en la caja y ${data.radicados_portal} radicados en el portal` +
+            (data.radicados_leidos === false ? ' <strong style="color:#b45309">⚠️ no se pudo leer la pestaña Radicados: los que no aparecen afiliados quedaron para revisar, no como pendientes</strong>' : '') +
             (data.confirmados_ok ? ` · ${data.confirmados_ok} que ya estaban en OK quedan confirmados` : '') + '.';
         if (!simular && data.cerrados > 0) mostrarToast(`${data.cerrados} radicados de caja pasaron a OK. Recarga para verlos.`, 'success');
     } catch (err) {

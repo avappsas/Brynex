@@ -79,6 +79,7 @@ class ComfandiCajaController extends Controller
             'filas.*' => 'array|max:8',
             'radicados' => 'array|max:6000',
             'radicados.*' => 'array|max:8',
+            'radicados_ok' => 'boolean',
             'simular' => 'boolean',
         ]);
         $aliados = Auth::user()->es_brynex
@@ -87,7 +88,7 @@ class ComfandiCajaController extends Controller
 
         try {
             $r = $conciliacion->conciliar($aliados, $datos['nit'], $datos['filas'], $datos['radicados'] ?? [],
-                (bool) ($datos['simular'] ?? false), Auth::id());
+                (bool) ($datos['simular'] ?? false), Auth::id(), (bool) ($datos['radicados_ok'] ?? true));
         } catch (Throwable $e) {
             return response()->json(['ok' => false, 'mensaje' => $e->getMessage()], 422);
         }
