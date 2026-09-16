@@ -838,6 +838,17 @@ function sortClass($col, $currSort, $currDir) {
                     onclick="correoEpsDesdeRadicado()">
                     📧 Afiliar por correo
                 </button>
+                {{-- ARL Colmena: afiliación por su API, y anulación mientras esté en plazo --}}
+                <button id="btnAfiliarColmena" type="button"
+                    style="display:none;align-items:center;gap:0.35rem;padding:0.3rem 0.85rem;background:linear-gradient(135deg,#b45309,#f59e0b);color:#fff;border:none;border-radius:7px;font-size:0.75rem;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(245,158,11,0.3);"
+                    onclick="afiliarColmenaDesdeRadicado()">
+                    🐝 Afiliar en Colmena
+                </button>
+                <button id="btnAnularColmena" type="button"
+                    style="display:none;align-items:center;gap:0.35rem;padding:0.3rem 0.85rem;background:#fef3c7;color:#b45309;border:1px solid #fcd34d;border-radius:7px;font-size:0.75rem;font-weight:700;cursor:pointer;"
+                    onclick="anularColmenaDesdeRadicado()">
+                    ↩️ Anular ingreso Colmena
+                </button>
                 {{-- Cuando ya está afiliado: deshacer, solo dentro de los 30 días --}}
                 <button id="btnAnularApi" type="button"
                     style="display:none;align-items:center;gap:0.35rem;padding:0.3rem 0.85rem;background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;border-radius:7px;font-size:0.75rem;font-weight:700;cursor:pointer;"
@@ -1596,6 +1607,14 @@ function abrirModalRadicado(radId, radData, ctx = {}, contratoId = null, tieneFo
     // crear), así que el id sale del contexto.
     btnApi._contratoId = btnAnular._contratoId = contratoId || ctx.id || null;
 
+    // ARL Colmena: afiliar mientras no esté en OK, anular cuando ya lo está.
+    const btnColmena = document.getElementById('btnAfiliarColmena');
+    const btnColmenaAnular = document.getElementById('btnAnularColmena');
+    const esArlColmena = (radData.tipo === 'arl') && /COLMENA/i.test(ctx.arl || '');
+    btnColmena.style.display = (PUEDE_AUTOMATIZAR && esArlColmena && radData.estado !== 'ok') ? 'inline-flex' : 'none';
+    btnColmenaAnular.style.display = (PUEDE_AUTOMATIZAR && esArlColmena && radData.estado === 'ok') ? 'inline-flex' : 'none';
+    btnColmena._contratoId = btnColmenaAnular._contratoId = contratoId || ctx.id || null;
+
     // Reingreso por el portal: radicados de EPS de Nueva EPS que aún no están en OK.
     const btnNuevaEps = document.getElementById('btnReingresoNuevaEps');
     const esNuevaEps  = (radData.tipo === 'eps') && /NUEVA\s*EPS/i.test(ctx.eps || '');
@@ -1744,6 +1763,19 @@ function afiliarApiDesdeRadicado() {
     if (!contratoId) { alert('No se pudo identificar el contrato.'); return; }
     cerrarModal('modalRadicado');
     abrirAfiliarSura(contratoId);
+}
+
+function afiliarColmenaDesdeRadicado() {
+    const contratoId = document.getElementById('btnAfiliarColmena')._contratoId;
+    if (!contratoId) { alert('No se pudo identificar el contrato.'); return; }
+    cerrarModal('modalRadicado');
+    abrirAfiliarColmena(contratoId);
+}
+
+function anularColmenaDesdeRadicado() {
+    const btn = document.getElementById('btnAnularColmena');
+    if (!btn._contratoId) { alert('No se pudo identificar el contrato.'); return; }
+    anularColmena(btn._contratoId, btn);
 }
 
 function reingresoNuevaEpsDesdeRadicado() {
@@ -2792,6 +2824,7 @@ function mostrarToast(msg, tipo) {
 
 @can('automatizar-portales')
 @include('admin.partials._afiliar_arl_sura')
+@include('admin.partials._afiliar_arl_colmena')
 @include('admin.partials._reingreso_nueva_eps')
 @include('admin.partials._novedad_salud_total')
 @include('admin.partials._novedad_sos')

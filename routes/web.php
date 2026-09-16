@@ -967,6 +967,13 @@ Route::middleware('auth')->group(function () {
             Route::get('/{contrato}/nueva-eps/precheck', [$nec, 'precheck'])->name('nueva-eps.precheck');
             Route::post('/{contrato}/nueva-eps/consultar', [$nec, 'consultar'])->name('nueva-eps.consultar');
             Route::post('/{contrato}/nueva-eps/registrar', [$nec, 'registrar'])->name('nueva-eps.registrar');
+            // ARL Colmena por su API, desde el radicado de ARL. Anular solo vale
+            // hasta un día después del inicio de la vigencia; luego es retiro.
+            $colm = \App\Http\Controllers\Admin\ArlColmenaController::class;
+            Route::get('/{contrato}/colmena/precheck', [$colm, 'precheck'])->name('colmena.precheck');
+            Route::post('/{contrato}/colmena/afiliar', [$colm, 'afiliar'])->name('colmena.afiliar');
+            Route::post('/{contrato}/colmena/anular', [$colm, 'anular'])->name('colmena.anular');
+            Route::post('/{contrato}/colmena/retirar', [$colm, 'retirar'])->name('colmena.retirar');
             // Novedad de inicio laboral en Salud Total desde el radicado de EPS.
             $stc = \App\Http\Controllers\Admin\SaludTotalController::class;
             Route::get('/{contrato}/salud-total/precheck', [$stc, 'precheck'])->name('salud-total.precheck');
