@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Contrato;
 use App\Services\Caja\ComfandiCajaConciliacionService;
 use App\Services\Caja\ComfandiCajaService;
+use App\Services\Caja\ComfandiListadoDescarga;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
@@ -71,24 +72,44 @@ class ComfandiCajaController extends Controller
      * dice quién está afiliado y la pestaña Radicados explica a los que aún no
      * lo están. BryNex concilia la empresa en todos los aliados del NIT.
      */
-    public function conciliar(Request $request, ComfandiCajaConciliacionService $conciliacion)
+    public function conciliar(Request $request, ComfandiCajaConciliacionService $conciliacion, ComfandiListadoDescarga $descarga)
     {
         $datos = $request->validate([
             'nit' => 'required|string|max:20',
-            'filas' => 'required|array|max:6000',
+            // El listado llega como el Excel del portal (lo normal) o, si no se
+            // pudo bajar, como las filas raspadas de la tabla.
+            'archivo_url' => 'nullable|string|max:4000',
+            'filas' => 'array|max:6000',
             'filas.*' => 'array|max:8',
             'radicados' => 'array|max:6000',
             'radicados.*' => 'array|max:8',
             'radicados_ok' => 'boolean',
             'simular' => 'boolean',
         ]);
+
+        $filas = $datos['filas'] ?? [];
+        $beneficiarios = [];
+
+        if (! empty($datos['archivo_url'])) {
+            try {
+                $listado = $descarga->bajar($datos['archivo_url']);
+            } catch (Throwable $e) {
+                return response()->json(['ok' => false, 'mensaje' => $e->getMessage()], 422);
+            }
+            $filas = $listado['filas'];
+            $beneficiarios = $listado['beneficiarios'];
+        }
+
+        if (! $filas) {
+            return response()->json(['ok' => false, 'mensaje' => 'No llegó el listado de trabajadores.'], 422);
+        }
         $aliados = Auth::user()->es_brynex
             ? $conciliacion->aliadosDelNit($datos['nit'])
             : [(int) session('aliado_id_activo')];
 
         try {
-            $r = $conciliacion->conciliar($aliados, $datos['nit'], $datos['filas'], $datos['radicados'] ?? [],
-                (bool) ($datos['simular'] ?? false), Auth::id(), (bool) ($datos['radicados_ok'] ?? true));
+            $r = $conciliacion->conciliar($aliados, $datos['nit'], $filas, $datos['radicados'] ?? [],
+                (bool) ($datos['simular'] ?? false), Auth::id(), (bool) ($datos['radicados_ok'] ?? true), $beneficiarios);
         } catch (Throwable $e) {
             return response()->json(['ok' => false, 'mensaje' => $e->getMessage()], 422);
         }
