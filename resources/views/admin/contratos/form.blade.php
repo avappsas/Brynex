@@ -320,6 +320,81 @@
       </div>
 
     </div>
+
+    {{-- Fondo de Solidaridad (PSAP, cotizante 33). El grupo decide la tarifa de
+         pensión y el formulario muestra lo que se puede revisar desde aquí. La
+         inscripción la vuelve a validar Enlace cada mes al liquidar
+         (eo.val.2.504), así que el certificado es la prueba inicial, no la única. --}}
+    @php
+      $fsp = $fondoSolidaridad ?? null;
+      $fspEdad = $clienteEdad ?? null;
+      $fspEdadOk = $fspEdad !== null && $fsp && $fspEdad >= $fsp['edadMin'] && $fspEdad < $fsp['edadMax'];
+      $fspGrupoSel = old('grupo_fondo_solidaridad', $contrato->grupo_fondo_solidaridad ?? '');
+    @endphp
+    @if($fsp)
+    <div x-show="esFondoSolidaridad" x-cloak
+         style="margin-top:0.5rem;border:1px solid #bfdbfe;background:#eff6ff;border-radius:8px;padding:0.55rem 0.7rem;display:grid;grid-template-columns:1fr 1.15fr;gap:0.8rem;">
+      <div>
+        <label class="lb" style="color:#1d4ed8;">Grupo del Fondo de Solidaridad</label>
+        <select name="grupo_fondo_solidaridad" id="sel_grupo_fsp" x-model="grupoFsp" @change="onGrupoFspChange" {!! $prot !!} style="{{ $S }}"
+            :required="esFondoSolidaridad">
+          <option value="">-- Grupo --</option>
+          @foreach($fsp['grupos'] as $clave => $g)
+          <option value="{{ $clave }}" {{ $fspGrupoSel === $clave ? 'selected' : '' }}>
+            {{ $g['nombre'] }} — pensión {{ rtrim(rtrim(number_format($g['pct_pension'], 1, ',', ''), '0'), ',') }} %
+          </option>
+          @endforeach
+        </select>
+        <template x-if="grupoFspDatos">
+          <div style="margin-top:0.35rem;font-size:0.7rem;color:#1e3a8a;line-height:1.45;">
+            Pensión <b x-text="grupoFspDatos.pct_pension.toString().replace('.', ',') + ' %'"></b> <span x-text="fmt(grupoFspDatos.pension)"></span>
+            + salud 12,5 % <span x-text="fmt(grupoFspDatos.salud)"></span>
+            = <b x-text="fmt(grupoFspDatos.total)"></b> al mes.
+            <span style="color:#64748b;">El Estado subsidia el <span x-text="grupoFspDatos.subsidio"></span> % de la pensión, sobre un salario mínimo.</span>
+          </div>
+        </template>
+        <div x-show="esPlanSoloAfp" x-cloak
+             style="margin-top:0.35rem;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:0.3rem 0.5rem;font-size:0.66rem;color:#b91c1c;font-weight:600;line-height:1.35;">
+          ⚠️ Solo AFP: hoy el operador rechaza al cotizante 33 sin salud («está obligado cotizar a Salud»). Este contrato no va a liquidar por planilla.
+        </div>
+      </div>
+      <div style="font-size:0.7rem;line-height:1.6;color:#334155;">
+        <div style="font-weight:700;color:#1d4ed8;font-size:0.66rem;letter-spacing:0.03em;text-transform:uppercase;">Requisitos (Decreto 543 de 2026)</div>
+        <div>
+          @if($fspEdad === null)
+            <span style="color:#b45309;">⚠️</span> Edad: el cliente no tiene fecha de nacimiento. Debe tener entre {{ $fsp['edadMin'] }} y {{ $fsp['edadMax'] }} años.
+          @elseif($fspEdadOk)
+            <span style="color:#16a34a;">✔</span> Edad: {{ $fspEdad }} años (entre {{ $fsp['edadMin'] }} y {{ $fsp['edadMax'] }}).
+          @else
+            <span style="color:#dc2626;">✖</span> Edad: {{ $fspEdad }} años. El programa exige entre {{ $fsp['edadMin'] }} y {{ $fsp['edadMax'] }}.
+          @endif
+        </div>
+        <div>
+          <span x-show="pensionSel == {{ $fsp['colpensionesId'] }}" style="color:#16a34a;">✔ Pensión en Colpensiones.</span>
+          <span x-show="pensionSel != {{ $fsp['colpensionesId'] }}" style="color:#dc2626;">✖ La pensión tiene que ser Colpensiones: el programa no subsidia fondos privados.</span>
+        </div>
+        <div>
+          <template x-if="certificadoFsp">
+            <span><span style="color:#16a34a;">✔</span> Certificado de inscripción subido el <span x-text="certificadoFsp.fecha"></span>
+              <a x-show="certificadoFsp.url" :href="certificadoFsp.url" target="_blank" style="color:#1d4ed8;">(ver)</a>.</span>
+          </template>
+          <template x-if="!certificadoFsp">
+            <span><span style="color:#b45309;">⚠️</span> Falta el certificado de inscripción.
+              <a href="{{ $fsp['urlConsultaCertificado'] }}" target="_blank" rel="noopener" style="color:#1d4ed8;">Bajarlo en el Fondo ↗</a>
+              @if($fsp['urlSubirCertificado'])
+              · <label style="color:#1d4ed8;cursor:pointer;text-decoration:underline;">
+                  <span x-text="subiendoCertificadoFsp ? 'Subiendo…' : 'Subir PDF'"></span>
+                  <input type="file" accept=".pdf,.jpg,.jpeg,.png" style="display:none;" @change="subirCertificadoFsp($event)">
+                </label>
+              @endif
+            </span>
+          </template>
+        </div>
+        <div style="color:#64748b;">ℹ️ Semanas: mínimo 300, se ven en la historia laboral de Colpensiones. Enlace confirma la inscripción cada mes al liquidar.</div>
+      </div>
+    </div>
+    @endif
+
     <div style="display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr;gap:0.5rem;margin-top:0.5rem;align-items:end;">
       <div>
         <label class="lb">Motivo Afiliacion</label>
@@ -580,7 +655,9 @@
             @input="onSalarioChange"
             value="{{ number_format($defSalario, 0, '', '.') }}"
             style="{{ $M }}{{ $ecoLock ? 'background:#f1f5f9;color:#1e293b;cursor:not-allowed;' : '' }}"
-            data-raw="{{ $defSalario }}" {{ $ecoLock ? 'readonly' : '' }}>
+            data-raw="{{ $defSalario }}" {{ $ecoLock ? 'readonly' : '' }}
+            {{-- Fondo de Solidaridad: el subsidio es sobre un mínimo, ni más ni menos. --}}
+            :readonly="esFondoSolidaridad || {{ $ecoLock ? 'true' : 'false' }}">
         @if($ecoLock)
         <input type="hidden" name="salario" value="{{ $ecoSalarioBd }}">
         @endif
@@ -590,7 +667,7 @@
            de semanas (¼, ½, ¾ o un mínimo completo), así que el campo solo
            mostraría un número que el usuario no puede cambiar. Se oculta con
            x-show —no se quita del DOM— para que siga viajando en el submit. --}}
-      <div x-show="esIndependiente && !esTpDiasContrato" style="display:none;">
+      <div x-show="esIndependiente && !esTpDiasContrato && !esFondoSolidaridad" style="display:none;">
         <label class="lb">IBC <span style="color:#f59e0b;font-size:0.63rem;" x-text="ibcSugFmt ? 'sug:'+ibcSugFmt : ''"></span></label>
         {{-- type=text y no number: un <input type=number> no acepta los puntos de miles.
              El valor real vive en dataset.raw, y el submit de .campo-money limpia el formato. --}}
@@ -2090,6 +2167,9 @@ const MODALIDADES_TP = {!! json_encode($_modalidadesTPData) !!};
 // dias_afp/dias_caja/factor_salario de MODALIDADES_TP vienen en null y salen del
 // selector de semanas.
 const MODALIDADES_DIAS_CONTRATO = @json($modalidadesDiasContrato ?? [18]);
+// Fondo de Solidaridad (PSAP, cotizante 33): id de la modalidad, grupos con lo
+// que paga cada uno, Colpensiones y el certificado de inscripción del cliente.
+const FONDO_SOLIDARIDAD = @json($fondoSolidaridad ?? null);
 // ¿El aliado tiene catálogo de seguros? Sin él no hay "Plan de seguro" que
 // escoger y el valor se escribe a mano, así que no se puede ocultar.
 const HAY_CATALOGO_SEGUROS = {{ ($segurosCatalogo ?? collect())->isNotEmpty() ? 'true' : 'false' }};
@@ -2606,6 +2686,14 @@ function filtrarPlanes(modalidadId, evitarRecalcular = false) {
         }
         if (esTpIndep && (el.dataset.eps === '1' || el.dataset.arl !== '1')) {
             return;
+        }
+
+        // ── Fondo de Solidaridad: Solo AFP únicamente para el desempleado ──
+        // El resto de grupos cotiza salud y pensión (EPS + AFP).
+        if (FONDO_SOLIDARIDAD && modalidadIdInt === FONDO_SOLIDARIDAD.id
+            && el.dataset.eps !== '1' && el.dataset.pen === '1') {
+            const grupoFsp = document.getElementById('sel_grupo_fsp')?.value || '';
+            if (!(FONDO_SOLIDARIDAD.grupos[grupoFsp]?.solo_afp)) return;
         }
 
         // ── Regla AFP obligatorio: ocultar planes sin AFP si aplica la regla ──
@@ -3352,6 +3440,13 @@ function cotizador() {
         // selector de semanas y con él se arman IBC, piso de salario y cotización.
         esTpDiasContrato: false,
         diasTp:          {{ (int) old('dias_tp_afp', $contrato->dias_tp_afp ?? 7) }},
+        // Fondo de Solidaridad (PSAP): grupo que fija la tarifa de pensión, la
+        // pensión elegida (para el requisito de Colpensiones) y el certificado.
+        esFondoSolidaridad: false,
+        grupoFsp:        @json(old('grupo_fondo_solidaridad', $contrato->grupo_fondo_solidaridad ?? '')),
+        pensionSel:      '',
+        certificadoFsp:  FONDO_SOLIDARIDAD?.certificado || null,
+        subiendoCertificadoFsp: false,
         esUpc: false,
         // Solo seguro: sin entidades, sin salario y sin planilla. Lo único que se cobra
         // es el seguro, así que el panel de cotización no depende del salario.
@@ -3406,6 +3501,13 @@ function cotizador() {
                 }, 50);
             }
             this.planNombre      = document.querySelector(`#sel_plan option[value="${this.planId}"]`)?.textContent?.trim() || '';
+            // Fondo de Solidaridad: la pensión se sigue para el requisito de Colpensiones.
+            this.esFondoSolidaridad = !!FONDO_SOLIDARIDAD && parseInt(this.tipoModalidadId) === FONDO_SOLIDARIDAD.id;
+            const selPenInit = document.getElementById('sel_pen');
+            if (selPenInit) {
+                this.pensionSel = selPenInit.value;
+                selPenInit.addEventListener('change', e => { this.pensionSel = e.target.value; });
+            }
             // Inicializar Tiempo Parcial al cargar
             this.esTpDiasContrato = MODALIDADES_DIAS_CONTRATO.includes(parseInt(this.tipoModalidadId));
             const tpData = this.tpDataDe(this.tipoModalidadId);
@@ -3714,9 +3816,25 @@ function cotizador() {
                     }
                 }
             }
+            // ── Fondo de Solidaridad: un salario mínimo fijo y Colpensiones ──
+            this.esFondoSolidaridad = !!FONDO_SOLIDARIDAD && id === FONDO_SOLIDARIDAD.id;
+            if (this.esFondoSolidaridad) {
+                this.salario = SALARIO_MINIMO;
+                const inpSalFsp = document.getElementById('inp_salario');
+                if (inpSalFsp) { inpSalFsp.dataset.raw = SALARIO_MINIMO; inpSalFsp.value = numFmt(SALARIO_MINIMO); }
+                const selPen = document.getElementById('sel_pen');
+                if (selPen && FONDO_SOLIDARIDAD.colpensionesId) {
+                    selPen.value = String(FONDO_SOLIDARIDAD.colpensionesId);
+                    this.pensionSel = selPen.value;
+                }
+            }
             if (!this.esIndependiente) {
                 // Dependiente: IBC = salario
                 this.setIbc(this.salario);
+                this.ibcSugFmt = '';
+            } else if (this.esFondoSolidaridad) {
+                // Sin sugerencia del 40 %: el IBC es el mínimo, punto.
+                this.setIbc(SALARIO_MINIMO);
                 this.ibcSugFmt = '';
             } else if (this.salario > 0) {
                 // Al pasar a independiente: auto-calcular IBC
@@ -3731,6 +3849,58 @@ function cotizador() {
             this.recalcular();
         },
 
+
+        /** Datos del grupo elegido del Fondo de Solidaridad (tarifa, valores, subsidio). */
+        get grupoFspDatos() {
+            return (this.esFondoSolidaridad && FONDO_SOLIDARIDAD?.grupos?.[this.grupoFsp]) || null;
+        },
+
+        /** ¿El plan elegido es Solo AFP? En el cotizante 33 hoy no liquida. */
+        get esPlanSoloAfp() {
+            if (!this.esFondoSolidaridad || !this.planId) return false;
+            const d = document.querySelector(`#sel_plan option[value="${this.planId}"]`)?.dataset;
+            return !!d && d.pen === '1' && d.eps !== '1' && d.arl !== '1' && d.caja !== '1';
+        },
+
+        /** Cambió el grupo: cambia la tarifa de pensión y si se ofrece Solo AFP. */
+        onGrupoFspChange() {
+            filtrarPlanes(this.tipoModalidadId, true);
+            this.recalcular();
+        },
+
+        /**
+         * Sube el certificado del PSAP a los documentos del cliente sin salir del
+         * formulario. Se baja a mano del Fondo porque tiene captcha.
+         */
+        subirCertificadoFsp(e) {
+            const archivo = e.target.files?.[0];
+            if (!archivo || !FONDO_SOLIDARIDAD?.urlSubirCertificado) return;
+
+            const datos = new FormData();
+            datos.append('archivo', archivo);
+            datos.append('tipo_documento', 'certificado_fsp');
+
+            this.subiendoCertificadoFsp = true;
+            fetch(FONDO_SOLIDARIDAD.urlSubirCertificado, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                },
+                body: datos,
+            })
+            .then(r => r.json().then(j => ({ ok: r.ok, j })))
+            .then(({ ok, j }) => {
+                if (!ok) throw new Error(j?.message || 'No se pudo subir el certificado.');
+                const hoy = new Date();
+                this.certificadoFsp = {
+                    fecha: hoy.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+                    url: null,
+                };
+            })
+            .catch(err => alert(err.message))
+            .finally(() => { this.subiendoCertificadoFsp = false; e.target.value = ''; });
+        },
 
         onPlanChange(e) {
             this.planNombre = e.target.options[e.target.selectedIndex]?.textContent?.trim() || '';
@@ -3851,6 +4021,8 @@ function cotizador() {
                     // Solo en las modalidades donde los días son del contrato:
                     // en el resto los pone la modalidad y mandarlos los pisaría.
                     dias_tp_afp:       this.esTpDiasContrato ? (parseInt(this.diasTp) || 7) : null,
+                    // Fondo de Solidaridad: el grupo fija la tarifa de pensión.
+                    grupo_fondo_solidaridad: this.esFondoSolidaridad ? (this.grupoFsp || null) : null,
                     // 0 días es un valor válido (afiliación pura, Gestión ARL): con
                     // `|| 30` se colaba el mes completo y el panel mostraba una
                     // seguridad social que esa factura no cobra.

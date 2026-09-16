@@ -1473,6 +1473,53 @@ class ContratoController extends Controller
             // Valor actual del operador asignado al cliente
             'clienteOperadorId' => $cliente?->operador_planilla_id,
             'planosExistentes' => $planosExistentes,
+            'fondoSolidaridad' => $this->datosFondoSolidaridad($alidoId, $cliente),
+        ];
+    }
+
+    /**
+     * Lo que el formulario necesita para la modalidad Fondo de Solidaridad: los
+     * grupos con lo que paga cada uno, Colpensiones para fijar la pensión, y el
+     * certificado de inscripción del cliente si ya lo subieron.
+     */
+    private function datosFondoSolidaridad(int $alidoId, ?object $cliente): array
+    {
+        $sm = ConfiguracionBrynex::salarioMinimo();
+        $ceil100 = fn (float $v) => (int) (ceil($v / 100) * 100);
+        $salud = $ceil100($sm * ConfiguracionBrynex::pctSaludIndependiente() / 100);
+
+        $grupos = [];
+        foreach (TipoModalidad::GRUPOS_FONDO_SOLIDARIDAD as $clave => $g) {
+            $pension = $ceil100($sm * $g['pct_pension'] / 100);
+            $grupos[$clave] = $g + [
+                'pension' => $pension,
+                'salud' => $salud,
+                'total' => $pension + $salud,
+                'solo_afp' => in_array($clave, TipoModalidad::GRUPOS_FONDO_SOLIDARIDAD_SOLO_AFP, true),
+            ];
+        }
+
+        $certificado = $cliente
+            ? \App\Models\DocumentoCliente::where('aliado_id', $alidoId)
+                ->where('cc_cliente', $cliente->cedula)
+                ->where('tipo_documento', 'certificado_fsp')
+                ->latest('created_at')
+                ->first()
+            : null;
+
+        return [
+            'id' => TipoModalidad::ID_FONDO_SOLIDARIDAD,
+            'grupos' => $grupos,
+            'colpensionesId' => (int) Pension::where('nit', '900336004')->value('id'),
+            'edadMin' => TipoModalidad::EDAD_MIN_FONDO_SOLIDARIDAD,
+            'edadMax' => TipoModalidad::EDAD_MAX_FONDO_SOLIDARIDAD,
+            'certificado' => $certificado ? [
+                'fecha' => $certificado->created_at->format('d/m/Y'),
+                'url' => route('admin.documentos.download', $certificado->id),
+            ] : null,
+            'urlSubirCertificado' => $cliente ? route('admin.clientes.documentos.store', $cliente->cedula) : null,
+            // Se baja a mano: tiene reCAPTCHA y no se puede consultar desde el servidor.
+            'urlConsultaCertificado' => 'https://nelfsp.equiedad.com.co:8001/faces/GenerarCertificadoPsapCAPTCHA.xhtml',
         ];
     }
 
@@ -1798,6 +1845,7 @@ class ContratoController extends Controller
                 'porcentaje_caja' => $original->porcentaje_caja,
                 'dias_tp_afp' => $original->dias_tp_afp,
                 'dias_tp_caja' => $original->dias_tp_caja,
+                'grupo_fondo_solidaridad' => $original->grupo_fondo_solidaridad,
                 'administracion' => $original->administracion,
                 'admon_asesor' => $original->admon_asesor,
                 'costo_afiliacion' => $original->costo_afiliacion,
@@ -1946,6 +1994,8 @@ class ContratoController extends Controller
             // de cotizaciones mínimas semanales (1, 2, 3 o 4 semanas).
             'dias_tp_afp' => 'nullable|integer|in:7,14,21,30',
             'dias_tp_caja' => 'nullable|integer|in:7,14,21,30',
+            // Fondo de Solidaridad: el grupo del PSAP decide la tarifa de pensión.
+            'grupo_fondo_solidaridad' => 'nullable|string|in:'.implode(',', array_keys(TipoModalidad::GRUPOS_FONDO_SOLIDARIDAD)),
             'administracion' => 'nullable|numeric|min:0',
             'admon_asesor' => 'nullable|numeric|min:0',
             'costo_afiliacion' => 'nullable|numeric|min:0',
@@ -1991,6 +2041,14 @@ class ContratoController extends Controller
             $data['dias_tp_caja'] = ($data['dias_tp_caja'] ?? null) ?: null;
         }
 
+        // El grupo del Fondo de Solidaridad solo existe en su modalidad; en las
+        // demás se descarta aunque el navegador lo mande.
+        if ($modalidadDias && $modalidadDias->esFondoSolidaridad()) {
+            $data = $this->validarFondoSolidaridad($data);
+        } else {
+            $data['grupo_fondo_solidaridad'] = null;
+        }
+
         $this->validarSalarioMinimo($data);
         $this->validarNivelArl($data, $contrato);
 
@@ -2034,6 +2092,48 @@ class ContratoController extends Controller
         if (empty($data['asesor_id'])) {
             $data['afiliacion_asesor'] = null;
         }
+
+        return $data;
+    }
+
+    /**
+     * Reglas del Fondo de Solidaridad (PSAP) que se pueden hacer cumplir con los
+     * datos del contrato:
+     *   - Tiene que decir el grupo: es lo que fija la tarifa de pensión.
+     *   - Solo Colpensiones: el programa no subsidia aportes a fondos privados.
+     *   - Solo AFP únicamente para el desempleado (decisión del negocio).
+     *   - Salario e IBC de un salario mínimo, ni más ni menos: es la base sobre
+     *     la que se subsidia, y cualquier otro valor lo rechaza el operador.
+     *
+     * Lo que no está en el contrato —edad, semanas, inscripción— no bloquea: el
+     * formulario lo muestra como alerta y Enlace vuelve a validar la inscripción
+     * cada mes al liquidar (eo.val.2.504).
+     */
+    private function validarFondoSolidaridad(array $data): array
+    {
+        $errores = [];
+
+        if (empty($data['grupo_fondo_solidaridad'])) {
+            $errores['grupo_fondo_solidaridad'] = 'Elija el grupo del Fondo de Solidaridad: de él sale la tarifa de pensión.';
+        }
+
+        $colpensiones = Pension::where('nit', '900336004')->value('id');
+        if ((int) ($data['pension_id'] ?? 0) !== (int) $colpensiones) {
+            $errores['pension_id'] = 'El Fondo de Solidaridad solo subsidia aportes a Colpensiones.';
+        }
+
+        $plan = ! empty($data['plan_id']) ? PlanContrato::find($data['plan_id']) : null;
+        if ($plan && $plan->codigo === 'SOLO_AFP'
+            && ! in_array($data['grupo_fondo_solidaridad'] ?? null, TipoModalidad::GRUPOS_FONDO_SOLIDARIDAD_SOLO_AFP, true)) {
+            $errores['plan_id'] = 'El plan Solo AFP del Fondo de Solidaridad es solo para el grupo Desempleado.';
+        }
+
+        if ($errores) {
+            throw ValidationException::withMessages($errores);
+        }
+
+        $data['salario'] = ConfiguracionBrynex::salarioMinimo();
+        $data['ibc'] = ConfiguracionBrynex::salarioMinimo();
 
         return $data;
     }

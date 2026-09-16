@@ -48,6 +48,7 @@ class ExcelAportesEnLineaService
         30 => 'DEPENDIENTE ENTIDADES O UNIVERSIDADES PÚBLICAS CON RÉGIMEN ESPECIAL EN SALUD',
         31 => 'COOPERADOS O PRECOOPERATIVAS DE TRABAJO ASOCIADO',
         32 => 'BENEFICIARIO UPC ADICIONAL',
+        33 => 'BENEFICIARIO DEL FONDO DE SOLIDARIDAD PENSIONAL',
         40 => 'FUNCIONARIO DE ENTIDADES DEL ESTADO',
         41 => 'PARTICIPES DEL ESTADO EN CONTRATO DE RIESGO COMPARTIDO',
         42 => 'INDEPENDIENTE QUE LABORA EN ACTIVIDADES DE ALTO RIESGO',
@@ -250,6 +251,8 @@ class ExcelAportesEnLineaService
                 DB::raw('ISNULL(p.dias_tp_afp, ISNULL(tm.dias_afp, 30)) AS dias_afp'),
                 DB::raw('ISNULL(p.dias_tp_caja, ISNULL(p.dias_tp_afp, ISNULL(tm.dias_caja, 30))) AS dias_caja'),
                 'ctr.porcentaje_caja',
+                // Fondo de Solidaridad: el grupo decide la tarifa de pensión del cotizante 33.
+                DB::raw('ISNULL(p.grupo_fondo_solidaridad, ctr.grupo_fondo_solidaridad) AS grupo_fondo_solidaridad'),
                 DB::raw('emp.exonerado_parafiscales AS exonerado_parafiscales'),
             ]);
 
@@ -588,7 +591,7 @@ class ExcelAportesEnLineaService
             50 => $esPlanillaY ? null : ($c['tienePension'] ? ($p->nombre_afp ?? $c['codAfpPila'] ?? null) : null), // AX AFP nombre
             51 => $c['tienePension'] ? $c['diasPension'] : 0,                               // AY Días
             52 => $c['tienePension'] ? $c['ibcAfp'] : 0,                                    // AZ IBC
-            53 => $c['tienePension'] ? 0.16 : null,                                     // BA Tarifa
+            53 => $c['tienePension'] ? (float) ($c['tarifaAfpStr'] ?? 0.16) : null,     // BA Tarifa (el cotizante 33 trae la suya)
             54 => $c['tienePension'] ? ($c['vAfp'] ?: null) : 0,                            // BB Valor
             55 => 'Sin Riesgo',                                                             // BC Indicador Alto Riesgo
             56 => 0,                              // BD Vol Afiliado

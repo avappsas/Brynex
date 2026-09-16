@@ -46,6 +46,7 @@ class Plano extends BaseModel
         'paga_mes_actual',        // snapshot: el contrato pagaba el mes en curso
         'dias_tp_afp',            // snapshot: días de pensión del mes en tiempo parcial
         'dias_tp_caja',           // snapshot: días de caja del mes en tiempo parcial
+        'grupo_fondo_solidaridad', // snapshot: grupo del PSAP, decide la tarifa de pensión del cotizante 33
         'usuario_id',
     ];
 
@@ -80,11 +81,15 @@ class Plano extends BaseModel
             // mes. Si el plano nace sin ellos (retiro, traslado de razón social)
             // se copian ahora, porque el mes que viene el contrato puede cotizar
             // otras semanas y esta planilla ya no se puede recalcular.
-            if ($plano->dias_tp_afp === null && $plano->contrato_id) {
+            //
+            // Y con el grupo del Fondo de Solidaridad, que fija la tarifa de
+            // pensión: va en la misma consulta.
+            if (($plano->dias_tp_afp === null || $plano->grupo_fondo_solidaridad === null) && $plano->contrato_id) {
                 $dias = Contrato::whereKey($plano->contrato_id)
-                    ->first(['dias_tp_afp', 'dias_tp_caja']);
-                $plano->dias_tp_afp  = $dias?->dias_tp_afp;
+                    ->first(['dias_tp_afp', 'dias_tp_caja', 'grupo_fondo_solidaridad']);
+                $plano->dias_tp_afp  = $plano->dias_tp_afp ?? $dias?->dias_tp_afp;
                 $plano->dias_tp_caja = $plano->dias_tp_caja ?? $dias?->dias_tp_caja;
+                $plano->grupo_fondo_solidaridad = $plano->grupo_fondo_solidaridad ?? $dias?->grupo_fondo_solidaridad;
             }
         });
     }
@@ -361,6 +366,7 @@ class Plano extends BaseModel
             'paga_mes_actual'   => $esIndepMesActual,
             'dias_tp_afp'       => $contrato->dias_tp_afp,
             'dias_tp_caja'      => $contrato->dias_tp_caja,
+            'grupo_fondo_solidaridad' => $contrato->grupo_fondo_solidaridad,
             'usuario_id'        => $factura->usuario_id,
         ]);
     }

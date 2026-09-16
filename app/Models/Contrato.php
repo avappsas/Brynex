@@ -22,7 +22,7 @@ class Contrato extends BaseModel
         'plan_id', 'tipo_modalidad_id',
         'eps_id', 'pension_id', 'arl_id', 'n_arl', 'arl_modo', 'arl_nit_cotizante', 'caja_id',
         'cargo', 'fecha_ingreso', 'fecha_retiro', 'fecha_retiro_pendiente', 'retiro_pendiente_cobrar_admon', 'actividad_economica_id',
-        'salario', 'ibc', 'porcentaje_caja', 'dias_tp_afp', 'dias_tp_caja',
+        'salario', 'ibc', 'porcentaje_caja', 'dias_tp_afp', 'dias_tp_caja', 'grupo_fondo_solidaridad',
         'administracion', 'admon_asesor', 'costo_afiliacion', 'afiliacion_asesor', 'seguro', 'seguro_id',
         'asesor_id', 'encargado_id',
         'motivo_afiliacion_id', 'motivo_retiro_id',
@@ -188,6 +188,12 @@ class Contrato extends BaseModel
     public function estaRetirado(): bool
     {
         return $this->estado === 'retirado';
+    }
+
+    /** ¿Es Fondo de Solidaridad (PSAP, cotizante 33)? */
+    public function esFondoSolidaridad(): bool
+    {
+        return (int) $this->tipo_modalidad_id === TipoModalidad::ID_FONDO_SOLIDARIDAD;
     }
 
     /** ¿Es modalidad independiente? */
@@ -444,6 +450,14 @@ class Contrato extends BaseModel
             $pctEps = ConfiguracionBrynex::pctSaludDependiente();
             $pctPen = ConfiguracionBrynex::pctPensionDependiente();
             $pctCaja = ConfiguracionBrynex::pctCajaDependiente();
+        }
+
+        // Fondo de Solidaridad: el subsidio es sobre un salario mínimo, ni más ni
+        // menos, y la pensión va a la tarifa del grupo (4 %, 4,8 %…) en vez del
+        // 16 %. La salud sí va completa, al 12,5 % del independiente.
+        if ($this->esFondoSolidaridad()) {
+            $ibc = ConfiguracionBrynex::salarioMinimo();
+            $pctPen = TipoModalidad::pctPensionFondoSolidaridad($this->grupo_fondo_solidaridad);
         }
 
         // Aportante no exonerado (ver pagaParafiscales): la salud deja de ser el

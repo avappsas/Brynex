@@ -168,7 +168,7 @@ class ExcelMiPlanillaService
                     'check'      => fn($calc) => $calc['tienePension'] ?? false,
                     'codigo'     => fn($calc, $row) => $calc['codAfpPila'] ?? '',
                     'desc'       => fn($row, $isDest) => $isDest ? ($contratoDestino->pension_nombre ?? '') : ($planoRet->nombre_afp_t ?? ''),
-                    'tarifa'     => fn($calc) => 0.1600000,
+                    'tarifa'     => fn($calc) => (float) ($calc['tarifaAfpStr'] ?? 0.16), // el cotizante 33 trae la suya
                     'aporte'     => fn($calc) => $calc['vAfp'] ?? 0,
                     'ibc'        => fn($calc) => $calc['ibcAfp'] ?? 0,
                     'dias'       => fn($calc) => $calc['diasPension'] ?? 30,

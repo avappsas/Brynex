@@ -18,6 +18,9 @@ class DocumentoClienteController extends Controller
         'tarjeta_identidad' => 'Tarjeta Identidad',
         'decl_juramentada'  => 'Declaración Juramentada',
         'acta_matrimonio'   => 'Acta de Matrimonio',
+        // Certificado del PSAP que se baja a mano de Equiedad (tiene captcha):
+        // es la prueba de inscripción que pide la modalidad Fondo de Solidaridad.
+        'certificado_fsp'   => 'Certificado Fondo de Solidaridad',
         'otro'              => 'Otro',
     ];
 
@@ -74,6 +77,12 @@ class DocumentoClienteController extends Controller
             'ruta'             => $ruta,
             'subido_por'       => auth()->id(),
         ]);
+
+        // El formulario de contrato sube el certificado del Fondo de Solidaridad
+        // por fetch, sin salir de la página: necesita la respuesta en JSON.
+        if ($request->expectsJson()) {
+            return response()->json(['success' => true, 'message' => 'Documento subido correctamente.']);
+        }
 
         return back()->with('success', 'Documento subido correctamente.');
     }

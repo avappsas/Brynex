@@ -36,7 +36,8 @@
                 $tipoLabels = [
                     'cedula'=>'Cédula','carta_laboral'=>'Carta Laboral',
                     'registro_civil'=>'Registro Civil','tarjeta_identidad'=>'Tarjeta Identidad',
-                    'decl_juramentada'=>'Decl. Juramentada','acta_matrimonio'=>'Acta de Matrimonio','otro'=>'Otro'
+                    'decl_juramentada'=>'Decl. Juramentada','acta_matrimonio'=>'Acta de Matrimonio',
+                    'certificado_fsp'=>'Certificado Fondo de Solidaridad','otro'=>'Otro'
                 ];
             @endphp
 
@@ -165,6 +166,7 @@
                             <optgroup label="Cliente Titular">
                                 <option value="cedula">🪪 Cédula de Ciudadanía</option>
                                 <option value="carta_laboral">📋 Carta Laboral</option>
+                                <option value="certificado_fsp">🏛️ Certificado Fondo de Solidaridad</option>
                             </optgroup>
                             <optgroup label="Beneficiarios">
                                 <option value="registro_civil">📜 Registro Civil</option>

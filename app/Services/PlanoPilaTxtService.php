@@ -235,6 +235,9 @@ class PlanoPilaTxtService
                 // es constante para todo el archivo, el porcentaje es por contrato.
                 DB::raw(((int) ($rs->es_independiente ?? 0)).' AS rs_es_independiente'),
                 'ctr.porcentaje_caja',
+                // Fondo de Solidaridad: el grupo decide la tarifa de pensión.
+                // Manda el snapshot del plano; sin él, el del contrato.
+                DB::raw('ISNULL(p.grupo_fondo_solidaridad, ctr.grupo_fondo_solidaridad) AS grupo_fondo_solidaridad'),
                 DB::raw('emp.exonerado_parafiscales AS exonerado_parafiscales'),
             ]);
 
@@ -340,6 +343,11 @@ class PlanoPilaTxtService
             // planilla N repite el de la planilla que corrige, que es la línea
             // A. Ver PilaCotizanteDosPasos.
             if (in_array((int) $_p->tipo_modalidad_id, \App\Models\TipoModalidad::IDS_DOS_PASOS, true)) {
+                continue;
+            }
+            // El cotizante 33 (Fondo de Solidaridad) no cotiza caja: su campo 45
+            // va en cero, así que tampoco suma los $100 de la convención CCF68.
+            if ((int) $_p->tipo_modalidad_id === \App\Models\TipoModalidad::ID_FONDO_SOLIDARIDAD) {
                 continue;
             }
             $cajP = ! empty($_p->cod_caj_pila) ? $_p->cod_caj_pila : 'CCF68';
@@ -669,7 +677,7 @@ class PlanoPilaTxtService
             .$this->N((string) $c['ibcEps'], 9)                 // 43 IBC salud 211-219
             .$this->N((string) $c['ibcArl'], 9)                 // 44 IBC riesgos 220-228
             .$this->N((string) $ibcCaj, 9)                      // 45 IBC CCF 229-237
-            .($tienePension ? '0.16000' : '0.00000')           // 46 tarifa pensión 238-244
+            .($c['tarifaAfpStr'] ?? ($tienePension ? '0.16000' : '0.00000')) // 46 tarifa pensión 238-244 (el 33 trae la suya)
             .$this->N((string) $vAfp, 9)                        // 47 cotización pensión 245-253
             .$this->N('0', 9)                                  // 48 aporte vol afiliado 254-262
             .$this->N('0', 9)                                  // 49 aporte vol aportante 263-271

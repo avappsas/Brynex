@@ -104,6 +104,13 @@ class CotizadorService
         $pctPen = $esIndep ? ConfiguracionBrynex::pctPensionIndependiente() : ConfiguracionBrynex::pctPensionDependiente();
         $pctArl = ArlTarifa::porcentajePara($nivelArl, $alidoId);
 
+        // Fondo de Solidaridad: IBC de un mínimo y pensión a la tarifa del grupo.
+        // Misma regla que Contrato::calcularCotizacion().
+        if ($tipoModalidad && $tipoModalidad->esFondoSolidaridad()) {
+            $salario = $ibc = ConfiguracionBrynex::salarioMinimo();
+            $pctPen = TipoModalidad::pctPensionFondoSolidaridad($p['grupo_fondo_solidaridad'] ?? null);
+        }
+
         // Caja: empresa siempre 4%; independiente usa el valor enviado (2% o 0.6%)
         if ($esIndep) {
             $pctCajaReq = (float) ($p['porcentaje_caja'] ?? 0);

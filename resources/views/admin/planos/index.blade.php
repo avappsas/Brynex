@@ -3184,8 +3184,18 @@ function verErroresEnlace() {
     // no en campos separados de tipo y número.
     const refCotizante = e => e.identificacion || (e.linea ? 'Línea ' + e.linea : '');
 
+    // Errores de Enlace que necesitan una explicación para saber qué hacer.
+    const explicaciones = {
+        // Fondo de Solidaridad: no está inscrito en el PSAP, o lo sacaron del
+        // programa (por ejemplo, por seis meses seguidos sin pagar).
+        'eo.val.2.504': 'La persona no está inscrita en el Fondo de Solidaridad, o la retiraron del programa. '
+            + 'Revise el certificado en el Fondo; si ya no es beneficiaria, hay que pasarla a Independiente.',
+    };
+
     (data.errores_cotizante || []).forEach(e => {
-        filas.push(['Cotizante', refCotizante(e), e.descripcion || e.mensaje || JSON.stringify(e)]);
+        const desc = e.descripcion || e.mensaje || JSON.stringify(e);
+        const extra = explicaciones[e.idRegla];
+        filas.push(['Cotizante', refCotizante(e), extra ? `${desc}<br><b style="color:#1d4ed8">→ ${extra}</b>` : desc]);
     });
 
     (data.advertencias || []).forEach(e => {

@@ -117,8 +117,57 @@ class TipoModalidad extends BaseModel
      */
     const ID_TP_INDEPENDIENTE = 18;
 
-    /** IDs que corresponden a modalidades independientes (I Venc=10, UPC=13, En el Exterior=14, TP Ind=18) */
-    const IDS_INDEPENDIENTE = [10, 13, 14, self::ID_TP_INDEPENDIENTE];
+    /**
+     * Fondo de Solidaridad: Programa de Subsidio al Aporte en Pensión (PSAP),
+     * cotizante 33 en planilla I. El Estado subsidia parte de la pensión sobre
+     * un salario mínimo y el cotizante paga el resto según su grupo; la salud
+     * va completa (el operador no deja liquidar el 33 sin ella).
+     *
+     * El grupo es del contrato, no de la modalidad: es lo que decide la tarifa
+     * de pensión, igual que los días en el Tiempo Parcial Independiente.
+     */
+    const ID_FONDO_SOLIDARIDAD = 19;
+
+    /**
+     * Grupos del PSAP y la tarifa de pensión que paga cada uno: el 16% menos el
+     * subsidio del plan de extensión de cobertura (CONPES 3605 de 2009). Son las
+     * tarifas que la Resolución 2388 de 2016 admite para el cotizante 33:
+     * 0,8 %, 1,6 %, 3,2 %, 4,0 % y 4,8 %.
+     *
+     * Los requisitos para entrar al programa los fija el Decreto 543 de 2026.
+     */
+    const GRUPOS_FONDO_SOLIDARIDAD = [
+        'independiente'   => ['nombre' => 'Independiente',                        'pct_pension' => 4.0, 'subsidio' => 75],
+        'desempleado'     => ['nombre' => 'Desempleado',                          'pct_pension' => 4.8, 'subsidio' => 70],
+        'madre_sustituta' => ['nombre' => 'Madre sustituta o FAMI',               'pct_pension' => 3.2, 'subsidio' => 80],
+        'discapacidad'    => ['nombre' => 'Persona con discapacidad',             'pct_pension' => 0.8, 'subsidio' => 95],
+        'concejal'        => ['nombre' => 'Concejal o edil (municipio 4, 5 o 6)', 'pct_pension' => 4.0, 'subsidio' => 75],
+    ];
+
+    /**
+     * Grupos a los que se les ofrece el plan Solo AFP. Ojo: hoy Enlace rechaza
+     * al cotizante 33 sin salud (eo.val.2.066), así que ese plan no liquida por
+     * planilla. Se dejó por decisión del negocio, sep-2026.
+     */
+    const GRUPOS_FONDO_SOLIDARIDAD_SOLO_AFP = ['desempleado'];
+
+    /** Edad para entrar al PSAP (Decreto 543 de 2026): mayor de 35 y menor de 65. */
+    const EDAD_MIN_FONDO_SOLIDARIDAD = 35;
+
+    const EDAD_MAX_FONDO_SOLIDARIDAD = 65;
+
+    /**
+     * Tarifa de pensión (en %) del grupo. Sin grupo cae en la de independiente:
+     * el formulario lo exige, así que solo pasa con datos armados a mano.
+     */
+    public static function pctPensionFondoSolidaridad(?string $grupo): float
+    {
+        return (float) (self::GRUPOS_FONDO_SOLIDARIDAD[$grupo]['pct_pension']
+            ?? self::GRUPOS_FONDO_SOLIDARIDAD['independiente']['pct_pension']);
+    }
+
+    /** IDs que corresponden a modalidades independientes (I Venc=10, UPC=13, En el Exterior=14, TP Ind=18, Fondo de Solidaridad=19) */
+    const IDS_INDEPENDIENTE = [10, 13, 14, self::ID_TP_INDEPENDIENTE, self::ID_FONDO_SOLIDARIDAD];
 
     /** UPC: afiliar a alguien fuera del núcleo familiar — no depende del salario */
     const ID_UPC = 13;
@@ -141,6 +190,12 @@ class TipoModalidad extends BaseModel
     public function esIndependiente(): bool
     {
         return in_array($this->id, self::IDS_INDEPENDIENTE);
+    }
+
+    /** ¿Fondo de Solidaridad (PSAP, cotizante 33)? */
+    public function esFondoSolidaridad(): bool
+    {
+        return (int) $this->id === self::ID_FONDO_SOLIDARIDAD;
     }
 
     /** ¿Solo seguro? Sin EPS, ARL, pensión ni caja: el mes vale lo que valga el seguro. */

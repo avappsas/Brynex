@@ -596,6 +596,11 @@ class PilaCotizanteCalculator
             $res['horasLaboradas']    = 0;
         }
 
+        // ── Fondo de Solidaridad (PSAP): cotizante 33 ───────────────────────
+        if ($tipoModalidad === TipoModalidad::ID_FONDO_SOLIDARIDAD) {
+            $res = self::ajustarFondoSolidaridad($res, $p, $ibcProp);
+        }
+
         // ── Modalidad E-1: salud sin pensión, partida en dos planillas ──────
         // Esquema temporal y con reglas propias que no comparte con ninguna
         // otra modalidad: vive aparte para que el día que se deje de usar
@@ -610,6 +615,71 @@ class PilaCotizanteCalculator
         if (in_array($tipoModalidad, TipoModalidad::IDS_DOS_PASOS, true)) {
             $res = PilaCotizanteDosPasos::ajustar($res, $p, $ibcFull, $codAfpPila);
         }
+
+        return $res;
+    }
+
+    /**
+     * Cotizante 33 — beneficiario del Fondo de Solidaridad Pensional (PSAP).
+     *
+     * Parte del registro normal del independiente y cambia lo que la malla de
+     * Enlace exige para el 33, probado contra ARUS el 16-sep-2026:
+     *   - Pensión a la tarifa del grupo (0,8 %, 3,2 %, 4 % o 4,8 %) en vez del 16 %.
+     *   - Salud obligatoria al 12,5 %, con los mismos días e IBC que pensión
+     *     (eo.val.2.066, 2.244.1 y 2.198.1). La tarifa cero la rechaza (2.058).
+     *   - Sin ARL, sin caja y sin parafiscales: todo en cero, horas incluidas.
+     *   - Departamento y municipio reales, no el 94/001 de quien no tiene caja.
+     *
+     * Con el plan Solo AFP la salud queda en cero y Enlace rechaza el registro;
+     * se deja así por decisión del negocio (ver TipoModalidad).
+     *
+     * Enlace además valida que la persona esté en el reporte de beneficiarios
+     * del Fondo (eo.val.2.504): quien no esté inscrito no liquida.
+     */
+    private static function ajustarFondoSolidaridad(array $res, object $p, int $ibcProp): array
+    {
+        $pctPension = TipoModalidad::pctPensionFondoSolidaridad($p->grupo_fondo_solidaridad ?? null) / 100;
+        $conSalud   = $res['codEpsPila'] !== '';
+
+        $res['tipoCotizante']     = 33;
+        $res['subtipoCotizante']  = 0;
+        $res['exonerado']         = 'N';
+        $res['tipoSalarioAplica'] = false;
+
+        if ($res['tienePension']) {
+            $res['vAfp']             = self::roundPila($ibcProp * $pctPension);
+            $res['tarifaAfpDecimal'] = $pctPension;
+            // Los archivos escriben la tarifa de pensión fija en 0.16000. Esta
+            // clave solo existe en el 33, para no tocar lo que ya liquida bien.
+            $res['tarifaAfpStr']     = sprintf('%.5f', $pctPension);
+        }
+
+        $res['ibcEps']       = $conSalud ? $ibcProp : 0;
+        $res['diasSalud']    = $conSalud ? $res['dias'] : 0;
+        $res['vEps']         = $conSalud ? self::roundPila($ibcProp * 0.125) : 0;
+        $res['tarifaEpsStr'] = $conSalud ? '0.12500' : '0.00000';
+
+        $res['ibcArl']           = 0;
+        $res['vArl']             = 0;
+        $res['diasArl']          = 0;
+        $res['tarifaArlDecimal'] = 0.0;
+        $res['tarifaArlStr']     = '0.00000';
+
+        $res['codCcfPila']     = '';
+        $res['ibcCcf']         = 0;
+        $res['vCcf']           = 0;
+        $res['diasCcf']        = 0;
+        $res['tarifaCcfStr']   = '0.00000';
+        $res['horasLaboradas'] = 0;
+
+        $res['tarifaSenaStr'] = '0.00000';
+        $res['tarifaIcbfStr'] = '0.00000';
+        $res['ibcOtros']      = 0;
+        $res['vSena']         = 0;
+        $res['vIcbf']         = 0;
+
+        $res['depCod'] = str_pad((string) ($p->dep_id ?? $p->cod_departamento ?? ''), 2, '0', STR_PAD_LEFT);
+        $res['munCod'] = str_pad((string) ($p->mun_id ?? $p->cod_municipio ?? ''), 3, '0', STR_PAD_LEFT);
 
         return $res;
     }

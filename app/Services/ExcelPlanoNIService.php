@@ -299,6 +299,8 @@ class ExcelPlanoNIService
                 DB::raw('ISNULL(p.dias_tp_afp, ISNULL(tm.dias_afp, 30)) AS dias_afp'),
                 DB::raw('ISNULL(p.dias_tp_caja, ISNULL(p.dias_tp_afp, ISNULL(tm.dias_caja, 30))) AS dias_caja'),
                 'ctr.porcentaje_caja',
+                // Fondo de Solidaridad: el grupo decide la tarifa de pensión del cotizante 33.
+                DB::raw('ISNULL(p.grupo_fondo_solidaridad, ctr.grupo_fondo_solidaridad) AS grupo_fondo_solidaridad'),
                 DB::raw('emp.exonerado_parafiscales AS exonerado_parafiscales'),
                 DB::raw('d.id                          AS cod_departamento'),
                 DB::raw('CAST(c.Municipio AS INT)       AS cod_municipio'),
@@ -526,7 +528,7 @@ class ExcelPlanoNIService
             /* 43 */ $c['ibcEps']      ?: null,                        // IBC EPS
             /* 44 */ $c['ibcArl'],                                     // IBC ARL
             /* 45 */ $c['ibcCcf']      ?: null,                        // IBC CCF
-            /* 46 */ $c['tienePension'] ? 0.16 : 0,                    // Tarifa AFP (0 si sin pensión)
+            /* 46 */ $c['tienePension'] ? (float) ($c['tarifaAfpStr'] ?? 0.16) : 0, // Tarifa AFP (0 si sin pensión; el 33 trae la suya)
             /* 47 */ $c['tienePension'] ? ($c['vAfp'] ?: null) : 0,    // Cotización AFP (0 si sin pensión)
             /* 48 */ 0,                                                // AVP afiliado
             /* 49 */ 0,                                                // AVP aportante

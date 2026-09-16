@@ -147,6 +147,8 @@ class ExcelAsopagosService
                 DB::raw('ISNULL(p.dias_tp_afp, ISNULL(tm.dias_afp, 30)) AS dias_afp'),
                 DB::raw('ISNULL(p.dias_tp_caja, ISNULL(p.dias_tp_afp, ISNULL(tm.dias_caja, 30))) AS dias_caja'),
                 'ctr.porcentaje_caja',
+                // Fondo de Solidaridad: el grupo decide la tarifa de pensión del cotizante 33.
+                DB::raw('ISNULL(p.grupo_fondo_solidaridad, ctr.grupo_fondo_solidaridad) AS grupo_fondo_solidaridad'),
                 DB::raw('emp.exonerado_parafiscales AS exonerado_parafiscales'),
             ]);
 
@@ -255,7 +257,7 @@ class ExcelAsopagosService
             24 => 0,                                                                          // UPC adicional
             25 => null,                                                                       // Tipo de identificación del cotizante titular UPC
             26 => null,                                                                       // Número de identificación del cotizante titular UPC
-            27 => $c['tienePension'] ? '0.16' : '0.00',                                       // Tarifa pensión
+            27 => $c['tienePension'] ? rtrim(rtrim($c['tarifaAfpStr'] ?? '0.16', '0'), '.') : '0.00', // Tarifa pensión (el cotizante 33 trae la suya)
             28 => $c['tipoCotizante'] === 23 ? '0.00' : ($c['tipoCotizante'] === 2 ? '0.125' : '0.04'), // Tarifa salud
             29 => '0.00',                                                                     // Tarifa Sena
             30 => '0.00',                                                                     // Tarifa ICBF
