@@ -468,7 +468,9 @@
       // Radicados indexados por tipo para mostrar estado en cada entidad
       $rPT = $radicadosPorTipo ?? collect();
       // Helper: badge HTML según estado del radicado
-      $badgeEstado = function(?object $rad): string {
+      // $conNumero = false deja el número del radicado solo en el tooltip: en la
+      // EPS es un código largo (SAT 014CC…) que estiraba el campo.
+      $badgeEstado = function(?object $rad, bool $conNumero = true): string {
         if (!$rad) return '';
         $cfg = [
           'pendiente' => ['bg'=>'#fef3c7','txt'=>'#92400e','icono'=>'⏳','label'=>'Pendiente'],
@@ -483,8 +485,9 @@
           $c = ['bg'=>'#15803d','txt'=>'#fff','icono'=>'✔✔','label'=>'Confirmado '.(\App\Models\Radicado::CONFIRMADORES[$rad->confirmado_por] ?? '')];
         }
         $num = $rad->numero_radicado ? $rad->numero_radicado : '';
-        return '<span class="chip-ss" style="background:'.$c['bg'].';color:'.$c['txt'].';">'
-          .$c['icono'].' '.$c['label'].($num ? ' · '.$num : '').'</span>';
+        return '<span class="chip-ss" style="background:'.$c['bg'].';color:'.$c['txt'].';"'
+          .($num && ! $conNumero ? ' title="'.e($num).'"' : '').'>'
+          .$c['icono'].' '.$c['label'].($num && $conNumero ? ' · '.e($num) : '').'</span>';
       };
     @endphp
     <div style="display:grid;grid-template-columns:1.3fr 1.3fr 1.4fr 60px 1fr;gap:0.5rem;align-items:start;">
@@ -498,7 +501,7 @@
         </select>
         <div id="badge-area-eps" data-saved="{{ ($esEdicion && $contrato->eps_id) ? '1' : '0' }}">
         @if($esEdicion && $contrato->eps_id && collect($epsList)->contains('id', (int)$contrato->eps_id))
-        {!! $badgeEstado($rPT->get('eps')) !!}
+        {!! $badgeEstado($rPT->get('eps'), false) !!}
         @endif
         </div>
       </div>
