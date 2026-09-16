@@ -231,7 +231,20 @@ class AfiliacionController extends Controller
             $alidosDisponibles = $this->alidosParaBrynex($user);
         }
 
+        // Razones sociales con las que se puede conciliar: las del aliado
+        // activo que son empresas de verdad. Se excluyen las independientes y
+        // las que no tienen un NIT real —la comodín con nit "2"—, porque contra
+        // esas no hay portal al que entrar ni empresa que cruzar.
+        $razonesConciliar = DB::table('razones_sociales')
+            ->where('aliado_id', $alidoId)
+            ->where('es_independiente', false)
+            ->whereNotNull('nit')
+            ->whereRaw('LEN(nit) >= 8')
+            ->orderBy('razon_social')
+            ->get(['id', 'razon_social', 'nit']);
+
         return view('admin.afiliaciones.index', compact(
+            'razonesConciliar',
             'contratos', 'mes', 'anio', 'encId', 'encargados',
             'alidoId', 'alidosDisponibles', 'user',
             'rsId', 'tipoModId', 'epsF', 'arlF', 'cajaF', 'pensionF', 'empresaF', 'estadoRad', 'estadoCont',

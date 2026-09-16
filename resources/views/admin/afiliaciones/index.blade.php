@@ -1045,8 +1045,24 @@ function sortClass($col, $currSort, $currDir) {
 <div class="modal-bg" id="modalConciliacionEps">
     <div class="modal-box" style="max-width:860px;">
         <div class="modal-title">
-            <span>🩺 Conciliar radicados de EPS con el portal</span>
+            <span id="ceps-titulo">🩺 Conciliar radicados con el portal</span>
             <button class="modal-close" onclick="cerrarModal('modalConciliacionEps')">✕</button>
+        </div>
+
+        <div style="margin-bottom:0.7rem;">
+            <label for="ceps-razon" style="display:block;font-size:0.72rem;color:#475569;font-weight:700;margin-bottom:0.2rem;">
+                Razón social a validar ({{ $alidoActivo->nombre ?? 'aliado activo' }})
+            </label>
+            <select id="ceps-razon" onchange="cambiarRazonConciliacion()"
+                style="width:100%;border:1px solid #cbd5e1;border-radius:7px;padding:0.32rem 0.5rem;font-size:0.8rem;font-family:inherit;">
+                <option value="">— Todas las que encuentre el portal —</option>
+                @foreach($razonesConciliar as $rs)
+                    <option value="{{ $rs->nit }}" data-nombre="{{ $rs->razon_social }}">{{ $rs->razon_social }} — NIT {{ $rs->nit }}</option>
+                @endforeach
+            </select>
+            <div id="ceps-razon-aviso" style="font-size:0.7rem;color:#64748b;margin-top:0.25rem;">
+                Escoge con cuál empresa vas a conciliar: BryNex comprueba que la sesión abierta en el portal sea esa.
+            </div>
         </div>
 
         <div style="display:flex;gap:0.4rem;margin-bottom:0.7rem;">
@@ -2584,6 +2600,8 @@ function elegirEntidadConciliacion(entidad) {
     document.querySelectorAll('.ceps-tab').forEach(b => {
         const activo = b.dataset.entidad === entidad;
         b.style.background = activo ? ({ sura: '#0033a0', nueva_eps: '#be123c', salud_total: '#15803d', sanitas: '#0e7490', caja_comfenalco: '#047857', caja_comfandi: '#1e3a8a' }[entidad] || '#334155') : '#fff';
+        const t = document.getElementById('ceps-titulo');
+        if (t) t.textContent = (['caja_comfenalco', 'caja_comfandi'].includes(entidad) ? '🏢 Conciliar radicados de caja con ' : '🩺 Conciliar radicados de EPS con ') + (CEPS_NOMBRES[entidad] || 'el portal');
         b.style.color = activo ? '#fff' : '#334155';
     });
     Object.keys(CEPS_NOMBRES).forEach(k => {
@@ -2735,6 +2753,7 @@ async function conciliarCajaComfenalco(simular) {
     try {
         const rep = await cajaExt('ccfTrabajadores', {}, 150);
         if (!rep.ok) throw new Error(rep.error || 'No se pudo bajar la lista del portal.');
+        if (!coincideRazon(rep.nit, rep.empresa)) { estado.innerHTML = 'Cancelado: la empresa del portal no es la que escogiste.'; return; }
         estado.innerHTML = `⏳ Cruzando ${rep.filas.length} afiliados de ${rep.empresa} con BryNex...`;
         const res = await fetch(CAJA_URL_CONCILIAR, {
             method: 'POST',
@@ -2752,6 +2771,43 @@ async function conciliarCajaComfenalco(simular) {
     } finally {
         document.getElementById('ceps-acciones').style.display = 'flex';
     }
+}
+
+// ── Razón social elegida para conciliar ───────────────────────────────
+// El portal manda la empresa de su sesión; esto sirve para que BryNex avise
+// cuando no es la que se quería validar. Sin esta comprobación se puede correr
+// una empresa creyendo que se corrió otra, que ya nos pasó.
+function razonConciliacion() {
+    const s = document.getElementById('ceps-razon');
+    if (!s || !s.value) return null;
+    return { nit: s.value, nombre: s.selectedOptions[0]?.dataset.nombre || '' };
+}
+
+/** Solo dígitos, y sin el dígito de verificación que algunos portales pegan. */
+function cepsNitCorto(nit) {
+    const n = String(nit || '').split('-')[0].replace(/\D/g, '');
+    return n.length >= 10 ? n.slice(0, -1) : n;
+}
+
+/**
+ * Comprueba que la empresa abierta en el portal sea la elegida.
+ * Devuelve true si se puede seguir (coinciden, o el usuario acepta seguir igual).
+ */
+function coincideRazon(nitDelPortal, empresaDelPortal) {
+    const r = razonConciliacion();
+    if (!r || !nitDelPortal) return true;
+    if (cepsNitCorto(nitDelPortal) === cepsNitCorto(r.nit)) return true;
+    return confirm(`Escogiste ${r.nombre} (NIT ${r.nit}) pero en el portal está abierta `
+        + `${empresaDelPortal || 'otra empresa'} (NIT ${nitDelPortal}).\n\n`
+        + 'Se conciliaría la del portal. ¿Sigues igual?');
+}
+
+function cambiarRazonConciliacion() {
+    const r = razonConciliacion();
+    const aviso = document.getElementById('ceps-razon-aviso');
+    aviso.innerHTML = r
+        ? `Se validará <strong>${r.nombre}</strong> (NIT ${r.nit}). BryNex comprueba que sea la abierta en el portal.`
+        : 'Escoge con cuál empresa vas a conciliar: BryNex comprueba que la sesión abierta en el portal sea esa.';
 }
 
 // ── Caja Comfandi: conciliación con la extensión BryNex Portales ──
@@ -2796,6 +2852,12 @@ async function conciliarCajaComfandi(simular) {
         const rep = await comfandiExt('cfdTrabajadores', {}, 300);
 
         if (!lista.ok && !rep.ok) throw new Error(lista.error || rep.error || 'No se pudo bajar la información del portal.');
+
+        const nitPortal = lista.ok ? lista.nit : rep.nit;
+        if (!coincideRazon(nitPortal, lista.empresa || rep.empresa)) {
+            estado.innerHTML = 'Cancelado: la empresa del portal no es la que escogiste.';
+            return;
+        }
 
         const cuerpo = {
             nit: lista.ok ? lista.nit : rep.nit,
