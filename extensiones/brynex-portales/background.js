@@ -1547,11 +1547,33 @@ function pCfdResultado() {
  * primera fila deja de cambiar. `columnas` dice qué celdas llevarse y en qué
  * orden; el resto se descarta (la de "Detalle" es un icono).
  */
-async function cfdTabla(tab, columnas, limitePaginas = 60) {
-  // Lee la página que esté a la vista. `distintaDe` sirve para esperar a que la
-  // tabla se refresque de verdad tras pulsar Siguiente: el portal tarda en
-  // repintar y, con una espera fija, se volvía a leer la misma página, la
-  // huella coincidía y el recorrido se cortaba en la primera.
+async function cfdTabla(tab, columnas, limitePaginas = 80) {
+  // 50 por página en vez de 5: menos vueltas y menos ocasiones de perder una.
+  await ejecutar(tab, () => {
+    const o = [...document.querySelectorAll('option,li,div,span,button')]
+      .filter(e => e.children.length === 0)
+      .find(e => /Visualizando\s*50/i.test(e.innerText || ''));
+    if (!o) return false;
+    if (o.tagName === 'OPTION' && o.parentElement?.tagName === 'SELECT') {
+      const s = o.parentElement;
+      Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set.call(s, o.value);
+      s.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    }
+    ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(t => o.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+    return true;
+  }).catch(() => false);
+  await esperar(2500);
+
+  // Cuántas filas y páginas dice el portal que hay: es la única forma de saber
+  // si al final se leyó todo o se perdió una página por el camino.
+  const esperado = await ejecutar(tab, () => {
+    const t = document.body.innerText || '';
+    const reg = t.match(/N[uú]mero de registros\s*(\d+)/i);
+    const pag = t.match(/Pagina\s*(\d+)?\s*de\s*(\d+)/i);
+    return { registros: reg ? +reg[1] : null, paginas: pag ? +pag[2] : null };
+  }).catch(() => ({ registros: null, paginas: null }));
+
   const leer = (distintaDe) => esperarQue(tab, (cols, previa) => {
     const t = document.querySelector('table');
     if (!t) return null;
@@ -1564,16 +1586,20 @@ async function cfdTabla(tab, columnas, limitePaginas = 60) {
     const huella = JSON.stringify(datos[0] || []);
     if (previa !== null && huella === previa) return null;   // todavía es la anterior
     return { datos, huella };
-  }, [columnas, distintaDe ?? null], distintaDe ? 15000 : 30000);
+  }, [columnas, distintaDe ?? null], distintaDe ? 20000 : 30000);
 
   const filas = [];
   let huella = null;
+  let paginas = 0;
 
   for (let i = 0; i < limitePaginas; i++) {
     const pagina = await leer(huella);
     if (!pagina) break;                              // no cambió: era la última
     huella = pagina.huella;
+    paginas++;
     filas.push(...pagina.datos);
+
+    if (esperado.registros && filas.length >= esperado.registros) break;
 
     const hay = await ejecutar(tab, () => {
       const b = [...document.querySelectorAll('button')].find(x => /^\s*Siguiente\s*$/i.test(x.innerText) && !x.disabled);
@@ -1584,7 +1610,13 @@ async function cfdTabla(tab, columnas, limitePaginas = 60) {
     if (!hay) break;
   }
 
-  return filas;
+  // Completa solo si se leyeron todas las filas (o todas las páginas) que el
+  // portal declara. Sin esa comprobación, una tabla a medias hace creer que
+  // media empresa no está afiliada.
+  const completa = esperado.registros ? filas.length >= esperado.registros
+    : (esperado.paginas ? paginas >= esperado.paginas : true);
+
+  return { filas, completa, esperadas: esperado.registros ?? null };
 }
 
 /**
@@ -1665,7 +1697,15 @@ async function cfdTrabajadores(pestana) {
   // Listado de trabajadores: [nombre, "CC 123", ingreso empresa, ingreso caja]
   // se reordena a [documento, nombre, ingreso empresa, ingreso caja].
   if (!await cfdIr(tab, 'workers')) return { ok: false, error: 'No se pudo abrir el Listado de trabajadores en el portal.' };
-  const filas = await cfdTabla(tab, [2, 1, 3, 4]);
+  const trabajadores = await cfdTabla(tab, [2, 1, 3, 4]);
+  if (!trabajadores.completa) {
+    return {
+      ok: false,
+      error: `Solo se pudieron leer ${trabajadores.filas.length} de ${trabajadores.esperadas ?? '?'} trabajadores del listado. `
+        + 'Con la lista a medias media empresa parecería no estar afiliada, así que no se concilió nada. Vuelve a intentar.',
+    };
+  }
+  const filas = trabajadores.filas;
 
   // Radicados: la tabla no carga sola, hay que pulsar Buscar. Si esto falla y
   // se devuelve una lista vacía, BryNex da por no radicado a quien sí lo está y
@@ -1687,7 +1727,8 @@ async function cfdTrabajadores(pestana) {
     return /No hay datos/i.test(document.body.innerText || '') ? 'sin datos' : null;
   }, [], 40000);
 
-  const radicados = respondio === 'con datos' ? await cfdTabla(tab, [0, 2, 3, 4, 5, 6]) : [];
+  const tablaRad = respondio === 'con datos' ? await cfdTabla(tab, [0, 2, 3, 4, 5, 6]) : { filas: [], completa: respondio === 'sin datos' };
+  const radicados = tablaRad.filas;
 
   return {
     ok: true,
@@ -1695,7 +1736,8 @@ async function cfdTrabajadores(pestana) {
     empresa: empresa.empresa,
     filas,
     radicados,
-    // false = no se pudo leer la pestaña; distinto de "la leí y está vacía".
-    radicadosOk: !!respondio,
+    // false = no se pudo leer la pestaña entera; distinto de "la leí y está
+    // vacía". Con la lista incompleta, quien no aparezca podría estar radicado.
+    radicadosOk: !!respondio && tablaRad.completa,
   };
 }
