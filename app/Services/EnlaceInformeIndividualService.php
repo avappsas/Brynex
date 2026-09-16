@@ -53,6 +53,20 @@ class EnlaceInformeIndividualService
     private const ESPERAS_MAXIMAS = 25;
 
     /**
+     * Sesiones abiertas en esta instancia, por operador + credencial + aportante.
+     * Un envío masivo manda la planilla de toda una empresa: con una sesión por
+     * empresa basta, en vez de un login por persona.
+     */
+    private array $sesiones = [];
+
+    /**
+     * Sesiones que no se pudieron abrir (credencial mala, NIT sin permisos,
+     * portal caído). No se reintentan en la misma corrida: un portal caído no
+     * debe costar 40 segundos por cada persona de un lote de cien.
+     */
+    private array $sesionesFallidas = [];
+
+    /**
      * PDF del operador para el cotizante del plano, del disco si ya se bajó.
      *
      * Con `$operadorPlanillaId` se intenta solo ese operador; sin él, cada
@@ -69,7 +83,13 @@ class EnlaceInformeIndividualService
         $ruta = self::rutaEnDisco($plano);
 
         if (Storage::disk('local')->exists($ruta)) {
-            return ['success' => true, 'pdf' => Storage::disk('local')->get($ruta), 'origen' => 'disco'];
+            $pdf = Storage::disk('local')->get($ruta);
+
+            if ($operadorPlanillaId) {
+                $this->registrarPago($plano, $operadorPlanillaId, $pdf);
+            }
+
+            return ['success' => true, 'pdf' => $pdf, 'origen' => 'disco'];
         }
 
         $operadores = DB::table('operadores_planilla')
@@ -96,6 +116,7 @@ class EnlaceInformeIndividualService
             try {
                 $pdf = $this->descargar($plano, $operador->codigo, $cred);
                 Storage::disk('local')->put($ruta, $pdf);
+                $this->registrarPago($plano, (int) $operador->id, $pdf);
 
                 return ['success' => true, 'pdf' => $pdf, 'origen' => 'operador'];
             } catch (Throwable $e) {
@@ -110,6 +131,142 @@ class EnlaceInformeIndividualService
         ]);
 
         return ['success' => false, 'message' => implode(' ', $mensajes)];
+    }
+
+    /**
+     * El soporte que se le entrega al cliente: el del operador si se puede, y si
+     * no, el que arma BryNex. Es lo que deben usar la descarga, el envío masivo y
+     * el asistente, para que los tres entreguen lo mismo.
+     *
+     * @return array{pdf: string, origen: string}
+     */
+    public function soporte(Plano $plano, ?int $operadorPlanillaId = null): array
+    {
+        $delOperador = $this->obtener($plano, $operadorPlanillaId);
+
+        if ($delOperador['success']) {
+            return ['pdf' => $delOperador['pdf'], 'origen' => $delOperador['origen']];
+        }
+
+        return [
+            'pdf'    => app(PlanillaFormularioService::class)->generar($plano, $operadorPlanillaId),
+            'origen' => 'brynex',
+        ];
+    }
+
+    /**
+     * Guarda la fecha y hora exactas del pago, una vez por planilla. Solo el
+     * informe del operador la trae; el API no, y la lista de planillas pagadas
+     * del portal solo da el día.
+     */
+    public function registrarPago(Plano $plano, int $operadorPlanillaId, string $pdf): void
+    {
+        try {
+            $existe = DB::table('planillas_pago_operador')
+                ->where('aliado_id', $plano->aliado_id)
+                ->where('numero_planilla', (string) $plano->numero_planilla)
+                ->exists();
+
+            if ($existe) {
+                return;
+            }
+
+            $informe = self::leerInforme($pdf);
+
+            if (empty($informe['fecha_pago']) || ($informe['numero_planilla'] ?? null) !== (string) $plano->numero_planilla) {
+                return;
+            }
+
+            DB::table('planillas_pago_operador')->insert([
+                'aliado_id'            => $plano->aliado_id,
+                'razon_social_id'      => $plano->razon_social_id,
+                'operador_planilla_id' => $operadorPlanillaId,
+                'numero_planilla'      => (string) $plano->numero_planilla,
+                'fecha_pago'           => $informe['fecha_pago'],
+                'tipo_planilla'        => $informe['tipo_planilla'],
+                'periodo_cotizacion'   => $informe['periodo_cotizacion'],
+                'periodo_servicio'     => $informe['periodo_servicio'],
+                'created_at'           => now(),
+                'updated_at'           => now(),
+            ]);
+        } catch (Throwable $e) {
+            // Guardar la fecha es un extra: nunca debe impedir entregar el PDF.
+            Log::warning('Informe individual: no se pudo guardar la fecha de pago', [
+                'planilla' => $plano->numero_planilla,
+                'error'    => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Lee el encabezado del informe individual: número de planilla, tipo,
+     * períodos y fecha de pago.
+     *
+     * El PDF lo genera JasperReports con Helvetica, así que el texto va plano
+     * dentro de streams comprimidos: cada texto es `1 0 0 1 x y Tm ... (texto)Tj`.
+     * Una etiqueta y su valor están en la misma línea (misma y), el valor a la
+     * derecha; así se emparejan, sin depender del orden en que vienen.
+     *
+     * @return array{numero_planilla: ?string, tipo_planilla: ?string, periodo_cotizacion: ?string, periodo_servicio: ?string, fecha_pago: ?string}
+     */
+    public static function leerInforme(string $pdf): array
+    {
+        $textos = [];
+
+        if (preg_match_all('/stream\r?\n(.*?)\r?\nendstream/s', $pdf, $streams)) {
+            foreach ($streams[1] as $crudo) {
+                $contenido = @gzuncompress($crudo);
+                if ($contenido === false) {
+                    continue; // imágenes y demás
+                }
+
+                preg_match_all(
+                    '/1 0 0 1 ([\d.]+) ([\d.]+) Tm\s*\/F\d+ [\d.]+ Tf\s*[\d. ]*rg\s*\(((?:\\\\.|[^\\\\)])*)\)Tj/',
+                    $contenido,
+                    $m,
+                    PREG_SET_ORDER
+                );
+
+                foreach ($m as [, $x, $y, $texto]) {
+                    $texto = trim(mb_convert_encoding(stripcslashes($texto), 'UTF-8', 'Windows-1252'));
+                    if ($texto !== '') {
+                        $textos[] = ['x' => (float) $x, 'y' => round((float) $y), 'texto' => $texto];
+                    }
+                }
+            }
+        }
+
+        $valorDe = function (string $etiqueta) use ($textos): ?string {
+            foreach ($textos as $t) {
+                if (mb_strtolower($t['texto']) !== mb_strtolower($etiqueta)) {
+                    continue;
+                }
+                $derecha = array_filter($textos, fn ($o) => abs($o['y'] - $t['y']) <= 1 && $o['x'] > $t['x']);
+                usort($derecha, fn ($a, $b) => $a['x'] <=> $b['x']);
+
+                return $derecha ? reset($derecha)['texto'] : null;
+            }
+
+            return null;
+        };
+
+        $fechaPago = null;
+        foreach ($textos as $t) {
+            if (preg_match('/^PAGADA\s+(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/', $t['texto'], $f)) {
+                $fechaPago = $f[1];
+                break;
+            }
+        }
+
+        $soloDigitos = fn ($v) => ($v = preg_replace('/\D/', '', (string) $v)) === '' ? null : $v;
+
+        return [
+            'numero_planilla'    => $soloDigitos($valorDe('Número Planilla')),
+            'tipo_planilla'      => $valorDe('Tipo Planilla'),
+            'periodo_cotizacion' => $soloDigitos($valorDe('Periodo Cotización')),
+            'periodo_servicio'   => $soloDigitos($valorDe('Periodo Servicio')),
+            'fecha_pago'         => $fechaPago,
+        ];
     }
 
     /** Dónde queda el PDF de un cotizante: una carpeta por aliado y planilla. */
@@ -132,21 +289,49 @@ class EnlaceInformeIndividualService
         $host = SuaporteApiService::hostDeOperador($codigoOperador);
         $pagina = $host.self::PAGINA;
 
-        $http = new Client([
-            'cookies'         => new CookieJar(),
-            'timeout'         => 40,
-            'connect_timeout' => 10,
-            'http_errors'     => false,
-            'headers'         => ['User-Agent' => 'Mozilla/5.0'],
-        ]);
+        [$tipoAportante, $numeroAportante] = $this->aportanteDe($plano);
+        $llave = "{$codigoOperador}|{$cred->id}|{$tipoAportante}{$numeroAportante}";
 
-        $this->abrirSesion($http, $host, $codigoOperador, $cred, $plano);
+        if (isset($this->sesionesFallidas[$llave])) {
+            throw new RuntimeException($this->sesionesFallidas[$llave]);
+        }
+
+        $reusada = isset($this->sesiones[$llave]);
+
+        if (! $reusada) {
+            $http = new Client([
+                'cookies'         => new CookieJar(),
+                'timeout'         => 40,
+                'connect_timeout' => 10,
+                'http_errors'     => false,
+                'headers'         => ['User-Agent' => 'Mozilla/5.0'],
+            ]);
+
+            try {
+                $this->abrirSesion($http, $host, $codigoOperador, $cred, $tipoAportante, $numeroAportante);
+            } catch (Throwable $e) {
+                $this->sesionesFallidas[$llave] = $e->getMessage();
+                throw $e;
+            }
+
+            $this->sesiones[$llave] = $http;
+        }
+
+        $http = $this->sesiones[$llave];
 
         // 2. La pantalla: de aquí salen el ViewState y los nombres que genera JSF.
         $html = (string) $http->get($pagina)->getBody();
         $xpath = $this->xpath($html);
 
         if (! $xpath->query('//*[@id="btnGenerarComprobante"]')->length) {
+            // La sesión del operador dura unos minutos: si la que se reusaba ya
+            // venció, se abre otra una sola vez.
+            if ($reusada) {
+                unset($this->sesiones[$llave]);
+
+                return $this->descargar($plano, $codigoOperador, $cred);
+            }
+
             throw new RuntimeException('el portal no abrió el informe individual (sesión no reconocida).');
         }
 
@@ -279,7 +464,7 @@ class EnlaceInformeIndividualService
     }
 
     /** Login, aportante y autorización. El mismo jar de cookies sirve después para el portal. */
-    private function abrirSesion(Client $http, string $host, string $codigoOperador, OperadorCredencial $cred, Plano $plano): void
+    private function abrirSesion(Client $http, string $host, string $codigoOperador, OperadorCredencial $cred, string $tipoAportante, string $numeroAportante): void
     {
         $cifrador = new SuaporteApiService(['operador' => $codigoOperador]);
         $contrasena = $cifrador->cifrarDato((string) $cred->contrasena)
@@ -287,7 +472,7 @@ class EnlaceInformeIndividualService
 
         $login = $http->post("{$host}/auth/login", [
             'headers' => ['clave-secreta' => $cred->clave_secreta],
-            'json'    => ['usuario' => $cred->usuario, 'contrasena' => $contrasena],
+            'json'    => ['usuario' => SuaporteApiService::usuarioPortal($cred->usuario), 'contrasena' => $contrasena],
         ]);
 
         if ($login->getStatusCode() !== 200 || ! $login->getHeaderLine('token')) {
@@ -297,16 +482,6 @@ class EnlaceInformeIndividualService
         $headers = [];
         foreach (['token', 'refresh-token', 'refresh-token-ttl', 'refresh-token-date', 'faces'] as $nombre) {
             $headers[$nombre] = $login->getHeaderLine($nombre);
-        }
-
-        // El aportante de un independiente es la persona; el de una empresa, su NIT.
-        $rs = $plano->razonSocial;
-        [$tipoAportante, $numeroAportante] = ($rs?->es_independiente)
-            ? [strtoupper(trim($plano->tipo_doc ?: 'CC')), (string) $plano->no_identifi]
-            : ['NI', preg_replace('/\D/', '', (string) $rs?->nit)];
-
-        if ($numeroAportante === '') {
-            throw new RuntimeException('la razón social no tiene NIT.');
         }
 
         $aportante = $http->get("{$host}/api/gestion/aportante/{$tipoAportante}/{$numeroAportante}", ['headers' => $headers]);
@@ -324,6 +499,22 @@ class EnlaceInformeIndividualService
         if ($autorizacion->getStatusCode() !== 200) {
             throw new RuntimeException("el usuario no tiene permisos sobre {$tipoAportante} {$numeroAportante}.");
         }
+    }
+
+    /** El aportante de un independiente es la persona; el de una empresa, su NIT. */
+    private function aportanteDe(Plano $plano): array
+    {
+        $rs = $plano->razonSocial;
+
+        [$tipo, $numero] = ($rs?->es_independiente)
+            ? [strtoupper(trim($plano->tipo_doc ?: 'CC')), (string) $plano->no_identifi]
+            : ['NI', preg_replace('/\D/', '', (string) $rs?->nit)];
+
+        if ($numero === '') {
+            throw new RuntimeException('la razón social no tiene NIT.');
+        }
+
+        return [$tipo, $numero];
     }
 
     /** Petición AJAX de JSF (mojarra.ab). */

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Plano;
 use App\Models\OperadorPlanillaTemplate;
+use Illuminate\Support\Facades\DB;
 use setasign\Fpdi\Fpdi;
 
 class PlanillaFormularioService
@@ -89,25 +90,31 @@ class PlanillaFormularioService
      */
     public function ensamblarDatos(Plano $plano): array
     {
-        $c = PilaCotizanteCalculator::calcular($plano);
+        $c = PilaCotizanteCalculator::calcular($this->conDatosDeCalculo($plano));
 
         $esPlanillaY = ($plano->tipo_modalidad_id == 8);
 
-        $nombreAfp = $esPlanillaY ? 'NINGUNA AFP' : ($plano->nombre_afp ?: 'PORVENIR');
-        $nombreEps = $esPlanillaY ? 'NINGUNA EPS' : ($plano->nombre_eps ?: 'NUEVA EPS');
-        $nombreArl = $plano->nombre_arl ?: 'ARL SURA';
+        // Sin entidad se dice "NINGUNA", como el operador; con entidad pero sin
+        // nombre guardado, en blanco. Antes caían a PORVENIR, NUEVA EPS y SURA:
+        // un tiempo parcial sin salud salía con una EPS que nunca tuvo.
+        $sinAfp = $esPlanillaY || $c['codAfpPila'] === '';
+        $sinEps = $esPlanillaY || ($c['codEpsPila'] === '' && (int) $c['vEps'] === 0);
+
+        $nombreAfp = $sinAfp ? 'NINGUNA AFP' : (string) $plano->nombre_afp;
+        $nombreEps = $sinEps ? 'NINGUNA EPS' : (string) $plano->nombre_eps;
+        $nombreArl = (string) $plano->nombre_arl;
 
         $esIndependiente = (bool)($plano->razonSocial?->es_independiente ?? false);
         $sinCajaCcf = ($c['codCcfPila'] == 'CCF68');
 
-        $nombreCaja = $esPlanillaY ? 'NINGUNA CCF' : ($plano->nombre_caja ?: ($c['sinCaja'] ? 'COMCAJA' : 'COMCAJA'));
+        $nombreCaja = $esPlanillaY ? 'NINGUNA CCF' : ($plano->nombre_caja ?: ($sinCajaCcf ? 'COMCAJA' : ''));
         if ($esIndependiente && $sinCajaCcf && !$esPlanillaY) {
             $nombreCaja = 'NINGUNA CCF';
         }
 
         // Resolver el código de PILA real de AFP si es que viene como NIT
         $codAfpPilaReal = $c['codAfpPila'];
-        if ($esPlanillaY) {
+        if ($sinAfp) {
             $codAfpPilaReal = 'NIN-AF';
         } elseif (!empty($c['codAfpPila'])) {
             $nitAfpLimpio = preg_replace('/[^0-9]/', '', $c['codAfpPila']);
@@ -121,7 +128,7 @@ class PlanillaFormularioService
 
         // Resolver el código de PILA real de EPS si es que viene como NIT
         $codEpsPilaReal = $c['codEpsPila'];
-        if ($esPlanillaY) {
+        if ($sinEps) {
             $codEpsPilaReal = 'NIN-EP';
         } elseif (!empty($c['codEpsPila'])) {
             $nitEpsLimpio = preg_replace('/[^0-9]/', '', $c['codEpsPila']);
@@ -145,8 +152,19 @@ class PlanillaFormularioService
                 ->first();
         }
 
+        // La hora exacta del pago la da el operador (ver EnlaceInformeIndividualService):
+        // el gasto se registra en BryNex antes o después, nunca en el mismo segundo.
+        $pagoOperador = !empty($plano->numero_planilla)
+            ? DB::table('planillas_pago_operador')
+                ->where('aliado_id', $plano->aliado_id)
+                ->where('numero_planilla', $plano->numero_planilla)
+                ->value('fecha_pago')
+            : null;
+
         $fechaPagoParaCarbon = null;
-        if ($gasto) {
+        if ($pagoOperador) {
+            $fechaPagoParaCarbon = $pagoOperador;
+        } elseif ($gasto) {
             $fechaPagoParaCarbon = $gasto->created_at ?? $gasto->fecha;
         } elseif ($plano->fecha_pago) {
             $fechaPagoParaCarbon = $plano->fecha_pago;
@@ -232,24 +250,38 @@ class PlanillaFormularioService
 
         $clienteObj = $plano->contrato?->cliente;
 
+        // Ficha de la empresa tal como la tiene el operador (razones-sociales:
+        // sincronizar-operador). Es lo que imprime su soporte, así que manda.
+        // Lo que no esté ni ahí ni en la razón social queda en blanco: antes se
+        // rellenaba con la dirección, el teléfono y el representante de Brygar,
+        // y así salía en los soportes de empresas de otros aliados.
+        $rs = $plano->razonSocial;
+        $ficha = (!$esIndependiente && is_array($rs?->datos_operador)) ? $rs->datos_operador : [];
+        $contactoOp = $ficha['informacionContacto'] ?? [];
+        $repOp = $ficha['representanteLegal'] ?? [];
+        $mayus = fn ($v) => mb_strtoupper(trim((string) $v));
+
         $razonSocialAportante = $esIndependiente
-            ? strtoupper(trim(implode(' ', array_filter([$plano->primer_nombre, $plano->segundo_nombre, $plano->primer_ape, $plano->segundo_ape]))))
-            : strtoupper($plano->razon_social);
+            ? $mayus(implode(' ', array_filter([$plano->primer_nombre, $plano->segundo_nombre, $plano->primer_ape, $plano->segundo_ape])))
+            : $mayus($ficha['razonSocial'] ?? $plano->razon_social);
 
         $nitAportante = $esIndependiente
             ? (($plano->tipo_doc ?? 'CC') . ' ' . ($plano->no_identifi ?? ''))
-            : ('NI ' . ($plano->razonSocial?->nit ?? '901918923'));
+            : trim('NI ' . ($rs?->nit ?? ''));
 
         $direccionAportante = $esIndependiente
-            ? strtoupper($clienteObj?->direccion_vivienda ?? $clienteObj?->direccion_cobro ?? 'CR 39 #43 - 04')
-            : strtoupper($plano->razonSocial?->direccion ?? 'CR 39 #43 - 04');
+            ? $mayus($clienteObj?->direccion_vivienda ?: $clienteObj?->direccion_cobro)
+            : $mayus(($contactoOp['datosDireccion']['direccionCompleta'] ?? null) ?: $rs?->direccion);
 
         $tipoAportante = $esIndependiente ? 'INDEPENDIENTE' : 'EMPLEADOR';
-        $tipoPersona = $esIndependiente ? 'NATURAL' : 'JURÍDICA';
+        $tipoPersona = match ($ficha['tipoPersonaCodigo'] ?? $rs?->tipo_persona ?? ($esIndependiente ? 'N' : 'J')) {
+            'N' => 'NATURAL',
+            default => 'JURÍDICA',
+        };
 
         $telefonoAportante = $esIndependiente
-            ? ($clienteObj?->celular ?? $clienteObj?->telefono ?? '5555555')
-            : ($plano->razonSocial?->telefonos ?? $plano->razonSocial?->telefono ?? '5555555');
+            ? (string) ($clienteObj?->celular ?: $clienteObj?->telefono)
+            : (string) (($contactoOp['numeroTelefono'] ?? null) ?: $rs?->telefonos);
 
         // Cuánta gente lleva la planilla. Contar nuestros propios planos supone
         // que BryNex y el operador tienen exactamente la misma lista, y si
@@ -259,38 +291,52 @@ class PlanillaFormularioService
             ? '1'
             : (string) ($delOperador?->numero_afiliados ?: max(1, $afiliadosCount));
 
-        $representanteVal = $esIndependiente
-            ? ''
-            : strtoupper($plano->razonSocial?->nombre_rep ?? $plano->razonSocial?->representante_legal ?? 'GARCIA VIDAL BRAYAN HUMBERTO');
+        // El operador imprime apellidos y luego nombres.
+        $representanteVal = '';
+        $representanteCedVal = '';
+        if (!$esIndependiente) {
+            if (!empty($repOp['numeroIdentificacion'])) {
+                $representanteVal = $mayus(implode(' ', array_filter([
+                    $repOp['primerApellido'] ?? null, $repOp['segundoApellido'] ?? null,
+                    $repOp['primerNombre'] ?? null, $repOp['segundoNombre'] ?? null,
+                ])));
+                $representanteCedVal = trim(($repOp['tipoIdentificacion'] ?? 'CC') . ' ' . $repOp['numeroIdentificacion']);
+            } else {
+                $representanteVal = $mayus($rs?->nombre_rep);
+                $representanteCedVal = $rs?->cedula_rep ? trim(($rs->rep_tipo_doc ?: 'CC') . ' ' . $rs->cedula_rep) : '';
+            }
+        }
 
-        $representanteCedVal = $esIndependiente
-            ? ''
-            : ('CC ' . ($plano->razonSocial?->cedula_rep ?? $plano->razonSocial?->representante_cedula ?? '1143944458'));
-
-        $exoneradoVal = $esPlanillaY ? 'N' : ($esIndependiente ? 'N' : 'S');
+        // La exoneración la decide la calculadora con los datos de la empresa
+        // del cliente, igual que en el TXT. Antes iba "S" fija para todo empleador.
+        $exoneradoVal = $esPlanillaY ? 'N' : ($c['exonerado'] ?? 'N');
 
         $tipoPlanilla = $esPlanillaY ? 'Y' : ($esIndependiente ? 'I' : 'E');
-        $formaPresentacion = $esIndependiente ? 'ÚNICO' : ($plano->razonSocial?->forma_presentacion ?? 'ÚNICO');
+        $formaPresentacion = $esIndependiente
+            ? 'ÚNICO'
+            : match ((int) ($ficha['formaPresentacionId'] ?? 0) ?: ($rs?->forma_presentacion === 'U' ? 1 : 3)) {
+                1 => 'ÚNICO',
+                default => 'SUCURSAL',
+            };
 
-        $departamentoAportante = $esIndependiente
-            ? strtoupper($clienteObj?->departamento?->nombre ?? 'VALLE DEL CAUCA')
-            : 'VALLE DEL CAUCA';
-
-        $ciudadAportante = $esIndependiente
-            ? strtoupper($clienteObj?->municipio?->nombre ?? 'CALI')
-            : 'CALI';
+        [$ciudadAportante, $departamentoAportante] = $esIndependiente
+            ? [$mayus($clienteObj?->municipio?->nombre), $mayus($clienteObj?->departamento?->nombre)]
+            : $this->municipioDane(($contactoOp['codigoMunicipio'] ?? null) ?: $rs?->cod_municipio);
 
         // Ciudad y ubicación laboral: para dependientes con caja, usar datos del cliente.
         // Solo cuando NO paga caja (sinCajaCcf) se usa el código de Guainía.
         $ciudadAfiliado = ($sinCajaCcf && !$esIndependiente && !$esPlanillaY)
             ? '94001000 - 94'
-            : (($clienteObj?->municipio?->id ?? '76001') . '000 - ' . ($clienteObj?->departamento?->id ?? '76'));
+            : ($clienteObj?->municipio?->id && $clienteObj?->departamento?->id
+                ? $clienteObj->municipio->id . '000 - ' . $clienteObj->departamento->id
+                : '');
 
         // Ubicación laboral: GUAINIA solo para dependientes que NO pagan caja (sinCajaCcf).
         // Independientes, planilla Y y dependientes con caja usan el departamento del cliente.
         $ubicacionLaboralAfiliado = ($sinCajaCcf && !$esIndependiente && !$esPlanillaY)
             ? 'GUAINIA'
-            : strtoupper($clienteObj?->departamento?->nombre ?? 'VALLE DEL CAUCA');
+            // El operador lo imprime sin tildes ni eñes (NARINO, GUAINIA).
+            : strtoupper(\Illuminate\Support\Str::ascii((string) $clienteObj?->departamento?->nombre));
 
         return [
             // Aportante
@@ -343,12 +389,13 @@ class PlanillaFormularioService
             'aporte.dias_eps'     => $c['diasSalud'],
             'aporte.dias_arl'     => $c['diasArl'],
             'aporte.dias_ccf'     => $c['diasCcf'],
-            'aporte.tipo_salario' => 'F',
+            // En blanco donde PILA prohíbe marcarlo (23, 51, 59), igual que el TXT.
+            'aporte.tipo_salario' => $c['tipoSalarioAplica'] ? 'F' : '',
             'aporte.salario'      => '$ ' . number_format($c['ibcFull'], 0, ',', '.'),
             
             // Pensión
             'aporte.afp_codigo'  => $codAfpPilaReal,
-            'aporte.afp_tarifa'  => number_format($c['tarifaAfpDecimal'] * 100, 0) . ' %',
+            'aporte.afp_tarifa'  => ($sinAfp ? '0' : number_format($c['tarifaAfpDecimal'] * 100, 0)) . ' %',
             'aporte.afp_ibc'     => '$ ' . number_format($c['ibcAfp'], 0, ',', '.'),
             'aporte.afp_aporte'  => '$ ' . number_format($c['vAfp'], 0, ',', '.'),
             'aporte.afp_fsp'     => '$ 0',
@@ -356,20 +403,20 @@ class PlanillaFormularioService
 
             // Salud
             'aporte.eps_codigo'  => $codEpsPilaReal,
-            'aporte.eps_tarifa'  => number_format(floatval($c['tarifaEpsStr']) * 100, 0) . ' %',
-            'aporte.eps_ibc'     => '$ ' . number_format($c['ibcEps'], 0, ',', '.'),
+            'aporte.eps_tarifa'  => ($sinEps ? '0' : number_format(floatval($c['tarifaEpsStr']) * 100, 0)) . ' %',
+            'aporte.eps_ibc'     => '$ ' . number_format($sinEps ? 0 : $c['ibcEps'], 0, ',', '.'),
             'aporte.eps_aporte'  => '$ ' . number_format($c['vEps'], 0, ',', '.'),
             'aporte.eps_upc'     => '$ 0',
 
             // Riesgos
             'aporte.arl_codigo'  => ($c['codArlPila'] ?: '14-11'),
             'aporte.arl_clase'   => $c['nivelRiesgo'],
-            'aporte.arl_tarifa'  => number_format($c['tarifaArlDecimal'] * 100, 3, '.', '') . ' %',
+            'aporte.arl_tarifa'  => number_format($c['tarifaArlDecimal'] * 100, 3, ',', '') . ' %',
             'aporte.arl_ibc'     => '$ ' . number_format($c['ibcArl'], 0, ',', '.'),
             'aporte.arl_aporte'  => '$ ' . number_format($c['vArl'], 0, ',', '.'),
 
             // Caja
-            'aporte.ccf_codigo'  => ($esPlanillaY ? 'NIN-CC' : ($esIndependiente && $sinCajaCcf ? 'NIN-CC' : ($c['codCcfPila'] == 'CCF68' ? 'CCF66' : $c['codCcfPila']))),
+            'aporte.ccf_codigo'  => ($esPlanillaY ? 'NIN-CC' : ($esIndependiente && $sinCajaCcf ? 'NIN-CC' : $c['codCcfPila'])),
             'aporte.ccf_tarifa'  => ($esPlanillaY ? '0 %' : ($esIndependiente && $sinCajaCcf ? '0 %' : '4 %')),
             'aporte.ccf_ibc'     => ($esPlanillaY ? '$ 0' : ($esIndependiente && $sinCajaCcf ? '$ 0' : '$ ' . number_format($c['ibcCcf'], 0, ',', '.'))),
             'aporte.ccf_aporte'  => ($esPlanillaY ? '$ 0' : ($esIndependiente && $sinCajaCcf ? '$ 0' : '$ ' . number_format($c['vCcf'], 0, ',', '.'))),
@@ -383,7 +430,7 @@ class PlanillaFormularioService
             // Totales Administradoras (Nombres fijos o calculados)
             'total.afp_nombre'  => $nombreAfp,
             'total.eps_nombre'  => $nombreEps,
-            'total.arl_nombre'  => 'ARL ' . $nombreArl,
+            'total.arl_nombre'  => $nombreArl === '' ? '' : (str_starts_with(strtoupper($nombreArl), 'ARL') ? $nombreArl : 'ARL ' . $nombreArl),
             'total.ccf_nombre'  => $nombreCaja,
             'total.fsp_nombre'  => 'FSP SOLIDARIDAD',
             'total.fsps_nombre' => 'FSP SUBSISTENCIA',
@@ -409,6 +456,86 @@ class PlanillaFormularioService
             // por el API: mejor sin dato que con uno deducido.
             'total.planilla_operador' => $totalOperador,
         ];
+    }
+
+    /**
+     * [ciudad, departamento] a partir del código DANE que da el operador
+     * ("76001000", o "76001"). En blanco si no se reconoce.
+     */
+    protected function municipioDane(?string $codigo): array
+    {
+        $codigo = substr(preg_replace('/\D/', '', (string) $codigo), 0, 5);
+
+        if (strlen($codigo) !== 5) {
+            return ['', ''];
+        }
+
+        $ciudad = DB::table('ciudades')->where('id_ciudad_t', $codigo)->first(['nombre', 'DescripcionDepartamento']);
+
+        return [mb_strtoupper((string) $ciudad?->nombre), mb_strtoupper((string) $ciudad?->DescripcionDepartamento)];
+    }
+
+    /**
+     * El plano con los mismos datos que le da PlanoPilaTxtService a la calculadora.
+     *
+     * Antes se le pasaba el plano pelado, y la calculadora no sabe de tiempo
+     * parcial, días por subsistema, códigos PILA ni exoneración si no se los
+     * dan: todo cotizante 51 salía como dependiente de 30 días con EPS, y el
+     * soporte decía un total que no era el pagado. Estas columnas son las del
+     * TXT, y deben seguir siéndolo: el PDF tiene que decir lo que se liquidó.
+     *
+     * Devuelve una copia: el plano original no se toca ni se guarda.
+     */
+    public function conDatosDeCalculo(Plano $plano): Plano
+    {
+        $aliadoId = (int) $plano->aliado_id;
+
+        $fila = DB::table('planos AS p')
+            ->leftJoin('facturas AS f', 'f.id', '=', 'p.factura_id')
+            ->leftJoin('clientes AS cl', function ($join) use ($aliadoId) {
+                $join->on('cl.cedula', '=', 'p.no_identifi')->where('cl.aliado_id', '=', $aliadoId);
+            })
+            ->leftJoin('ciudades AS c', 'c.id_ciudad_t', '=', 'cl.municipio_id')
+            ->leftJoin('departamentos AS d', 'd.id', '=', 'cl.departamento_id')
+            ->leftJoin('pensiones AS afp_t', DB::raw('CAST(afp_t.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_afp'))
+            ->leftJoin('pensiones AS afp_cli', 'afp_cli.id', '=', 'cl.pension_id')
+            ->leftJoin('eps AS eps_t', DB::raw('CAST(eps_t.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_eps'))
+            ->leftJoin('cajas AS caj_t', DB::raw('CAST(caj_t.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_caja'))
+            ->leftJoin('arls AS arl_m', DB::raw('CAST(arl_m.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_arl'))
+            ->leftJoin('tipo_modalidad AS tm', 'tm.id', '=', 'p.tipo_modalidad_id')
+            ->leftJoin('contratos AS ctr', 'ctr.id', '=', 'p.contrato_id')
+            ->leftJoin('razones_sociales AS rs', 'rs.id', '=', 'p.razon_social_id')
+            ->leftJoin('empresas AS emp', function ($join) use ($aliadoId) {
+                $join->on('emp.id', '=', 'cl.cod_empresa')->where('emp.aliado_id', '=', $aliadoId);
+            })
+            ->where('p.id', $plano->id)
+            ->first([
+                DB::raw('eps_t.codigo  AS cod_eps_pila'),
+                DB::raw('afp_t.codigo  AS cod_afp_pila'),
+                DB::raw('afp_cli.codigo AS cod_afp_cliente'),
+                DB::raw('arl_m.codigo  AS cod_arl_pila'),
+                DB::raw('caj_t.codigo  AS cod_caj_pila'),
+                'f.v_eps', 'f.v_afp', 'f.v_arl', 'f.v_caja', 'f.dias_cotizados',
+                'cl.genero',
+                DB::raw('DATEDIFF(YEAR, cl.fecha_nacimiento, GETDATE()) AS edad_calculada'),
+                DB::raw('d.id AS dep_id'),
+                DB::raw('CAST(c.Municipio AS INT) AS mun_id'),
+                DB::raw('tm.es_tiempo_parcial AS es_tiempo_parcial'),
+                DB::raw('ISNULL(p.dias_tp_afp, ISNULL(tm.dias_afp, 30)) AS dias_afp'),
+                DB::raw('ISNULL(p.dias_tp_caja, ISNULL(p.dias_tp_afp, ISNULL(tm.dias_caja, 30))) AS dias_caja'),
+                DB::raw('ISNULL(rs.es_independiente, 0) AS rs_es_independiente'),
+                'ctr.porcentaje_caja',
+                DB::raw('ISNULL(p.grupo_fondo_solidaridad, ctr.grupo_fondo_solidaridad) AS grupo_fondo_solidaridad'),
+                DB::raw('emp.exonerado_parafiscales AS exonerado_parafiscales'),
+            ]);
+
+        $copia = clone $plano;
+
+        foreach ((array) $fila as $columna => $valor) {
+            $copia->setAttribute($columna, $valor);
+        }
+
+        return $copia;
     }
 
     /**

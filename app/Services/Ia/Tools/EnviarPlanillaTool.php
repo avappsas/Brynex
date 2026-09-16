@@ -9,7 +9,7 @@ use App\Models\WhatsappConfig;
 use App\Models\WhatsappConversacion;
 use App\Models\WhatsappMensaje;
 use App\Services\Ia\ClienteWhatsappResolver;
-use App\Services\PlanillaFormularioService;
+use App\Services\EnlaceInformeIndividualService;
 use App\Services\WhatsappApiService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -152,7 +152,7 @@ class EnviarPlanillaTool implements IaToolInterface
             return ['encontrada' => true, 'enviada' => false, 'nota' => 'Encontré la planilla pero no pude enviarla por un problema técnico. Ofrece escalar con un asesor (hablar_con_asesor).'];
         }
 
-        $formularioService = app(PlanillaFormularioService::class);
+        $soportes = app(EnlaceInformeIndividualService::class);
         $whatsappApi = app(WhatsappApiService::class);
 
         $periodosEnviados = [];
@@ -161,7 +161,7 @@ class EnviarPlanillaTool implements IaToolInterface
             $plano = $item['plano'];
 
             try {
-                $pdfContenido = $formularioService->generar($plano, $item['operador_id']);
+                $pdfContenido = $soportes->soporte($plano, $item['operador_id'])['pdf'];
 
                 // El mes de servicio es el mes actual (cuando se paga/envía la planilla), no el
                 // período cotizado que cubre el plano (mes_plano/anio_plano puede ser el vencido).

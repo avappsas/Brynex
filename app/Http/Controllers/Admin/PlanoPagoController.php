@@ -1107,20 +1107,14 @@ class PlanoPagoController extends Controller
         // con la hora exacta del pago. Solo existe para ARUS y Simple con
         // credenciales cargadas; si no se puede, se arma el de BryNex como antes.
         // `origen=brynex` fuerza el generado, para comparar los dos.
-        $origen = 'brynex';
-        $pdfContent = null;
-
-        if ($request->input('origen') !== 'brynex') {
-            $delOperador = app(\App\Services\EnlaceInformeIndividualService::class)->obtener($plano, $forceOperadorId ?: null);
-
-            if ($delOperador['success']) {
-                $pdfContent = $delOperador['pdf'];
-                $origen = $delOperador['origen'];
-            }
+        if ($request->input('origen') === 'brynex') {
+            $soporte = ['pdf' => (new \App\Services\PlanillaFormularioService())->generar($plano, $forceOperadorId), 'origen' => 'brynex'];
+        } else {
+            $soporte = app(\App\Services\EnlaceInformeIndividualService::class)->soporte($plano, $forceOperadorId ?: null);
         }
 
-        // Generar el PDF de planilla rellenando la plantilla correspondiente al operador configurado de forma dinámica
-        $pdfContent ??= (new \App\Services\PlanillaFormularioService())->generar($plano, $forceOperadorId);
+        $pdfContent = $soporte['pdf'];
+        $origen = $soporte['origen'];
 
         return response($pdfContent)
             ->header('X-Soporte-Origen', $origen)
@@ -1451,10 +1445,8 @@ class PlanoPagoController extends Controller
 
         try {
             $apiService = app(\App\Services\WhatsappApiService::class);
-            $formularioService = app(\App\Services\PlanillaFormularioService::class);
-
-            // Generar PDF
-            $pdfContenido = $formularioService->generar($plano, $operadorId);
+            // El del operador si se puede; si no, el que arma BryNex.
+            $pdfContenido = app(\App\Services\EnlaceInformeIndividualService::class)->soporte($plano, $operadorId)['pdf'];
 
             // Nombre del archivo: usar período de servicio actual (mes del filtro UI)
             $nombreArchivo = \App\Services\PlanillaWhatsappService::generarNombreArchivoPdf(

@@ -7,7 +7,7 @@ use App\Models\{
     WhatsappConfig, WhatsappConversacion, WhatsappMensaje, WhatsappPlantilla, Plano
 };
 use App\Services\WhatsappApiService;
-use App\Services\PlanillaFormularioService;
+use App\Services\EnlaceInformeIndividualService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -25,7 +25,7 @@ class PlanillaEnvioWhatsappJob implements ShouldQueue
 
     public function __construct(protected int $envioId) {}
 
-    public function handle(WhatsappApiService $apiService, PlanillaFormularioService $formularioService): void
+    public function handle(WhatsappApiService $apiService, EnlaceInformeIndividualService $soportes): void
     {
         $envio = PlanillaEnvioWhatsapp::with(['detalles'])->find($this->envioId);
 
@@ -113,8 +113,10 @@ class PlanillaEnvioWhatsappJob implements ShouldQueue
                     continue;
                 }
 
-                // 3. Generar el PDF
-                $pdfContenido = $formularioService->generar($plano, $operadorId);
+                // 3. El PDF: el del operador si se puede, si no el de BryNex.
+                //    `$soportes` es una sola instancia para todo el lote, así que
+                //    las personas de una misma empresa comparten sesión.
+                $pdfContenido = $soportes->soporte($plano, $operadorId)['pdf'];
 
                 // 4. Nombre del PDF: período de servicio (mes del lote = mes del filtro UI)
                 $nombreCompleto = trim("{$plano->primer_nombre} {$plano->segundo_nombre} {$plano->primer_ape} {$plano->segundo_ape}");

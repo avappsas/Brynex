@@ -98,9 +98,22 @@ class SuaporteApiService
         // que es lento. Quien tenga a alguien esperando —o encadene intentos
         // contra varios operadores— puede acortarlo por credencial.
         $this->timeout = (int) ($credenciales['timeout'] ?? config('services.suaporte.timeout', 120));
-        $this->usuario = $credenciales['usuario'] ?? (string) config('services.suaporte.usuario');
+        $this->usuario = self::usuarioPortal($credenciales['usuario'] ?? (string) config('services.suaporte.usuario'));
         $this->contrasena = $credenciales['contrasena'] ?? (string) config('services.suaporte.contrasena');
         $this->claveSecreta = $credenciales['clave_secreta'] ?? (string) config('services.suaporte.clave_secreta');
+    }
+
+    /**
+     * El usuario del portal es tipo de documento + número ("CC16940124").
+     * Guardado solo con la cédula, Enlace no dice "usuario inválido" sino "aún
+     * no ha generado una clave secreta", que manda a buscar el problema en otro
+     * lado. Pasó con la primera credencial de Formalizate (sep-2026).
+     */
+    public static function usuarioPortal(?string $usuario): string
+    {
+        $usuario = strtoupper(preg_replace('/\s+/', '', (string) $usuario));
+
+        return ctype_digit($usuario) ? 'CC'.$usuario : $usuario;
     }
 
     /** Host de la plataforma para un código de operador, o null si no aplica. */
@@ -309,6 +322,38 @@ class SuaporteApiService
 
             return ['success' => false, 'message' => 'Error al consultar el aportante: '.$e->getMessage()];
         }
+    }
+
+    /**
+     * Ficha completa del aportante: representante legal, contacto, dirección,
+     * municipio DANE, sucursales y la exoneración de parafiscales.
+     *
+     * `consultarAportante()` solo trae la cabecera. La ficha vive en un servicio
+     * por segmento (pyme, corporativo) que exige estar autorizado sobre el
+     * aportante; en la práctica los dos responden lo mismo para cualquier
+     * empresa, así que se prueba uno y luego el otro.
+     *
+     * @return array{success: bool, ficha?: array, message?: string}
+     */
+    public function consultarFichaAportante(int $aportanteId): array
+    {
+        foreach (['pyme', 'corporate'] as $segmento) {
+            try {
+                $response = Http::timeout($this->timeout)
+                    ->withHeaders($this->headers)
+                    ->get("{$this->apiUrl}/gestion/aportante/{$segmento}", ['id' => $aportanteId]);
+
+                $ficha = $response->successful() ? $response->json() : null;
+
+                if (is_array($ficha) && ! empty($ficha['numeroIdentificacion'])) {
+                    return ['success' => true, 'ficha' => $ficha];
+                }
+            } catch (\Exception $e) {
+                Log::warning('Suaporte: excepción al consultar la ficha del aportante', ['message' => $e->getMessage()]);
+            }
+        }
+
+        return ['success' => false, 'message' => 'El operador no devolvió la ficha del aportante.'];
     }
 
     /**

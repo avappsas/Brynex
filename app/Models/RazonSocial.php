@@ -24,10 +24,16 @@ class RazonSocial extends BaseModel
         'cedula_rep', 'nombre_rep',
         'es_independiente',
         'aliado_id', 'encargado_id',
+        // Lo que reporta el operador de planilla (ver RazonSocialOperadorService)
+        'rep_tipo_doc', 'cod_departamento', 'cod_municipio', 'tipo_persona',
+        'exonerado_parafiscales', 'datos_operador', 'datos_operador_at',
     ];
 
     protected $casts = [
-        'es_independiente' => 'boolean',
+        'es_independiente'       => 'boolean',
+        'exonerado_parafiscales' => 'boolean',
+        'datos_operador'         => 'array',
+        'datos_operador_at'      => 'datetime',
     ];
 
     /** Scope: activas para el aliado */
