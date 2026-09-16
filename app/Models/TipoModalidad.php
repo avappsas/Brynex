@@ -2,15 +2,17 @@
 
 namespace App\Models;
 
-use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class TipoModalidad extends BaseModel
 {
-    public $timestamps    = false;
-    protected $table      = 'tipo_modalidad';
+    public $timestamps = false;
+
+    protected $table = 'tipo_modalidad';
+
     protected $primaryKey = 'id';
-    public $incrementing  = false;  // El ID NO es auto-incremental
+
+    public $incrementing = false;  // El ID NO es auto-incremental
 
     protected $fillable = [
         'id', 'tipo_modalidad', 'observacion', 'descripcion', 'orden', 'modalidad', 'activo',
@@ -18,11 +20,11 @@ class TipoModalidad extends BaseModel
     ];
 
     protected $casts = [
-        'activo'            => 'boolean',
+        'activo' => 'boolean',
         'es_tiempo_parcial' => 'boolean',
-        'dias_arl'          => 'integer',
-        'dias_afp'          => 'integer',
-        'dias_caja'         => 'integer',
+        'dias_arl' => 'integer',
+        'dias_afp' => 'integer',
+        'dias_caja' => 'integer',
     ];
 
     /**
@@ -177,11 +179,12 @@ class TipoModalidad extends BaseModel
     {
         if ($this->esTiempoParcial()) {
             return [
-                'arl'  => 30,                    // ARL siempre mensual completa
-                'afp'  => $this->dias_afp  ?? 30,
+                'arl' => 30,                    // ARL siempre mensual completa
+                'afp' => $this->dias_afp ?? 30,
                 'caja' => $this->dias_caja ?? 30,
             ];
         }
+
         return ['arl' => 30, 'afp' => 30, 'caja' => 30];
     }
 
@@ -211,9 +214,17 @@ class TipoModalidad extends BaseModel
      */
     public function factorSalario(?int $diasAfp = null): float
     {
+        // Solo Caja no es Tiempo Parcial —cotiza como dependiente (cotizante 1)—
+        // pero solo vende una parte del mes, así que su piso es esa misma
+        // fracción: "Caja 14" admite medio mínimo, igual que un TP(14). Con el
+        // piso completo no dejaba guardar el contrato.
+        if (in_array((int) $this->id, self::IDS_SOLO_CAJA, true)) {
+            return self::FACTOR_SALARIO_POR_DIAS[$this->dias_caja] ?? 1.0;
+        }
         if (! $this->esTiempoParcial()) {
             return 1.0;
         }
+
         return self::FACTOR_SALARIO_POR_DIAS[$diasAfp ?? $this->dias_afp] ?? 1.0;
     }
 
@@ -228,6 +239,7 @@ class TipoModalidad extends BaseModel
         if (in_array((int) $this->id, [self::ID_UPC, self::ID_SEGUROS], true)) {
             return 0.0;
         }
+
         return round(ConfiguracionBrynex::salarioMinimo() * $this->factorSalario($diasAfp));
     }
 }

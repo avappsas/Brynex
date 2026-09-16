@@ -2115,7 +2115,10 @@ class ContratoController extends Controller
             return;
         }
 
-        $etiqueta = $modalidad && $modalidad->esTiempoParcial()
+        // Cuando el piso es una fracción del mínimo —Tiempo Parcial o Solo Caja—
+        // el mensaje nombra la modalidad: decir "salario mínimo legal" y mostrar
+        // la mitad del mínimo se lee como un error del sistema.
+        $etiqueta = $modalidad && $modalidad->factorSalario($diasAfp) < 1.0
             ? "mínimo de {$modalidad->nombre}"
             : 'salario mínimo legal';
 
