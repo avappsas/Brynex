@@ -20,40 +20,49 @@ class PlanillaFormularioService
         // 1. Intentar autodetectar el operador por el que se pagó la planilla (o usar el forzado)
         $operadorPlanillaId = $forceOperadorId ?? $this->detectarOperadorId($plano);
 
-        // 2. Buscar si hay una plantilla configurada en base de datos para ese operador
-        $template = null;
-        if ($operadorPlanillaId) {
-            $template = OperadorPlanillaTemplate::where('operador_planilla_id', $operadorPlanillaId)->first();
-        }
+        // 2. La plantilla configurada del operador; si no tiene una usable, la de
+        //    ARUS (es el mismo reporte de Enlace y está calibrada en el editor);
+        //    y si tampoco, el dibujo estático de SuaportePdfService.
+        //
+        //    Antes, si faltaba el archivo se copiaba encima la plantilla del
+        //    repositorio —un certificado real, con datos de Brygar y de un
+        //    afiliado— y si no había campos se devolvía la plantilla tal cual: el
+        //    cliente podía recibir el soporte de otra persona.
+        $template = $this->plantillaUsable($operadorPlanillaId)
+            ?? $this->plantillaUsable(DB::table('operadores_planilla')->where('codigo', 'ARUS')->value('id'));
 
-        // Si no hay plantilla configurada en BD para este operador, usamos el código estático de SuAporte
-        if (!$template || !$template->formulario_pdf) {
+        if (!$template) {
             return SuaportePdfService::generar($plano);
         }
 
         $rutaPdf = storage_path('app/formularios/planillas/' . $template->formulario_pdf);
-        if (!file_exists($rutaPdf)) {
-            // Autocopia en tiempo real (en local o producción) para prevenir fallbacks al código estático viejo
-            $sourcePdf = resource_path('pdf/certificado_suaporte_template.pdf');
-            if (file_exists($sourcePdf)) {
-                $dir = dirname($rutaPdf);
-                if (!is_dir($dir)) mkdir($dir, 0755, true);
-                copy($sourcePdf, $rutaPdf);
-            } else {
-                return SuaportePdfService::generar($plano);
-            }
-        }
-
-        $campos = $template->formulario_campos ?? [];
-        if (empty($campos)) {
-            return file_get_contents($rutaPdf);
-        }
+        $campos = $template->formulario_campos;
 
         // 3. Obtener los datos del cotizante y del plano
         $datos = $this->ensamblarDatos($plano);
 
         // 4. Rellenar la plantilla PDF utilizando FPDI y FPDF
         return $this->rellenarPdf($rutaPdf, $campos, $datos);
+    }
+
+    /**
+     * La plantilla del operador si está completa: archivo en disco y campos
+     * calibrados. Una a medias no sirve y no se intenta arreglar al vuelo.
+     */
+    protected function plantillaUsable($operadorPlanillaId): ?OperadorPlanillaTemplate
+    {
+        if (!$operadorPlanillaId) {
+            return null;
+        }
+
+        $template = OperadorPlanillaTemplate::where('operador_planilla_id', $operadorPlanillaId)->first();
+
+        $usable = $template
+            && $template->formulario_pdf
+            && !empty($template->formulario_campos)
+            && file_exists(storage_path('app/formularios/planillas/' . $template->formulario_pdf));
+
+        return $usable ? $template : null;
     }
 
     /**

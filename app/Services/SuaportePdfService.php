@@ -35,267 +35,117 @@ class SuaportePdfService
         // Renderizar la plantilla original especificando ancho/alto exactos para evitar escalas
         $pdf->useTemplate($tplId, 0, 0, $size['width'], $size['height']);
 
-        // 3. Obtener los datos calculados de Brynex
-        $c = PilaCotizanteCalculator::calcular($plano);
+        // 3. Los datos salen del mismo lugar que la plantilla configurable
+        //    (PlanillaFormularioService): el cálculo con los datos del TXT, la
+        //    ficha de la empresa que reporta el operador y la hora de pago que
+        //    él imprime. Antes este servicio calculaba por su cuenta con el plano
+        //    pelado y rellenaba lo que faltaba con los datos de Brygar —NIT,
+        //    dirección, teléfono, representante— y con una fecha de pago fija.
+        //    Lo que no se sabe queda en blanco.
+        $d = (new PlanillaFormularioService())->ensamblarDatos($plano);
 
-        $esPlanillaY = ($plano->tipo_modalidad_id == 8);
-        $esIndependiente = (bool)($plano->razonSocial?->es_independiente ?? false);
-        $sinCajaCcf = ($c['codCcfPila'] == 'CCF68');
-
-        $nombreAfp = $esPlanillaY ? 'NINGUNA AFP' : ($plano->nombre_afp ?: 'PORVENIR');
-        $nombreEps = $esPlanillaY ? 'NINGUNA EPS' : ($plano->nombre_eps ?: 'NUEVA EPS');
-        $nombreArl = $plano->nombre_arl ?: 'ARL SURA';
-        $nombreCaja = $esPlanillaY ? 'NINGUNA CCF' : ($plano->nombre_caja ?: ($c['sinCaja'] ? 'COMCAJA' : 'COMCAJA'));
-        if ($esIndependiente && $sinCajaCcf && !$esPlanillaY) {
-            $nombreCaja = 'NINGUNA CCF';
-        }
-
-        $perCot = $plano->anio_plano . str_pad($plano->mes_plano, 2, '0', STR_PAD_LEFT);
-
-        $mesServicio = $plano->mes_plano > 1 ? $plano->mes_plano - 1 : 12;
-        $anioServicio = $plano->mes_plano > 1 ? $plano->anio_plano : $plano->anio_plano - 1;
-        if ($plano->paga_mes_actual) {
-            $mesServicio = $plano->mes_plano;
-            $anioServicio = $plano->anio_plano;
-        }
-        $perSer = $anioServicio . str_pad($mesServicio, 2, '0', STR_PAD_LEFT);
-
-        $granTotal = $c['vAfp'] + $c['vEps'] + $c['vArl'] + $c['vCcf'];
-
-        // 4. Dibujar rectángulos blancos de limpieza sobre las coordenadas exactas de los textos antiguos
-        $pdf->SetFillColor(255, 255, 255);
-
-        // Cabecera (Metadatos a la derecha)
-        $pdf->Rect(244, 38, 540, 30, 'F'); // Limpia toda la zona de textos de metadatos de la cabecera
-
-        // Barra de estado de pago (Color gris de fondo original #cccccc / RGB: 204, 204, 204)
-        $pdf->SetFillColor(204, 204, 204);
-        $pdf->Rect(350, 122, 250, 12, 'F');
-        $pdf->SetFillColor(255, 255, 255); // Reset a blanco
-
-        // Sección I (Datos del Aportante - celdas de valor blancas)
-        $pdf->Rect(116, 132, 672, 10, 'F'); // Razón Social (Y=140.40)
-        $pdf->Rect(116, 145, 264, 10, 'F'); // Documento / NIT (Y=153.40)
-        $pdf->Rect(490, 145, 298, 10, 'F'); // Dirección (Y=153.40)
-        $pdf->Rect(490, 158, 298, 10, 'F'); // Teléfono (Y=166.40)
-        $pdf->Rect(599, 171, 190, 10, 'F'); // Total Afiliados (Y=179.40)
-        $pdf->Rect(116, 197, 264, 10, 'F'); // Representante Legal (Y=205.40)
-        $pdf->Rect(490, 197, 298, 10, 'F'); // Identificación (Y=205.40)
-
-        // Sección II (Datos del Afiliado - celdas de valor blancas)
-        $pdf->Rect(12, 230, 110, 11, 'F');  // Documento (Y=238.90)
-        $pdf->Rect(240, 230, 14, 11, 'F');  // Exonerado (Y=238.90)
-        $pdf->Rect(254, 249, 254, 11, 'F'); // Apellidos y nombres (Y=257.90)
-        $pdf->Rect(518, 249, 90, 11, 'F');  // Código Ciudad (Y=257.90)
-        $pdf->Rect(680, 249, 100, 11, 'F'); // Ubicación laboral (Y=257.90)
-        $pdf->Rect(12, 243, 110, 11, 'F');  // Tipo Cotizante / Subtipo (Y=251.90)
-
-        // Sección III (Aporte detallado - limpiar toda la fila de datos original en Y=325.45)
-        $pdf->Rect(8, 319, 780, 12, 'F');
-
-        // Sección IV (Totales)
-        $pdf->Rect(8, 370, 680, 12, 'F');   // Administradoras (Fila 1)
-        $pdf->Rect(8, 390, 680, 12, 'F');   // Valores (Fila 2)
-        $pdf->Rect(700, 390, 85, 14, 'F');  // Total final
-
-        // 5. Escribir los nuevos datos reales sobre el PDF con precisión absoluta
+        // 4. Escribir los valores. La plantilla es el reporte de ARUS en blanco:
+        //    ya trae las etiquetas y las celdas, así que solo se escriben los
+        //    valores, a la derecha de su etiqueta o centrados en su columna
+        //    (coordenadas medidas sobre la plantilla con `pdftotext -bbox`).
+        //    Antes la plantilla era un certificado real con datos de Brygar y
+        //    de un afiliado, tapados con rectángulos blancos: seguían dentro de
+        //    cada PDF y se podían copiar.
         $pdf->SetTextColor(0, 0, 0);
+
+        $escribir = function (float $x, float $y, ?string $texto) use ($pdf) {
+            $pdf->Text($x, $y, self::latin1($texto));
+        };
+        $centrar = function (float $centro, float $y, ?string $texto) use ($pdf) {
+            $texto = self::latin1($texto);
+            $pdf->Text($centro - $pdf->GetStringWidth($texto) / 2, $y, $texto);
+        };
 
         // --- CABECERA ---
         $pdf->SetFont('Arial', '', 7);
-        $pdf->Text(246.56, 45.54, 'Fecha creación reporte:');
-        $pdf->Text(346.56, 45.54, now()->format('Y-m-d, h:i:s p. m.'));
-        $pdf->Text(425.00, 45.54, 'Tipo Planilla:');
-        $tipoPlanilla = $esPlanillaY ? 'Y' : ($esIndependiente ? 'I' : 'E');
-        $pdf->Text(490.00, 45.54, $tipoPlanilla);
-        $pdf->Text(545.00, 45.54, 'Número Planilla:');
-        $pdf->Text(680.00, 45.54, $plano->numero_planilla);
-        $pdf->Text(425.00, 61.54, 'Periodo Cotización:');
-        $pdf->Text(506.00, 61.54, $perCot);
-        $pdf->Text(620.00, 61.54, 'Periodo Servicio:');
-        $pdf->Text(721.00, 61.54, $perSer);
+        $escribir(245, 46.3, $d['plano.fecha_creacion']);
+        $escribir(392, 46.3, $d['plano.tipo_planilla']);
+        $escribir(492, 46.3, (string) $d['plano.numero_planilla']);
+        $escribir(403, 62.3, $d['plano.periodo_cotizacion']);
+        $escribir(573, 62.3, $d['plano.periodo_servicio']);
 
-        // --- BARRA ESTADO PAGO ---
-        $pdf->SetFont('Arial', 'B', 8.5);
-
-        $gasto = null;
-        if (!empty($plano->numero_planilla)) {
-            $gasto = \App\Models\Gasto::where('aliado_id', $plano->aliado_id)
-                ->where('numero_planilla', $plano->numero_planilla)
-                ->where('tipo', 'pago_planilla')
-                ->first();
-        }
-
-        $fechaPagoParaCarbon = null;
-        if ($gasto) {
-            $fechaPagoParaCarbon = $gasto->created_at ?? $gasto->fecha;
-        } elseif ($plano->fecha_pago) {
-            $fechaPagoParaCarbon = $plano->fecha_pago;
-        } elseif ($plano->factura?->fecha_pago) {
-            $fechaPagoParaCarbon = $plano->factura->fecha_pago;
-        }
-
-        if ($fechaPagoParaCarbon) {
-            $dt = \Carbon\Carbon::parse($fechaPagoParaCarbon);
-            $pagoFecha = $dt->format('Y-m-d');
-            $pagoHora  = $dt->format('H:i:s.0');
-        } else {
-            $pagoFecha = '2026-07-03';
-            $pagoHora  = '14:03:12.0';
-        }
-
-        $pdf->Text(390, 131, "PAGADA   {$pagoFecha}    {$pagoHora}");
-
-        $esIndependiente = (bool)($plano->razonSocial?->es_independiente ?? false);
-        $clienteObj = $plano->contrato?->cliente;
-
-        $razonSocialAportante = $esIndependiente
-            ? strtoupper(trim(implode(' ', array_filter([$plano->primer_nombre, $plano->segundo_nombre, $plano->primer_ape, $plano->segundo_ape]))))
-            : strtoupper($plano->razon_social);
-
-        $nitAportante = $esIndependiente
-            ? (($plano->tipo_doc ?? 'CC') . ' ' . ($plano->no_identifi ?? ''))
-            : ('NI ' . ($plano->razonSocial?->nit ?? '901918923'));
-
-        $direccionAportante = $esIndependiente
-            ? strtoupper($clienteObj?->direccion_vivienda ?? $clienteObj?->direccion_cobro ?? 'CR 39 #43 - 04')
-            : strtoupper($plano->razonSocial?->direccion ?? 'CR 39 #43 - 04');
-
-        $telefonoAportante = $esIndependiente
-            ? ($clienteObj?->celular ?? $clienteObj?->telefono ?? '5555555')
-            : ($plano->razonSocial?->telefonos ?? $plano->razonSocial?->telefono ?? '5555555');
-
-        $representanteVal = $esIndependiente
-            ? ''
-            : strtoupper($plano->razonSocial?->nombre_rep ?? $plano->razonSocial?->representante_legal ?? 'GARCIA VIDAL BRAYAN HUMBERTO');
-
-        $representanteCedVal = $esIndependiente
-            ? ''
-            : ('CC ' . ($plano->razonSocial?->cedula_rep ?? $plano->razonSocial?->representante_cedula ?? '1143944458'));
-
-        $afiliadosCount = $esIndependiente ? 1 : Plano::where('numero_planilla', $plano->numero_planilla)
-            ->where('aliado_id', $plano->aliado_id)
-            ->count();
-
-        $exoneradoVal = $esPlanillaY ? 'N' : ($esIndependiente ? 'N' : 'S');
-
-        $ciudadAfiliado = ($esIndependiente || $esPlanillaY)
-            ? (($clienteObj?->municipio?->id ?? '76001') . '000 - ' . ($clienteObj?->departamento?->id ?? '76'))
-            : '94001000 - 94';
-
-        $deptoAfiliado = ($esIndependiente || $esPlanillaY)
-            ? strtoupper($clienteObj?->departamento?->nombre ?? 'VALLE DEL CAUCA')
-            : 'GUAINIA';
+        // --- BARRA ESTADO PAGO --- (sin pago registrado no se afirma ninguno)
+        $pdf->SetFont('Arial', '', 9);
+        $centrar($size['width'] / 2, 106.5, trim($d['plano.fecha_pago_estado'] . ' ' . $d['plano.fecha_pago_completa']));
 
         // --- SECCIÓN I ---
         $pdf->SetFont('Arial', '', 7.5);
-        $pdf->Text(117, 140.40, $razonSocialAportante);
-        $pdf->Text(117, 153.40, $nitAportante);
-        $pdf->Text(491, 153.40, $direccionAportante);
-        $pdf->Text(491, 166.40, $telefonoAportante);
-        
-        $pdf->Text(600, 179.40, (string)max(1, $afiliadosCount));
-        
-        $pdf->Text(117, 205.40, $representanteVal);
-        $pdf->Text(491, 205.40, $representanteCedVal);
+        $escribir(119, 141.2, $d['aportante.razon_social']);
+        $escribir(119, 154.2, $d['aportante.nit']);
+        $escribir(494, 154.2, $d['aportante.direccion']);
+        $escribir(119, 167.2, $d['aportante.tipo_aportante']);
+        $escribir(494, 167.2, $d['aportante.telefono']);
+        $escribir(119, 180.2, $d['aportante.tipo_persona']);
+        $escribir(494, 180.2, $d['aportante.forma_presentacion']);
+        $escribir(669, 180.2, (string) $d['aportante.afiliados']);
+        $escribir(119, 193.2, $d['aportante.ciudad']);
+        $escribir(494, 193.2, $d['aportante.departamento']);
+        $escribir(119, 206.2, $d['aportante.representante']);
+        $escribir(494, 206.2, $d['aportante.cedula_representante']);
 
         // --- SECCIÓN II ---
-        $pdf->Text(65.00, 238.90, $plano->tipo_doc . ' ' . $plano->no_identifi);
-        $pdf->Text(241, 238.90, $exoneradoVal);
+        $escribir(67, 239.5, $d['afiliado.tipo_doc_cedula']);
+        $escribir(241, 249.5, $d['afiliado.exonerado']);
+        $escribir(70, 258.5, $d['afiliado.tipo_cotizante']);
+        $escribir(103, 258.5, $d['afiliado.subtipo_cotizante']);
         $pdf->SetFont('Arial', 'B', 7.5);
-        $pdf->Text(254, 257.90, $plano->primer_ape . ' ' . $plano->segundo_ape . ' ' . $plano->primer_nombre . ' ' . $plano->segundo_nombre);
+        $escribir(254, 257.9, $d['afiliado.nombre_completo']);
         $pdf->SetFont('Arial', '', 7.5);
-        $pdf->Text(520, 257.90, $ciudadAfiliado);
-        $pdf->Text(680, 257.90, $deptoAfiliado);
-        
-        // Tipo / Subtipo Cotizante
-        $pdf->Text(12, 251.90, str_pad($c['tipoCotizante'], 2, '0', STR_PAD_LEFT));
-        $pdf->Text(50, 251.90, str_pad($c['subtipoCotizante'], 2, '0', STR_PAD_LEFT));
+        $escribir(520, 257.9, $d['afiliado.ciudad']);
+        $escribir(680, 257.9, $d['afiliado.ubicacion_laboral']);
 
-        // --- SECCIÓN III (Fila de Aportes - Y=325.45 pt) ---
-        $pdf->SetFont('Arial', '', 5.5);
-        $yRow = 325.45;
+        // --- SECCIÓN III (fila de aportes) ---
+        $yFila = 325.5;
 
-        // Novedades
-        $pdf->Text(12, $yRow, !empty($plano->fecha_ing) ? 'X' : '');
-        $pdf->Text(18, $yRow, !empty($plano->fecha_ret) ? ($esPlanillaY ? 'T' : 'X') : '');
+        // Novedades y días van en columnas de 6 pt: letra más chica.
+        $pdf->SetFont('Arial', '', 4.5);
+        foreach ([
+            10.5 => 'aporte.novedad_ing', 16.5 => 'aporte.novedad_ret', 100.5 => 'aporte.novedad_irp',
+            106.5 => 'aporte.dias_afp', 112.5 => 'aporte.dias_eps', 118.5 => 'aporte.dias_arl', 124.5 => 'aporte.dias_ccf',
+        ] as $centro => $campo) {
+            $valor = (string) $d[$campo];
+            $centrar($centro, $yFila, $campo === 'aporte.novedad_irp' && $valor === '0' ? '' : $valor);
+        }
 
-        // Días de cada subsistema
-        $pdf->Text(103.78, $yRow, $c['diasPension']);
-        $pdf->Text(109.78, $yRow, $c['diasSalud']);
-        $pdf->Text(115.78, $yRow, $c['diasArl']);
-        $pdf->Text(121.78, $yRow, $c['diasCcf']);
+        $pdf->SetFont('Arial', '', 4.8);
+        foreach ([
+            166.8 => 'aporte.tipo_salario', 192.0 => 'aporte.salario',
+            217.0 => 'aporte.afp_codigo', 249.5 => 'aporte.afp_tarifa', 272.0 => 'aporte.afp_ibc',
+            297.0 => 'aporte.afp_aporte', 317.0 => 'aporte.afp_fsp', 337.0 => 'aporte.afp_fsps',
+            357.0 => 'aporte.eps_codigo', 397.0 => 'aporte.eps_tarifa', 422.0 => 'aporte.eps_ibc',
+            452.0 => 'aporte.eps_aporte', 477.0 => 'aporte.eps_upc',
+            497.0 => 'aporte.arl_codigo', 517.0 => 'aporte.arl_clase', 537.0 => 'aporte.arl_tarifa',
+            562.0 => 'aporte.arl_ibc', 592.0 => 'aporte.arl_aporte',
+            617.0 => 'aporte.ccf_codigo', 637.0 => 'aporte.ccf_tarifa', 666.0 => 'aporte.ccf_ibc', 689.5 => 'aporte.ccf_aporte',
+            712.0 => 'aporte.sena_tarifa', 732.0 => 'aporte.sena_aporte', 752.0 => 'aporte.icbf_tarifa', 772.0 => 'aporte.icbf_aporte',
+        ] as $centro => $campo) {
+            $centrar($centro, $yFila, (string) $d[$campo]);
+        }
 
-        $pdf->Text(161.28, $yRow, 'F');
-        $pdf->Text(181.44, $yRow, '$ ' . number_format($c['ibcFull'], 0, ',', '.'));
-
-        // Pensión
-        $pdf->Text(210.33, $yRow, ($esPlanillaY ? 'NIN-AF' : $c['codAfpPila']));
-        $pdf->Text(244.94, $yRow, number_format($c['tarifaAfpDecimal'] * 100, 0) . ' %');
-        $pdf->Text(261.44, $yRow, '$ ' . number_format($c['ibcAfp'], 0, ',', '.'));
-        $pdf->Text(288.10, $yRow, '$ ' . number_format($c['vAfp'], 0, ',', '.'));
-        $pdf->Text(314.22, $yRow, '$ 0');
-        $pdf->Text(334.22, $yRow, '$ 0');
-
-        // Salud
-        $pdf->Text(349.66, $yRow, ($esPlanillaY ? 'NIN-EP' : $c['codEpsPila']));
-        $pdf->Text(393.55, $yRow, number_format(floatval($c['tarifaEpsStr']) * 100, 0) . ' %');
-        $pdf->Text(411.44, $yRow, '$ ' . number_format($c['ibcEps'], 0, ',', '.'));
-        $pdf->Text(444.22, $yRow, '$ ' . number_format($c['vEps'], 0, ',', '.'));
-        $pdf->Text(474.22, $yRow, '$ 0');
-
-        // Riesgos ARL
-        $pdf->Text(491.89, $yRow, ($c['codArlPila'] ?: '14-11'));
-        $pdf->Text(515.39, $yRow, $c['nivelRiesgo']);
-        $pdf->Text(529.16, $yRow, number_format($c['tarifaArlDecimal'] * 100, 3, '.', '') . ' %');
-        $pdf->Text(550.94, $yRow, '$ ' . number_format($c['ibcArl'], 0, ',', '.'));
-        $pdf->Text(583.72, $yRow, '$ ' . number_format($c['vArl'], 0, ',', '.'));
-
-        // Caja
-        $pdf->Text(610.67, $yRow, ($esPlanillaY ? 'NIN-CC' : ($esIndependiente && $sinCajaCcf ? 'NIN-CC' : ($c['codCcfPila'] == 'CCF68' ? 'CCF66' : $c['codCcfPila']))));
-        $pdf->Text(633.55, $yRow, ($esPlanillaY ? '0 %' : ($esIndependiente && $sinCajaCcf ? '0 %' : '4 %')));
-        $pdf->Text(657.00, $yRow, ($esPlanillaY ? '$ 0' : ($esIndependiente && $sinCajaCcf ? '$ 0' : '$ ' . number_format($c['ibcCcf'], 0, ',', '.'))));
-        $pdf->Text(684.50, $yRow, ($esPlanillaY ? '$ 0' : ($esIndependiente && $sinCajaCcf ? '$ 0' : '$ ' . number_format($c['vCcf'], 0, ',', '.'))));
-
-        // Parafiscales
-        $pdf->Text(708.55, $yRow, '0 %');
-        $pdf->Text(729.22, $yRow, '$ 0');
-        $pdf->Text(748.55, $yRow, '0 %');
-        $pdf->Text(769.22, $yRow, '$ 0');
-
-        // --- SECCIÓN IV (Totales) ---
+        // --- SECCIÓN IV (totales) ---
         $pdf->SetFont('Arial', '', 6);
-        $yAdmin = 376.18;
-        $yVal = 396.08;
+        foreach ([
+            48.5 => 'afp', 124.5 => 'fsp', 194.5 => 'fsps', 264.5 => 'eps', 334.5 => 'arl',
+            404.5 => 'ccf', 474.0 => 'sena', 544.0 => 'icbf', 609.5 => 'esap', 669.5 => 'men',
+        ] as $centro => $entidad) {
+            $centrar($centro, 375.5, $d["total.{$entidad}_nombre"]);
+            $centrar($centro, 396.0, $d["total.{$entidad}"]);
+        }
 
-        // Administradoras
-        $pdf->Text(32.33, $yAdmin, $nombreAfp);
-        $pdf->Text(97.49, $yAdmin, 'FSP SOLIDARIDAD');
-        $pdf->Text(165.83, $yAdmin, 'FSP SUBSISTENCIA');
-        $pdf->Text(246.83, $yAdmin, $nombreEps);
-        $pdf->Text(319.00, $yAdmin, 'ARL ' . $nombreArl);
-        $pdf->Text(389.33, $yAdmin, $nombreCaja);
-        $pdf->Text(465.83, $yAdmin, 'SENA');
-        $pdf->Text(537.17, $yAdmin, 'ICBF');
-        $pdf->Text(601.50, $yAdmin, 'ESAP');
-        $pdf->Text(662.83, $yAdmin, 'MEN');
-
-        // Valores
-        $pdf->Text(34.66, $yVal, '$ ' . number_format($c['vAfp'], 0, ',', '.'));
-        $pdf->Text(119.83, $yVal, '$ 0');
-        $pdf->Text(189.83, $yVal, '$ 0');
-        $pdf->Text(252.32, $yVal, '$ ' . number_format($c['vEps'], 0, ',', '.'));
-        $pdf->Text(322.32, $yVal, '$ ' . number_format($c['vArl'], 0, ',', '.'));
-        $pdf->Text(396.49, $yVal, ($esPlanillaY ? '$ 0' : ($esIndependiente && $sinCajaCcf ? '$ 0' : '$ ' . number_format($c['vCcf'], 0, ',', '.'))));
-        $pdf->Text(469.33, $yVal, '$ 0');
-        $pdf->Text(539.33, $yVal, '$ 0');
-        $pdf->Text(604.83, $yVal, '$ 0');
-        $pdf->Text(664.83, $yVal, '$ 0');
-
-        // Total Final
         $pdf->SetFont('Arial', 'B', 8.5);
-        $pdf->Text(727.16, $yVal, '$ ' . number_format($granTotal, 0, ',', '.'));
+        $centrar(741, 396.0, $d['total.final']);
 
         return $pdf->Output('S');
+    }
+
+    /** FPDF solo escribe Latin-1: sin esto las tildes y las eñes salen como basura. */
+    private static function latin1(?string $texto): string
+    {
+        return mb_convert_encoding((string) $texto, 'ISO-8859-1', 'UTF-8');
     }
 }

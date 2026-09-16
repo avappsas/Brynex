@@ -49,17 +49,12 @@ class OperadorPlanillaFormularioController extends Controller
 
         $ruta = storage_path('app/formularios/planillas/'.$template->formulario_pdf);
         if (! file_exists($ruta)) {
-            // Autocopia en local para prevenir 404 si el archivo físico de producción no existe en la laptop
-            $sourcePdf = resource_path('pdf/certificado_suaporte_template.pdf');
-            if (file_exists($sourcePdf)) {
-                $dir = dirname($ruta);
-                if (! is_dir($dir)) {
-                    mkdir($dir, 0755, true);
-                }
-                copy($sourcePdf, $ruta);
-            } else {
-                abort(404, 'Archivo PDF no encontrado.');
-            }
+            // En local el archivo de producción no existe: se muestra la plantilla
+            // en blanco del repositorio solo para ver, sin copiarla. Copiada con
+            // el nombre del operador quedaba como si fuera su plantilla, con otro
+            // diseño y las coordenadas de otro operador.
+            $ruta = resource_path('pdf/certificado_suaporte_template.pdf');
+            abort_unless(file_exists($ruta), 404, 'Archivo PDF no encontrado.');
         }
 
         return response()->file($ruta, ['Content-Type' => 'application/pdf']);
