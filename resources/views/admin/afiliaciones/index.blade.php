@@ -2651,7 +2651,7 @@ async function revisarSesionCajaConciliacion() {
     const caja = document.getElementById('ceps-caja-sesion');
     const e = await cajaExt('ccfEstado', {}, 25);
     const abrir = `<button type="button" onclick="cajaExt('ccfAbrir')" class="btn-export" style="background:#047857;cursor:pointer;margin-left:0.4rem;">🌐 Abrir la Sucursal Virtual</button>`;
-    if (e.sinExtension) { caja.innerHTML = '🧩 Instala o recarga la extensión BryNex Portales (1.5.0) y recarga esta página.'; return null; }
+    if (e.sinExtension) { caja.innerHTML = '🧩 Instala o recarga la extensión BryNex Portales (1.6.0) y recarga esta página.'; return null; }
     if (!e.abierta || !e.sesion) { caja.innerHTML = '⚠️ Inicia sesión en la Sucursal Virtual con el usuario de la empresa.' + abrir; return null; }
     caja.innerHTML = `✅ Portal abierto${e.empresa ? ' con <strong>' + e.empresa + '</strong>' : ''}.` + abrir;
     return e;

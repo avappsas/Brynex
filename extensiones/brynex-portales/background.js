@@ -1029,14 +1029,17 @@ function pBoxResultado(documento) {
 
 const CCFCV_HOST = 'virtual.comfenalcovalle.com.co';
 const CCFCV_BASE = `https://${CCFCV_HOST}/ServiciosWebRyA`;
+// El ingreso vive en otro sitio (AuthComfe empresas), sin captcha.
+const CCFCV_LOGIN = 'https://authcomfeempresasprod.web.app/login?app_id=comfenalco.sucursalvirtual.empresas.app&tipo=E';
 
 async function pestanaCcfcv() {
-  const ps = await chrome.tabs.query({ url: `https://${CCFCV_HOST}/*` });
+  const ps = await chrome.tabs.query({ url: [`https://${CCFCV_HOST}/*`, 'https://authcomfeempresasprod.web.app/*'] });
   return ps.find(p => /ServiciosWebRyA/.test(p.url || '')) || ps[0] || null;
 }
 
 function pCcfEstado() {
-  const login = /index\.html/.test(location.pathname) || !!document.querySelector('.btn-iniciar-sesion');
+  if (!/comfenalcovalle/.test(location.host)) return { sesion: false, enLogin: true, pagina: 'login' };
+  const login = /index\.html/.test(location.pathname) || !!document.querySelector('#btnLoginAuth0');
   let empresa = null;
   try { empresa = (JSON.parse(localStorage.getItem('empresa') || 'null') || {}).razonSocial || null; } catch { /* sin empresa */ }
   if (!empresa) empresa = document.querySelector('#btnEmpresa, .nombre-empresa')?.innerText?.trim() || $('#txtRazonSocal').val() || null;
@@ -1050,19 +1053,30 @@ async function atenderCcfcv(accion, d = {}) {
       await chrome.tabs.update(p.id, { active: true });
       await chrome.windows.update(p.windowId, { focused: true });
     } else {
-      p = await chrome.tabs.create({ url: `${CCFCV_BASE}/index.html?tipoUsuario=e`, active: true });
+      p = await chrome.tabs.create({ url: CCFCV_LOGIN, active: true });
       await esperarCarga(p.id);
     }
-    if (d.usuario) {
+    // Si ya hay sesión no se toca nada; si está el login de AuthComfe, se deja escrito el usuario.
+    const estado = await ejecutar(p.id, pCcfEstado).catch(() => ({ sesion: false }));
+    if (!estado.sesion && d.usuario) {
+      if (!/authcomfeempresasprod/.test((await chrome.tabs.get(p.id)).url || '')) {
+        await chrome.tabs.update(p.id, { url: CCFCV_LOGIN });
+        await esperarCarga(p.id);
+      }
       await esperarQue(p.id, (u, c) => {
-        const campo = document.querySelector('input[type=email], input[name*=usuario], #txtUsuario, #usuario');
-        if (!campo) return true;
-        const poner = (e, v) => { e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); };
+        const campo = document.querySelector('input[name=email], input[type=email]');
+        if (!campo) return false;
+        const poner = (e, v) => {
+          const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+          set.call(e, v);                               // React/Angular solo ven el valor si se pone así
+          e.dispatchEvent(new Event('input', { bubbles: true }));
+          e.dispatchEvent(new Event('change', { bubbles: true }));
+        };
         poner(campo, u);
-        const clave = document.querySelector('input[type=password]');
+        const clave = document.querySelector('input[name=password], input[type=password]');
         if (clave && c) poner(clave, c); else clave?.focus();
         return true;
-      }, [String(d.usuario), d.contrasena ? String(d.contrasena) : ''], 12000);
+      }, [String(d.usuario), d.contrasena ? String(d.contrasena) : ''], 20000);
     }
     return { ok: true, abierta: true };
   }
