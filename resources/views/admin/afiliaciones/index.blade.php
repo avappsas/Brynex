@@ -1101,8 +1101,9 @@ function sortClass($col, $currSort, $currDir) {
         </div>
 
         <div id="ceps-descripcion-caja_comfandi" style="display:none;font-size:0.78rem;color:#475569;line-height:1.45;margin-bottom:0.8rem;">
-            Baja del portal de Comfandi el <strong>Listado de trabajadores</strong> y la pestaña <strong>Radicados</strong> con la sesión
-            abierta en este navegador (extensión BryNex Portales) y los cruza con los <strong>radicados de caja</strong> de esa empresa:
+            Pide al portal de Comfandi el <strong>Listado de trabajadores</strong> en Excel —que trae la empresa completa y
+            <strong>los beneficiarios de cada trabajador</strong>, y que se guardan en BryNex— y lee la pestaña <strong>Radicados</strong>,
+            con la sesión abierta en este navegador (extensión BryNex Portales). Los cruza con los <strong>radicados de caja</strong> de esa empresa:
             quien ya aparece afiliado y coincide el apellido pasa a <strong>OK confirmado</strong>. A los que todavía no aparecen los explica
             el radicado del portal: <strong>en proceso</strong> queda en trámite con su número, <strong>rechazado</strong> se marca para revisar
             el motivo antes de volver a radicar, y sin radicado <strong>falta afiliar</strong> (🏢 Afiliar a Comfandi).
@@ -2786,15 +2787,34 @@ async function conciliarCajaComfandi(simular) {
 
     document.getElementById('ceps-acciones').style.display = 'none';
     estado.style.display = 'block';
-    estado.innerHTML = '⏳ Bajando el listado de trabajadores y los radicados del portal...';
+    estado.innerHTML = '⏳ Pidiendo el listado de trabajadores al portal (lo genera como un radicado, tarda unos segundos)...';
     try {
-        const rep = await comfandiExt('cfdTrabajadores', {}, 240);
-        if (!rep.ok) throw new Error(rep.error || 'No se pudo bajar la información del portal.');
-        estado.innerHTML = `⏳ Cruzando ${rep.filas.length} afiliados y ${rep.radicados.length} radicados de ${rep.empresa || rep.nit} con BryNex...`;
+        // El Excel del portal trae la empresa entera y los beneficiarios; la
+        // tabla, que pagina de a 5, solo se usa si no se pudo bajar el archivo.
+        const lista = await comfandiExt('cfdListado', {}, 300);
+        estado.innerHTML = '⏳ Leyendo los radicados del portal...';
+        const rep = await comfandiExt('cfdTrabajadores', {}, 300);
+
+        if (!lista.ok && !rep.ok) throw new Error(lista.error || rep.error || 'No se pudo bajar la información del portal.');
+
+        const cuerpo = {
+            nit: lista.ok ? lista.nit : rep.nit,
+            radicados: rep.ok ? rep.radicados : [],
+            radicados_ok: rep.ok ? rep.radicadosOk !== false : false,
+            simular,
+        };
+        if (lista.ok) {
+            cuerpo.archivo_url = lista.archivoUrl;
+            estado.innerHTML = `⏳ Cruzando el listado ${lista.radicadoListado} de ${lista.empresa || lista.nit} con BryNex...`;
+        } else {
+            cuerpo.filas = rep.filas;
+            estado.innerHTML = `⚠️ No se pudo bajar el Excel (${lista.error}); se usa la tabla. Cruzando ${rep.filas.length} afiliados...`;
+        }
+
         const res = await fetch(COMFANDI_URL_CONCILIAR, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
-            body: JSON.stringify({ nit: rep.nit, filas: rep.filas, radicados: rep.radicados, radicados_ok: rep.radicadosOk !== false, simular }),
+            body: JSON.stringify(cuerpo),
         });
         const data = await res.json();
         if (!data.ok) throw new Error(data.mensaje || 'No se pudo conciliar.');
@@ -2802,6 +2822,7 @@ async function conciliarCajaComfandi(simular) {
         estado.innerHTML = `${simular ? '<strong>(solo consulta)</strong> ' : ''}${data.empresa}${(data.aliados || []).length > 1 ? ` (aliados: ${data.aliados.join(', ')})` : ''}: ` +
             `${data.afiliados_caja} afiliados en la caja y ${data.radicados_portal} radicados en el portal` +
             (data.radicados_leidos === false ? ' <strong style="color:#b45309">⚠️ no se pudo leer la pestaña Radicados: los que no aparecen afiliados quedaron para revisar, no como pendientes</strong>' : '') +
+            (data.beneficiarios_nuevos ? ` · <strong>${data.beneficiarios_nuevos} beneficiarios</strong> de ${data.beneficiarios_personas} trabajadores ${simular ? 'se guardarían' : 'guardados'} en BryNex` : '') +
             (data.confirmados_ok ? ` · ${data.confirmados_ok} que ya estaban en OK quedan confirmados` : '') + '.';
         if (!simular && data.cerrados > 0) mostrarToast(`${data.cerrados} radicados de caja pasaron a OK. Recarga para verlos.`, 'success');
     } catch (err) {

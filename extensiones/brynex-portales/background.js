@@ -47,6 +47,7 @@
  *  cfdLlenar {…datos}                  → llena el formulario; Finalizar lo pulsa la persona
  *  cfdResultado                        → {radicado, numero, texto} tras Finalizar
  *  cfdTrabajadores                     → {nit, empresa, filas, radicados} para la conciliación
+ *  cfdListado                          → {nit, empresa, archivoUrl} del Excel del portal (listado + beneficiarios)
  */
 
 const ORIGENES_BRYNEX = ['https://brynex.co', 'https://www.brynex.co', 'http://localhost:8000'];
@@ -1350,6 +1351,7 @@ async function atenderCfd(accion, d = {}) {
   if (accion === 'cfdLlenar') return { ok: true, ...(await ejecutar(pestana.id, pCfdLlenar, [d])) };
   if (accion === 'cfdResultado') return { ok: true, ...(await ejecutar(pestana.id, pCfdResultado)) };
   if (accion === 'cfdTrabajadores') return cfdTrabajadores(pestana);
+  if (accion === 'cfdListado') return cfdListado(pestana);
 
   throw new Error(`Acción de Comfandi desconocida: ${accion}`);
 }
@@ -1740,4 +1742,148 @@ async function cfdTrabajadores(pestana) {
     // vacía". Con la lista incompleta, quien no aparezca podría estar radicado.
     radicadosOk: !!respondio && tablaRad.completa,
   };
+}
+
+/**
+ * Pide el "Listado de trabajadores" del portal y devuelve la URL firmada para
+ * bajarlo.
+ *
+ * El Excel trae la empresa entera —y los beneficiarios de cada trabajador—, así
+ * que evita raspar una tabla que pagina de a 5 y que con cualquier tropiezo
+ * deja media empresa sin leer.
+ *
+ * El camino es: pedir el listado (queda como un radicado "Listado de
+ * trabajadores"), esperar a que el portal lo procese, abrir su detalle y
+ * capturar la ruta del archivo al pulsar "Documento Resultado". Con el token de
+ * la sesión, `/sus/download` devuelve una URL de S3 firmada; esa es la que se
+ * le pasa a BryNex, porque S3 no deja leerla desde el navegador.
+ */
+async function cfdListado(pestana) {
+  const tab = pestana.id;
+
+  const sesion = await ejecutar(tab, async () => {
+    try {
+      const s = await (await fetch('/sakaar/api/auth/session', { credentials: 'include' })).json();
+      if (!s?.access_token) return null;
+      const p = JSON.parse(atob(s.access_token.split('.')[1]));
+      const e = (p.companies || [])[0] || {};
+      return { hayToken: true, nit: e.identification || null, empresa: e.name || null, companyId: e.id || null };
+    } catch { return null; }
+  }).catch(() => null);
+
+  if (!sesion?.hayToken) return { ok: false, error: 'No se pudo leer la sesión del portal. Entra con el NIT de la empresa y selecciona la empresa.' };
+
+  if (!await cfdIr(tab, 'filed')) return { ok: false, error: 'No se pudo abrir la pestaña Radicados.' };
+  await cfdBuscar(tab);
+
+  let fila = await cfdFilaListado(tab);
+
+  // Si no hay un listado de hoy, se pide uno nuevo y se espera a que salga.
+  if (!fila) {
+    if (!await cfdIr(tab, 'workers')) return { ok: false, error: 'No se pudo abrir Gestión de trabajadores para pedir el listado.' };
+    const pedido = await esperarQue(tab, () => {
+      const b = [...document.querySelectorAll('button,div,span')].filter(e => e.children.length === 0)
+        .find(e => /^\s*Listado de trabajadores\s*$/i.test(e.innerText || ''));
+      if (!b) return false;
+      const c = b.closest('button') || b;
+      ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(t => c.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+      return true;
+    }, [], 25000);
+    if (!pedido) return { ok: false, error: 'No se encontró el botón "Listado de trabajadores" en Gestión de trabajadores.' };
+
+    // El portal lo genera en unos segundos; se mira la pestaña Radicados hasta
+    // que aparezca procesado.
+    for (let i = 0; i < 10 && !fila; i++) {
+      await esperar(6000);
+      if (!await cfdIr(tab, 'filed')) break;
+      await cfdBuscar(tab);
+      fila = await cfdFilaListado(tab);
+    }
+    if (!fila) return { ok: false, error: 'Se pidió el listado pero el portal aún no lo ha procesado. Espera un momento y vuelve a intentar.' };
+  }
+
+  // Abre el detalle del radicado y captura la ruta del archivo.
+  const ruta = await ejecutar(tab, async (numero) => {
+    const esperar = (ms) => new Promise(r => setTimeout(r, ms));
+    const golpe = (e) => ['pointerdown', 'mousedown', 'mouseup', 'click']
+      .forEach(t => e.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+
+    const f = [...document.querySelectorAll('tbody tr')].find(r => r.innerText.includes(numero));
+    if (!f) return null;
+    golpe(f.querySelector('button'));
+    await esperar(2500);
+
+    // El botón del documento llama a /sus/download: se intercepta para saber
+    // qué archivo pide, porque el nombre lleva la hora de generación y no se
+    // puede adivinar.
+    let capturada = null;
+    const original = window.fetch;
+    window.fetch = function (...a) {
+      try {
+        const u = String(a[0]?.url || a[0]);
+        if (u.includes('/sus/download')) capturada = u;
+      } catch {}
+      return original.apply(this, a);
+    };
+
+    const doc = [...document.querySelectorAll('*')].filter(e => e.children.length === 0)
+      .find(e => /Documento Resultado/i.test(e.innerText || ''));
+    if (doc) golpe(doc.closest('button') || doc);
+    await esperar(3000);
+    window.fetch = original;
+
+    return capturada;
+  }, [fila.numero]).catch(() => null);
+
+  if (!ruta) return { ok: false, error: `Se encontró el listado ${fila.numero} pero no se pudo abrir su documento. Ábrelo a mano en Radicados y vuelve a intentar.` };
+
+  // Con el token de la sesión, el portal devuelve la URL firmada de S3.
+  const firmada = await ejecutar(tab, async (url) => {
+    try {
+      const s = await (await fetch('/sakaar/api/auth/session', { credentials: 'include' })).json();
+      const p = JSON.parse(atob(s.access_token.split('.')[1]));
+      const e = (p.companies || [])[0] || {};
+      const r = await fetch(url, { headers: { Accept: 'application/json', Authorization: 'Bearer ' + s.access_token, 'x-company-id': e.id } });
+      if (!r.ok) return null;
+      const t = (await r.text()).trim();
+      return t.startsWith('http') ? t : null;
+    } catch { return null; }
+  }, [ruta]).catch(() => null);
+
+  if (!firmada) return { ok: false, error: 'El portal no entregó el enlace de descarga del listado.' };
+
+  return { ok: true, nit: sesion.nit, empresa: sesion.empresa, archivoUrl: firmada, radicadoListado: fila.numero, fecha: fila.fecha };
+}
+
+/** Pulsa Buscar en Radicados y espera la respuesta. */
+async function cfdBuscar(tab) {
+  const pulsado = await esperarQue(tab, () => {
+    const b = [...document.querySelectorAll('button')].find(x => /^\s*Buscar\s*$/i.test(x.innerText) && !x.disabled);
+    if (!b) return false;
+    ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(t => b.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+    return true;
+  }, [], 30000);
+
+  if (!pulsado) return false;
+
+  return !!await esperarQue(tab, () => {
+    const t = document.querySelector('table');
+    if (t && t.querySelectorAll('tbody tr').length) return 'con datos';
+    return /No hay datos/i.test(document.body.innerText || '') ? 'sin datos' : null;
+  }, [], 40000);
+}
+
+/** El "Listado de trabajadores" procesado más reciente, si es de hoy. */
+async function cfdFilaListado(tab) {
+  return await ejecutar(tab, () => {
+    const hoy = new Date();
+    const dd = String(hoy.getDate()).padStart(2, '0') + '/' + String(hoy.getMonth() + 1).padStart(2, '0') + '/' + hoy.getFullYear();
+    const f = [...document.querySelectorAll('tbody tr')].find(r => {
+      const t = r.innerText;
+      return /Listado de trabajadores/i.test(t) && /Procesado con [Éé]xito/i.test(t) && t.includes(dd);
+    });
+    if (!f) return null;
+    const c = [...f.querySelectorAll('td')].map(x => (x.innerText || '').replace(/\s+/g, ' ').trim());
+    return { numero: c[0], fecha: c[4] || null };
+  }).catch(() => null);
 }
