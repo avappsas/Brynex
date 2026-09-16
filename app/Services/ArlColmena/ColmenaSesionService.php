@@ -34,9 +34,36 @@ class ColmenaSesionService
     public static function abrir(string $nit): array
     {
         $nit = preg_replace('/\D/', '', $nit);
-        $clave = self::credencialPara($nit)
-            ?? throw new RuntimeException("No hay clave de ARL Colmena para el NIT {$nit} en el módulo de claves.");
+        $claves = self::credencialesPara($nit);
 
+        if (! $claves) {
+            throw new RuntimeException("No hay clave de ARL Colmena para el NIT {$nit} en el módulo de claves.");
+        }
+
+        // La misma empresa puede estar cargada en varios aliados con claves
+        // distintas, y alguna quedó vieja (pasó con Global Contact: la de un
+        // aliado tenía la contraseña del semestre anterior). Se intenta con la
+        // segunda antes de darse por vencido, pero no con más: el portal
+        // bloquea la cuenta si se le insiste.
+        $ultimoError = null;
+
+        foreach (array_slice($claves, 0, 2) as $clave) {
+            try {
+                return self::entrar($nit, $clave);
+            } catch (RuntimeException $e) {
+                $ultimoError = $e;
+            }
+        }
+
+        throw $ultimoError;
+    }
+
+    /**
+     * @param  array{usuario:string, contrasena:string}  $clave
+     * @return array{token:string, contrato:string, empresa:?string}
+     */
+    private static function entrar(string $nit, array $clave): array
+    {
         $entrada = json_encode([
             'usuario' => $clave['usuario'],
             'contrasena' => $clave['contrasena'],
@@ -71,24 +98,32 @@ class ColmenaSesionService
         ];
     }
 
+    /** La primera clave utilizable; sirve para saber si hay alguna. */
+    public static function credencialPara(string $nit): ?array
+    {
+        return self::credencialesPara($nit)[0] ?? null;
+    }
+
     /**
-     * La clave de Colmena de esa empresa, en cualquier aliado.
+     * Las claves de Colmena de esa empresa, en cualquier aliado.
      *
      * Es la misma empresa ante la ARL, así que no se filtra por aliado: si
-     * Brygar y Fecop tienen cargada la misma empresa, cualquiera de las dos
-     * claves entra al mismo contrato.
+     * Brygar y Fecop la tienen cargada, cualquiera de las dos entra al mismo
+     * contrato. **Ojo: pueden no estar igual de frescas.** Por eso mandan las
+     * más recién editadas: la más vieja suele ser la que quedó sin actualizar
+     * en el último cambio de contraseña.
      *
-     * @return array{usuario:string, contrasena:string}|null
+     * @return array<int,array{usuario:string, contrasena:string}>
      */
-    public static function credencialPara(string $nit): ?array
+    public static function credencialesPara(string $nit): array
     {
         $nit = preg_replace('/\D/', '', $nit);
 
         if (! $nit) {
-            return null;
+            return [];
         }
 
-        $clave = DB::table('clave_accesos as c')
+        return DB::table('clave_accesos as c')
             ->join('razones_sociales as rs', 'rs.id', '=', 'c.razon_social_id')
             ->where('rs.nit', $nit)
             ->where('c.tipo', 'ARL')
@@ -96,16 +131,13 @@ class ColmenaSesionService
             ->where('c.activo', true)
             ->whereNotNull('c.usuario')
             ->whereNotNull('c.contrasena')
+            ->orderByDesc('c.updated_at')
             ->orderByDesc('c.id')
-            ->first(['c.usuario', 'c.contrasena']);
-
-        if (! $clave) {
-            return null;
-        }
-
-        return [
-            'usuario' => trim($clave->usuario),
-            'contrasena' => $clave->contrasena,
-        ];
+            ->get(['c.usuario', 'c.contrasena'])
+            ->map(fn ($clave) => [
+                'usuario' => trim($clave->usuario),
+                'contrasena' => $clave->contrasena,
+            ])
+            ->all();
     }
 }
