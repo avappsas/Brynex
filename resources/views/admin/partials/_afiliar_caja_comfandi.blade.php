@@ -60,8 +60,9 @@
           </div>
           <label class="cfd-campo" for="cfdOcupacion">Ocupación (se busca en la lista CIUO del portal)</label>
           <input id="cfdOcupacion" class="cfd-input">
-          <label class="cfd-campo" for="cfdDireccion">Dirección de residencia</label>
-          <input id="cfdDireccion" class="cfd-input" placeholder="Si Comfandi ya tiene una, la verás en el portal">
+          <label class="cfd-campo" for="cfdDireccion">Dirección de residencia (sin # ni -, el portal los rechaza)</label>
+          <input id="cfdDireccion" class="cfd-input" placeholder="Ej: CALLE 43 37 31">
+          <div class="cfd-info" id="cfdSueldoAviso" style="margin-top:.5rem"></div>
           <div class="cfd-aviso" style="margin-top:.6rem">
             Orientación sexual, pertenencia étnica y factor de vulnerabilidad van con los valores neutros
             del portal («información no disponible», «no se autoreconoce», «no aplica»), porque BryNex no
@@ -164,6 +165,8 @@ async function abrirCajaComfandi(contratoId) {
     cfdOpciones(cfdEl('cfdNivel'), cfdPrep.listas?.niveles, '10');
     cfdEl('cfdOcupacion').value = cfdPrep.portal?.ocupacionTexto || '';
     cfdEl('cfdDireccion').value = cfdPrep.portal?.direccion || cfdPrep.resumen?.direccion || '';
+    cfdEl('cfdHoras').onchange = cfdAvisarSueldo;
+    cfdAvisarSueldo();
 
     if (problemas.length) { cfdEl('cfdDatos').style.display = 'none'; cfdEl('cfdSesion').style.display = 'none'; return; }
     cfdEl('cfdSesion').style.display = 'block';
@@ -194,17 +197,33 @@ async function abrirPortalComfandi() {
     await cfdExt('cfdAbrir', { usuario: cred.usuario || '', contrasena: cred.contrasena || '' }, 40);
 }
 
+// Comfandi exige que el sueldo declarado sea proporcional a la jornada: 240
+// horas al mes es la completa. Con 4 horas (120 al mes) sobre el mínimo da
+// 875.453, el mismo salario que BryNex usa en un Tiempo Parcial (14).
+function cfdSueldoPorHoras(salario, horas) {
+    const h = Math.max(1, Math.min(8, parseInt(horas, 10) || 8));
+    return Math.round(Number(salario || 0) * (h * 30) / 240);
+}
+
 function cfdDatosPortal() {
+    const horas = cfdEl('cfdHoras').value;
     return Object.assign({}, cfdPrep.portal, {
         genero: cfdEl('cfdGenero').value,
         estadoCivil: cfdEl('cfdEstadoCivil').value,
         tipoContrato: cfdEl('cfdContrato').value,
         tipoSalario: cfdEl('cfdSalario').value,
-        horas: cfdEl('cfdHoras').value,
+        horas: horas,
         nivel: cfdEl('cfdNivel').value,
         ocupacionTexto: cfdEl('cfdOcupacion').value.trim(),
         direccion: cfdEl('cfdDireccion').value.trim(),
+        salario: cfdSueldoPorHoras(cfdPrep.portal?.salario, horas),
     });
+}
+
+function cfdAvisarSueldo() {
+    const s = cfdSueldoPorHoras(cfdPrep.portal?.salario, cfdEl('cfdHoras').value);
+    cfdEl('cfdSueldoAviso').textContent = 'Sueldo declarado al portal: $' + s.toLocaleString('es-CO')
+        + ' (Comfandi exige que sea proporcional a la jornada; el IBC de la planilla va aparte).';
 }
 
 async function iniciarCajaComfandi() {
@@ -222,7 +241,9 @@ async function iniciarCajaComfandi() {
               (r.desde ? ` desde el <strong>${cfdEsc(r.desde)}</strong>` : '') + '. No hay que afiliarlo: cierra esto y marca el radicado en OK.</div>'
             : `<div class="cfd-info">👤 ${cfdEsc(r.nombre || '')}${r.precargado ? ' (nombre y fecha de nacimiento los trajo la Registraduría)' : ''}</div>`) +
         '<div class="cfd-aviso">👉 BryNex ya llenó el formulario. <strong>Revísalo de arriba a abajo</strong> y pulsa <strong>Finalizar</strong>. ' +
-        'La fecha de ingreso la escoge BryNex en el calendario; si quedó vacía, ábrelo y selecciónala tú.</div>' +
+        'La fecha de ingreso la escoge BryNex en el calendario; si quedó vacía, ábrelo y selecciónala tú.<br>' +
+        'Después de Finalizar sale una ventana que te pide <strong>verificar el sueldo</strong>: revísalo y pulsa Confirmar. ' +
+        'Si el portal se queja de algo, el mensaje sale <strong>arriba en el formulario</strong>, no donde estás mirando — súbelo antes de volver a intentar.</div>' +
         '<div id="cfdPasoActual" class="cfd-texto">Esperando el formulario…</div>';
 
     clearInterval(cfdReloj);

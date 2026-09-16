@@ -258,17 +258,38 @@ class ComfandiCajaService
     }
 
     /**
-     * El portal rechaza la dirección con acentos y símbolos raros; se manda en
-     * mayúsculas y sin ellos, como se probó el 15-sep-2026.
+     * Dirección en mayúsculas, sin acentos y **sin `#` ni `-`**.
+     *
+     * El portal los deja escribir y solo los rechaza al enviar el formulario
+     * ("La nueva locación no puede contener caracteres especiales"), así que hay
+     * que quitarlos antes: "CALLE 43 # 37 - 31" va como "CALLE 43 37 31".
+     * Probado el 15-sep-2026 con Yesenia Vidal.
      */
     private function direccion(string $texto): string
     {
-        $limpia = preg_replace('/\s+/', ' ', preg_replace('/[^A-Z0-9# -]/', ' ',
+        $limpia = preg_replace('/\s+/', ' ', preg_replace('/[^A-Z0-9 ]/', ' ',
             mb_strtoupper(strtr($texto, ['Á' => 'A', 'É' => 'E', 'Í' => 'I', 'Ó' => 'O', 'Ú' => 'U', 'Ñ' => 'N', 'á' => 'A', 'é' => 'E', 'í' => 'I', 'ó' => 'O', 'ú' => 'U', 'ñ' => 'N']))));
 
         $limpia = trim($limpia);
 
         return preg_match('/[A-Z0-9]{2}/', $limpia) ? $limpia : '';
+    }
+
+    /**
+     * Sueldo que espera el portal para esa jornada.
+     *
+     * Comfandi valida que el salario sea proporcional a las horas ("El salario
+     * no es proporcional a las horas diarias trabajadas"): la jornada completa
+     * son 240 horas al mes (8 × 30), así que el sueldo declarado es el del
+     * contrato por la fracción de jornada. Con 4 horas —120 al mes— sobre el
+     * mínimo da 875.453, que es además lo que BryNex ya usa como salario de un
+     * Tiempo Parcial (14). Ojo: no es el IBC de la planilla, que va por 14/30.
+     */
+    public static function sueldoPorHoras(int $salario, int $horasDiarias): int
+    {
+        $horasDiarias = max(1, min(8, $horasDiarias));
+
+        return (int) round($salario * ($horasDiarias * 30) / 240);
     }
 
     private function marcar(Radicado $radicado, ?string $numero, string $estado, string $observacion, ?int $usuarioId): void
