@@ -28,8 +28,12 @@ class ArlAfiliacion extends BaseModel
     public const ESTADO_FALLIDA = 'fallida';
     public const ESTADO_ANULADA = 'anulada';
 
+    /** Ante qué ARL se hizo el movimiento; lo viejo es todo de Sura. */
+    public const ENTIDAD_SURA    = 'arl_sura';
+    public const ENTIDAD_COLMENA = 'arl_colmena';
+
     protected $fillable = [
-        'aliado_id', 'contrato_id', 'razon_social_id', 'cedula',
+        'aliado_id', 'contrato_id', 'razon_social_id', 'cedula', 'entidad',
         'operacion', 'estado', 'poliza', 'tipo_afiliado', 'tipo_cotizante',
         'codigo_centro', 'nivel_riesgo',
         'fecha_inicio_cobertura', 'fecha_fin_cobertura',
