@@ -58,6 +58,26 @@ class AppServiceProvider extends ServiceProvider
             return $this->whereSinTildes($columna, $valor, 'or');
         });
 
+        // Frase por palabras: "José Alveiro Botello" exige que CADA palabra aparezca en
+        // alguna de las $columnas, en cualquier orden. Un LIKE de la frase entera contra
+        // primer_nombre nunca la encontraba.
+        \Illuminate\Database\Query\Builder::macro('wherePalabrasSinTildes', function (array $columnas, $texto, string $boolean = 'and') {
+            $palabras = preg_split('/\s+/', trim((string) $texto), -1, PREG_SPLIT_NO_EMPTY);
+
+            return $this->where(function ($q) use ($columnas, $palabras) {
+                foreach ($palabras as $palabra) {
+                    $q->where(function ($sub) use ($columnas, $palabra) {
+                        foreach ($columnas as $columna) {
+                            $sub->orWhereSinTildes($columna, $palabra);
+                        }
+                    });
+                }
+            }, null, null, $boolean);
+        });
+        \Illuminate\Database\Query\Builder::macro('orWherePalabrasSinTildes', function (array $columnas, $texto) {
+            return $this->wherePalabrasSinTildes($columnas, $texto, 'or');
+        });
+
         // SQL Server: forzar SET options requeridos por columnas computadas / índices filtrados.
         // Usa evento lazy para no crashear en entornos locales sin driver sqlsrv.
         \Illuminate\Support\Facades\Event::listen(

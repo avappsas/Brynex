@@ -34,8 +34,7 @@ class CotizacionController extends Controller
             $query->where(function ($q) use ($buscar) {
                 $q->where('cedula', 'LIKE', "%{$buscar}%")
                   ->orWhere('celular', 'LIKE', "%{$buscar}%")
-                  ->orWhereSinTildes('primer_nombre', $buscar)
-                  ->orWhereSinTildes('primer_apellido', $buscar);
+                  ->orWherePalabrasSinTildes(['primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido'], $buscar);
             });
         }
 
