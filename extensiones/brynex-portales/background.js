@@ -1377,9 +1377,11 @@ async function cfdConsultar(pestana, d) {
     return true;
   });
 
-  // Ventana de confirmación con la empresa y el NIT.
+  // Ventana con la empresa y el NIT. El botón dice "Continuar" o "Confirmar"
+  // según el caso (15-sep-2026: "Continuar" con alguien nuevo, "Confirmar" con
+  // quien ya estuvo afiliado a Comfandi antes).
   const confirmar = await esperarQue(tab, () => {
-    const b = [...document.querySelectorAll('button')].find(x => /^Continuar$/i.test(x.innerText.trim()));
+    const b = [...document.querySelectorAll('button')].find(x => /^(Continuar|Confirmar)$/i.test(x.innerText.trim()));
     if (!b) return null;
     const texto = document.body.innerText.replace(/\s+/g, ' ');
     ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(t => b.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
@@ -1387,7 +1389,7 @@ async function cfdConsultar(pestana, d) {
   }, [], 45000);
   if (!confirmar) {
     const msg = await ejecutar(tab, () => document.body.innerText.replace(/\s+/g, ' ').slice(0, 300)).catch(() => '');
-    return { ok: false, error: 'El portal no ofreció Continuar tras la consulta. ' + msg };
+    return { ok: false, error: 'El portal no ofreció Continuar ni Confirmar tras la consulta. ' + msg };
   }
 
   await esperar(3000);
