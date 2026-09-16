@@ -97,7 +97,7 @@ class ComfandiCajaConciliacionService
             $detalle[] = $this->cruzar($r, $enCaja->get($doc), $tramites->get($doc), $simular, $usuarioId, $radicadosOk);
         }
         $cuenta = collect($detalle)->countBy('accion');
-        $guardados = $beneficiarios ? $this->guardarBeneficiarios($aliadoIds, $beneficiarios, $simular) : ['nuevos' => 0, 'personas' => 0];
+        $guardados = app(BeneficiariosCaja::class)->guardar($aliadoIds, $beneficiarios, $simular, 'el Listado de trabajadores de Comfandi');
 
         return [
             'beneficiarios_nuevos' => $guardados['nuevos'],
@@ -281,66 +281,6 @@ class ComfandiCajaConciliacionService
         });
 
         return $this->fila($r, 'tramite', $observacion);
-    }
-
-    /**
-     * Guarda en BryNex los beneficiarios que trae el listado de Comfandi.
-     *
-     * Vienen en el mismo Excel —hasta cuatro por trabajador, con parentesco y
-     * fecha de nacimiento—, así que la conciliación los aprovecha en vez de
-     * obligar a entrar ficha por ficha en el portal. Solo se agregan los que
-     * faltan: los que ya están no se tocan, porque en BryNex pueden tener datos
-     * puestos a mano.
-     *
-     * @param  array<string, array>  $beneficiarios  documento del trabajador → sus beneficiarios
-     * @return array{nuevos:int, personas:int}
-     */
-    private function guardarBeneficiarios(array $aliadoIds, array $beneficiarios, bool $simular): array
-    {
-        // Solo de quien tenga contrato en alguno de los aliados de la empresa:
-        // no se traen personas que BryNex no conoce.
-        $cedulas = array_keys($beneficiarios);
-        $conContrato = Contrato::whereIn('aliado_id', $aliadoIds)->whereIn('cedula', $cedulas)
-            ->get(['cedula', 'aliado_id'])
-            ->groupBy(fn ($c) => ltrim((string) $c->cedula, '0'))
-            ->map(fn ($g) => (int) $g->first()->aliado_id);
-
-        $nuevos = 0;
-        $personas = 0;
-
-        foreach ($beneficiarios as $cedula => $suyos) {
-            $aliadoId = $conContrato->get((string) $cedula);
-            if (! $aliadoId) {
-                continue;
-            }
-            $yaTiene = DB::table('beneficiarios')->where('aliado_id', $aliadoId)->where('cc_cliente', (string) $cedula)
-                ->pluck('n_documento')->map(fn ($d) => ltrim(preg_replace('/\D/', '', (string) $d), '0'))->filter()->all();
-
-            $faltan = array_values(array_filter($suyos, fn ($b) => ! in_array($b['documento'], $yaTiene, true)));
-            if (! $faltan) {
-                continue;
-            }
-            $personas++;
-            $nuevos += count($faltan);
-            if ($simular) {
-                continue;
-            }
-
-            DB::table('beneficiarios')->insert(array_map(fn ($b) => [
-                'aliado_id' => $aliadoId,
-                'cc_cliente' => (string) $cedula,
-                'tipo_doc' => $b['tipo_doc'],
-                'n_documento' => $b['documento'],
-                'nombres' => $b['nombre'],
-                'fecha_nacimiento' => $b['nacimiento'],
-                'parentesco' => $b['parentesco'],
-                'observacion' => 'Bajado del Listado de trabajadores de Comfandi el '.now()->format('d/m/Y').'.',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ], $faltan));
-        }
-
-        return ['nuevos' => $nuevos, 'personas' => $personas];
     }
 
     /** Afiliados a la caja por esa empresa que BryNex no tiene como contrato vigente con esa caja. */

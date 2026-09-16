@@ -1260,13 +1260,29 @@ async function ccfTrabajadores(pestana) {
     if (modal.length) return { error: modal.join(' ') };
     const t = $('#tablaTrabajadores').DataTable();
     const datos = t ? t.rows().data().toArray() : [];
-    return datos.length ? { datos: datos.map(f => [...f].slice(0, 4).map(x => String(x).replace(/<[^>]*>/g, '').trim())) } : null;
+    if (!datos.length) return null;
+    // Cuántas dice el DataTable que hay: si se leyeron menos, la lista está a
+    // medias y no se puede concluir que a nadie le falta la afiliación.
+    let total = datos.length;
+    try { const i = t.page.info(); total = i.recordsTotal || i.recordsDisplay || datos.length; } catch { /* sin paginación */ }
+    return {
+      datos: datos.map(f => [...f].slice(0, 4).map(x => String(x).replace(/<[^>]*>/g, '').trim())),
+      esperadas: total,
+    };
   }, [], 60000);
 
   if (!filas) return { ok: false, error: 'El portal no devolvió la lista de trabajadores (¿la empresa no tiene afiliados?).' };
   if (filas.error) return { ok: false, error: filas.error };
 
-  return { ok: true, nit: empresa.nit, empresa: empresa.razon, filas: filas.datos };
+  if (filas.datos.length < filas.esperadas) {
+    return {
+      ok: false,
+      error: `Solo se pudieron leer ${filas.datos.length} de ${filas.esperadas} trabajadores afiliados. `
+        + 'Con la lista a medias media empresa parecería no estar afiliada, así que no se concilió nada. Vuelve a intentar.',
+    };
+  }
+
+  return { ok: true, nit: empresa.nit, empresa: empresa.razon, filas: filas.datos, completa: true };
 }
 
 // ── Caja Comfandi (Sucursal Virtual Empresas, Next.js) ───────────────────
