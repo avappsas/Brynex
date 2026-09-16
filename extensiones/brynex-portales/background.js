@@ -1803,39 +1803,66 @@ async function cfdListado(pestana) {
   }
 
   // Abre el detalle del radicado y captura la ruta del archivo.
+  //
+  // El nombre lleva la hora de generación ("..._2026-09-16_1036.xlsx"), así que
+  // no se puede construir: hay que ver qué pide el portal. El espía se pone
+  // ANTES de tocar nada —si se pone después, la llamada ya pasó— y cada paso
+  // espera a que ocurra en vez de dormir un rato fijo.
   const ruta = await ejecutar(tab, async (numero) => {
-    const esperar = (ms) => new Promise(r => setTimeout(r, ms));
     const golpe = (e) => ['pointerdown', 'mousedown', 'mouseup', 'click']
       .forEach(t => e.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
 
-    const f = [...document.querySelectorAll('tbody tr')].find(r => r.innerText.includes(numero));
-    if (!f) return null;
-    golpe(f.querySelector('button'));
-    await esperar(2500);
+    // Se vigilan fetch y XHR: no se sabe cuál usa cada versión del portal.
+    if (!window.__cfdEspia) {
+      window.__cfdEspia = { url: null };
+      const of = window.fetch;
+      window.fetch = function (...a) {
+        try {
+          const u = String(a[0]?.url || a[0]);
+          if (u.includes('/sus/download')) window.__cfdEspia.url = u;
+        } catch {}
+        return of.apply(this, a);
+      };
+      const oo = XMLHttpRequest.prototype.open;
+      XMLHttpRequest.prototype.open = function (m, u) {
+        try { if (String(u).includes('/sus/download')) window.__cfdEspia.url = String(u); } catch {}
+        return oo.apply(this, arguments);
+      };
+    }
+    window.__cfdEspia.url = null;
 
-    // El botón del documento llama a /sus/download: se intercepta para saber
-    // qué archivo pide, porque el nombre lleva la hora de generación y no se
-    // puede adivinar.
-    let capturada = null;
-    const original = window.fetch;
-    window.fetch = function (...a) {
-      try {
-        const u = String(a[0]?.url || a[0]);
-        if (u.includes('/sus/download')) capturada = u;
-      } catch {}
-      return original.apply(this, a);
-    };
+    const hasta = (fn, ms) => new Promise((res) => {
+      const fin = Date.now() + ms;
+      const tic = () => {
+        let v = null;
+        try { v = fn(); } catch {}
+        if (v) return res(v);
+        if (Date.now() > fin) return res(null);
+        setTimeout(tic, 300);
+      };
+      tic();
+    });
 
-    const doc = [...document.querySelectorAll('*')].filter(e => e.children.length === 0)
-      .find(e => /Documento Resultado/i.test(e.innerText || ''));
-    if (doc) golpe(doc.closest('button') || doc);
-    await esperar(3000);
-    window.fetch = original;
+    const fila = [...document.querySelectorAll('tbody tr')].find(r => r.innerText.includes(numero));
+    if (!fila) return { error: 'no se encontró la fila del listado' };
+    golpe(fila.querySelector('button'));
 
-    return capturada;
-  }, [fila.numero]).catch(() => null);
+    // El modal llega cuando aparece el botón del documento.
+    const doc = await hasta(() => [...document.querySelectorAll('*')]
+      .filter(e => e.children.length === 0)
+      .find(e => /Documento Resultado/i.test(e.innerText || '')), 20000);
+    if (!doc) return { error: 'el detalle no mostró "Documento Resultado"' };
 
-  if (!ruta) return { ok: false, error: `Se encontró el listado ${fila.numero} pero no se pudo abrir su documento. Ábrelo a mano en Radicados y vuelve a intentar.` };
+    golpe(doc.closest('button') || doc);
+
+    const url = await hasta(() => window.__cfdEspia.url, 20000);
+
+    return url ? { url } : { error: 'se pulsó el documento pero el portal no pidió la descarga' };
+  }, [fila.numero]).catch((e) => ({ error: String(e?.message || e).slice(0, 150) }));
+
+  if (!ruta?.url) {
+    return { ok: false, error: `Se encontró el listado ${fila.numero} pero no se pudo obtener su archivo (${ruta?.error || 'sin detalle'}).` };
+  }
 
   // Con el token de la sesión, el portal devuelve la URL firmada de S3.
   const firmada = await ejecutar(tab, async (url) => {
@@ -1848,7 +1875,7 @@ async function cfdListado(pestana) {
       const t = (await r.text()).trim();
       return t.startsWith('http') ? t : null;
     } catch { return null; }
-  }, [ruta]).catch(() => null);
+  }, [ruta.url]).catch(() => null);
 
   if (!firmada) return { ok: false, error: 'El portal no entregó el enlace de descarga del listado.' };
 
