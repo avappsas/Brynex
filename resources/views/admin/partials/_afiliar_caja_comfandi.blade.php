@@ -60,8 +60,8 @@
           </div>
           <label class="cfd-campo" for="cfdOcupacion">Ocupación (se busca en la lista CIUO del portal)</label>
           <input id="cfdOcupacion" class="cfd-input">
-          <label class="cfd-campo" for="cfdDireccion">Dirección de residencia (sin # ni -, el portal los rechaza)</label>
-          <input id="cfdDireccion" class="cfd-input" placeholder="Ej: CALLE 43 37 31">
+          <label class="cfd-campo" for="cfdDireccion">Dirección de residencia (sin # ni -, y terminada en SECTOR URBANO o SECTOR RURAL)</label>
+          <input id="cfdDireccion" class="cfd-input" placeholder="Ej: CALLE 43 37 31 SECTOR URBANO">
           <div class="cfd-info" id="cfdSueldoAviso" style="margin-top:.5rem"></div>
           <div class="cfd-aviso" style="margin-top:.6rem">
             Orientación sexual, pertenencia étnica y factor de vulnerabilidad van con los valores neutros

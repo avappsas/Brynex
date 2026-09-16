@@ -258,12 +258,15 @@ class ComfandiCajaService
     }
 
     /**
-     * Dirección en mayúsculas, sin acentos y **sin `#` ni `-`**.
+     * Dirección como la acepta Comfandi: mayúsculas, sin acentos, **sin `#` ni
+     * `-`** y terminada en **SECTOR URBANO** (o RURAL).
      *
-     * El portal los deja escribir y solo los rechaza al enviar el formulario
-     * ("La nueva locación no puede contener caracteres especiales"), así que hay
-     * que quitarlos antes: "CALLE 43 # 37 - 31" va como "CALLE 43 37 31".
-     * Probado el 15-sep-2026 con Yesenia Vidal.
+     * Las dos reglas solo saltan al enviar el formulario, nunca mientras se
+     * escribe, y cada una aborta la radicación con su propio mensaje:
+     * "La nueva locación no puede contener caracteres especiales" y
+     * "La nueva locación debe contener «Sector urbano» o «Sector rural»".
+     * Así, "CALLE 43 # 37 - 31" va como "CALLE 43 37 31 SECTOR URBANO".
+     * Probado el 15-sep-2026 radicando a Yesenia Vidal (002-002-00440257).
      */
     private function direccion(string $texto): string
     {
@@ -271,8 +274,12 @@ class ComfandiCajaService
             mb_strtoupper(strtr($texto, ['Á' => 'A', 'É' => 'E', 'Í' => 'I', 'Ó' => 'O', 'Ú' => 'U', 'Ñ' => 'N', 'á' => 'A', 'é' => 'E', 'í' => 'I', 'ó' => 'O', 'ú' => 'U', 'ñ' => 'N']))));
 
         $limpia = trim($limpia);
+        if (! preg_match('/[A-Z0-9]{2}/', $limpia)) {
+            return '';
+        }
 
-        return preg_match('/[A-Z0-9]{2}/', $limpia) ? $limpia : '';
+        // Si ya trae el sector (urbano o rural) se respeta; si no, urbano.
+        return preg_match('/\bSECTOR\s+(URBANO|RURAL)\b/', $limpia) ? $limpia : $limpia.' SECTOR URBANO';
     }
 
     /**
