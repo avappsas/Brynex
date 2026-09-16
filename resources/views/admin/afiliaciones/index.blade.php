@@ -2519,7 +2519,7 @@ function elegirEntidadConciliacion(entidad) {
     _cepsCorria = false;
     document.querySelectorAll('.ceps-tab').forEach(b => {
         const activo = b.dataset.entidad === entidad;
-        b.style.background = activo ? ({ sura: '#0033a0', nueva_eps: '#be123c', salud_total: '#15803d', sanitas: '#0e7490' }[entidad]) : '#fff';
+        b.style.background = activo ? ({ sura: '#0033a0', nueva_eps: '#be123c', salud_total: '#15803d', sanitas: '#0e7490', caja_comfenalco: '#047857' }[entidad] || '#334155') : '#fff';
         b.style.color = activo ? '#fff' : '#334155';
     });
     Object.keys(CEPS_NOMBRES).forEach(k => {
