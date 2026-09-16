@@ -589,6 +589,8 @@ class Contrato extends BaseModel
             return;
         }
 
+        $nuevos = [];
+
         foreach ($this->plan->tiposRadicado() as $tipo) {
             // Solo si no existe ya
             if (! $this->radicados()->where('tipo', $tipo)->exists()) {
@@ -597,7 +599,15 @@ class Contrato extends BaseModel
                     'tipo' => $tipo,
                     'estado' => Radicado::ESTADO_PENDIENTE,
                 ]);
+                $nuevos[] = $tipo;
             }
+        }
+
+        // La pensión no se tramita: la persona ya está en un fondo y el RUAF lo
+        // dice. Se pregunta y el radicado nace cerrado. Va después del commit
+        // porque esto corre dentro de la transacción que crea el contrato.
+        if (in_array(Radicado::TIPO_PENSION, $nuevos, true)) {
+            \App\Jobs\ConfirmarPensionConRuaf::dispatch($this->id, \Illuminate\Support\Facades\Auth::id())->afterCommit();
         }
     }
 

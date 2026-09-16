@@ -2,6 +2,9 @@
 
 namespace App\Services\Pension;
 
+use App\Models\Bitacora;
+use App\Models\Cliente;
+use App\Models\Contrato;
 use App\Models\Radicado;
 use App\Models\RadicadoMovimiento;
 use App\Services\RegistroOficialService;
@@ -184,6 +187,73 @@ class PensionConciliacionService
         $this->marcar($r, $mensaje, $usuarioId);
 
         return $this->fila($r, 'cerrado', $mensaje);
+    }
+
+    /**
+     * Lo mismo, pero para un contrato recién creado: además de cerrar el
+     * radicado, corrige el fondo si el RUAF dice otro.
+     *
+     * Aquí sí se corrige solo, a diferencia de la conciliación en lote: al
+     * crear el contrato el fondo es un dato que se escribió a mano y el RUAF es
+     * la fuente oficial, así que manda. Lo que no se toca es un contrato sin
+     * fondo —el plan no lleva pensión y ponérselo cambiaría el plano—: ahí el
+     * dato solo se guarda en la ficha del cliente.
+     */
+    public function alCrearContrato(Contrato $contrato, ?int $usuarioId = null): array
+    {
+        $radicado = $contrato->radicados()
+            ->where('tipo', Radicado::TIPO_PENSION)
+            ->whereIn('estado', self::ABIERTOS)
+            ->first();
+
+        if (! $radicado) {
+            return ['accion' => 'sin_radicado'];
+        }
+
+        $cedula = preg_replace('/\D/', '', (string) $contrato->cedula);
+        $tipoDoc = strtoupper((string) ($contrato->cliente?->tipo_doc ?: 'CC'));
+        $ruaf = $this->consultar((int) $contrato->aliado_id, $cedula, $tipoDoc);
+
+        if ($ruaf === null) {
+            return ['accion' => 'error', 'mensaje' => 'El operador de planilla no respondió la consulta al RUAF.'];
+        }
+
+        $codigo = strtoupper(trim((string) ($ruaf['pension_codigo'] ?? '')));
+        $fondoId = $ruaf['pension_id'] ?? null;
+        $fondo = $ruaf['pension_nombre'] ?? null;
+        $desde = $this->fecha($ruaf['ruaf_desde'] ?? null);
+
+        if ($codigo === '' || in_array($codigo, self::SIN_FONDO, true) || ! $fondoId) {
+            return ['accion' => 'falta', 'mensaje' => 'No figura afiliado a ningún fondo de pensión en el RUAF.'];
+        }
+
+        // La ficha del cliente se pone al día siempre: el dato es de la persona.
+        $cliente = Cliente::where('aliado_id', $contrato->aliado_id)->where('cedula', $contrato->cedula)->first();
+
+        if ($cliente && (int) $cliente->pension_id !== (int) $fondoId) {
+            $cliente->update(['pension_id' => $fondoId]);
+        }
+
+        if (! $contrato->pension_id) {
+            return ['accion' => 'revisar', 'mensaje' => "El contrato no tiene fondo y en el RUAF figura {$fondo} desde {$desde}."];
+        }
+
+        if ((int) $contrato->pension_id !== (int) $fondoId) {
+            $antes = DB::table('pensiones')->where('id', $contrato->pension_id)->value('razon_social') ?: $contrato->pension_id;
+            $contrato->update(['pension_id' => $fondoId]);
+
+            Bitacora::registrar(
+                'updated', 'Contrato', $contrato->id,
+                "Fondo de pensión tomado del RUAF al crear el contrato: {$antes} → {$fondo} (Cédula: {$contrato->cedula}).",
+                ['pension_id' => ['antes' => $antes, 'despues' => $fondo]],
+                (int) $contrato->aliado_id
+            );
+        }
+
+        $mensaje = 'RUAF ('.($ruaf['operador'] ?? 'el operador')."): afiliado a {$fondo} desde {$desde}.";
+        $this->marcar($radicado, $mensaje, $usuarioId);
+
+        return ['accion' => 'cerrado', 'mensaje' => $mensaje, 'fondo' => $fondo];
     }
 
     /** Una consulta por persona, no por radicado. */
