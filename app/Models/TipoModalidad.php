@@ -35,7 +35,12 @@ class TipoModalidad extends BaseModel
      */
     public function scopeActivos($q)
     {
-        $q->where('activo', true)->whereNotIn('id', self::IDS_NO_CONTRATABLES);
+        // Las que se están probando en este entorno se ofrecen aunque sigan
+        // inactivas (config app.modalidades_en_prueba, vacío en producción).
+        $enPrueba = config('app.modalidades_en_prueba', []);
+
+        $q->where(fn ($w) => $w->where('activo', true)->when($enPrueba, fn ($x) => $x->orWhereIn('id', $enPrueba)))
+            ->whereNotIn('id', self::IDS_NO_CONTRATABLES);
 
         // Modalidades reservadas a un aliado: fuera de él no se ofrecen. Sin
         // aliado en sesión —una cola, un comando— quedan ocultas, que es el

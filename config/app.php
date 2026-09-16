@@ -73,6 +73,17 @@ return [
     'timezone' => env('APP_TIMEZONE', 'America/Bogota'),
 
     /*
+    | Modalidades inactivas que este entorno ofrece igual, para probar una
+    | modalidad nueva antes de activarla. No hay staging y la BD local es la de
+    | producción: activarla en la BD la mostraría en brynex.co con el código
+    | viejo. Ej. en el .env local: MODALIDADES_EN_PRUEBA=19
+    */
+    'modalidades_en_prueba' => array_values(array_filter(array_map(
+        'intval',
+        explode(',', (string) env('MODALIDADES_EN_PRUEBA', ''))
+    ))),
+
+    /*
     |--------------------------------------------------------------------------
     | Application Locale Configuration
     |--------------------------------------------------------------------------
