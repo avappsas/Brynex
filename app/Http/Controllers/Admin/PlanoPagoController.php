@@ -1103,10 +1103,27 @@ class PlanoPagoController extends Controller
             $forceOperadorId = (int) $forceOperadorId;
         }
 
+        // Primero el PDF del propio operador: es el que quedó radicado y el único
+        // con la hora exacta del pago. Solo existe para ARUS y Simple con
+        // credenciales cargadas; si no se puede, se arma el de BryNex como antes.
+        // `origen=brynex` fuerza el generado, para comparar los dos.
+        $origen = 'brynex';
+        $pdfContent = null;
+
+        if ($request->input('origen') !== 'brynex') {
+            $delOperador = app(\App\Services\EnlaceInformeIndividualService::class)->obtener($plano, $forceOperadorId ?: null);
+
+            if ($delOperador['success']) {
+                $pdfContent = $delOperador['pdf'];
+                $origen = $delOperador['origen'];
+            }
+        }
+
         // Generar el PDF de planilla rellenando la plantilla correspondiente al operador configurado de forma dinámica
-        $pdfContent = (new \App\Services\PlanillaFormularioService())->generar($plano, $forceOperadorId);
+        $pdfContent ??= (new \App\Services\PlanillaFormularioService())->generar($plano, $forceOperadorId);
 
         return response($pdfContent)
+            ->header('X-Soporte-Origen', $origen)
             ->header('Content-Type', 'application/pdf')
             ->header('Content-Disposition', "inline; filename=\"" . \App\Services\PlanillaWhatsappService::generarNombreArchivoPdf(
                 trim("{$plano->primer_nombre} {$plano->segundo_nombre} {$plano->primer_ape} {$plano->segundo_ape}"),
