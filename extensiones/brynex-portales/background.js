@@ -1582,11 +1582,60 @@ async function cfdTabla(tab, columnas, limitePaginas = 60) {
   return filas;
 }
 
-/** El NIT de la empresa de la sesión, para amarrar la conciliación a la razón social. */
+/**
+ * Va a una pantalla del portal pulsando su enlace del menú.
+ *
+ * Es un Next.js con guardas: pedir la URL directamente rebota al inicio
+ * (`/affiliations`) cuando la navegación no viene de dentro. Por eso se pulsa
+ * el enlace del menú lateral, y solo si no está se cae a la URL.
+ */
+async function cfdIr(tab, ruta) {
+  const destino = `/sakaar/${ruta}`;
+
+  const pulsado = await ejecutar(tab, (d) => {
+    if (location.pathname === d) return true;
+    const a = document.querySelector(`a[href="${d}"]`);
+    if (!a) return false;
+    ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(t => a.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+    return true;
+  }, [destino]).catch(() => false);
+
+  if (!pulsado) {
+    await chrome.tabs.update(tab, { url: `https://${CFD_HOST}${destino}` });
+    await esperarCarga(tab);
+  }
+
+  // Llegó cuando la ruta es la pedida; si rebotó al inicio, se reintenta desde allí.
+  const llego = await esperarQue(tab, (d) => location.pathname === d, [destino], 25000);
+  await esperar(2500);
+
+  return !!llego;
+}
+
+/**
+ * El NIT de la empresa de la sesión, para amarrar la conciliación a la razón
+ * social de BryNex.
+ *
+ * Primero se le pregunta al propio portal por su contexto de empresa, que es
+ * como lo sabe él mismo; si de ahí no sale, se lee de la tabla de
+ * Administración de usuarios, donde aparece junto a la razón social.
+ */
 async function cfdNitEmpresa(tab) {
-  await chrome.tabs.update(tab, { url: `${CFD_BASE}/admin/users` });
-  await esperarCarga(tab);
-  await esperar(3000);
+  const porApi = await ejecutar(tab, async () => {
+    try {
+      const r = await fetch('/sakaar/api/company-context', { credentials: 'include' });
+      if (!r.ok) return null;
+      const j = await r.json();
+      const texto = JSON.stringify(j);
+      const m = texto.match(/"(?:nit|documentNumber|numeroDocumento|identification|identificationNumber)"\s*:\s*"?(\d{8,12})"?/i);
+      const n = texto.match(/"(?:razonSocial|businessName|name|companyName)"\s*:\s*"([^"]{3,120})"/i);
+      return m ? { nit: m[1], empresa: n ? n[1] : null } : null;
+    } catch { return null; }
+  }).catch(() => null);
+
+  if (porApi?.nit) return porApi;
+
+  if (!await cfdIr(tab, 'admin/users')) return null;
 
   return await esperarQue(tab, () => {
     const t = document.querySelector('table');
@@ -1604,23 +1653,22 @@ async function cfdTrabajadores(pestana) {
   if (!est.sesion) return { ok: false, error: 'El portal no tiene la sesión iniciada. Entra con el NIT de la empresa y selecciona la empresa.' };
 
   const empresa = await cfdNitEmpresa(tab);
-  if (!empresa?.nit) return { ok: false, error: 'No se pudo leer el NIT de la empresa en Administración de usuarios.' };
+  if (!empresa?.nit) {
+    return { ok: false, error: 'No se pudo leer el NIT de la empresa. Comprueba que arriba diga "actualmente estás en" con la empresa seleccionada, abre "Administración de usuarios" en el menú y vuelve a intentar.' };
+  }
 
   // Listado de trabajadores: [nombre, "CC 123", ingreso empresa, ingreso caja]
   // se reordena a [documento, nombre, ingreso empresa, ingreso caja].
-  await chrome.tabs.update(tab, { url: `${CFD_BASE}/workers` });
-  await esperarCarga(tab);
-  await esperar(3500);
+  if (!await cfdIr(tab, 'workers')) return { ok: false, error: 'No se pudo abrir el Listado de trabajadores en el portal.' };
   const filas = await cfdTabla(tab, [2, 1, 3, 4]);
 
   // Radicados: la tabla no carga sola, hay que pulsar Buscar. Si esto falla y
   // se devuelve una lista vacía, BryNex da por no radicado a quien sí lo está y
   // manda a radicarlo otra vez — por eso se espera al botón, se espera a la
   // respuesta y se informa si no se pudo leer.
-  await chrome.tabs.update(tab, { url: `${CFD_BASE}/filed` });
-  await esperarCarga(tab);
+  const enRadicados = await cfdIr(tab, 'filed');
 
-  const pulsado = await esperarQue(tab, () => {
+  const pulsado = enRadicados && await esperarQue(tab, () => {
     const b = [...document.querySelectorAll('button')].find(x => /^\s*Buscar\s*$/i.test(x.innerText) && !x.disabled);
     if (!b) return false;
     ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(t => b.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
