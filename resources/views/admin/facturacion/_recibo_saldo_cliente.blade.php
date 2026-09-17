@@ -8,7 +8,12 @@
      cartera al facturar (caso Daniel Arroyave, jul-2026).
 
      saldo_proximo = (efectivo + consignado + anticipo) − total
-        negativo → PENDIENTE      positivo → A FAVOR
+        negativo → PENDIENTE      positivo → nada, sale "Al día"
+
+     El saldo a favor NO se imprime (sep-2026): varios nacieron de "Otros" que
+     se escribían y no se cobraban, así que prometerle al cliente un descuento
+     que quizá no existe crea un reclamo. El crédito sigue vivo en el sistema
+     y se aplica al facturar; se revisa en /admin/anticipos/saldos.
      $saldoAnterior lo calcula el controlador: la suma de los saldo_proximo
      de las facturas previas del mismo cliente (o empresa).
 ══════════════════════════════════════════════════════════════════════════ --}}
@@ -27,7 +32,7 @@ $esPrestamoCli = ($factura->estado ?? '') === 'prestamo';
 @endphp
 
 <div style="border-top:1.5px solid #e2e8f0;padding:.5rem 1.2rem;
-            background:{{ $sTotalCli < 0 ? '#fef2f2' : ($sTotalCli > 0 ? '#f0fdf4' : '#f8fafc') }};">
+            background:{{ $sTotalCli < 0 ? '#fef2f2' : '#f8fafc' }};">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap;">
         @if($sTotalCli < 0)
         <span style="font-size:.78rem;font-weight:800;color:#b91c1c;">
@@ -35,13 +40,6 @@ $esPrestamoCli = ($factura->estado ?? '') === 'prestamo';
         </span>
         <span style="font-size:.66rem;color:#991b1b;font-weight:600;">
             {{ $esPrestamoCli ? 'queda como préstamo por cobrar' : 'se cobra con la próxima factura' }}
-        </span>
-        @elseif($sTotalCli > 0)
-        <span style="font-size:.78rem;font-weight:800;color:#15803d;">
-            ✅ Saldo a favor: {{ $fmt($sTotalCli) }}
-        </span>
-        <span style="font-size:.66rem;color:#15803d;font-weight:600;">
-            se descuenta del próximo pago
         </span>
         @else
         <span style="font-size:.78rem;font-weight:800;color:#15803d;">✔ Al día</span>
