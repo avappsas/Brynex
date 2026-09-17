@@ -32,6 +32,7 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
 .chip-danger { border-left-color:#dc2626; } .chip-danger .chip-val { color:#dc2626; }
 .chip-warn   { border-left-color:#d97706; } .chip-warn   .chip-val { color:#d97706; }
 .chip-info   { border-left-color:#2563eb; } .chip-info   .chip-val { color:#2563eb; }
+.chip-ok     { border-left-color:#16a34a; } .chip-ok     .chip-val { color:#16a34a; }
 @media(max-width:900px){ .chips-row{ margin-left:0; width:100%; } }
 
 /* ── Tabs ── */
@@ -83,6 +84,15 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
 .btn-abono { background:#dcfce7; color:#15803d; }
 .btn-gestion { background:#f3e8ff; color:#7c3aed; }
 
+/* ── Pagados ── */
+.monto-pagado { font-weight:700; color:#16a34a; font-family:monospace; }
+.tag-tipo { padding:.15rem .5rem; border-radius:20px; font-size:.68rem; font-weight:700; }
+.tag-ind { background:#e0e7ff; color:#4338ca; }
+.tag-emp { background:#e0f2fe; color:#0369a1; }
+.tag-estado { padding:.15rem .5rem; border-radius:20px; font-size:.68rem; font-weight:700; }
+.tag-pagado    { background:#dcfce7; color:#15803d; }
+.tag-condonado { background:#fef3c7; color:#b45309; }
+
 /* ── Empty ── */
 .empty-state { text-align:center; padding:3rem; color:#94a3b8; }
 
@@ -124,6 +134,10 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
            class="tab-link {{ $tab === 'empresas' ? 'active' : '' }}">
             🏢 Empresas ({{ $empresasAgrupadas->count() }})
         </a>
+        <a href="?tab=pagados{{ $buscar ? '&buscar='.urlencode($buscar) : '' }}"
+           class="tab-link {{ $tab === 'pagados' ? 'active' : '' }}">
+            ✅ Pagados ({{ $cantPagados }})
+        </a>
     </div>
 
     <form method="GET" class="filtros">
@@ -152,6 +166,12 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
             <span class="chip-lbl">🔴 Sin gestión</span>
             <span class="chip-val">{{ $sinGestion }}</span>
         </div>
+        @if($tab === 'pagados')
+        <div class="chip chip-ok" title="Valor de los préstamos ya saldados">
+            <span class="chip-lbl">✅ Recuperado</span>
+            <span class="chip-val">{{ $fmt($totalPagado) }}</span>
+        </div>
+        @endif
     </div>
 </div>
 
@@ -328,6 +348,80 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
             <td style="text-align:right;padding:.5rem .7rem;font-family:monospace;color:#86efac;">{{ $fmt($empresasAgrupadas->sum('total_abonado')) }}</td>
             <td style="text-align:right;padding:.5rem .7rem;font-family:monospace;color:#fca5a5;">{{ $fmt($totalDeudaEmp) }}</td>
             <td colspan="2"></td>
+        </tr>
+        </tfoot>
+    </table>
+    @endif
+</div>
+@endif
+
+{{-- ══ TAB PAGADOS ══ --}}
+@if($tab === 'pagados')
+<div class="tbl-wrap">
+    @if($pagados->isEmpty())
+    <div class="empty-state">
+        <div style="font-size:2.5rem;">📭</div>
+        <div style="font-size:1rem;font-weight:700;margin-top:.5rem;color:#0f172a;">
+            {{ $buscar ? 'Ningún préstamo saldado coincide con la búsqueda' : 'Todavía no hay préstamos saldados' }}
+        </div>
+    </div>
+    @else
+    <table class="tbl-prest">
+        <thead>
+            <tr>
+                <th data-sort="texto">Tipo</th>
+                <th data-sort="texto">Cliente / Empresa</th>
+                <th data-sort="texto">Cédula / Clientes</th>
+                <th data-sort="texto">Asesor</th>
+                <th data-sort="num">Período</th>
+                <th data-sort="num" style="text-align:right;">Valor del préstamo</th>
+                <th data-sort="num" style="text-align:right;">Abonado</th>
+                <th data-sort="num">Saldado el</th>
+                <th data-sort="texto" style="text-align:center;">Cómo</th>
+                <th style="text-align:center;">Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach($pagados as $p)
+        <tr>
+            <td data-v="{{ $p->tipo }}">
+                <span class="tag-tipo {{ $p->tipo === 'empresa' ? 'tag-emp' : 'tag-ind' }}">
+                    {{ $p->tipo === 'empresa' ? '🏢 Empresa' : '👤 Individual' }}
+                </span>
+            </td>
+            <td style="font-weight:700;color:#1e3a5f;" data-v="{{ $p->nombre }}">{{ $p->nombre }}</td>
+            <td style="font-family:monospace;color:#64748b;font-size:.78rem;" data-v="{{ $p->detalle }}">{{ $p->detalle }}</td>
+            <td style="font-size:.75rem;color:#64748b;" data-v="{{ $p->asesor ?? '' }}">{{ $p->asesor ?? '—' }}</td>
+            <td data-v="{{ (int)$p->anio * 100 + (int)$p->mes }}">
+                <span style="background:#dbeafe;color:#1d4ed8;padding:.15rem .5rem;border-radius:20px;font-size:.7rem;font-weight:700;">
+                    {{ $meses[$p->mes] ?? '' }} {{ $p->anio }}
+                </span>
+            </td>
+            <td style="text-align:right;font-family:monospace;font-weight:600;" data-v="{{ (int)$p->valor }}">{{ $fmt($p->valor) }}</td>
+            <td style="text-align:right;" class="monto-pagado" data-v="{{ (int)$p->abonado }}">{{ $fmt($p->abonado) }}</td>
+            <td style="font-size:.75rem;color:#334155;" data-v="{{ $p->fecha_pago?->timestamp ?? 0 }}">
+                {{ $p->fecha_pago?->format('d/m/Y') ?? '—' }}
+            </td>
+            <td style="text-align:center;" data-v="{{ $p->condonado ? 'condonado' : 'pagado' }}">
+                @if($p->condonado)
+                    <span class="tag-estado tag-condonado" title="Se dio por saldado sin recibir la plata">🤝 Condonado</span>
+                @else
+                    <span class="tag-estado tag-pagado">✅ Pagado</span>
+                @endif
+            </td>
+            <td style="text-align:center;">
+                <a href="{{ route('admin.prestamos.show', $p->factura_id) }}" class="btn-sm btn-ver"
+                   title="Factura #{{ $p->numero_factura }}">👁 Ver</a>
+            </td>
+        </tr>
+        @endforeach
+        </tbody>
+        <tfoot>
+        <tr style="background:#0f172a;color:#fff;font-weight:700;">
+            <td colspan="5" style="padding:.5rem .7rem;font-size:.72rem;">TOTALES ({{ $pagados->count() }} préstamos saldados)</td>
+            <td style="text-align:right;padding:.5rem .7rem;font-family:monospace;">{{ $fmt($pagados->sum('valor')) }}</td>
+            <td style="text-align:right;padding:.5rem .7rem;font-family:monospace;color:#86efac;">{{ $fmt($pagados->sum('abonado')) }}</td>
+            <td colspan="3"></td>
         </tr>
         </tfoot>
     </table>

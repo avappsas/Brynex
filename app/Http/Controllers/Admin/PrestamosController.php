@@ -14,7 +14,7 @@ class PrestamosController extends Controller
     {
         $aliadoId = session('aliado_id_activo');
         $buscar   = $request->get('buscar');
-        $tab      = $request->get('tab', 'individuales'); // individuales | empresas
+        $tab      = $request->get('tab', 'individuales'); // individuales | empresas | pagados
         $sort     = $request->get('sort', 'antiguedad');
 
         // ── Préstamos individuales (empresa_id NULL o empresa_id=1) ──
@@ -159,11 +159,26 @@ class PrestamosController extends Controller
         // podía preguntarla y el guardado rebotaba.
         $bancos = BancoCuenta::paraFacturacion($aliadoId);
 
+        // ── Pestaña "Pagados" ─────────────────────────────────────────
+        // El listado completo solo se arma cuando se está mirando esa
+        // pestaña; en las otras basta con el conteo para la etiqueta.
+        $pagados      = collect();
+        $cantPagados  = 0;
+        $totalPagado  = 0;
+
+        if ($tab === 'pagados') {
+            $pagados     = $this->prestamosPagados($aliadoId, $buscar);
+            $cantPagados = $pagados->count();
+            $totalPagado = (int) $pagados->sum('valor');
+        } else {
+            $cantPagados = $this->contarPrestamosPagados($aliadoId);
+        }
+
         return view('admin.prestamos.index', compact(
             'individuales', 'empresasAgrupadas',
             'tab', 'buscar', 'sort',
             'totalDeudaInd', 'totalDeudaEmp', 'totalPrestamos', 'sinGestion',
-            'bancos'
+            'bancos', 'pagados', 'cantPagados', 'totalPagado'
         ));
     }
 
@@ -591,6 +606,119 @@ class PrestamosController extends Controller
             ->mapWithKeys(fn($r) => [$r->cedula => (int)$r->total_prestado]);
 
         return response()->json(['ok' => true, 'pendientes' => $pendientes]);
+    }
+
+    // ─── Préstamos ya saldados ───────────────────────────────────────
+    // Cuando un préstamo se paga, `estado` pasa a 'pagada' y `saldo_proximo`
+    // a 0: lo único que queda para reconocer que esa factura nació como
+    // préstamo es `valor_prestamo`, la misma fuente de verdad que ya usan los
+    // lotes de empresa en el listado de pendientes.
+
+    /** Query base de los préstamos que ya no deben nada. */
+    private function queryPagados(int $aliadoId)
+    {
+        return Factura::where('aliado_id', $aliadoId)
+            ->where('estado', Factura::ESTADO_PAGADA)
+            ->whereNull('deleted_at')
+            ->where('valor_prestamo', '>', 0);
+    }
+
+    /** ¿La factura es de un lote de empresa? (empresa_id=1 es el genérico) */
+    private function esLoteDeEmpresa($factura): bool
+    {
+        return $factura->empresa_id && (int) $factura->empresa_id !== 1;
+    }
+
+    /** Conteo para la etiqueta de la pestaña: un lote de empresa cuenta como 1. */
+    private function contarPrestamosPagados(int $aliadoId): int
+    {
+        $filas = $this->queryPagados($aliadoId)->get(['id', 'empresa_id', 'numero_factura']);
+
+        return $filas->reject(fn ($f) => $this->esLoteDeEmpresa($f))->count()
+             + $filas->filter(fn ($f) => $this->esLoteDeEmpresa($f))
+                     ->groupBy(fn ($f) => $f->empresa_id.'-'.$f->numero_factura)
+                     ->count();
+    }
+
+    /** Listado de préstamos saldados, individuales y lotes de empresa juntos. */
+    private function prestamosPagados(int $aliadoId, ?string $buscar)
+    {
+        $filas = $this->queryPagados($aliadoId)
+            ->with(['contrato.cliente', 'contrato.asesor', 'empresa', 'abonos'])
+            ->get();
+
+        // ── Individuales: una factura = un préstamo ──
+        $individuales = $filas->reject(fn ($f) => $this->esLoteDeEmpresa($f))->map(function ($f) {
+            $nombre = trim(
+                ($f->contrato?->cliente?->primer_nombre ?? '').' '.
+                ($f->contrato?->cliente?->primer_apellido ?? '')
+            );
+
+            return (object) [
+                'tipo'           => 'individual',
+                'nombre'         => $nombre ?: '—',
+                'detalle'        => (string) $f->cedula,
+                'asesor'         => $f->contrato?->asesor?->nombre,
+                'mes'            => $f->mes,
+                'anio'           => $f->anio,
+                'numero_factura' => $f->numero_factura,
+                'valor'          => (int) $f->valor_prestamo,
+                'abonado'        => (int) $f->abonos->sum('valor'),
+                'fecha_pago'     => $this->fechaSaldado($f->abonos, $f->updated_at),
+                'condonado'      => $this->fueCondonado($f),
+                'factura_id'     => $f->id,
+            ];
+        });
+
+        // ── Empresas: un lote (mismo numero_factura) = un préstamo ──
+        $empresas = $filas->filter(fn ($f) => $this->esLoteDeEmpresa($f))
+            ->groupBy(fn ($f) => $f->empresa_id.'-'.$f->numero_factura)
+            ->map(function ($lote) {
+                $primera = $lote->first();
+                $abonos  = $lote->flatMap->abonos;
+
+                return (object) [
+                    'tipo'           => 'empresa',
+                    'nombre'         => $primera->empresa?->empresa ?? 'Empresa #'.$primera->empresa_id,
+                    'detalle'        => $lote->count().' cliente'.($lote->count() === 1 ? '' : 's'),
+                    'asesor'         => null,
+                    'mes'            => $primera->mes,
+                    'anio'           => $primera->anio,
+                    'numero_factura' => $primera->numero_factura,
+                    'valor'          => (int) $lote->sum('valor_prestamo'),
+                    'abonado'        => (int) $abonos->sum('valor'),
+                    'fecha_pago'     => $this->fechaSaldado($abonos, $lote->max('updated_at')),
+                    'condonado'      => $lote->contains(fn ($f) => $this->fueCondonado($f)),
+                    'factura_id'     => $primera->id,
+                ];
+            })->values();
+
+        $pagados = $individuales->concat($empresas);
+
+        if ($buscar) {
+            $b = mb_strtolower($buscar);
+            $pagados = $pagados->filter(fn ($p) =>
+                str_contains(mb_strtolower($p->nombre), $b) ||
+                str_contains(mb_strtolower($p->detalle), $b) ||
+                str_contains((string) $p->numero_factura, $b)
+            );
+        }
+
+        return $pagados->sortByDesc(fn ($p) => $p->fecha_pago?->timestamp ?? 0)->values();
+    }
+
+    /** Cuándo se saldó: el último abono, o la última vez que se tocó la factura. */
+    private function fechaSaldado($abonos, $fallback): ?\Illuminate\Support\Carbon
+    {
+        $fecha = $abonos->max('fecha') ?: $fallback;
+
+        return $fecha ? \Illuminate\Support\Carbon::parse($fecha) : null;
+    }
+
+    /** `condonar()` no deja bandera: la huella queda en la observación. */
+    private function fueCondonado($factura): bool
+    {
+        return str_contains(mb_strtoupper((string) $factura->observacion), 'CONDONADO');
     }
 
     // ─── Helper: calcular semáforo por días sin gestión ──────────────
