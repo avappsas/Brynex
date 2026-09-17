@@ -267,25 +267,56 @@ class PlanoPagoController extends Controller
         $totalAdmon    = $planos->sum('admon');
         $totalPersonas = $planos->count();
 
+        // ── El gasto que respalda cada planilla del listado ──────────────
+        // Se carga en UNA sola consulta (el servidor es remoto y cada viaje
+        // cuesta ~250 ms). Sirve para dos cosas: el valor pagado del recuadro
+        // y el lápiz de corregir de cada fila — en una RS independiente cada
+        // persona lleva su propio número y su propio gasto.
+        $numerosDelListado = $planos->pluck('numero_planilla')
+            ->map(fn ($n) => trim((string) $n))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $gastosPorPlanilla = $numerosDelListado->isEmpty()
+            ? collect()
+            : DB::table('gastos')
+                ->where('aliado_id', $aliadoId)
+                ->where('tipo', 'pago_planilla')
+                ->whereIn('numero_planilla', $numerosDelListado->all())
+                ->orderBy('id')
+                ->get(['id', 'numero_planilla', 'valor', 'fecha', 'usuario_id', 'pagado_a'])
+                ->keyBy(fn ($g) => trim((string) $g->numero_planilla));
+
+        // Corrige quien administra gastos (admin y superadmin por el Gate) o
+        // quien confirmó ese pago en particular.
+        $usuarioActualId  = (int) Auth::id();
+        $administraGastos = (bool) Auth::user()?->can('gastos.gestionar');
+        $puedeCorregir    = fn ($gasto) => $gasto
+            && ($administraGastos || (int) $gasto->usuario_id === $usuarioActualId);
+
         // Detectar si el plano ya fue pagado:
         // Se considera pagado si TODOS los registros del filtro tienen numero_planilla.
         // Esto evita que otro usuario intente duplicar el pago.
         $planoPagado          = false;
         $numeroPlanillaPagado = null;
         $valorPagado          = null; // total real pagado (SS + mora) desde gastos
+        $gastoPagoId          = null; // gasto que respalda el pago (para corregirlo)
+        $puedeCorregirPago    = false;
         if ($planos->count() > 0) {
             $conPlanilla  = $planos->whereNotNull('numero_planilla')->where('numero_planilla', '!=', '')->count();
             $planoPagado  = ($conPlanilla === $planos->count());
             if ($planoPagado) {
                 $numeroPlanillaPagado = $planos->first()->numero_planilla;
                 // Buscar el gasto de pago_planilla asociado para obtener el valor real pagado
-                $gastosPago = DB::table('gastos')
-                    ->where('aliado_id', $aliadoId)
-                    ->where('tipo', 'pago_planilla')
-                    ->where('numero_planilla', $numeroPlanillaPagado)
-                    ->orderByDesc('id')
-                    ->first(['valor', 'fecha', 'observacion', 'pagado_a']);
+                $gastosPago  = $gastosPorPlanilla->get(trim((string) $numeroPlanillaPagado));
                 $valorPagado = $gastosPago ? (int) $gastosPago->valor : null;
+                // Para el modal de corrección: hay que saber QUÉ gasto se toca.
+                $gastoPagoId = $gastosPago ? (int) $gastosPago->id : null;
+                // En una RS independiente el recuadro no representa un pago
+                // solo: cada persona tiene su número y su gasto, y se corrigen
+                // desde el lápiz de su fila.
+                $puedeCorregirPago = ! $rsSeleccionada?->es_independiente && $puedeCorregir($gastosPago);
             }
         }
 
@@ -352,6 +383,8 @@ class PlanoPagoController extends Controller
             'totalSS', 'totalAdmon', 'totalPersonas',
             'bancos', 'operadores', 'operadoresApiIds',
             'planoPagado', 'numeroPlanillaPagado', 'valorPagado',
+            'gastoPagoId', 'puedeCorregirPago',
+            'gastosPorPlanilla', 'puedeCorregir',
             'estadoPago',
         ) + [
             // Indica si la RS seleccionada es de tipo independiente:
@@ -1007,7 +1040,9 @@ class PlanoPagoController extends Controller
                     ? ($validated['banco_id'] ?? null)
                     : null,
                 'valor'             => $validated['valor'],
-                'observacion'       => $validated['observacion'],
+                // La observación es opcional: si no viene, `validate` ni
+                // siquiera trae la clave y el acceso directo lanzaba un warning.
+                'observacion'       => $validated['observacion'] ?? null,
             ]);
 
             // ── Guardar imagen de soporte si viene adjunta ─────────────
@@ -1090,6 +1125,169 @@ class PlanoPagoController extends Controller
                 'mensaje' => 'Error al confirmar el pago: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    // ── 5b. Corregir un pago ya confirmado ────────────────────────────
+    // El número de planilla se digita a mano al confirmar, y queda escrito en
+    // dos sitios que tienen que moverse juntos: el gasto (campo dedicado + el
+    // texto de la descripción) y los registros del plano. Hasta ahora la única
+    // forma de arreglar un número mal digitado era borrar el gasto —el modelo
+    // les quita el número a los planos al borrarse— y volver a confirmar, lo
+    // que se lleva por delante la fecha real del pago y el soporte adjunto.
+    public function corregirPago(Request $request)
+    {
+        $aliadoId  = session('aliado_id_activo');
+        $usuarioId = Auth::id();
+
+        $validated = $request->validate([
+            'gasto_id'        => 'required|integer',
+            'numero_planilla' => 'required|string|max:80',
+            'valor'           => 'required|integer|min:1',
+            'motivo'          => 'nullable|string|max:300',
+        ]);
+
+        $gasto = Gasto::where('aliado_id', $aliadoId)
+            ->where('tipo', 'pago_planilla')
+            ->find($validated['gasto_id']);
+
+        if (! $gasto) {
+            return response()->json(['ok' => false, 'mensaje' => 'No se encontró el pago a corregir.'], 404);
+        }
+
+        // Lo corrige quien administra gastos (admin y superadmin por el Gate)
+        // y, además, quien confirmó ese pago aunque no sea admin.
+        if (! Auth::user()->can('gastos.gestionar') && (int) $gasto->usuario_id !== (int) $usuarioId) {
+            return response()->json([
+                'ok'      => false,
+                'mensaje' => 'Solo un administrador o quien confirmó este pago puede corregirlo.',
+            ], 403);
+        }
+
+        $numeroViejo = trim((string) $gasto->numero_planilla);
+        $numeroNuevo = trim($validated['numero_planilla']);
+        $valorViejo  = (int) $gasto->valor;
+        $valorNuevo  = (int) $validated['valor'];
+
+        $cambiaNumero = $numeroNuevo !== $numeroViejo;
+        $cambiaValor  = $valorNuevo !== $valorViejo;
+
+        if (! $cambiaNumero && ! $cambiaValor) {
+            return response()->json(['ok' => false, 'mensaje' => 'No hay nada que corregir: el número y el valor son los mismos.'], 422);
+        }
+
+        // Misma guarda que al confirmar: dos pagos no pueden compartir número.
+        if ($cambiaNumero) {
+            $ocupado = Gasto::where('aliado_id', $aliadoId)
+                ->where('tipo', 'pago_planilla')
+                ->where('numero_planilla', $numeroNuevo)
+                ->where('id', '!=', $gasto->id)
+                ->exists();
+
+            if ($ocupado) {
+                return response()->json([
+                    'ok'      => false,
+                    'mensaje' => 'La planilla N° '.$numeroNuevo.' ya tiene otro pago confirmado registrado.',
+                ], 422);
+            }
+        }
+
+        DB::beginTransaction();
+        try {
+            $cantActualizados = 0;
+
+            if ($cambiaNumero) {
+                // Los registros del plano se buscan por el número viejo: es lo
+                // único que los ata a este gasto (ver Gasto::planosPagados()).
+                $cantActualizados = DB::table('planos')
+                    ->where('aliado_id', $aliadoId)
+                    ->where('numero_planilla', $numeroViejo)
+                    ->whereNull('deleted_at')
+                    ->update([
+                        'numero_planilla' => $numeroNuevo,
+                        'updated_at'      => now(),
+                    ]);
+
+                // Lo que ya se le mandó a la gente por WhatsApp queda apuntando
+                // a la planilla buena, que es por donde se vuelve a buscar.
+                DB::table('planilla_envios_whatsapp_detalle')
+                    ->where('numero_planilla', $numeroViejo)
+                    ->update(['numero_planilla' => $numeroNuevo]);
+
+                // La verificación contra el operador se hizo con el número
+                // errado: no dice nada de la planilla real. Se borra para que
+                // vuelva a consultarse con el número bueno.
+                DB::table('planillas_verificacion_operador')
+                    ->where('aliado_id', $aliadoId)->where('numero_planilla', $numeroViejo)->delete();
+                DB::table('planillas_pago_operador')
+                    ->where('aliado_id', $aliadoId)->where('numero_planilla', $numeroViejo)->delete();
+            }
+
+            // El número también va escrito dentro del texto de la descripción.
+            $descripcion = $cambiaNumero && $numeroViejo !== ''
+                ? str_replace('Planilla: '.$numeroViejo, 'Planilla: '.$numeroNuevo, (string) $gasto->descripcion)
+                : (string) $gasto->descripcion;
+
+            $rastro = 'CORREGIDO '.now()->format('d/m/Y').' por '.(Auth::user()->nombre ?? $usuarioId).': '
+                .($cambiaNumero ? "planilla {$numeroViejo} → {$numeroNuevo}. " : '')
+                .($cambiaValor ? 'valor $'.number_format($valorViejo, 0, ',', '.').' → $'.number_format($valorNuevo, 0, ',', '.').'. ' : '')
+                .($validated['motivo'] ?? '');
+
+            $gasto->update([
+                'numero_planilla' => $numeroNuevo,
+                'valor'           => $valorNuevo,
+                'descripcion'     => $descripcion,
+                'observacion'     => trim(($gasto->observacion ? $gasto->observacion.' | ' : '').trim($rastro)),
+            ]);
+
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'ok'      => false,
+                'mensaje' => 'Error al corregir el pago: '.$e->getMessage(),
+            ], 500);
+        }
+
+        \App\Models\Bitacora::registrar(
+            'updated',
+            'Gasto',
+            $gasto->id,
+            'Corrección de pago de planilla '.($cambiaNumero ? $numeroViejo.' → '.$numeroNuevo : $numeroNuevo),
+            [
+                'numero_anterior'  => $numeroViejo,
+                'numero_nuevo'     => $numeroNuevo,
+                'valor_anterior'   => $valorViejo,
+                'valor_nuevo'      => $valorNuevo,
+                'planos_afectados' => $cantActualizados,
+                'motivo'           => $validated['motivo'] ?? null,
+            ],
+            (int) $aliadoId
+        );
+
+        // Los soportes del operador se bajan a una carpeta que lleva el número
+        // en la ruta, así que con el número bueno hay que volver a pedirlos.
+        if ($cambiaNumero) {
+            \App\Jobs\DescargarSoportesPlanillaJob::programar(
+                (int) $aliadoId, $numeroNuevo, (string) $gasto->pagado_a, $usuarioId
+            );
+        }
+
+        $partes = [];
+        if ($cambiaNumero) {
+            $partes[] = "planilla {$numeroViejo} → {$numeroNuevo} en el gasto y en {$cantActualizados} registro(s) del plano";
+        }
+        if ($cambiaValor) {
+            $partes[] = 'valor $'.number_format($valorViejo, 0, ',', '.').' → $'.number_format($valorNuevo, 0, ',', '.');
+        }
+
+        return response()->json([
+            'ok'                => true,
+            'mensaje'           => 'Corregido: '.implode('; ', $partes).'.',
+            'numero_planilla'   => $numeroNuevo,
+            'valor'             => $valorNuevo,
+            'cant_actualizados' => $cantActualizados,
+        ]);
     }
 
     /**

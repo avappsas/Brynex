@@ -414,6 +414,20 @@
 .chip-planilla.no-cruza    { color:#b91c1c; border-color:#f87171; background:#fef2f2; }
 .chip-planilla.sin-acceso  { color:#92400e; border-color:#fbbf24; background:#fffbeb; }
 .chip-planilla.verificando { color:#475569; border-color:#cbd5e1; }
+.acc-planilla-num {
+    font-family:monospace; font-size:1.05rem; font-weight:800; color:#0f172a;
+    background:#f8fafc; border:1px solid #e2e8f0; border-radius:9px;
+    padding:.5rem .8rem; text-align:center; letter-spacing:.02em; word-break:break-all;
+}
+.acc-planilla-btn {
+    display:flex; align-items:center; justify-content:center; gap:.4rem;
+    width:100%; padding:.55rem .9rem; border-radius:9px; border:1px solid #e2e8f0;
+    background:#fff; color:#334155; font-size:.82rem; font-weight:700; cursor:pointer;
+    transition:background .12s, border-color .12s;
+}
+.acc-planilla-btn:hover { background:#f8fafc; border-color:#cbd5e1; }
+.acc-planilla-btn.editar { border-color:#bfdbfe; background:#eff6ff; color:#1d4ed8; }
+.acc-planilla-btn.editar:hover { background:#dbeafe; }
 
 /* ── Custom RS Dropdown ────────────────────────────────────────────── */
 .rs-wrap { position:relative; }
@@ -1248,7 +1262,7 @@
                 {{-- El número se digita a mano al confirmar: si salió mal hay que
                      poder arreglarlo sin borrar el gasto y volver a empezar. --}}
                 <button type="button"
-                        onclick="abrirCorregirPago()"
+                        onclick="abrirCorregirPago({{ Illuminate\Support\Js::from($numeroPlanillaPagado) }}, {{ (int) ($valorPagado ?? 0) }}, {{ (int) $gastoPagoId }}, '')"
                         style="flex-shrink:0;background:#fff;border:1px solid #fca5a5;color:#b91c1c;border-radius:8px;
                                padding:.35rem .7rem;font-size:.73rem;font-weight:700;cursor:pointer;white-space:nowrap"
                         title="Corregir el número de planilla o el valor pagado">
@@ -1582,11 +1596,35 @@
 </div>
 
 {{-- ══════════════════════════════════════════════════════════════════════
+     MODAL: Opciones de una planilla (clic en el chip)
+     Antes el clic copiaba directo y para corregir hacía falta un lápiz en cada
+     fila, que llenaba la tabla de iconos. Ahora el chip abre esto.
+═══════════════════════════════════════════════════════════════════════ --}}
+<div class="modal-overlay" id="modal-acciones-planilla">
+    <div class="modal-box" style="max-width:420px">
+        <div class="modal-head">
+            <h3>🧾 Planilla</h3>
+            <button class="modal-close" onclick="cerrarModal('modal-acciones-planilla')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="acc-planilla-num" id="acc-planilla-num"></div>
+            <div id="acc-planilla-quien" style="display:none;font-size:.78rem;color:#475569;margin-top:.5rem;text-align:center"></div>
+            <div id="acc-planilla-estado" style="display:none;font-size:.73rem;color:#64748b;margin-top:.45rem;text-align:center"></div>
+
+            <div style="display:flex;flex-direction:column;gap:.45rem;margin-top:.9rem">
+                <button type="button" class="acc-planilla-btn" onclick="copiarPlanillaActual()">📋 Copiar número</button>
+                <button type="button" class="acc-planilla-btn editar" id="acc-planilla-editar" onclick="corregirPlanillaActual()">✏️ Corregir número o valor</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{-- ══════════════════════════════════════════════════════════════════════
      MODAL: Corregir un pago ya confirmado
      El número de planilla vive en el gasto y en cada registro del plano; el
      valor solo en el gasto. Se corrigen juntos para que no queden desfasados.
 ═══════════════════════════════════════════════════════════════════════ --}}
-@if($planoPagado && $puedeCorregirPago)
+@if($planos->count())
 <div class="modal-overlay" id="modal-corregir-pago">
     <div class="modal-box">
         <div class="modal-head">
@@ -1596,19 +1634,21 @@
         <div class="modal-body">
             <div class="aviso-modal">
                 <strong>SE CAMBIA EN EL GASTO Y EN EL PLANO A LA VEZ</strong>
-                El número nuevo reemplaza al <strong>{{ $numeroPlanillaPagado }}</strong> en el gasto y en todos los
-                registros de esta planilla. El valor solo vive en el gasto, así que corregirlo mueve
-                la caja o el banco de la fecha del pago.
+                El número nuevo reemplaza al actual en el gasto y en todos los registros que lleven esa
+                planilla. El valor solo vive en el gasto, así que corregirlo mueve la caja o el banco de
+                la fecha del pago.
             </div>
+
+            <div id="corr-quien" style="display:none;font-size:.75rem;color:#475569;margin-bottom:.5rem"></div>
 
             <div class="form-row">
                 <div class="form-grupo">
-                    <label>Número de Planilla</label>
-                    <input type="text" id="corr-numero" value="{{ $numeroPlanillaPagado }}" required>
+                    <label>Número de Planilla <span id="corr-numero-viejo" style="color:#94a3b8;font-weight:400"></span></label>
+                    <input type="text" id="corr-numero" required>
                 </div>
                 <div class="form-grupo">
                     <label>Valor Pagado</label>
-                    <input type="number" id="corr-valor" value="{{ (int) ($valorPagado ?? 0) }}" min="1" required>
+                    <input type="number" id="corr-valor" min="1" required>
                 </div>
             </div>
 
@@ -3430,8 +3470,43 @@ async function guardarMover() {
 }
 
 // ── Copiar número de planilla al portapapeles ────────────────────────
+// ── Menú de una planilla: copiar o corregir ───────────────────────────
+let _accPlanilla = { numero: '', valor: 0, gastoId: null, nombre: '' };
+
+function abrirAccionesPlanilla(numero, valor, gastoId, nombre, detalle) {
+    _accPlanilla = { numero, valor, gastoId, nombre };
+
+    document.getElementById('acc-planilla-num').textContent = numero;
+
+    const quien = document.getElementById('acc-planilla-quien');
+    quien.style.display = nombre ? 'block' : 'none';
+    quien.innerHTML = nombre ? '👤 <strong>' + nombre + '</strong>' : '';
+
+    const estado = document.getElementById('acc-planilla-estado');
+    estado.style.display = detalle ? 'block' : 'none';
+    estado.textContent = detalle || '';
+
+    // Sin gasto detrás (o sin permiso) no hay nada que corregir: queda solo copiar.
+    document.getElementById('acc-planilla-editar').style.display = gastoId ? 'flex' : 'none';
+
+    document.getElementById('modal-acciones-planilla').classList.add('open');
+}
+
+function copiarPlanillaActual() {
+    copiarTexto(_accPlanilla.numero);
+    cerrarModal('modal-acciones-planilla');
+}
+
+function corregirPlanillaActual() {
+    cerrarModal('modal-acciones-planilla');
+    abrirCorregirPago(_accPlanilla.numero, _accPlanilla.valor, _accPlanilla.gastoId, _accPlanilla.nombre);
+}
+
 function copiarPlanilla(el) {
-    const num = el.dataset.num;
+    copiarTexto(el.dataset.num);
+}
+
+function copiarTexto(num) {
     navigator.clipboard.writeText(num)
         .then(() => mostrarToast('📋 Planilla ' + num + ' copiada.', 'success'))
         .catch(() => {
@@ -3636,7 +3711,12 @@ async function ejecutarConfirmarPago() {
             mostrarToast(data.mensaje, 'success');
             if (_planoIdActual) {
                 // Modo individual: actualizar visualmente la fila sin recargar
-                const chip = `<span class="chip-planilla" data-num="${numero}" onclick="copiarPlanilla(this)" title="Planilla: ${numero} (clic para copiar)">✅ ${numero}</span>`;
+                // Mismo chip que pinta el partial: el clic abre el menú de la
+                // planilla, con el gasto que acaba de crearse por si hay que
+                // corregir el número sin recargar.
+                const chip = `<span class="chip-planilla" data-num="${numero}"`
+                    + ` onclick="abrirAccionesPlanilla(${JSON.stringify(numero)}, ${valor}, ${data.gasto_id ?? 'null'}, '', '')"`
+                    + ` title="Planilla: ${numero} (clic para ver opciones)">✅ ${numero}</span>`;
                 const tdPlanilla = document.getElementById('planilla-' + _planoIdActual);
                 const tdAccion   = document.getElementById('accion-'   + _planoIdActual);
                 if (tdPlanilla) tdPlanilla.innerHTML = chip;
@@ -3665,9 +3745,34 @@ async function ejecutarConfirmarPago() {
 // ── Corregir un pago ya confirmado ────────────────────────────────────
 // El número de planilla quedó escrito en el gasto y en cada registro del
 // plano; el valor solo en el gasto. El backend los mueve juntos.
-function abrirCorregirPago() {
+let _corrGastoId = null;
+
+function abrirCorregirPago(numero, valor, gastoId, nombre) {
+    _corrGastoId = gastoId;
+
+    document.getElementById('corr-numero').value = numero ?? '';
+    document.getElementById('corr-valor').value  = valor ?? 0;
+    document.getElementById('corr-motivo').value = '';
+    document.getElementById('corr-numero-viejo').textContent = numero ? '(hoy: ' + numero + ')' : '';
+
+    // En una RS independiente el pago es de una persona: decir de quién evita
+    // corregirle el número al de al lado.
+    const quien = document.getElementById('corr-quien');
+    if (nombre) {
+        quien.style.display = 'block';
+        quien.innerHTML = '👤 Pago de <strong>' + nombre + '</strong>';
+    } else {
+        quien.style.display = 'none';
+        quien.innerHTML = '';
+    }
+
     const res = document.getElementById('corr-resultado');
     if (res) { res.style.display = 'none'; res.innerHTML = ''; }
+
+    const btn = document.getElementById('btn-corregir-pago');
+    btn.disabled = false;
+    btn.textContent = '💾 GUARDAR CORRECCIÓN';
+
     document.getElementById('modal-corregir-pago').classList.add('open');
 }
 
@@ -3687,7 +3792,7 @@ async function ejecutarCorregirPago() {
     btn.textContent = '⏳ Guardando…';
 
     const fd = new FormData();
-    fd.append('gasto_id', CTX.gastoPagoId);
+    fd.append('gasto_id', _corrGastoId);
     fd.append('numero_planilla', numero);
     fd.append('valor', valor);
     if (motivo) fd.append('motivo', motivo);

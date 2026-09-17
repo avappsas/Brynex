@@ -541,6 +541,9 @@ Route::middleware('auth')->group(function () {
             Route::patch('/mover-masivo', [$pp, 'moverPlanoMasivo'])->name('mover_masivo');
             Route::patch('/{id}/mover', [$pp, 'moverPlano'])->name('mover');
             Route::post('/confirmar-pago', [$pp, 'confirmarPago'])->name('confirmar_pago');
+            // La correccion se filtra dentro del controlador: admin (gastos.gestionar)
+            // o el usuario que confirmo ese pago.
+            Route::post('/corregir-pago', [$pp, 'corregirPago'])->name('corregir_pago');
             Route::get('/api/razon/{id}', [$pp, 'apiRazonSocial'])->name('api.razon');
             Route::get('/api/resumen', [$pp, 'apiResumenPlanos'])->name('api.resumen');
 
