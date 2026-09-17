@@ -372,8 +372,10 @@ table.fac-tbl{width:100%;border-collapse:collapse;font-size:.78rem}
             <option value="todos">NP ▾</option>
         </select>
     </th>
+    <th style="text-align:center" title="Recibo de la factura">🖨</th>
     <th style="text-align:center">
-        <input type="checkbox" id="chkAll" onchange="toggleAll(this)" title="Seleccionar todos"
+        <input type="checkbox" id="chkAll" onchange="toggleAll(this)"
+               title="Seleccionar todo lo facturable (no marca lo ya facturado)"
                style="width:1rem;height:1rem;cursor:pointer;vertical-align:middle;"> SEL
     </th>
 </tr>
@@ -799,31 +801,58 @@ if ($esAfilDeRetirado && !$fact) {
         @if($fact && (int)$fact->numero_factura !== 0)
             <button onclick="abrirRecibo('{{ route('admin.facturacion.recibo',$fact->id) }}?modal=1')"
                class="btn-sm" style="background:#eff6ff;color:#1d4ed8;" title="Ver recibo">🖨</button>
-        @elseif($esAfilDeRetirado && !$fact)
-            {{-- Afiliación pendiente de un retirado: se cobra igual que la de cualquiera
-                 que ingresó este mes. El retiro va por su propia factura 0. --}}
-            <input type="checkbox" class="chk-row" value="{{ $c->id }}"
-                   onchange="onCheckChange()"
-                   style="width:1.1rem;height:1.1rem;cursor:pointer;accent-color:#6d28d9;"
-                   title="Seleccionar para facturar la afiliación ({{ '$'.number_format($vTot,0,',','.') }})">
-        @elseif($tieneRetiroFacturable ?? false)
-            {{-- Retiro facturable: mostrar checkbox igual que un activo sin factura --}}
-            <input type="checkbox" class="chk-row" value="{{ $c->id }}"
-                   data-es-retiro-facturable="1"
-                   data-dias-retiro="{{ $factRetiro0?->dias_cotizados ?? 0 }}"
-                   onchange="onCheckChange()"
-                   style="width:1.1rem;height:1.1rem;cursor:pointer;accent-color:#c2410c;"
-                   title="Seleccionar para facturar retiro ({{ $factRetiro0?->dias_cotizados ?? 0 }} días){{ isset($numeroPlanillaRet) && $numeroPlanillaRet ? ' ⚠ Ya tiene planilla: '.$numeroPlanillaRet : '' }}">
-        @elseif(!$esRetirado && !$fact)
-            <input type="checkbox" class="chk-row" value="{{ $c->id }}"
-                   onchange="onCheckChange()"
-                   style="width:1.1rem;height:1.1rem;cursor:pointer;accent-color:#2563eb;"
-                   title="Seleccionar para facturar">
+        @else
+            <span style="color:#e2e8f0;">—</span>
         @endif
+    </td>
+    <td style="text-align:center;">
+        @php
+            // La casilla va en TODAS las filas, también en las ya facturadas o
+            // pagadas: sirve para armar una cuenta de cobro con gente que ya
+            // pagó. Lo que no se puede es volver a facturarlas, así que esas
+            // filas llevan `data-fuera-lote` y quedan fuera de "seleccionar
+            // todos" y del botón Facturar.
+            //
+            // El retiro se mira con el mismo criterio que el
+            // `data-es-retiro-facturable` de la fila, y no con las variables que
+            // arma la celda de ESTADO: esas solo se escriben en la rama del
+            // retirado y, como el listado va en orden alfabético, se quedaban
+            // pegadas de una fila a la siguiente — un activo que viniera después
+            // de un retiro por cobrar salía pintado como retiro facturable.
+            $selRetiroFacturable = ($factRetiroPreview ?? null) && ! $esAfil;
+            $selDiasRetiro       = $selRetiroFacturable ? (int) $factRetiroPreview->dias_cotizados : 0;
+            $selFueraLote        = (bool) $fact || ($esRetirado && ! $selRetiroFacturable);
+
+            if ($fact) {
+                $selColor = '#64748b';
+                $selTitle = 'Ya facturado — se puede marcar para la cuenta de cobro, no para facturar';
+            } elseif ($esAfilDeRetirado) {
+                $selColor = '#6d28d9';
+                $selTitle = 'Seleccionar para facturar la afiliación ('.'$'.number_format($vTot, 0, ',', '.').')';
+            } elseif ($selRetiroFacturable) {
+                // `$numeroPlanillaRet` lo dejó la celda de ESTADO en esta misma
+                // fila: un retiro facturable siempre pasa por esa rama.
+                $selColor = '#c2410c';
+                $selTitle = 'Seleccionar para facturar retiro ('.$selDiasRetiro.' días)'
+                    .(! empty($numeroPlanillaRet) ? ' ⚠ Ya tiene planilla: '.$numeroPlanillaRet : '');
+            } elseif ($esRetirado) {
+                $selColor = '#64748b';
+                $selTitle = 'Retirado sin cobro este período — se puede marcar para la cuenta de cobro';
+            } else {
+                $selColor = '#2563eb';
+                $selTitle = 'Seleccionar para facturar';
+            }
+        @endphp
+        <input type="checkbox" class="chk-row" value="{{ $c->id }}"
+               @if($selFueraLote) data-fuera-lote="1" @endif
+               @if($selRetiroFacturable) data-es-retiro-facturable="1" data-dias-retiro="{{ $selDiasRetiro }}" @endif
+               onchange="onCheckChange()"
+               style="width:1.1rem;height:1.1rem;cursor:pointer;accent-color:{{ $selColor }};"
+               title="{{ $selTitle }}">
     </td>
 </tr>
 @empty
-<tr><td colspan="18" style="text-align:center;padding:2rem;color:#94a3b8">No hay contratos activos ni retiros del mes anterior para esta empresa en este período.</td></tr>
+<tr><td colspan="19" style="text-align:center;padding:2rem;color:#94a3b8">No hay contratos activos ni retiros del mes anterior para esta empresa en este período.</td></tr>
 @endforelse
 </tbody>
 <tfoot>
@@ -841,7 +870,8 @@ if ($esAfilDeRetirado && !$fact) {
         {{ $totMora > 0 ? '$'.number_format($totMora,0,',','.') : '—' }}
     </td>
     @endif
-    <td colspan="3"></td>
+    {{-- Anticipo (si hay), recibo, estado, NP y selección --}}
+    <td colspan="{{ $hayAnticipos ? 5 : 4 }}"></td>
 </tr>
 </tfoot>
 </table>
@@ -2004,8 +2034,11 @@ function aplicarFiltrosTabla() {
 
 // ─── Checkboxes ───────────────────────────────────────────────
 function toggleAll(chk){
-    // Solo selecciona checkboxes de filas VISIBLES (respeta el filtro activo)
-    document.querySelectorAll('.chk-row:not(:disabled)').forEach(c=>{
+    // Solo selecciona checkboxes de filas VISIBLES (respeta el filtro activo).
+    // Deja fuera lo que ya está facturado y los retirados sin cobro: la casilla
+    // de esas filas existe para la cuenta de cobro, pero "seleccionar todos" es
+    // para facturar el mes y marcarlas solo haría rebotar el lote.
+    document.querySelectorAll('.chk-row:not(:disabled):not([data-fuera-lote])').forEach(c=>{
         const fila = c.closest('tr');
         if (fila && fila.style.display !== 'none') {
             c.checked = chk.checked;
@@ -2092,6 +2125,21 @@ function _buildContratosSelec() {
 // ─── Abrir modal facturar ───────────────────────────────────
 function abrirModalFacturar(){
     if(!selec.length) return;
+    // La casilla está disponible en las filas ya facturadas y en los retirados
+    // sin cobro para poder armar la cuenta de cobro. Facturarlas es otra cosa:
+    // el servidor rebota el lote completo si alguna ya tiene factura del
+    // período, así que se avisa aquí antes de abrir el modal.
+    const fuera = [...document.querySelectorAll('.chk-row:checked[data-fuera-lote]')];
+    if (fuera.length) {
+        const nombres = fuera
+            .map(c => c.closest('tr')?.dataset.nombre || c.closest('tr')?.cells[2]?.textContent.trim())
+            .filter(Boolean)
+            .join(', ');
+        alert('No se puede facturar: ' + fuera.length + ' de las filas marcadas ya están facturadas '
+            + 'o son retiros sin cobro en este período.\n\n' + nombres
+            + '\n\nQuítalas de la selección (o anula su factura) y vuelve a intentar.');
+        return;
+    }
     const contratos = _buildContratosSelec();
     MF.abrir(contratos, selec.length + ' trabajadores');
 }
@@ -2672,8 +2720,8 @@ function ccAsignar() {
         if (filtroNP) { filtroNP.value = npStr; filtroNP.classList.add('active-filter'); }
         aplicarFiltrosTabla();
 
-        // Marcar checkboxes de filas visibles
-        document.querySelectorAll('.chk-row:not(:disabled)').forEach(chk => {
+        // Marcar checkboxes de filas visibles (solo las facturables)
+        document.querySelectorAll('.chk-row:not(:disabled):not([data-fuera-lote])').forEach(chk => {
             const fila = chk.closest('tr');
             if (fila && fila.style.display !== 'none') chk.checked = true;
         });
