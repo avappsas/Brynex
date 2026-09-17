@@ -51,7 +51,14 @@ class PlanoPagoController extends Controller
 
         // ── Planos PENDIENTES por RS para el SELECT (sin numero_planilla) ──────────
         // Excluye n_plano=100 (Ingreso-Retiro) si hoy < día 26 del mes.
-        $cantPorRs = DB::table('planos AS p')
+        //
+        // Se ejecuta con OPTIMIZE FOR UNKNOWN y no por el builder: SQL Server
+        // cacheaba el plan con el primer aliado que la corriera y lo reutilizaba
+        // para todos. Compilado con un aliado chico, al aliado 4 —20 veces más
+        // planos— le costaba 14 SEGUNDOS, y eran el 99% de lo que tardaba en
+        // abrir el módulo. Con el hint el plan se arma sobre las densidades
+        // promedio de la tabla y queda en 60-90 ms para cualquiera.
+        $qCantPorRs = DB::table('planos AS p')
             ->leftJoin('facturas AS f', function ($join) use ($aliadoId) {
                 $join->on('f.id', '=', 'p.factura_id')
                      ->where('f.aliado_id', $aliadoId);  // scope al aliado
@@ -69,8 +76,12 @@ class PlanoPagoController extends Controller
             ->when($diaHoy < 26, fn($q) => $q->where('p.n_plano', '<>', 100))
             ->where($wherePeriodo)
             ->groupBy('p.razon_social_id')
-            ->select('p.razon_social_id', DB::raw('COUNT(*) AS cant'))
-            ->pluck('cant', 'razon_social_id');
+            ->select('p.razon_social_id', DB::raw('COUNT(*) AS cant'));
+
+        $cantPorRs = collect(DB::select(
+            $qCantPorRs->toSql().' OPTION (OPTIMIZE FOR UNKNOWN)',
+            $qCantPorRs->getBindings()
+        ))->pluck('cant', 'razon_social_id');
 
         $razonesSociales = RazonSocial::where('aliado_id', $aliadoId)
             ->whereRaw("LOWER(ISNULL(estado,'')) IN ('activo','activa','1','si','yes')") // solo activas
