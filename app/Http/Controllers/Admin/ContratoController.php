@@ -2201,9 +2201,16 @@ class ContratoController extends Controller
         // completo y no dejaría guardar un contrato de una o dos semanas.
         $diasAfp = isset($data['dias_tp_afp']) ? (int) $data['dias_tp_afp'] : null;
 
+        // En Tipo E - Extras la fracción sale del plan: "Solo CCF 14" vende
+        // media jornada del mes y su piso es medio mínimo, igual que lo era
+        // cuando "Caja 14" era su propia modalidad. Ver TipoModalidad::PLANES_EXTRAS.
+        $codigoPlan = ! empty($data['plan_id'])
+            ? PlanContrato::whereKey($data['plan_id'])->value('codigo')
+            : null;
+
         // Sin modalidad definida se exige el SMMLV completo.
         $minimo = $modalidad
-            ? $modalidad->salarioMinimoPermitido($diasAfp)
+            ? $modalidad->salarioMinimoPermitido($diasAfp, $codigoPlan)
             : ConfiguracionBrynex::salarioMinimo();
 
         if ($minimo <= 0) {
@@ -2220,7 +2227,7 @@ class ContratoController extends Controller
         // Cuando el piso es una fracción del mínimo —Tiempo Parcial o Solo Caja—
         // el mensaje nombra la modalidad: decir "salario mínimo legal" y mostrar
         // la mitad del mínimo se lee como un error del sistema.
-        $etiqueta = $modalidad && $modalidad->factorSalario($diasAfp) < 1.0
+        $etiqueta = $modalidad && $modalidad->factorSalario($diasAfp, $codigoPlan) < 1.0
             ? "mínimo de {$modalidad->nombre}"
             : 'salario mínimo legal';
 

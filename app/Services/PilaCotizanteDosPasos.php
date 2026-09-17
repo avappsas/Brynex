@@ -5,16 +5,33 @@ namespace App\Services;
 use App\Models\TipoModalidad;
 
 /**
- * PilaCotizanteDosPasos — modalidades que venden UN solo subsistema y se pagan
- * en dos planillas encadenadas: "Solo Caja" y "Solo Pensión".
+ * PilaCotizanteDosPasos — lo que se vende suelto y se paga en dos planillas
+ * encadenadas. Hoy es la modalidad **Tipo E - Extras** (-12) y, por herencia,
+ * las tres que reemplazó: Solo Caja 30 (-5), Solo Caja 14 (-10) y Solo
+ * Pensión 30 (-11), inactivas pero con contratos y planos vivos.
  *
  *   paso 1 — planilla E con un día de pensión y nada más. Se paga.
  *   paso 2 — planilla N que corrige la anterior y anexa lo que se vendió.
  *
- * El paso 1 es **el mismo archivo para las dos**; lo único que cambia es qué
- * sube la corrección. Por eso viven juntas aquí.
+ * El paso 1 es **casi el mismo archivo para todos**; lo que cambia es qué sube
+ * la corrección. Por eso viven juntos aquí.
  *
- * ## Por qué hacen falta dos planillas, y por qué la salud no cabe
+ * **Quién manda es el plan del contrato, no la modalidad** (TipoModalidad::
+ * PLANES_EXTRAS): la modalidad dice cómo se paga —dos planillas— y el plan dice
+ * qué se paga. Los cinco planes:
+ *
+ *   SOLO_EPS      salud del mes                corrección por el PORTAL
+ *   EPS_ARL       salud y riesgos del mes      corrección por el PORTAL
+ *   SOLO_CCF_14   caja de 14 días              corrección por API
+ *   SOLO_CCF_30   caja del mes                 corrección por API
+ *   SOLO_AFP      pensión del mes              corrección por API
+ *
+ * Los dos planes de salud no se pueden corregir por archivo plano: el
+ * validador de la API responde eo.val.2.198 y 2.244 (días e IBC iguales entre
+ * pensión, salud y riesgos) aunque el portal web del mismo operador liquide esa
+ * misma corrección sin una queja. Probado en Simple el 17-sep-2026.
+ *
+ * ## Por qué hacen falta dos planillas, y por qué la salud va por el portal
  *
  * La coherencia entre subsistemas no es la misma regla en una planilla nueva
  * que en una corrección, y ahí está todo el juego:
@@ -30,8 +47,11 @@ use App\Models\TipoModalidad;
  *   - la **pensión** arrastra los riesgos, que con la tarifa en cero no cuestan
  *     nada, y obliga a un día de caja porque la línea C no la admite en cero
  *     (`eo.val.2.050` / `2.046`);
- *   - la **salud** no se puede vender sola por ningún lado: en cuanto tiene
- *     días, arrastra la pensión completa.
+ *   - la **salud** no se puede vender sola *por archivo plano*: en cuanto tiene
+ *     días, el 2.198/2.244 le arrastra la pensión completa. Por el portal sí,
+ *     porque ese cotejo lo hace únicamente el validador de archivos. De ahí que
+ *     su paso 1 vaya sin VAC-LR, con la ARL cobrando su día y la caja con el
+ *     suyo: es la forma que Simple liquidó y se pagó (planilla 1085268529).
  *
  * Probado contra ARUS Enlace y Simple el 9-sep-2026 sobre planillas de paso 1
  * ya pagadas: las dos correcciones validaron con cero errores y el operador
@@ -113,7 +133,8 @@ class PilaCotizanteDosPasos
         // pagado) y 2 = la C (lo corregido). En una planilla E normal siempre
         // vale 1. El nombre viene de la E-1, que fue la primera en necesitarlo.
         $paso = ((int) ($p->paso_e1 ?? 1) === 2) ? 2 : 1;
-        $modalidad = (int) ($p->tipo_modalidad_id ?? 0);
+        $plan = self::planVendido($p);
+        $vendeSalud = self::vendeSalud($plan);
         $ibcUnDia = self::ibcUnDia($ibcFull);
 
         // ── Pensión: un día, salvo que sea justo lo que se vendió ────────
@@ -154,6 +175,11 @@ class PilaCotizanteDosPasos
         // (eo.val.2.244 y 2.198), y la tarifa en cero la obliga la novedad de
         // ausentismo (eo.val.2.447). Así el día —o el mes— de riesgos no cuesta
         // nada en ninguna de las dos modalidades.
+        //
+        // La tarifa real se guarda antes de pisarla: los planes que venden
+        // salud sí la cobran (ver más abajo) y la corrección de pensión no.
+        $tarifaArlReal = (string) ($res['tarifaArlStr'] ?? '0.00000');
+
         $res['diasArl'] = 1;
         $res['ibcArl'] = $ibcUnDia;
         $res['tarifaArlStr'] = '0.00000';
@@ -171,15 +197,31 @@ class PilaCotizanteDosPasos
         $res['novedades'] = array_merge($res['novedades'] ?? [], ['VACLR' => 'L']);
         $res['horasLaboradas'] = 0;
 
-        // ── Caja: en cero en el paso 1 ───────────────────────────────────
+        // ── Caja: depende de si la corrección va a tocarla ───────────────
         //
-        // El aporte entra completo en la corrección, así el cliente lo paga una
-        // sola vez y no un día ahora y el resto después. Enlace acepta la
+        // Cuando lo vendido es la caja, va en cero: el aporte entra completo en
+        // la corrección y el cliente lo paga una sola vez. Enlace acepta la
         // planilla E con la caja en cero —probado y pagado— aunque en la línea
         // C de una corrección ya no la admita (eo.val.2.050).
-        $res['diasCcf'] = 0;
-        $res['ibcCcf'] = 0;
-        $res['vCcf'] = 0;
+        //
+        // Cuando lo vendido es la salud, la corrección no vuelve a tocar la
+        // caja, así que el paso 1 va con su día: es la forma exacta que Simple
+        // liquidó y se pagó el 16-sep-2026 (planilla 1085268529).
+        $res['diasCcf'] = $vendeSalud ? 1 : 0;
+        $res['ibcCcf'] = $vendeSalud ? $ibcUnDia : 0;
+        $res['vCcf'] = $vendeSalud
+            ? PilaCotizanteCalculator::roundPila($ibcUnDia * (float) $res['tarifaCcfStr'])
+            : 0;
+
+        // La salud se vende con la ARL cobrando su día: el paso 1 de esos
+        // planes no lleva la novedad de ausentismo, que es la que obliga a la
+        // tarifa cero (eo.val.2.447). Sin VAC-LR, el archivo pasa igual.
+        if ($vendeSalud) {
+            $res['novedades'] = array_diff_key($res['novedades'] ?? [], ['VACLR' => null]);
+            $res['tarifaArlStr'] = $tarifaArlReal;
+            $res['tarifaArlDecimal'] = (float) $tarifaArlReal;
+            $res['vArl'] = PilaCotizanteCalculator::roundPila($ibcUnDia * (float) $tarifaArlReal);
+        }
 
         if ($paso === 1) {
             return $res;
@@ -192,11 +234,47 @@ class PilaCotizanteDosPasos
         // le deberían vender a quien no tiene caja.
         $sinCaja = (bool) ($res['sinCaja'] ?? false);
 
-        if (in_array($modalidad, TipoModalidad::IDS_SOLO_PENSION, true)) {
+        // ── Salud (y riesgos, si el plan los incluye) ────────────────────
+        //
+        // Aquí se cae la marca de colombiano en el exterior —que es lo que
+        // sostenía la salud en cero— y entra la EPS con el mes completo. La
+        // pensión se queda en su día y la caja en lo que ya se pagó.
+        //
+        // Esta corrección NO la acepta la API: el validador de archivos planos
+        // la rechaza con eo.val.2.198 / 2.244 (días e IBC iguales entre
+        // pensión, salud y riesgos). El portal web del mismo operador sí la
+        // liquida — probado en Simple el 17-sep-2026 con las planillas
+        // 1085286603 (solo salud) y 1085286356 (salud y riesgos)—, así que
+        // estos dos planes se corrigen por ahí. Ver TipoModalidad::PLANES_EXTRAS.
+        if ($vendeSalud) {
+            $dias = self::diasDelPlan($plan);
+
+            $res['colombianoExterior'] = false;
+            $res['forzarSinSalud'] = false;
+            $res['codEpsPila'] = (string) ($p->cod_eps_pila ?? $res['codEpsPila'] ?? '');
+            $res['diasSalud'] = $dias;
+            $res['ibcEps'] = self::ibcProporcional($ibcFull, $dias);
+            $res['tarifaEpsStr'] = '0.04000';
+            $res['vEps'] = PilaCotizanteCalculator::roundPila($res['ibcEps'] * 0.04);
+
+            // "EPS y ARL" sube también los riesgos al mes; "Solo EPS" los deja
+            // en el día que ya quedó pagado.
+            if ($plan === 'EPS_ARL') {
+                $res['diasArl'] = $dias;
+                $res['ibcArl'] = $res['ibcEps'];
+                $res['tarifaArlStr'] = $tarifaArlReal;
+                $res['tarifaArlDecimal'] = (float) $tarifaArlReal;
+                $res['vArl'] = PilaCotizanteCalculator::roundPila($res['ibcArl'] * (float) $tarifaArlReal);
+            }
+
+            return $res;
+        }
+
+        if ($plan === 'SOLO_AFP') {
             // Pensión al mes vendido, y los riesgos con ella porque el operador
             // los amarra. El operador cobra solo la diferencia contra el día
             // que ya se pagó en el paso 1.
-            $dias = self::diasVendidos($p, 'dias_afp');
+            $dias = self::diasDelPlan($plan, $p, 'dias_afp');
 
             $res['diasPension'] = $dias;
             $res['ibcAfp'] = self::ibcProporcional($ibcFull, $dias);
@@ -218,9 +296,9 @@ class PilaCotizanteDosPasos
             return $res;
         }
 
-        // Solo Caja: los días los fija la modalidad y no el contrato —"Caja 30
-        // días" y "Caja 14 días" son la misma cosa con distinto número en
-        // `tipo_modalidad.dias_caja`—.
+        // Caja: los días los fija el plan y no el contrato —"Solo CCF 30" y
+        // "Solo CCF 14" son la misma cosa con distinto número de días; en las
+        // modalidades viejas eso vivía en `tipo_modalidad.dias_caja`—.
         //
         // El IBC es el salario del contrato **tal cual, sin prorratear**: en
         // estas modalidades el salario que se guarda ya es el proporcional a lo
@@ -231,7 +309,7 @@ class PilaCotizanteDosPasos
         // 408.545 en lugar de los 875.453 que son media jornada del mínimo
         // (SMMLV/4 × 2 semanas del Decreto 2616).
         if (! $sinCaja) {
-            $res['diasCcf'] = self::diasVendidos($p, 'dias_caja');
+            $res['diasCcf'] = self::diasDelPlan($plan, $p, 'dias_caja');
             $res['ibcCcf'] = $ibcFull;
             $res['vCcf'] = PilaCotizanteCalculator::roundPila(
                 $res['ibcCcf'] * (float) $res['tarifaCcfStr']
@@ -252,13 +330,63 @@ class PilaCotizanteDosPasos
     }
 
     /**
-     * Los días que vende la modalidad, del catálogo. Abrir una variante nueva
-     * —caja de 20 días, pensión de 15— es una fila en `tipo_modalidad`, no una
-     * línea de código.
+     * Qué vendió el contrato, en el vocabulario de TipoModalidad::PLANES_EXTRAS.
+     *
+     * Manda el código del plan, que es el dato nuevo. Las tres modalidades
+     * viejas —Caja 30, Caja 14 y Pensión 30— quedaron inactivas pero sus
+     * contratos y planos siguen vivos, y llegan aquí sin plan de esta familia:
+     * se traducen a su equivalente para que sigan liquidando igual que antes.
      */
-    private static function diasVendidos(object $p, string $columna): int
+    public static function planVendido(object $p): string
     {
-        return max(1, min(30, (int) ($p->{$columna} ?? $p->num_dias ?? 30)));
+        $codigo = strtoupper(trim((string) ($p->plan_codigo ?? '')));
+
+        if (isset(TipoModalidad::PLANES_EXTRAS[$codigo])) {
+            return $codigo;
+        }
+
+        $modalidad = (int) ($p->tipo_modalidad_id ?? 0);
+
+        if (in_array($modalidad, TipoModalidad::IDS_SOLO_PENSION, true)) {
+            return 'SOLO_AFP';
+        }
+
+        if (in_array($modalidad, TipoModalidad::IDS_SOLO_CAJA, true)) {
+            return ((int) ($p->dias_caja ?? 30)) <= 14 ? 'SOLO_CCF_14' : 'SOLO_CCF_30';
+        }
+
+        return 'SOLO_CCF_30';
+    }
+
+    /** ¿El plan vende salud? Esos son los que solo se corrigen por el portal. */
+    public static function vendeSalud(string $plan): bool
+    {
+        return in_array($plan, ['SOLO_EPS', 'EPS_ARL'], true);
+    }
+
+    /** ¿La corrección de este plan se puede liquidar contra la API del operador? */
+    public static function correccionPorApi(string $plan): bool
+    {
+        return (bool) (TipoModalidad::PLANES_EXTRAS[$plan]['api'] ?? true);
+    }
+
+    /**
+     * Los días que vende el plan. Abrir una variante nueva —caja de 20 días,
+     * pensión de 15— es una fila en `planes_contrato` más su entrada en
+     * PLANES_EXTRAS, no una línea de lógica.
+     *
+     * `$columna` es el respaldo de las modalidades viejas, que traen sus días
+     * en el catálogo (`tipo_modalidad.dias_caja` / `dias_afp`).
+     */
+    private static function diasDelPlan(string $plan, ?object $p = null, ?string $columna = null): int
+    {
+        $dias = TipoModalidad::PLANES_EXTRAS[$plan]['dias'] ?? null;
+
+        if ($dias === null && $p && $columna) {
+            $dias = (int) ($p->{$columna} ?? $p->num_dias ?? 30);
+        }
+
+        return max(1, min(30, (int) ($dias ?? 30)));
     }
 
     /** IBC proporcional a los días, exacto: la misma fórmula de la rama general. */

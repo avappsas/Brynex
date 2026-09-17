@@ -97,8 +97,35 @@ class TipoModalidad extends BaseModel
 
     const IDS_SOLO_PENSION = [self::ID_PENSION_30];
 
+    /**
+     * Tipo E - Extras: la modalidad que reemplaza a las tres de arriba.
+     *
+     * Ellas dicen a la vez cómo se paga y qué se vende, así que cada
+     * combinación nueva era una fila más del catálogo. Esta separa las dos
+     * cosas: la modalidad dice **cómo** se paga —dos planillas encadenadas— y
+     * el plan del contrato dice **qué** se paga. Ver PLANES_EXTRAS.
+     */
+    const ID_EXTRAS = -12;
+
+    /**
+     * Qué vende cada plan de Tipo E - Extras, y en cuántos días.
+     *
+     * `dias` son los del subsistema que se vende; `api` dice si la corrección
+     * se puede liquidar contra la API del operador. La salud NO: el validador
+     * de archivos planos la rechaza con eo.val.2.198 / 2.244 aunque el portal
+     * web del mismo operador la acepte (probado en Simple el 17-sep-2026), así
+     * que esos dos planes se corrigen por el portal.
+     */
+    const PLANES_EXTRAS = [
+        'SOLO_EPS' => ['dias' => 30, 'api' => false],
+        'EPS_ARL' => ['dias' => 30, 'api' => false],
+        'SOLO_CCF_14' => ['dias' => 14, 'api' => true],
+        'SOLO_CCF_30' => ['dias' => 30, 'api' => true],
+        'SOLO_AFP' => ['dias' => 30, 'api' => true],
+    ];
+
     /** Las que se pagan en dos liquidaciones encadenadas contra el operador. */
-    const IDS_DOS_PASOS = [self::ID_CAJA_30, self::ID_CAJA_14, self::ID_PENSION_30];
+    const IDS_DOS_PASOS = [self::ID_CAJA_30, self::ID_CAJA_14, self::ID_PENSION_30, self::ID_EXTRAS];
 
     /**
      * Modalidades que solo se le ofrecen a ciertos aliados.
@@ -113,6 +140,7 @@ class TipoModalidad extends BaseModel
         self::ID_CAJA_30 => [2],
         self::ID_CAJA_14 => [2],
         self::ID_PENSION_30 => [2],
+        self::ID_EXTRAS => [2],
     ];
 
     /**
@@ -142,11 +170,11 @@ class TipoModalidad extends BaseModel
      * Los requisitos para entrar al programa los fija el Decreto 543 de 2026.
      */
     const GRUPOS_FONDO_SOLIDARIDAD = [
-        'independiente'   => ['nombre' => 'Independiente',                        'pct_pension' => 4.0, 'subsidio' => 75],
-        'desempleado'     => ['nombre' => 'Desempleado',                          'pct_pension' => 4.8, 'subsidio' => 70],
+        'independiente' => ['nombre' => 'Independiente',                        'pct_pension' => 4.0, 'subsidio' => 75],
+        'desempleado' => ['nombre' => 'Desempleado',                          'pct_pension' => 4.8, 'subsidio' => 70],
         'madre_sustituta' => ['nombre' => 'Madre sustituta o FAMI',               'pct_pension' => 3.2, 'subsidio' => 80],
-        'discapacidad'    => ['nombre' => 'Persona con discapacidad',             'pct_pension' => 0.8, 'subsidio' => 95],
-        'concejal'        => ['nombre' => 'Concejal o edil (municipio 4, 5 o 6)', 'pct_pension' => 4.0, 'subsidio' => 75],
+        'discapacidad' => ['nombre' => 'Persona con discapacidad',             'pct_pension' => 0.8, 'subsidio' => 95],
+        'concejal' => ['nombre' => 'Concejal o edil (municipio 4, 5 o 6)', 'pct_pension' => 4.0, 'subsidio' => 75],
     ];
 
     /**
@@ -272,8 +300,17 @@ class TipoModalidad extends BaseModel
      * $diasAfp lo pasa el contrato cuando es él quien tiene los días
      * (Tiempo Parcial Independiente); sin él se usan los del catálogo.
      */
-    public function factorSalario(?int $diasAfp = null): float
+    public function factorSalario(?int $diasAfp = null, ?string $codigoPlan = null): float
     {
+        // Tipo E - Extras: los días los dice el plan, no el catálogo. "Solo CCF
+        // 14" admite medio mínimo por la misma razón que Caja 14 lo admitía
+        // cuando era su propia modalidad.
+        if ((int) $this->id === self::ID_EXTRAS) {
+            $dias = self::PLANES_EXTRAS[$codigoPlan]['dias'] ?? 30;
+
+            return self::FACTOR_SALARIO_POR_DIAS[$dias] ?? 1.0;
+        }
+
         // Solo Caja no es Tiempo Parcial —cotiza como dependiente (cotizante 1)—
         // pero solo vende una parte del mes, así que su piso es esa misma
         // fracción: "Caja 14" admite medio mínimo, igual que un TP(14). Con el
@@ -292,7 +329,7 @@ class TipoModalidad extends BaseModel
      * Salario mínimo legal que puede tener un contrato en esta modalidad.
      * UPC (13) no depende del salario: no tiene piso.
      */
-    public function salarioMinimoPermitido(?int $diasAfp = null): float
+    public function salarioMinimoPermitido(?int $diasAfp = null, ?string $codigoPlan = null): float
     {
         // (int) obligatorio: el id no es IDENTITY y llega como string
         // Seguros no cotiza nada, así que tampoco tiene piso de salario.
@@ -300,6 +337,6 @@ class TipoModalidad extends BaseModel
             return 0.0;
         }
 
-        return round(ConfiguracionBrynex::salarioMinimo() * $this->factorSalario($diasAfp));
+        return round(ConfiguracionBrynex::salarioMinimo() * $this->factorSalario($diasAfp, $codigoPlan));
     }
 }

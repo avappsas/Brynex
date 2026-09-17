@@ -181,15 +181,42 @@ class PlanillaApiController extends Controller
             ? PlanillaE1Service::pagoConfirmado($aliadoId, (string) $paso1->numero_planilla)
             : null;
 
+        // Qué vende esta tanda. En Tipo E - Extras lo dice el plan y no la
+        // modalidad, y de ahí sale tanto la etiqueta del botón como el camino
+        // de la corrección: la de salud no la acepta la API del operador y hay
+        // que hacerla por su portal. Ver PlanillaDosPasosService.
+        $planes = $dosPasos
+            ? PlanillaDosPasosService::planesDeLaTanda(
+                $aliadoId,
+                $razonSocialId,
+                (int) $validated['mes'],
+                (int) $validated['anio'],
+                (int) $validated['n_plano'],
+                $validated['tipos_modalidad'] ?? []
+            )
+            : [];
+
+        $porPortal = $dosPasos && PlanillaDosPasosService::correccionPorPortal($planes);
+
         return [
             'paso1_liquidado' => (bool) ($paso1 && $paso1->estado === 'validada' && $paso1->numero_planilla),
             'pago_confirmado' => (bool) $pago,
             'fecha_pago'      => $pago ? $pago->fecha->format('Y-m-d') : null,
             // Solo Caja y Solo Pensión no esperan la confirmación del pago: el
-            // operador revela la fecha y BryNex reintenta con ella.
-            'automatico'      => $dosPasos,
+            // operador revela la fecha y BryNex reintenta con ella. La de salud
+            // sí la espera: el portal exige la planilla ya pagada.
+            'automatico'      => $dosPasos && ! $porPortal,
+            'planes'          => $planes,
+            'por_portal'      => $porPortal,
+            // Para la ficha del portal: sin el número de la planilla pagada no
+            // se puede crear la corrección allá.
+            'paso1'           => $paso1 ? [
+                'numero_planilla' => $paso1->numero_planilla,
+                'valor_total'     => $paso1->valor_total,
+                'url_pago'        => $paso1->url_pago,
+            ] : null,
             'etiqueta_paso2'  => $dosPasos
-                ? PlanillaDosPasosService::etiquetaCorreccion($validated['tipos_modalidad'] ?? [])
+                ? PlanillaDosPasosService::etiquetaCorreccion($planes)
                 : 'Corrección (salud + ARL + caja)',
             'paso2'           => $paso2 ? [
                 'estado'          => $paso2->estado,
@@ -365,6 +392,25 @@ class PlanillaApiController extends Controller
                         . 'filtro de modalidades debe traer únicamente una de ellas. Con otras '
                         . 'mezcladas, el paso 1 dejaría sin salud a gente que no está en este esquema.',
                 ], 422);
+            }
+
+            // La corrección que anexa salud no la acepta la API del operador
+            // (eo.val.2.198 / 2.244) aunque su propio portal la liquide sin
+            // una queja. Se corta aquí, antes de gastar una liquidación, y la
+            // pantalla ofrece el camino del portal. Ver PlanillaDosPasosService.
+            if ($esDosPasos) {
+                $planesTanda = PlanillaDosPasosService::planesDeLaTanda(
+                    $aliadoId,
+                    (int) $rs->id,
+                    (int) $validated['mes'],
+                    (int) $validated['anio'],
+                    (int) $validated['n_plano'],
+                    $validated['tipos_modalidad'] ?? []
+                );
+
+                if (PlanillaDosPasosService::correccionPorPortal($planesTanda)) {
+                    return $this->correccionPorPortal($llave, $aliadoId);
+                }
             }
 
             $contexto = $esDosPasos
@@ -1226,6 +1272,60 @@ class PlanillaApiController extends Controller
     }
 
     /** Credencial de la razón social, o la general del aliado. */
+    /**
+     * El paso 2 de los planes que venden salud: por el portal, no por la API.
+     *
+     * El archivo es el mismo que se manda por API —lo arma PlanoPilaTxtService
+     * igual—, pero entra por la pantalla de carga del operador y se completa
+     * con el botón "Corrección en línea", que es el único camino donde el
+     * cotejo `eo.val.2.198` / `2.244` no aplica. Ver PortalCorreccionSaludService.
+     *
+     * Exige el pago confirmado del paso 1: el portal solo corrige planillas
+     * pagadas, y de ahí sale la fecha del registro tipo 1.
+     */
+    private function correccionPorPortal(array $llave, int $aliadoId)
+    {
+        $contexto = PlanillaDosPasosService::contextoCorreccion($llave);
+
+        if (! $contexto['ok']) {
+            return response()->json(['success' => false, 'falta_pago' => true, 'message' => $contexto['message']], 422);
+        }
+
+        $paso1 = OperadorPlanillaApi::where($llave)->where('paso', 1)->where('estado', 'validada')->latest('id')->first();
+        $pago = PlanillaE1Service::pagoConfirmado($aliadoId, (string) $paso1->numero_planilla);
+
+        if (! $pago) {
+            return response()->json([
+                'success' => false,
+                'falta_pago' => true,
+                'message' => 'El portal solo deja corregir una planilla ya pagada. Confirme el pago del '
+                    ."paso 1 (planilla {$paso1->numero_planilla}) y vuelva a intentarlo.",
+            ], 422);
+        }
+
+        $resultado = (new \App\Services\PortalCorreccionSaludService())->liquidar(
+            $llave,
+            $paso1,
+            $pago->fecha->format('Y-m-d')
+        );
+
+        if (! ($resultado['success'] ?? false)) {
+            return response()->json([
+                'success' => false,
+                'por_portal' => true,
+                'message' => $resultado['message'] ?? 'El portal no liquidó la corrección.',
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'por_portal' => true,
+            'numero_planilla' => $resultado['numero_planilla'],
+            'valor_total' => $resultado['valor_total'],
+            'message' => "Corrección {$resultado['numero_planilla']} liquidada en el portal del operador.",
+        ]);
+    }
+
     private function credencial(int $aliadoId, int $operadorId, ?int $razonSocialId): ?OperadorCredencial
     {
         return OperadorCredencial::paraOperador($aliadoId, $operadorId, $razonSocialId)->first();

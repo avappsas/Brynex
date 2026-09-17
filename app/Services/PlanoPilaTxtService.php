@@ -191,6 +191,9 @@ class PlanoPilaTxtService
             // Solo por la tarifa de caja del independiente, que se pacta por
             // contrato (2% o 0,6%) — ver PilaCotizanteCalculator.
             ->leftJoin('contratos AS ctr', 'ctr.id', '=', 'p.contrato_id')
+            // El plan dice qué se vendió, y en Tipo E - Extras eso es lo que
+            // decide la forma de las dos planillas. Ver PilaCotizanteDosPasos.
+            ->leftJoin('planes_contrato AS pln', 'pln.id', '=', 'ctr.plan_id')
             // La exoneración de SENA e ICBF es del aportante, y quien tiene su
             // NIT es la empresa del cliente: la razón social del contrato suele
             // ser una genérica ("RAZON SOCIAL", "INDEPENDIENTE") compartida por
@@ -235,6 +238,7 @@ class PlanoPilaTxtService
                 // es constante para todo el archivo, el porcentaje es por contrato.
                 DB::raw(((int) ($rs->es_independiente ?? 0)).' AS rs_es_independiente'),
                 'ctr.porcentaje_caja',
+                DB::raw('pln.codigo AS plan_codigo'),
                 // Fondo de Solidaridad: el grupo decide la tarifa de pensión.
                 // Manda el snapshot del plano; sin él, el del contrato.
                 DB::raw('ISNULL(p.grupo_fondo_solidaridad, ctr.grupo_fondo_solidaridad) AS grupo_fondo_solidaridad'),
@@ -301,8 +305,8 @@ class PlanoPilaTxtService
         $soloY = $planos->count() > 0 && $planos->every(fn ($p) => (int) $p->tipo_modalidad_id === 8);
         $tipoAportante = match (true) {
             $tipoPlanilla === 'Y' && $soloY => '15',
-            $tipoPlanilla === 'I'           => '2',
-            default                         => '01',
+            $tipoPlanilla === 'I' => '2',
+            default => '01',
         };
 
         // El código de riesgos del registro tipo 1 sale de la razón social, y
@@ -337,13 +341,23 @@ class PlanoPilaTxtService
             if ((int) $_p->tipo_modalidad_id === PilaCotizanteCalculator::TIPO_E1 && $pasoE1 === 1 && ! $varianteE1) {
                 $ibcP = PilaCotizanteE1::ibcUnDia($ibcF);
             }
-            // Solo Caja y Solo Pensión no cotizan caja en el paso 1 —su campo
-            // 45 va en cero y el aporte entra en la corrección—, así que no
-            // suman nada aquí. En la corrección tampoco: el campo 20 de una
-            // planilla N repite el de la planilla que corrige, que es la línea
-            // A. Ver PilaCotizanteDosPasos.
+            // Las de dos pasos que venden caja o pensión no cotizan caja en el
+            // paso 1 —su campo 45 va en cero y el aporte entra en la
+            // corrección—, así que no suman nada aquí. En la corrección
+            // tampoco: el campo 20 de una planilla N repite el de la planilla
+            // que corrige, que es la línea A.
+            //
+            // Las que venden salud sí: su paso 1 paga el día de caja, y el
+            // campo 20 tiene que cuadrar con la suma de los campos 45.
+            // Ver PilaCotizanteDosPasos.
             if (in_array((int) $_p->tipo_modalidad_id, \App\Models\TipoModalidad::IDS_DOS_PASOS, true)) {
-                continue;
+                $planDosPasos = PilaCotizanteDosPasos::planVendido($_p);
+
+                if (! PilaCotizanteDosPasos::vendeSalud($planDosPasos) || $pasoE1 === 2) {
+                    continue;
+                }
+
+                $ibcP = PilaCotizanteDosPasos::ibcUnDia($ibcF);
             }
             // El cotizante 33 (Fondo de Solidaridad) no cotiza caja: su campo 45
             // va en cero, así que tampoco suma los $100 de la convención CCF68.

@@ -2178,6 +2178,25 @@ foreach ($tiposModalidad as $_tm) {
 }
 @endphp
 const MODALIDADES_TP = {!! json_encode($_modalidadesTPData) !!};
+@php
+// Tipo E - Extras: aquí los días y el piso de salario los dice el PLAN, no la
+// modalidad — "Solo CCF 14" vende media jornada del mes, así que su piso es
+// medio mínimo. Misma fuente que TipoModalidad::factorSalario() en el backend.
+$_planesExtras = [];
+foreach ($planes as $_pl) {
+    $_datos = \App\Models\TipoModalidad::PLANES_EXTRAS[$_pl->codigo] ?? null;
+    if ($_datos) {
+        $_planesExtras[$_pl->id] = [
+            'codigo' => $_pl->codigo,
+            'dias'   => $_datos['dias'],
+            'factor' => \App\Models\TipoModalidad::FACTOR_SALARIO_POR_DIAS[$_datos['dias']] ?? 1.0,
+            'api'    => $_datos['api'],
+        ];
+    }
+}
+@endphp
+const MODALIDAD_EXTRAS = {{ \App\Models\TipoModalidad::ID_EXTRAS }};
+const PLANES_EXTRAS    = {!! json_encode($_planesExtras) !!};
 // Modalidades de tiempo parcial cuyos días NO están en el catálogo: los elige el
 // contrato mes a mes (Tiempo Parcial Independiente, cotizante 76). En estas,
 // dias_afp/dias_caja/factor_salario de MODALIDADES_TP vienen en null y salen del
@@ -3612,6 +3631,11 @@ function cotizador() {
             const id = parseInt(this.tipoModalidadId || 0);
             // UPC y Seguros no cotizan sobre el salario, así que no tienen piso.
             if (id === MODALIDAD_UPC || id === MODALIDAD_SEGUROS) return 0;
+            // Tipo E - Extras: el piso lo fija el plan, no la modalidad.
+            if (id === MODALIDAD_EXTRAS) {
+                const plan = PLANES_EXTRAS[parseInt(this.planId || 0)];
+                return Math.round(SALARIO_MINIMO * (plan?.factor || 1));
+            }
             const tp = this.tpDataDe(id);
             return Math.round(SALARIO_MINIMO * (tp?.factor_salario || 1));
         },
@@ -4017,7 +4041,25 @@ function cotizador() {
             this.planNombre = e.target.options[e.target.selectedIndex]?.textContent?.trim() || '';
             bloquearEntidadesPorPlan(this.planId);
             actualizarAvisoPensionado();
+            // En Tipo E - Extras el plan cambia el piso del salario ("Solo CCF
+            // 14" vende media jornada), así que el salario se acomoda solo en
+            // vez de quedar por debajo y reventar al guardar.
+            if (parseInt(this.tipoModalidadId || 0) === MODALIDAD_EXTRAS) this.ajustarSalarioAlPiso();
             this.refrescarTarifas();
+        },
+
+        /** Sube el salario al piso de la combinación actual si quedó por debajo. */
+        ajustarSalarioAlPiso() {
+            const piso = this.pisoSalario();
+            if (!piso || (parseInt(this.salario) || 0) >= piso) return;
+
+            this.salario = piso;
+            this.setIbc(piso);
+            const inpSal = document.getElementById('inp_salario');
+            if (inpSal) {
+                inpSal.dataset.raw = piso;
+                inpSal.value       = numFmt(piso);
+            }
         },
 
         /**

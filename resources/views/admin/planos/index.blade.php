@@ -1237,13 +1237,24 @@
             <div style="display:flex;align-items:flex-start;gap:.6rem;background:#fef2f2;border:1px solid #fca5a5;
                         border-radius:10px;padding:.65rem .85rem;margin-bottom:1rem">
                 <span style="font-size:1.1rem;line-height:1">🔒</span>
-                <div>
+                <div style="flex:1">
                     <div style="font-size:.78rem;font-weight:700;color:#991b1b">Este plano ya fue confirmado como pagado</div>
                     <div style="font-size:.72rem;color:#b91c1c;margin-top:.2rem">
                         N° Planilla: <strong>{{ $numeroPlanillaPagado }}</strong>.
                         Las descargas están inhabilitadas para evitar modificaciones accidentales.
                     </div>
                 </div>
+                @if($puedeCorregirPago)
+                {{-- El número se digita a mano al confirmar: si salió mal hay que
+                     poder arreglarlo sin borrar el gasto y volver a empezar. --}}
+                <button type="button"
+                        onclick="abrirCorregirPago()"
+                        style="flex-shrink:0;background:#fff;border:1px solid #fca5a5;color:#b91c1c;border-radius:8px;
+                               padding:.35rem .7rem;font-size:.73rem;font-weight:700;cursor:pointer;white-space:nowrap"
+                        title="Corregir el número de planilla o el valor pagado">
+                    ✏️ Corregir
+                </button>
+                @endif
             </div>
             @endif
 
@@ -1570,6 +1581,54 @@
     </div>
 </div>
 
+{{-- ══════════════════════════════════════════════════════════════════════
+     MODAL: Corregir un pago ya confirmado
+     El número de planilla vive en el gasto y en cada registro del plano; el
+     valor solo en el gasto. Se corrigen juntos para que no queden desfasados.
+═══════════════════════════════════════════════════════════════════════ --}}
+@if($planoPagado && $puedeCorregirPago)
+<div class="modal-overlay" id="modal-corregir-pago">
+    <div class="modal-box">
+        <div class="modal-head">
+            <h3>✏️ Corregir pago de planilla</h3>
+            <button class="modal-close" onclick="cerrarModal('modal-corregir-pago')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="aviso-modal">
+                <strong>SE CAMBIA EN EL GASTO Y EN EL PLANO A LA VEZ</strong>
+                El número nuevo reemplaza al <strong>{{ $numeroPlanillaPagado }}</strong> en el gasto y en todos los
+                registros de esta planilla. El valor solo vive en el gasto, así que corregirlo mueve
+                la caja o el banco de la fecha del pago.
+            </div>
+
+            <div class="form-row">
+                <div class="form-grupo">
+                    <label>Número de Planilla</label>
+                    <input type="text" id="corr-numero" value="{{ $numeroPlanillaPagado }}" required>
+                </div>
+                <div class="form-grupo">
+                    <label>Valor Pagado</label>
+                    <input type="number" id="corr-valor" value="{{ (int) ($valorPagado ?? 0) }}" min="1" required>
+                </div>
+            </div>
+
+            <div class="form-grupo">
+                <label>Motivo de la corrección</label>
+                <input type="text" id="corr-motivo" maxlength="300" placeholder="Ej: número mal digitado al confirmar">
+            </div>
+
+            <div id="corr-resultado" style="display:none;margin-top:.6rem"></div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn-accion btn-cancelar" onclick="cerrarModal('modal-corregir-pago')">Cancelar</button>
+            <button class="btn-accion btn-pagar" id="btn-corregir-pago" onclick="ejecutarCorregirPago()">
+                💾 GUARDAR CORRECCIÓN
+            </button>
+        </div>
+    </div>
+</div>
+@endif
+
 {{-- Toast global --}}
 <div class="toast" id="toast-msg"></div>
 
@@ -1776,6 +1835,7 @@ const CTX = {
     rsNit         : {{ $rsNit ?? 'null' }},
     rsDiaHabil    : {{ $rsDiaHabil ?? 'null' }},
     csrfToken     : '{{ csrf_token() }}',
+    gastoPagoId   : {{ $gastoPagoId ?? 'null' }},
     routes: {
         descargar        : '{{ route('admin.planos.descargar') }}',
         descargarAsopagos  : '{{ route('admin.planos.descargar_asopagos') }}',
@@ -1785,6 +1845,7 @@ const CTX = {
         nPlanoUpdate : '{{ route('admin.planos.n_plano.update') }}',
         asignarOperador: '{{ route('admin.planos.operador_cliente.asignar') }}',
         confirmarPago: '{{ route('admin.planos.confirmar_pago') }}',
+        corregirPago : '{{ route('admin.planos.corregir_pago') }}',
         apiRazon     : '/admin/planos/api/razon/',
         enlaceEstado   : '{{ route('admin.planos.api_operador.estado') }}',
         enlaceLiquidar : '{{ route('admin.planos.api_operador.liquidar') }}',
@@ -2661,6 +2722,11 @@ async function cargarEstadoEnlace() {
                 let bloqueoP2 = null;
                 if (!op.e1.paso1_liquidado) {
                     bloqueoP2 = 'Primero hay que liquidar la planilla del paso 1.';
+                } else if (op.e1.por_portal && !op.e1.pago_confirmado) {
+                    // La corrección de salud se hace en el portal del operador,
+                    // que exige la planilla del paso 1 ya pagada.
+                    bloqueoP2 = 'La planilla del paso 1 todavía no tiene el pago confirmado. '
+                              + 'El portal del operador solo deja corregir una planilla pagada.';
                 } else if (!op.e1.automatico && !op.e1.pago_confirmado) {
                     // En Solo Caja (`automatico`) la fecha de pago la revela el
                     // operador al primer intento, así que la corrección puede
@@ -2671,9 +2737,22 @@ async function cargarEstadoEnlace() {
 
                 crearBoton(
                     (op.e1.paso2 && op.e1.paso2.estado === 'validada' ? '✅ ' : '2️⃣ ')
-                        + 'Paso 2 · ' + (op.e1.etiqueta_paso2 || 'Corrección'),
+                        + 'Paso 2 · ' + (op.e1.etiqueta_paso2 || 'Corrección')
+                        + (op.e1.por_portal ? ' (por el portal)' : ''),
                     2, bloqueoP2
                 );
+
+                if (op.e1.por_portal && !bloqueoP2 && !op.e1.paso2) {
+                    // Es el mismo botón, pero por dentro hace otra cosa: la
+                    // salud no pasa por archivo plano y el robot la sube al
+                    // portal del operador. Tarda minutos, no segundos.
+                    const aviso = document.createElement('div');
+                    aviso.innerHTML = avisoEnlace('#eff6ff', '#bfdbfe', '#1e40af',
+                        '🤖 Esta corrección la hace BryNex <strong>en el portal del operador</strong>, '
+                        + 'porque el archivo plano no la acepta. Puede tardar un par de minutos; '
+                        + 'al terminar queda aquí con su enlace de pago.');
+                    cont.appendChild(aviso);
+                }
 
                 if (bloqueoP2 && !bloqueo) {
                     const aviso = document.createElement('div');
@@ -2883,51 +2962,6 @@ function aplicarTotalDelOperador(valorTotal, numeroPlanilla, fechaLiquidacion) {
 
 function avisoEnlace(bg, borde, color, html) {
     return `<div style="background:${bg};border:1px solid ${borde};border-radius:10px;padding:.7rem .85rem;font-size:.76rem;color:${color};line-height:1.4">${html}</div>`;
-}
-
-// Cuadre del período: cuántos contratos vigentes de esta razón social todavía
-// no entran a ninguna planilla. Es lo que Enlace reclama con la advertencia
-// "no se reportó novedad de retiro y no se encuentra reportado en esta
-// planilla". Informativo: al liquidar la última tanda debería quedar en cero.
-function pintarPendientesCierre(p) {
-    const cont = document.getElementById('enlace-pendientes');
-    if (!cont || !p) return;
-
-    if (!p.total) {
-        cont.style.display = '';
-        cont.innerHTML = avisoEnlace('#f0fdf4', '#bbf7d0', '#166534',
-            '✅ <strong>Sin pendientes.</strong> Todos los contratos vigentes de esta razón social ya están en una planilla del período.');
-        return;
-    }
-
-    cont.style.display = '';
-    cont.innerHTML = avisoEnlace('#fffbeb', '#fde68a', '#92400e',
-        `📋 Quedan <strong>${p.total}</strong> contrato(s) vigente(s) sin planilla en este período.` +
-        ` Si todavía faltan tandas por facturar es normal; si esta era la última, son retiros sin registrar.` +
-        (p.url ? `<br><a href="${p.url}" target="_blank" rel="noopener" style="color:#92400e;font-weight:700;text-decoration:underline">Ver quiénes son →</a>` : ''));
-}
-
-// Pinta el resultado guardado de una liquidación anterior.
-function renderEstadoEnlace(p, operadorNombre) {
-    const cont = document.getElementById('enlace-ultima');
-    cont.style.display = '';
-    const enOperador = operadorNombre ? ` en ${operadorNombre}` : '';
-
-    if (p.estado === 'validada' && p.numero_planilla) {
-        aplicarTotalDelOperador(p.valor_total, p.numero_planilla, p.fecha);
-        cont.innerHTML = avisoEnlace('#f0fdf4', '#bbf7d0', '#166534',
-            `<strong>✅ Planilla ${p.numero_planilla}</strong> liquidada${enOperador} el ${p.fecha || ''}.` +
-            (p.valor_total ? `<br>Total a pagar: <strong>$ ${fmtNum(Math.round(p.valor_total))}</strong>` : '') +
-            (p.url_pago ? `<br><a href="${p.url_pago}" target="_blank" rel="noopener" style="color:#15803d;font-weight:700;text-decoration:underline">Ir a pagar en PSE →</a>` : ''));
-    } else if (p.estado === 'con_errores') {
-        cont.innerHTML = avisoEnlace('#fffbeb', '#fde68a', '#92400e',
-            `<strong>⚠️ Último intento con errores.</strong><br>${p.mensaje_error || ''}`);
-    } else if (p.estado === 'error') {
-        cont.innerHTML = avisoEnlace('#fef2f2', '#fecaca', '#991b1b',
-            `<strong>✗ Último intento falló.</strong><br>${p.mensaje_error || ''}`);
-    } else {
-        cont.style.display = 'none';
-    }
 }
 
 async function liquidarEnEnlace(operadorId, operadorNombre, paso = 1) {
@@ -3628,6 +3662,60 @@ async function ejecutarConfirmarPago() {
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────
+// ── Corregir un pago ya confirmado ────────────────────────────────────
+// El número de planilla quedó escrito en el gasto y en cada registro del
+// plano; el valor solo en el gasto. El backend los mueve juntos.
+function abrirCorregirPago() {
+    const res = document.getElementById('corr-resultado');
+    if (res) { res.style.display = 'none'; res.innerHTML = ''; }
+    document.getElementById('modal-corregir-pago').classList.add('open');
+}
+
+async function ejecutarCorregirPago() {
+    const numero = (document.getElementById('corr-numero').value || '').trim();
+    const valor  = parseInt(document.getElementById('corr-valor').value || 0, 10);
+    const motivo = (document.getElementById('corr-motivo').value || '').trim();
+    const res    = document.getElementById('corr-resultado');
+    const btn    = document.getElementById('btn-corregir-pago');
+
+    if (!numero)        { mostrarToast('Escribe el número de planilla.', 'error'); return; }
+    if (!(valor > 0))   { mostrarToast('El valor pagado tiene que ser mayor que cero.', 'error'); return; }
+
+    const pintar = (html) => { res.style.display = 'block'; res.innerHTML = html; };
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Guardando…';
+
+    const fd = new FormData();
+    fd.append('gasto_id', CTX.gastoPagoId);
+    fd.append('numero_planilla', numero);
+    fd.append('valor', valor);
+    if (motivo) fd.append('motivo', motivo);
+
+    try {
+        const resp = await fetch(CTX.routes.corregirPago, {
+            method : 'POST',
+            headers: { 'X-CSRF-TOKEN': CTX.csrfToken },
+            body   : fd,
+        });
+        const data = await resp.json();
+
+        if (data.ok) {
+            pintar(`<div style="background:#dcfce7;border:1px solid #bbf7d0;border-radius:8px;padding:.65rem .9rem;color:#15803d;font-size:.82rem">✅ ${data.mensaje}</div>`);
+            mostrarToast(data.mensaje, 'success');
+            setTimeout(() => location.reload(), 2200);
+        } else {
+            pintar(`<div style="background:#fee2e2;border:1px solid #fecaca;border-radius:8px;padding:.65rem .9rem;color:#b91c1c;font-size:.82rem">❌ ${data.mensaje}</div>`);
+            btn.disabled = false;
+            btn.textContent = '💾 GUARDAR CORRECCIÓN';
+        }
+    } catch (e) {
+        mostrarToast('Error de conexión. Intente de nuevo.', 'error');
+        btn.disabled = false;
+        btn.textContent = '💾 GUARDAR CORRECCIÓN';
+    }
+}
+
 function mostrarToast(msg, tipo='success') {
     const t = document.getElementById('toast-msg');
     t.textContent = msg;

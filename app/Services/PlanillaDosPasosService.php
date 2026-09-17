@@ -116,15 +116,93 @@ class PlanillaDosPasosService
     }
 
     /**
-     * Cómo se llama el botón del paso 2, que es lo único que la pantalla
-     * necesita saber de la diferencia entre las dos familias.
+     * Los planes que se venden en esta tanda, en el vocabulario de
+     * TipoModalidad::PLANES_EXTRAS.
+     *
+     * En Tipo E - Extras (-12) el plan es lo que decide la forma de la
+     * corrección —y si se puede liquidar por API o hay que ir al portal—, así
+     * que la pantalla y el controlador necesitan saberlo antes de armar nada.
+     * Las modalidades viejas no traen plan de esta familia: se traducen a su
+     * equivalente en PilaCotizanteDosPasos::planVendido().
+     *
+     * @param  array  $tiposFiltro  Modalidades marcadas en pantalla; vacío = todas
+     * @return string[] Códigos de plan, sin repetir
      */
-    public static function etiquetaCorreccion(array $tiposModalidad): string
+    public static function planesDeLaTanda(
+        int $aliadoId,
+        int $razonSocialId,
+        int $mes,
+        int $anio,
+        int $nPlano,
+        array $tiposFiltro = []
+    ): array {
+        $query = \Illuminate\Support\Facades\DB::table('planos AS p')
+            ->leftJoin('contratos AS ctr', 'ctr.id', '=', 'p.contrato_id')
+            ->leftJoin('planes_contrato AS pln', 'pln.id', '=', 'ctr.plan_id')
+            ->leftJoin('tipo_modalidad AS tm', 'tm.id', '=', 'p.tipo_modalidad_id')
+            ->where('p.aliado_id', $aliadoId)
+            ->where('p.razon_social_id', $razonSocialId)
+            ->where('p.n_plano', $nPlano)
+            ->whereIn('p.tipo_reg', ['planilla', 'retiro'])
+            ->whereRaw('ISNULL(p.num_dias, 0) > 0')
+            ->whereNull('p.deleted_at')
+            ->tap(fn ($q) => \App\Models\Plano::filtrarPeriodoDePago($q, $mes, $anio));
+
+        if ($tiposFiltro !== []) {
+            $query->whereIn('p.tipo_modalidad_id', array_map('intval', $tiposFiltro));
+        }
+
+        return $query
+            ->select(['p.tipo_modalidad_id', 'pln.codigo AS plan_codigo', 'tm.dias_caja'])
+            ->get()
+            ->map(fn ($fila) => PilaCotizanteDosPasos::planVendido($fila))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * ¿La corrección de esta tanda hay que hacerla por el portal del operador?
+     *
+     * La salud no pasa por la API: su validador de archivos planos exige días e
+     * IBC iguales entre pensión, salud y riesgos (eo.val.2.198 / 2.244) y el
+     * portal web del mismo operador no. Ver PilaCotizanteDosPasos.
+     *
+     * @param  string[]  $planes
+     */
+    public static function correccionPorPortal(array $planes): bool
     {
-        foreach ($tiposModalidad as $tipo) {
-            if (in_array((int) $tipo, \App\Models\TipoModalidad::IDS_SOLO_PENSION, true)) {
-                return 'Corrección (mes de pensión)';
+        foreach ($planes as $plan) {
+            if (! PilaCotizanteDosPasos::correccionPorApi($plan)) {
+                return true;
             }
+        }
+
+        return false;
+    }
+
+    /**
+     * Cómo se llama el botón del paso 2, que es lo único que la pantalla
+     * necesita saber de la diferencia entre un plan y otro.
+     *
+     * @param  string[]  $planes  Códigos de plan de la tanda
+     */
+    public static function etiquetaCorreccion(array $planes): string
+    {
+        foreach ($planes as $plan) {
+            if (PilaCotizanteDosPasos::vendeSalud($plan)) {
+                return $plan === 'EPS_ARL'
+                    ? 'Corrección (salud y riesgos)'
+                    : 'Corrección (salud del mes)';
+            }
+        }
+
+        if (in_array('SOLO_AFP', $planes, true)) {
+            return 'Corrección (mes de pensión)';
+        }
+
+        if ($planes === ['SOLO_CCF_14']) {
+            return 'Corrección (caja de 14 días)';
         }
 
         return 'Corrección (caja del mes)';
