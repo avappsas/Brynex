@@ -520,6 +520,13 @@ function chatApp() {
 
         async cargarConversacion(id) {
             if (this.enviando) return;
+            // Sin id no hay nada que cargar, y sobre todo: no se puede dejar la
+            // URL en /chat/null. El pushState no pide nada al servidor, así que
+            // el error solo aparecía al recargar, ya lejos de donde se originó.
+            if (id === null || id === undefined || id === '' || Number.isNaN(Number(id))) {
+                console.warn('cargarConversacion sin id válido:', id);
+                return;
+            }
             this.convId = id;
             this.textoMensaje = '';
             this.mensajeError = '';

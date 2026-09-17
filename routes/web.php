@@ -1124,23 +1124,26 @@ Route::middleware('auth')->group(function () {
         $config = \App\Http\Controllers\Admin\WhatsappConfigController::class;
 
         // ── Chat: ver el inbox ────────────────────────────────────────────────
+        // El id va numérico obligado: el controlador lo recibe como `int` y un
+        // `/chat/null` —que el chat se pone solo en la barra de direcciones si
+        // el JS pierde la conversación— reventaba con un 500 al recargar.
         Route::middleware('permiso:whatsapp.ver')->group(function () use ($chat) {
             Route::get('chat', [$chat, 'index'])->name('chat.index');
-            Route::get('chat/{id}', [$chat, 'show'])->name('chat.show');
-            Route::get('chat/{id}/api-mensajes', [$chat, 'apiMensajes'])->name('chat.api_mensajes');
-            Route::get('chat/{id}/api-sidebar', [$chat, 'apiConversacionSidebar'])->name('chat.api_sidebar');
-            Route::get('chat/media/{mensajeId}', [$chat, 'descargarMedia'])->name('chat.media');
+            Route::get('chat/{id}', [$chat, 'show'])->name('chat.show')->whereNumber('id');
+            Route::get('chat/{id}/api-mensajes', [$chat, 'apiMensajes'])->name('chat.api_mensajes')->whereNumber('id');
+            Route::get('chat/{id}/api-sidebar', [$chat, 'apiConversacionSidebar'])->name('chat.api_sidebar')->whereNumber('id');
+            Route::get('chat/media/{mensajeId}', [$chat, 'descargarMedia'])->name('chat.media')->whereNumber('mensajeId');
             Route::get('api/no-leidos', [$chat, 'apiNoLeidos'])->name('api.no_leidos');
-            Route::patch('chat/{id}/leer', [$chat, 'marcarLeido'])->name('chat.leer');
+            Route::patch('chat/{id}/leer', [$chat, 'marcarLeido'])->name('chat.leer')->whereNumber('id');
         });
         // ── Chat: responder y operar la conversación ──────────────────────────
         Route::middleware('permiso:whatsapp.responder')->group(function () use ($chat) {
-            Route::post('chat/{id}/mensaje', [$chat, 'enviarMensaje'])->name('chat.mensaje');
-            Route::patch('chat/{id}/toggle-bot', [$chat, 'toggleBot'])->name('chat.toggle_bot');
-            Route::patch('chat/{id}/cerrar', [$chat, 'cerrar'])->name('chat.cerrar');
-            Route::patch('chat/{id}/no-contactar', [$chat, 'noContactar'])->name('chat.no_contactar');
+            Route::post('chat/{id}/mensaje', [$chat, 'enviarMensaje'])->name('chat.mensaje')->whereNumber('id');
+            Route::patch('chat/{id}/toggle-bot', [$chat, 'toggleBot'])->name('chat.toggle_bot')->whereNumber('id');
+            Route::patch('chat/{id}/cerrar', [$chat, 'cerrar'])->name('chat.cerrar')->whereNumber('id');
+            Route::patch('chat/{id}/no-contactar', [$chat, 'noContactar'])->name('chat.no_contactar')->whereNumber('id');
         });
-        Route::patch('chat/{id}/asignar', [$chat, 'asignar'])->name('chat.asignar')->middleware('permiso:whatsapp.asignar');
+        Route::patch('chat/{id}/asignar', [$chat, 'asignar'])->name('chat.asignar')->middleware('permiso:whatsapp.asignar')->whereNumber('id');
 
         // ── Plantillas (admin del aliado) ─────────────────────────────────────
         Route::get('api/plantillas-aprobadas', [$plantilla, 'apiListarAprobadas'])->name('api.plantillas')->middleware('permiso:whatsapp.ver');
