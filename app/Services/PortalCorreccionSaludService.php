@@ -70,6 +70,12 @@ class PortalCorreccionSaludService
 
     private Client $http;
 
+    /** Cabeceras de la sesión del API, para cerrarla al terminar. */
+    private array $cabeceras = [];
+
+    /** Última pantalla del editor en línea, para salir de él al terminar. */
+    private ?string $editor = null;
+
     public function __construct(
         private ?PlanoPilaTxtService $planos = null,
     ) {
@@ -132,6 +138,8 @@ class PortalCorreccionSaludService
             $this->abrirSesion($host, $operador, $credencial, $rs);
             [$numero, $valor] = $this->subirYCorregir($host, $plano['contenido'], $plano['filename']);
         } catch (RuntimeException $e) {
+            $this->cerrarSesion($host);
+
             Log::warning('Portal: la corrección de salud no liquidó', [
                 'razon_social_id' => $rs->id,
                 'planilla_base' => $paso1->numero_planilla,
@@ -140,6 +148,8 @@ class PortalCorreccionSaludService
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
+
+        $this->cerrarSesion($host);
 
         // Queda como paso 2 de la tanda, igual que si hubiera salido por API:
         // así la pantalla de planos la muestra con su valor y el cuadre no
@@ -211,6 +221,7 @@ class PortalCorreccionSaludService
         foreach (['token', 'refresh-token', 'refresh-token-ttl', 'refresh-token-date', 'faces'] as $nombre) {
             $headers[$nombre] = $login->getHeaderLine($nombre);
         }
+        $this->cabeceras = $headers;
 
         $aportante = $this->http->get("{$host}/api/gestion/aportante/NI/{$nit}", ['headers' => $headers]);
         $idAportante = json_decode((string) $aportante->getBody(), true)['id'] ?? null;
@@ -341,6 +352,7 @@ class PortalCorreccionSaludService
             ])->getBody();
         }
 
+        $this->editor = $editor;
         $numero = $this->numeroDe($editor);
 
         if ($numero === null) {
@@ -433,6 +445,49 @@ class PortalCorreccionSaludService
         }
 
         return null;
+    }
+
+    /**
+     * Sale del editor y cierra la sesión, como lo haría una persona.
+     *
+     * Sin esto Simple deja la planilla "en uso" por el usuario del robot hasta
+     * que la sesión vence, y nadie más puede pagarla ni borrarla: "no es
+     * posible procesar su solicitud debido a que el usuario ... está
+     * trabajando en la planilla" (17-sep-2026, más de 30 minutos bloqueada).
+     *
+     * Salir del editor es `canceladorPlanilla` (su aviso: "si la planilla no se
+     * ha guardado, todos los datos se perderán"; aquí ya está guardada). El
+     * cierre de sesión es el mismo que usa el menú de Simple: DELETE
+     * /auth/session. Nunca tumba la liquidación: si falla, queda en el log.
+     */
+    private function cerrarSesion(string $host): void
+    {
+        if (! isset($this->http)) {
+            return;
+        }
+
+        try {
+            if ($this->editor && str_contains($this->editor, 'canceladorPlanilla')) {
+                $this->http->post($host.self::LINEA, [
+                    'form_params' => $this->camposDe($this->editor, 'formPlanillaenlinea')
+                        + ['formPlanillaenlinea' => 'formPlanillaenlinea', 'canceladorPlanilla' => 'canceladorPlanilla'],
+                    'headers' => ['Referer' => $host.self::LINEA],
+                ]);
+            }
+
+            $salida = $this->http->delete("{$host}/auth/session", ['headers' => $this->cabeceras]);
+
+            if ($salida->getStatusCode() >= 300) {
+                Log::warning('PortalCorreccionSalud: el cierre de sesión no respondió bien', [
+                    'status' => $salida->getStatusCode(),
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('PortalCorreccionSalud: no se pudo cerrar la sesión', ['error' => $e->getMessage()]);
+        } finally {
+            $this->editor = null;
+            $this->cabeceras = [];
+        }
     }
 
     /** Total a pagar de la planilla recién guardada. */
