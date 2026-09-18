@@ -43,14 +43,17 @@ $estadoFact = fn($e) => match($e) {
     'pre_factura' => ['Pre-factura', '#64748b', '#f1f5f9'],
     default       => [ucfirst($e ?? '—'), '#64748b', '#f1f5f9'],
 };
-function sortUrlC($col, $cs, $cd) {
+// Closures y no `function`: una función con nombre queda declarada para todo
+// el proceso, y renderizar la vista dos veces en el mismo (tinker, un job, un
+// test) moría con "Cannot redeclare sortUrlC()".
+$sortUrlC = function ($col, $cs, $cd) {
     $d = ($cs===$col && $cd==='asc') ? 'desc' : 'asc';
     $q = request()->except(['sort','dir']); $q['sort']=$col; $q['dir']=$d;
     return url()->current().'?'.http_build_query($q);
-}
-function sortClassC($col, $cs, $cd) {
+};
+$sortClassC = function ($col, $cs, $cd) {
     if($cs!==$col) return ''; return $cd==='asc'?'sort-asc':'sort-desc';
-}
+};
 @endphp
 
 @section('contenido')
@@ -522,9 +525,9 @@ function sortClassC($col, $cs, $cd) {
 <thead>
 <tr>
     {{-- N° Contrato --}}
-    <th><a href="{{ sortUrlC('contrato', $sort, $dir) }}" class="{{ sortClassC('contrato', $sort, $dir) }}">N°</a></th>
+    <th><a href="{{ $sortUrlC('contrato', $sort, $dir) }}" class="{{ $sortClassC('contrato', $sort, $dir) }}">N°</a></th>
     {{-- Cédula --}}
-    <th><a href="{{ sortUrlC('cedula', $sort, $dir) }}"   class="{{ sortClassC('cedula', $sort, $dir) }}">Cédula</a></th>
+    <th><a href="{{ $sortUrlC('cedula', $sort, $dir) }}"   class="{{ $sortClassC('cedula', $sort, $dir) }}">Cédula</a></th>
     {{-- Nombre --}}
     <th>Nombre</th>
     {{-- Celular --}}
@@ -540,7 +543,7 @@ function sortClassC($col, $cs, $cd) {
         </form>
     </th>
     {{-- Ingreso --}}
-    <th><a href="{{ sortUrlC('ingreso', $sort, $dir) }}"  class="{{ sortClassC('ingreso', $sort, $dir) }}">Ingreso</a></th>
+    <th><a href="{{ $sortUrlC('ingreso', $sort, $dir) }}"  class="{{ $sortClassC('ingreso', $sort, $dir) }}">Ingreso</a></th>
     {{-- Tipo Modalidad --}}
     <th>
         <form method="GET" action="{{ route('admin.cobros.index') }}" style="margin:0">
@@ -599,7 +602,7 @@ function sortClassC($col, $cs, $cd) {
     @endif
     @if($soloPend === 'todos' || $soloPend === 'pagado')
     <th title="N° Planilla">
-        <a href="{{ sortUrlC('n_planilla', $sort, $dir) }}" class="{{ sortClassC('n_planilla', $sort, $dir) }}">N° Planilla</a>
+        <a href="{{ $sortUrlC('n_planilla', $sort, $dir) }}" class="{{ $sortClassC('n_planilla', $sort, $dir) }}">N° Planilla</a>
     </th>
     @endif
     {{-- Semáforo siempre --}}
