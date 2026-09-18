@@ -560,7 +560,7 @@ const MF = (function () {
 
         // Según modo: detectar tipo o verificar mes pagado
         if (_modo === 'individual') {
-            _verificarMesPagado().then(() => { detectarTipo(); recalc(); });
+            _verificarMesPagado(null, null, true).then(() => { detectarTipo(); recalc(); });
             // Cargar anticipos disponibles del contrato
             if (window.MF_ANT) MF_ANT.cargar(_cfg.contratoId, null);
             // Inicializar sección de 2do contrato si hay otros vigentes
@@ -808,7 +808,9 @@ const MF = (function () {
     }
 
     // ── Verificar mes pagado (individual) ─────────────────────────
-    async function _verificarMesPagado(originalMes = null, originalAnio = null) {
+    // alAbrir: solo al abrir el modal se salta al primer mes pendiente; si luego
+    // escogen otro mes a mano, se respeta. avisoPendiente es el texto que lo explica.
+    async function _verificarMesPagado(originalMes = null, originalAnio = null, alAbrir = false, avisoPendiente = null) {
         if (_modo !== 'individual' || !_cfg.contratoId) return;
         const mes = parseInt(el('mf-mes')?.value);
         const anio = parseInt(el('mf-anio')?.value);
@@ -818,6 +820,15 @@ const MF = (function () {
             const avisoMes = el('mf-aviso-mes');
             const saldoPanel = el('mf-saldos-panel');
             const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+            // Un mes pendiente anterior al propuesto: se abre ahí, no en el mes en curso.
+            const p = data.pendiente;
+            if (alAbrir && p && (p.anio * 100 + p.mes) < (anio * 100 + mes)) {
+                setVal('mf-mes', p.mes);
+                setVal('mf-anio', p.anio);
+                return _verificarMesPagado(null, null, false,
+                    'Primer mes sin facturar: ' + meses[p.mes - 1] + ' ' + p.anio + '. Se propone ese en vez de ' + meses[mes - 1] + ' ' + anio + '.');
+            }
 
             if (data.pagado) {
                 setVal('mf-mes', data.mes);
@@ -833,6 +844,12 @@ const MF = (function () {
                         avisoMes.style.color = '#78350f';
                         avisoMes.textContent = 'El mes ' + meses[originalMes - 1] + ' ya está facturado. Facturando ' + meses[mes - 1] + ' ' + anio;
                     }
+                } else if (avisoPendiente && avisoMes) {
+                    avisoMes.style.display = 'block';
+                    avisoMes.style.background = '#eff6ff';
+                    avisoMes.style.borderColor = '#3b82f6';
+                    avisoMes.style.color = '#1e3a8a';
+                    avisoMes.textContent = avisoPendiente;
                 } else {
                     if (avisoMes) avisoMes.style.display = 'none';
                 }

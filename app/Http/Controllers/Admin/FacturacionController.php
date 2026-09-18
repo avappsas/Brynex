@@ -3729,6 +3729,8 @@ class FacturacionController extends Controller
             'gap_mes' => $gap['mes'] ?? null,
             'gap_anio' => $gap['anio'] ?? null,
             'gap_mensaje' => $gap['mensaje'] ?? null,
+            // Primer mes sin facturar, para que el modal abra ahí y no en el mes en curso
+            'pendiente' => $this->primerMesPendiente($aliadoId, $contrato),
             // Préstamos pendientes del cliente
             'tiene_prestamo_pendiente' => $prestamosPendientes->isNotEmpty(),
             'prestamos_pendientes' => $prestamosPendientes,
@@ -3927,6 +3929,41 @@ class FacturacionController extends Controller
             'bloquea' => true,
             'mensaje' => "Debe facturar {$nombreFaltante} antes de continuar con {$nombreTarget}.",
         ];
+    }
+
+    /**
+     * El primer mes que le falta facturar al contrato, o null si no hay hueco.
+     *
+     * Con facturas es el siguiente al último facturado. Sin ninguna es el mes de
+     * ingreso: un contrato creado tarde —el 57008 de Yesenia Vidal entró el
+     * 01/07 y se creó en septiembre— abría el modal en el mes en curso y dejaba
+     * julio y agosto sin cobrar, porque verificarOrdenFacturacion() no ve hueco
+     * cuando no hay nada facturado. Ese caso se limita a contratos sin planos y
+     * con ingreso en los últimos doce meses: los migrados del legacy traen su
+     * historia en planos y facturarlos desde el ingreso sería reabrir años.
+     *
+     * @return array{mes:int, anio:int}|null
+     */
+    private function primerMesPendiente(int $aliadoId, Contrato $contrato): ?array
+    {
+        $ultimo = Factura::where('aliado_id', $aliadoId)
+            ->where('contrato_id', $contrato->id)
+            ->whereIn('estado', ['pagada', 'pre_factura', 'abono', 'prestamo'])
+            ->selectRaw('MAX(anio * 100 + mes) as periodo')
+            ->value('periodo');
+
+        if ($ultimo) {
+            $fecha = \Carbon\Carbon::create(intdiv((int) $ultimo, 100), (int) $ultimo % 100, 1)->addMonth();
+        } else {
+            $ingreso = $contrato->fecha_ingreso;
+            $conPlanos = Plano::where('aliado_id', $aliadoId)->where('contrato_id', $contrato->id)->exists();
+            if (! $ingreso || $conPlanos || $ingreso->lt(now()->startOfMonth()->subYear())) {
+                return null;
+            }
+            $fecha = $ingreso->copy()->startOfMonth();
+        }
+
+        return ['mes' => (int) $fecha->month, 'anio' => (int) $fecha->year];
     }
 
     /**
