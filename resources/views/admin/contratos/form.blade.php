@@ -4048,10 +4048,21 @@ function cotizador() {
             this.refrescarTarifas();
         },
 
-        /** Sube el salario al piso de la combinación actual si quedó por debajo. */
+        /**
+         * Sube el salario al piso de la combinación actual si quedó por debajo.
+         *
+         * En un plan de media jornada ("Solo CCF 14") el salario no es un piso
+         * sino el valor exacto: el plano lo toma tal cual como IBC de la caja
+         * (ver PilaCotizanteDosPasos), así que un salario completo pegado de
+         * antes haría cobrar y liquidar el doble. Ahí se fija, igual que el
+         * Tiempo Parcial fija su fracción del mínimo.
+         */
         ajustarSalarioAlPiso() {
             const piso = this.pisoSalario();
-            if (!piso || (parseInt(this.salario) || 0) >= piso) return;
+            const plan = PLANES_EXTRAS[parseInt(this.planId || 0)];
+            const fraccion = parseInt(this.tipoModalidadId || 0) === MODALIDAD_EXTRAS && (plan?.factor || 1) < 1;
+            const actual = parseInt(this.salario) || 0;
+            if (!piso || (fraccion ? actual === piso : actual >= piso)) return;
 
             this.salario = piso;
             this.setIbc(piso);
