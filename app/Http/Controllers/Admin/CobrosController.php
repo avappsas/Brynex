@@ -1196,12 +1196,20 @@ class CobrosController extends Controller
         }
 
         // ── Procesar cada empresa ────────────────────────────────────
+        // Los contratos se agrupan por cédula UNA vez. Antes cada empresa hacía
+        // `$contratosActivos->whereIn('cedula', …)`, que recorre todos los
+        // contratos del aliado: 359 empresas × 1.517 contratos en el aliado 7
+        // eran 1,9 s de PHP puro, más de la mitad de lo que tardaba la página.
+        $contratosPorCedula = $contratosActivos->groupBy(fn ($c) => (string) $c->cedula);
+
         $empresas = $empresas->map(function ($emp) use (
-            $mes, $anio, $clientesPorEmpresa, $contratosActivos,
+            $mes, $anio, $clientesPorEmpresa, $contratosPorCedula,
             $facturasMes, $ultimasLlamadasEmp, $cedulasPagadasEmp, $moraEmpPorContrato
         ) {
-            $cedulas  = $clientesPorEmpresa->get($emp->id)?->pluck('cedula')->toArray() ?? [];
-            $contrEmp = $contratosActivos->whereIn('cedula', $cedulas);
+            $contrEmp = ($clientesPorEmpresa->get($emp->id)?->pluck('cedula') ?? collect())
+                ->map(fn ($ced) => (string) $ced)
+                ->unique()
+                ->flatMap(fn ($ced) => $contratosPorCedula->get($ced, collect()));
 
             $cant = $contrEmp->count();
 
