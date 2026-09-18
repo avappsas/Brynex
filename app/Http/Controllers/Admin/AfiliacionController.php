@@ -89,7 +89,11 @@ class AfiliacionController extends Controller
             'plan:id,nombre,incluye_eps,incluye_arl,incluye_pension,incluye_caja',
             'tipoModalidad:id,tipo_modalidad,modalidad',
             'aliado:id,nombre',
-            'radicados' => fn($q) => $q->with(['movimientos' => fn($m) => $m->reorder()->orderByDesc('id')->limit(3)]),
+            'radicados' => fn($q) => $q->with([
+                'movimientos' => fn($m) => $m->reorder()->orderByDesc('id')->limit(3),
+                // Para los días en estado de cada radicado, en una sola consulta.
+                'ultimoMovimiento',
+            ]),
         ])
         ->where('aliado_id', $alidoId)
         ->whereMonth('fecha_ingreso', $mes)
@@ -152,6 +156,11 @@ class AfiliacionController extends Controller
         }
 
         $contratos = $query->get();
+
+        // Cada radicado apunta al contrato que ya está en memoria. Sin esto,
+        // Radicado::esFuturoProgramado() lo volvía a pedir a la base, uno por
+        // radicado: 197 consultas en el listado del aliado 7.
+        $contratos->each(fn ($c) => $c->radicados->each(fn ($r) => $r->setRelation('contrato', $c)));
 
 
         // ARL desde la razón social (arl_nit) salvo en razones sociales de

@@ -143,6 +143,17 @@ class Radicado extends BaseModel
         return $this->hasMany(RadicadoMovimiento::class)->orderByDesc('id');
     }
 
+    /**
+     * El movimiento más reciente, cargable de una vez para toda una página.
+     * Es el mismo que `movimientos()->reorder()->orderByDesc('id')->first()`,
+     * pero con `with('ultimoMovimiento')` sale en UNA consulta para todos los
+     * radicados en vez de una por cada uno (ver diasEnEstado()).
+     */
+    public function ultimoMovimiento(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(RadicadoMovimiento::class)->latestOfMany('id');
+    }
+
     // ── Helpers de estado ──
     public function esPendiente(): bool  { return $this->estado === self::ESTADO_PENDIENTE; }
     public function esTramite(): bool    { return $this->estado === self::ESTADO_TRAMITE; }
@@ -205,7 +216,11 @@ class Radicado extends BaseModel
      */
     public function diasEnEstado(): int
     {
-        $ultimoMov = $this->movimientos()->reorder()->orderByDesc('id')->first();
+        // En el listado de afiliaciones viene precargado: sin eso eran dos
+        // consultas por radicado en trámite (tieneAlertaDias + diasEnEstado).
+        $ultimoMov = $this->relationLoaded('ultimoMovimiento')
+            ? $this->ultimoMovimiento
+            : $this->movimientos()->reorder()->orderByDesc('id')->first();
         $desde = $ultimoMov ? $ultimoMov->created_at : $this->created_at;
         return max(0, (int) now()->diffInDays($desde));
     }
