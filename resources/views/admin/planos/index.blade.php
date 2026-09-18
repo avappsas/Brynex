@@ -2614,15 +2614,18 @@ function abrirModalPago() {
         const op = document.getElementById('pago-operador');
         op.value = dp.operador;
         document.getElementById('pago-numero').value = dp.numero;
-        document.getElementById('pago-valor').value  = Math.round(dp.valor || 0);
-        ['pago-operador', 'pago-numero', 'pago-valor'].forEach(id => {
+        // Si el robot no alcanzó a leer el total, el valor se escribe a mano.
+        const conValor = Math.round(dp.valor || 0) > 0;
+        document.getElementById('pago-valor').value  = conValor ? Math.round(dp.valor) : '';
+        ['pago-operador', 'pago-numero'].concat(conValor ? ['pago-valor'] : []).forEach(id => {
             const el = document.getElementById(id);
             if (el.tagName === 'SELECT') el.disabled = true; else el.readOnly = true;
             el.style.background = '#f1f5f9';
         });
         const nota = document.getElementById('modal-pago-dos-pasos');
         nota.innerHTML = `🟡 <strong>Pago 2 de 2.</strong> La planilla del paso 1 (${dp.paso1}) ya está pagada. `
-            + `Aquí se confirma la corrección <strong>${dp.numero}</strong> en ${dp.operador}; con ella el plano queda pagado.`;
+            + `Aquí se confirma la corrección <strong>${dp.numero}</strong> en ${dp.operador}; con ella el plano queda pagado.`
+            + (conValor ? '' : '<br>Escriba el valor que cobró el operador por la corrección.');
         nota.style.display = '';
     }
 
@@ -2863,7 +2866,9 @@ async function cargarEstadoEnlace() {
                         + 'Paso 2 · ' + (op.e1.etiqueta_paso2 || 'Corrección')
                         + (op.e1.por_portal ? ' (por el portal)' : '')
                         + (p2 && !p2.pago_confirmado
-                            ? ` · ${p2.numero_planilla} · $ ${fmtNum(Math.round(p2.valor_total || 0))} — pendiente de pago`
+                            ? ` · ${p2.numero_planilla}`
+                              + (Math.round(p2.valor_total || 0) > 0 ? ` · $ ${fmtNum(Math.round(p2.valor_total))}` : '')
+                              + ' — pendiente de pago'
                             : ''),
                     2, bloqueoP2
                 );

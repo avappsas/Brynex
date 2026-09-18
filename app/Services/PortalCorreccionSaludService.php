@@ -446,6 +446,14 @@ class PortalCorreccionSaludService
             return (float) str_replace('.', '', $m[1]);
         }
 
+        // No se sabe aún cómo pinta Simple el total tras guardar: se deja
+        // rastro de lo que dice cerca de "total" para ajustar el patrón. El
+        // valor queda en cero y la pantalla deja escribirlo al confirmar.
+        preg_match_all('/.{0,60}total.{0,80}/iu', $texto, $cerca);
+        \Illuminate\Support\Facades\Log::warning('PortalCorreccionSalud: no se leyó el total', [
+            'cerca_de_total' => array_slice($cerca[0] ?? [], 0, 8),
+        ]);
+
         return 0.0;
     }
 
