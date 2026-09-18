@@ -1390,6 +1390,9 @@ class PlanillaApiController extends Controller
 
         return response()->json([
             'success' => true,
+            // Sin esto la pantalla toma el éxito por un archivo con errores
+            // ("La planilla tiene undefined error(es)").
+            'liquidada' => true,
             'por_portal' => true,
             'numero_planilla' => $resultado['numero_planilla'],
             'valor_total' => $resultado['valor_total'],
