@@ -149,13 +149,7 @@ class PilaCotizanteDosPasos
         // igual necesita una administradora o el registro se rechaza.
         $res['tienePension'] = true;
         $res['codAfpPila'] = self::afpDelCliente($p, $codAfpPila);
-        // Los planes de salud van con subtipo 4 en las dos planillas: es lo
-        // que apaga el cotejo 2.198/2.244 que amarra la salud de 30 días a la
-        // pensión de uno. Tiene que ser desde el paso 1, porque la corrección
-        // no puede cambiar el subtipo (2.746). Es la forma de la planilla de
-        // SUPPLIESALUD que Simple sí dejó pagar (1084672324, 27-ago-2026):
-        // subtipo 04 con el día de pensión intacto en la línea C.
-        $res['subtipoCotizante'] = $vendeSalud ? 4 : 0;
+        $res['subtipoCotizante'] = 0;
         $res['diasPension'] = 1;
         $res['ibcAfp'] = $ibcUnDia;
         $res['tarifaAfpDecimal'] = 0.16;
@@ -289,9 +283,21 @@ class PilaCotizanteDosPasos
                 $res['vArl'] = PilaCotizanteCalculator::roundPila($res['ibcArl'] * (float) $tarifaArlReal);
             }
 
-            // La pensión se queda en su día, igual a la línea A: quitarla la
-            // rechaza el operador (aporte negativo, IBC y días menores que la
-            // A, administradora distinta). Probado el 18-sep-2026 (1085311537).
+            // Subtipo 4 y ninguna pensión en la línea C (18-sep-2026). Con
+            // subtipo 0 el cotejo 2.198/2.244 amarra la salud de 30 días a la
+            // pensión de uno, y Simple no deja pagarla. El subtipo 3/4 apaga
+            // ese cotejo, pero a cambio la pensión no puede llevar
+            // administradora ni valor (2.053.1 / 2.116), así que sale entera:
+            // sin AFP, días, IBC ni aporte. La línea A no se toca: repite lo
+            // que ya quedó pagado.
+            $res['subtipoCotizante'] = 4;
+            $res['tienePension'] = false;
+            $res['codAfpPila'] = '';
+            $res['diasPension'] = 0;
+            $res['ibcAfp'] = 0;
+            $res['tarifaAfpDecimal'] = 0.0;
+            $res['vAfp'] = 0;
+            unset($res['tarifaAfpStr']);
 
             return $res;
         }
