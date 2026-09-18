@@ -540,12 +540,51 @@ class Incapacidad extends BaseModel
     }
 
     /**
+     * El `$campo` del miembro más reciente de la familia (la original y sus
+     * prórrogas), resuelto con las prórrogas que ya vienen cargadas.
+     *
+     * El listado agrupado pide `estado_grupo` y `entidad_grupo` por cada fila,
+     * y cada uno era una consulta: 80 por página. Como el listado ya carga las
+     * prórrogas, se resuelve en memoria con la misma regla de la consulta —
+     * el `numero_proroga` más alto, con NULL al final como en SQL Server — y
+     * la relación ya excluye las borradas (SoftDeletes). Contrastado contra la
+     * consulta en las 3.869 familias que había el 17-sep-2026: cero diferencias.
+     *
+     * Devuelve `false` (distinto de null) cuando no se puede resolver así: una
+     * prórroga, o las prórrogas sin cargar o cargadas sin esa columna. Ahí el
+     * que llama sigue con la consulta de siempre.
+     */
+    private function ultimoMiembroCargado(string $campo): string|null|false
+    {
+        if ($this->incapacidad_padre_id !== null || ! $this->relationLoaded('prorrogas')) {
+            return false;
+        }
+
+        $prorrogas = $this->prorrogas;
+        foreach ($prorrogas as $p) {
+            if (! array_key_exists($campo, $p->getAttributes()) || ! array_key_exists('numero_proroga', $p->getAttributes())) {
+                return false;
+            }
+        }
+
+        return collect([$this])->concat($prorrogas)
+            ->sortByDesc(fn ($m) => $m->numero_proroga ?? -INF)
+            ->first()
+            ?->{$campo};
+    }
+
+    /**
      * Estado del grupo: siempre refleja el estado de la incapacidad más reciente
      * (la última prórroga, o la original si no hay prórrogas).
      * Útil para el encabezado de la familia en la vista agrupada.
      */
     public function getEstadoGrupoAttribute(): string
     {
+        $ultimo = $this->ultimoMiembroCargado('estado');
+        if ($ultimo !== false) {
+            return $ultimo ?? $this->estado;
+        }
+
         $padreId = $this->incapacidad_padre_id ?? $this->id;
         $ultimaEstado = DB::table('incapacidades')
             ->where(function ($q) use ($padreId) {
@@ -563,6 +602,11 @@ class Incapacidad extends BaseModel
      */
     public function getEntidadGrupoAttribute(): string
     {
+        $ultimo = $this->ultimoMiembroCargado('tipo_entidad');
+        if ($ultimo !== false) {
+            return $ultimo ?? $this->tipo_entidad;
+        }
+
         $padreId = $this->incapacidad_padre_id ?? $this->id;
         $ultimaEntidad = DB::table('incapacidades')
             ->where(function ($q) use ($padreId) {

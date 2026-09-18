@@ -257,7 +257,7 @@ class IncapacidadController extends Controller
         $query = Incapacidad::with([
             'quienRecibe:id,nombre',
             'latestGestion',
-            'prorrogas:id,incapacidad_padre_id,fecha_inicio,numero_proroga,estado,valor_esperado', // para calcular valor pendiente
+            'prorrogas:id,incapacidad_padre_id,fecha_inicio,numero_proroga,estado,tipo_entidad,valor_esperado', // valor pendiente, y estado/entidad del grupo sin una consulta por fila
         ])
             ->withCount('prorrogas')
             ->where('aliado_id', $alidoId)
