@@ -513,6 +513,9 @@ class PlanillaFormularioService
             ->leftJoin('arls AS arl_m', DB::raw('CAST(arl_m.nit AS VARCHAR(20))'), '=', DB::raw('p.cod_arl'))
             ->leftJoin('tipo_modalidad AS tm', 'tm.id', '=', 'p.tipo_modalidad_id')
             ->leftJoin('contratos AS ctr', 'ctr.id', '=', 'p.contrato_id')
+            // Tipo E - Extras: el plan dice qué se vende y en cuántos días. Sin
+            // él, un "Solo CCF 14" se calculaba como caja de 30 días.
+            ->leftJoin('planes_contrato AS pln', 'pln.id', '=', 'ctr.plan_id')
             ->leftJoin('razones_sociales AS rs', 'rs.id', '=', 'p.razon_social_id')
             ->leftJoin('empresas AS emp', function ($join) use ($aliadoId) {
                 $join->on('emp.id', '=', 'cl.cod_empresa')->where('emp.aliado_id', '=', $aliadoId);
@@ -534,6 +537,7 @@ class PlanillaFormularioService
                 DB::raw('ISNULL(p.dias_tp_caja, ISNULL(p.dias_tp_afp, ISNULL(tm.dias_caja, 30))) AS dias_caja'),
                 DB::raw('ISNULL(rs.es_independiente, 0) AS rs_es_independiente'),
                 'ctr.porcentaje_caja',
+                DB::raw('pln.codigo AS plan_codigo'),
                 DB::raw('ISNULL(p.grupo_fondo_solidaridad, ctr.grupo_fondo_solidaridad) AS grupo_fondo_solidaridad'),
                 DB::raw('emp.exonerado_parafiscales AS exonerado_parafiscales'),
             ]);
