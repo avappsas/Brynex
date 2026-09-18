@@ -411,11 +411,11 @@ $sortClassC = function ($col, $cs, $cd) {
     </div>
     <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;">
         {{-- Tabs navegación --}}
-        <a href="{{ route('admin.cobros.index') }}"
+        <a href="{{ route('admin.cobros.index', ['mes' => $mes, 'anio' => $anio]) }}"
            style="padding:.3rem .8rem;border-radius:7px;font-size:.78rem;font-weight:700;text-decoration:none;background:#ffffff;color:#0f172a;border:1px solid rgba(255,255,255,.3);">
             👤 Individuales
         </a>
-        <a href="{{ route('admin.cobros.empresas') }}"
+        <a href="{{ route('admin.cobros.empresas', ['mes' => $mes, 'anio' => $anio]) }}"
            style="padding:.3rem .8rem;border-radius:7px;font-size:.78rem;font-weight:700;text-decoration:none;background:rgba(255,255,255,.15);color:#cbd5e1;border:1px solid rgba(255,255,255,.15);">
             🏢 Empresas
         </a>
