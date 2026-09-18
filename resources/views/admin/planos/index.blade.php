@@ -3095,6 +3095,51 @@ function avisoEnlace(bg, borde, color, html) {
     return `<div style="background:${bg};border:1px solid ${borde};border-radius:10px;padding:.7rem .85rem;font-size:.76rem;color:${color};line-height:1.4">${html}</div>`;
 }
 
+// Cuadre del período: cuántos contratos vigentes de esta razón social todavía
+// no entran a ninguna planilla. Es lo que Enlace reclama con la advertencia
+// "no se reportó novedad de retiro y no se encuentra reportado en esta
+// planilla". Informativo: al liquidar la última tanda debería quedar en cero.
+function pintarPendientesCierre(p) {
+    const cont = document.getElementById('enlace-pendientes');
+    if (!cont || !p) return;
+
+    if (!p.total) {
+        cont.style.display = '';
+        cont.innerHTML = avisoEnlace('#f0fdf4', '#bbf7d0', '#166534',
+            '✅ <strong>Sin pendientes.</strong> Todos los contratos vigentes de esta razón social ya están en una planilla del período.');
+        return;
+    }
+
+    cont.style.display = '';
+    cont.innerHTML = avisoEnlace('#fffbeb', '#fde68a', '#92400e',
+        `📋 Quedan <strong>${p.total}</strong> contrato(s) vigente(s) sin planilla en este período.` +
+        ` Si todavía faltan tandas por facturar es normal; si esta era la última, son retiros sin registrar.` +
+        (p.url ? `<br><a href="${p.url}" target="_blank" rel="noopener" style="color:#92400e;font-weight:700;text-decoration:underline">Ver quiénes son →</a>` : ''));
+}
+
+// Pinta el resultado guardado de una liquidación anterior.
+function renderEstadoEnlace(p, operadorNombre) {
+    const cont = document.getElementById('enlace-ultima');
+    cont.style.display = '';
+    const enOperador = operadorNombre ? ` en ${operadorNombre}` : '';
+
+    if (p.estado === 'validada' && p.numero_planilla) {
+        aplicarTotalDelOperador(p.valor_total, p.numero_planilla, p.fecha);
+        cont.innerHTML = avisoEnlace('#f0fdf4', '#bbf7d0', '#166534',
+            `<strong>✅ Planilla ${p.numero_planilla}</strong> liquidada${enOperador} el ${p.fecha || ''}.` +
+            (p.valor_total ? `<br>Total a pagar: <strong>$ ${fmtNum(Math.round(p.valor_total))}</strong>` : '') +
+            (p.url_pago ? `<br><a href="${p.url_pago}" target="_blank" rel="noopener" style="color:#15803d;font-weight:700;text-decoration:underline">Ir a pagar en PSE →</a>` : ''));
+    } else if (p.estado === 'con_errores') {
+        cont.innerHTML = avisoEnlace('#fffbeb', '#fde68a', '#92400e',
+            `<strong>⚠️ Último intento con errores.</strong><br>${p.mensaje_error || ''}`);
+    } else if (p.estado === 'error') {
+        cont.innerHTML = avisoEnlace('#fef2f2', '#fecaca', '#991b1b',
+            `<strong>✗ Último intento falló.</strong><br>${p.mensaje_error || ''}`);
+    } else {
+        cont.style.display = 'none';
+    }
+}
+
 async function liquidarEnEnlace(operadorId, operadorNombre, paso = 1) {
     if (!CTX.razonSocialId) {
         mostrarToast('Seleccione una Razón Social primero.', 'error');
