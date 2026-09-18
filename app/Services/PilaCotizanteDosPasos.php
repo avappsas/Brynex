@@ -207,16 +207,22 @@ class PilaCotizanteDosPasos
         // Cuando lo vendido es la salud, la corrección no vuelve a tocar la
         // caja, así que el paso 1 va con su día: es la forma exacta que Simple
         // liquidó y se pagó el 16-sep-2026 (planilla 1085268529).
-        $res['diasCcf'] = $vendeSalud ? 1 : 0;
-        $res['ibcCcf'] = $vendeSalud ? $ibcUnDia : 0;
-        $res['vCcf'] = $vendeSalud
+        //
+        // "Solo EPS" prueba el paso 1 más barato (18-sep-2026): solo el día de
+        // pensión, con la caja en cero y la ARL con tarifa cero por VAC-LR,
+        // igual que Solo Caja y Solo Pensión. Ver paso1PagaCajaYArl().
+        $pagaCajaYArl = self::paso1PagaCajaYArl($plan);
+
+        $res['diasCcf'] = $pagaCajaYArl ? 1 : 0;
+        $res['ibcCcf'] = $pagaCajaYArl ? $ibcUnDia : 0;
+        $res['vCcf'] = $pagaCajaYArl
             ? PilaCotizanteCalculator::roundPila($ibcUnDia * (float) $res['tarifaCcfStr'])
             : 0;
 
         // La salud se vende con la ARL cobrando su día: el paso 1 de esos
         // planes no lleva la novedad de ausentismo, que es la que obliga a la
         // tarifa cero (eo.val.2.447). Sin VAC-LR, el archivo pasa igual.
-        if ($vendeSalud) {
+        if ($pagaCajaYArl) {
             $res['novedades'] = array_diff_key($res['novedades'] ?? [], ['VACLR' => null]);
             $res['tarifaArlStr'] = $tarifaArlReal;
             $res['tarifaArlDecimal'] = (float) $tarifaArlReal;
@@ -257,11 +263,22 @@ class PilaCotizanteDosPasos
             $res['tarifaEpsStr'] = '0.04000';
             $res['vEps'] = PilaCotizanteCalculator::roundPila($res['ibcEps'] * 0.04);
 
-            // "EPS y ARL" sube también los riesgos al mes; "Solo EPS" los deja
-            // en el día que ya quedó pagado.
-            if ($plan === 'EPS_ARL') {
-                $res['diasArl'] = $dias;
-                $res['ibcArl'] = $res['ibcEps'];
+            // Los riesgos suben al mes con la salud en los dos planes. Simple
+            // guarda una corrección con salud a 30 días y riesgos a 1, pero no
+            // deja pagarla: "los días de pensión, salud y riesgos deben ser
+            // iguales (1, 30, 1)" (planilla 1085295297, 17-sep-2026). La forma
+            // que sí se paga es 1 / 30 / 30 / 1 —pensión, salud, riesgos,
+            // caja—: la de Juan Carlos Castro (SUPPLIESALUD, planilla
+            // 1084672324, pagada el 27-ago-2026). La pensión sí puede quedarse
+            // en su día.
+            //
+            // La tarifa es la real cuando el paso 1 no llevó VAC-LR; con VAC-LR
+            // (paso 1 solo pensión) sigue en cero, que es lo que esa novedad
+            // exige (eo.val.2.447).
+            $res['diasArl'] = $dias;
+            $res['ibcArl'] = $res['ibcEps'];
+
+            if ($pagaCajaYArl) {
                 $res['tarifaArlStr'] = $tarifaArlReal;
                 $res['tarifaArlDecimal'] = (float) $tarifaArlReal;
                 $res['vArl'] = PilaCotizanteCalculator::roundPila($res['ibcArl'] * (float) $tarifaArlReal);
@@ -359,6 +376,31 @@ class PilaCotizanteDosPasos
     }
 
     /** ¿El plan vende salud? Esos son los que solo se corrigen por el portal. */
+    /**
+     * ¿El paso 1 de este plan paga su día de caja y de ARL (sin VAC-LR)?
+     *
+     * Es la forma con la que Simple liquidó y se pagó el primer Solo EPS
+     * (planilla 1085268529, $12.500). "Solo EPS" pasa a probar la forma más
+     * barata —solo el día de pensión—, que es la de Solo Caja y Solo Pensión;
+     * si el portal no acepta la corrección de salud sobre ella, basta sacar
+     * SOLO_EPS de esta lista. "EPS y ARL" no puede: con VAC-LR la ARL va en
+     * tarifa cero (eo.val.2.447) y la corrección no podría subirla al mes.
+     */
+    public static function paso1PagaCajaYArl(string $plan): bool
+    {
+        return self::vendeSalud($plan) && ! in_array($plan, self::PASO1_SOLO_PENSION, true);
+    }
+
+    /**
+     * Planes de salud cuyo paso 1 es solo el día de pensión.
+     *
+     * Vacío por ahora: Yuly (contrato 57054) pagó su paso 1 con caja y ARL, y
+     * su corrección tiene que repetir esa línea A tal cual. Se agrega
+     * SOLO_EPS cuando su corrección esté pagada, para probar con Yesenia
+     * (contrato 57056).
+     */
+    private const PASO1_SOLO_PENSION = [];
+
     public static function vendeSalud(string $plan): bool
     {
         return in_array($plan, ['SOLO_EPS', 'EPS_ARL'], true);

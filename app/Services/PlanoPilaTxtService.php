@@ -347,13 +347,14 @@ class PlanoPilaTxtService
             // tampoco: el campo 20 de una planilla N repite el de la planilla
             // que corrige, que es la línea A.
             //
-            // Las que venden salud sí: su paso 1 paga el día de caja, y el
-            // campo 20 tiene que cuadrar con la suma de los campos 45.
+            // Las que venden salud con caja en el paso 1 (EPS y ARL) sí: pagan
+            // el día de caja, y el campo 20 tiene que cuadrar con la suma de
+            // los campos 45. "Solo EPS" ya no: su paso 1 es solo pensión.
             // Ver PilaCotizanteDosPasos.
             if (in_array((int) $_p->tipo_modalidad_id, \App\Models\TipoModalidad::IDS_DOS_PASOS, true)) {
                 $planDosPasos = PilaCotizanteDosPasos::planVendido($_p);
 
-                if (! PilaCotizanteDosPasos::vendeSalud($planDosPasos) || $pasoE1 === 2) {
+                if (! PilaCotizanteDosPasos::paso1PagaCajaYArl($planDosPasos) || $pasoE1 === 2) {
                     continue;
                 }
 
