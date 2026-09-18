@@ -1329,14 +1329,21 @@
         })();
 
         // ── Badge de mensajes no leídos de WhatsApp ───────────────────────────
-        // Actualiza el badge del menú cada 30 segundos via polling.
+        // Actualiza el badge del menú cada 30 segundos via polling, pero SOLO
+        // con la pestaña a la vista. Cada pestaña abierta preguntaba por su
+        // lado, también las de fondo donde nadie ve el número: con 3-6 pestañas
+        // por oficina, el 17-sep-2026 fueron 23.000 consultas en el día, el 66%
+        // de las peticiones y el 36% del tiempo real del servidor.
         @auth
         @can('whatsapp.ver')
         (function waBadge() {
             const badge = document.getElementById('wa-badge');
             if (!badge) return;
 
+            let ultimaConsulta = 0;
+
             async function actualizarBadge() {
+                ultimaConsulta = Date.now();
                 try {
                     const resp = await fetch('{{ route('admin.whatsapp.api.no_leidos') }}', {
                         headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
@@ -1353,8 +1360,20 @@
                 } catch(e) { /* silencioso */ }
             }
 
-            actualizarBadge();
-            setInterval(actualizarBadge, 30000); // cada 30 segundos
+            function siEstaVisible() {
+                if (!document.hidden) actualizarBadge();
+            }
+
+            // Una página abierta en segundo plano (Ctrl+clic) carga oculta: no
+            // pregunta hasta que se mira.
+            siEstaVisible();
+            setInterval(siEstaVisible, 30000); // cada 30 segundos, si se está viendo
+
+            // Al volver a la pestaña el número se pone al día enseguida, sin
+            // esperar al siguiente turno (salvo que acabe de consultarse).
+            document.addEventListener('visibilitychange', function () {
+                if (!document.hidden && Date.now() - ultimaConsulta > 5000) actualizarBadge();
+            });
         })();
         @endcan
         @endauth
