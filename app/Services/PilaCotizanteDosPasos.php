@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\ConfiguracionBrynex;
 use App\Models\TipoModalidad;
 
 /**
@@ -340,10 +341,16 @@ class PilaCotizanteDosPasos
      * IBC del día simbólico de pensión y riesgos. Lo necesita el registro tipo
      * 1 para sumar el valor total de la nómina sin volver a pasar por el
      * calculador.
+     *
+     * Nunca por debajo del mínimo completo entre 30: en "Solo CCF 14" el
+     * salario es medio mínimo (875.453) y su día daba 29.182, que el operador
+     * rechaza con eo.val.2.201 ("El IBC de Pensión no puede ser menor al mínimo
+     * proporcional a los días que es de 58364") — contrato 57008, 18-sep-2026.
+     * La media jornada es de la caja; el día de pensión es un día entero.
      */
     public static function ibcUnDia(int $ibcFull): int
     {
-        return (int) round($ibcFull / 30);
+        return (int) round(max($ibcFull, ConfiguracionBrynex::salarioMinimo()) / 30);
     }
 
     /**
