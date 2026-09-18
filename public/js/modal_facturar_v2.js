@@ -928,16 +928,21 @@ const MF = (function () {
                 // Insertarlo arriba del panel de saldos
                 if (saldoPanel) saldoPanel.parentNode.insertBefore(prestPanel, saldoPanel);
             }
-            if (data.tiene_prestamo_pendiente && data.prestamos_pendientes && data.prestamos_pendientes.length > 0) {
+            // El préstamo de ESTE contrato ya sale en "Cartera pendiente", que es la
+            // misma deuda y además deja cobrarla aquí: mostrar las dos parecía
+            // cobrar dos veces. El aviso solo queda para lo que la cartera no ve —
+            // préstamos de otros contratos de la misma cédula—.
+            const totalPrestamos = (data.prestamos_pendientes || []).reduce((s, p) => s + p.saldo, 0);
+            if (data.tiene_prestamo_pendiente && totalPrestamos > _saldoPendiente) {
                 const meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-                const totalDeuda = data.prestamos_pendientes.reduce((s, p) => s + p.saldo, 0);
+                const totalDeuda = totalPrestamos - _saldoPendiente;
                 const detalle = data.prestamos_pendientes.map(p =>
                     meses[p.mes - 1] + ' ' + p.anio + ': ' + fmt(p.saldo)
                 ).join(' · ');
                 prestPanel.style.display = 'flex';
                 prestPanel.innerHTML = `
                     <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap;">
-                        <span>💳 <strong>Préstamo pendiente:</strong> ${fmt(totalDeuda)}</span>
+                        <span>💳 <strong>Préstamo de otro contrato:</strong> ${fmt(totalDeuda)}</span>
                         <a href="/admin/prestamos?buscar=&tab=individuales" target="_blank"
                            style="font-size:.68rem;padding:.18rem .55rem;border-radius:6px;background:#ede9fe;color:#6d28d9;border:1px solid #c4b5fd;text-decoration:none;font-weight:700;">
                             Ver en Cartera →
