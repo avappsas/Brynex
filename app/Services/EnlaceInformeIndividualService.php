@@ -8,6 +8,8 @@ use DOMDocument;
 use DOMXPath;
 use GuzzleHttp\Client;
 use GuzzleHttp\Cookie\CookieJar;
+use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Promise\Create;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -52,6 +54,15 @@ class EnlaceInformeIndividualService
     /** Cuántas veces se pregunta si el reporte ya está, con un segundo entre cada una. */
     private const ESPERAS_MAXIMAS = 25;
 
+    /** Mensaje con el que se rinde una descarga que pasó su tope de tiempo. */
+    public const SIN_RESPUESTA = 'el operador no respondió a tiempo';
+
+    /**
+     * Momento (microtime) en que se deja de esperar al operador, o null para
+     * esperar lo de siempre. Solo lo fija conTope(): el clic de un usuario.
+     */
+    private ?float $vence = null;
+
     /**
      * Sesiones abiertas en esta instancia, por operador + credencial + aportante.
      * Un envío masivo manda la planilla de toda una empresa: con una sesión por
@@ -65,6 +76,29 @@ class EnlaceInformeIndividualService
      * debe costar 40 segundos por cada persona de un lote de cien.
      */
     private array $sesionesFallidas = [];
+
+    /**
+     * Una copia del servicio que se rinde con el operador a los `$segundos`.
+     *
+     * Para cuando alguien está esperando con la pantalla: cada paso de la
+     * descarga puede esperar hasta 40 s, y son seis pasos más el sondeo del
+     * reporte. Con el operador caído (17-sep-2026, 15:21, timeout SSL contra
+     * simple.co) un certificado llegó a tardar 38 s. Con tope, obtener() falla
+     * a tiempo y soporte() entrega el PDF que arma BryNex.
+     *
+     * Los procesos en segundo plano (la descarga tras confirmar el pago, el
+     * envío masivo) no lo usan: ahí nadie espera y conviene insistir.
+     */
+    public function conTope(float $segundos): static
+    {
+        $copia = clone $this;
+        $copia->vence = microtime(true) + $segundos;
+        // Las sesiones abiertas antes no traen el tope: se abren de nuevo.
+        $copia->sesiones = [];
+        $copia->sesionesFallidas = [];
+
+        return $copia;
+    }
 
     /**
      * PDF del operador para el cotizante del plano, del disco si ya se bajó.
@@ -195,6 +229,7 @@ class EnlaceInformeIndividualService
             str_contains($mensaje, 'login fue rechazado'),
             str_contains($mensaje, 'no tiene NIT')                    => 'sin_acceso',
             str_contains($mensaje, 'No se encontraron datos'),
+            str_contains($mensaje, self::SIN_RESPUESTA),
             ! str_contains($mensaje, ':')                             => null,
             default                                                   => 'error',
         };
@@ -384,6 +419,36 @@ class EnlaceInformeIndividualService
     }
 
     /** El recorrido completo contra un operador. Lanza con un mensaje legible si algo falla. */
+    /**
+     * Middleware de Guzzle que recorta cada llamada al tiempo que le queda al
+     * tope y, pasado el tope, no deja salir ninguna más. Como el sondeo del
+     * reporte también llama al portal en cada vuelta, el tope lo corta igual.
+     */
+    private function respetarTope(float $vence): callable
+    {
+        return function (callable $siguiente) use ($vence) {
+            return function ($peticion, array $opciones) use ($siguiente, $vence) {
+                $queda = $vence - microtime(true);
+
+                if ($queda <= 0.5) {
+                    throw new RuntimeException(self::SIN_RESPUESTA.'.');
+                }
+
+                $opciones['timeout'] = min((float) ($opciones['timeout'] ?? 40), $queda);
+                $opciones['connect_timeout'] = min((float) ($opciones['connect_timeout'] ?? 10), $queda);
+
+                return $siguiente($peticion, $opciones)->then(null, function ($razon) use ($vence) {
+                    // Si se cortó por el tope, que lo diga así y no con el cURL 28.
+                    if (microtime(true) >= $vence - 0.5) {
+                        return Create::rejectionFor(new RuntimeException(self::SIN_RESPUESTA.'.'));
+                    }
+
+                    return Create::rejectionFor($razon);
+                });
+            };
+        };
+    }
+
     private function descargar(Plano $plano, string $codigoOperador, OperadorCredencial $cred): string
     {
         $host = SuaporteApiService::hostDeOperador($codigoOperador);
@@ -401,13 +466,21 @@ class EnlaceInformeIndividualService
         $reusada = isset($this->sesiones[$llave]);
 
         if (! $reusada) {
-            $http = new Client([
+            $opciones = [
                 'cookies'         => new CookieJar(),
                 'timeout'         => 40,
                 'connect_timeout' => 10,
                 'http_errors'     => false,
                 'headers'         => ['User-Agent' => 'Mozilla/5.0'],
-            ]);
+            ];
+
+            if ($this->vence !== null) {
+                $pila = HandlerStack::create();
+                $pila->push($this->respetarTope($this->vence));
+                $opciones['handler'] = $pila;
+            }
+
+            $http = new Client($opciones);
 
             try {
                 $this->abrirSesion($http, $host, $codigoOperador, $cred, $tipoAportante, $numeroAportante);

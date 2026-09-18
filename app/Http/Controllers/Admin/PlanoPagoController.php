@@ -1373,7 +1373,11 @@ class PlanoPagoController extends Controller
         if ($request->input('origen') === 'brynex') {
             $soporte = ['pdf' => (new \App\Services\PlanillaFormularioService())->generar($plano, $forceOperadorId), 'origen' => 'brynex'];
         } else {
-            $soporte = app(\App\Services\EnlaceInformeIndividualService::class)->soporte($plano, $forceOperadorId ?: null);
+            // Con tope: alguien está esperando el PDF. Si el operador no responde
+            // en 15 s se entrega el de BryNex (antes llegó a esperar 38 s).
+            $soporte = app(\App\Services\EnlaceInformeIndividualService::class)
+                ->conTope(15)
+                ->soporte($plano, $forceOperadorId ?: null);
         }
 
         $pdfContent = $soporte['pdf'];
