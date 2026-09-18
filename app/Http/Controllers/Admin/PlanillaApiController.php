@@ -223,6 +223,9 @@ class PlanillaApiController extends Controller
                 'numero_planilla' => $paso2->numero_planilla,
                 'valor_total'     => $paso2->valor_total,
                 'url_pago'        => $paso2->url_pago,
+                // El plano queda pagado solo con las dos planillas confirmadas.
+                'pago_confirmado' => $paso2->estado === 'validada' && $paso2->numero_planilla
+                    && PlanillaE1Service::pagoConfirmado($aliadoId, (string) $paso2->numero_planilla) !== null,
                 'mensaje_error'   => $paso2->mensaje_error,
                 'fecha'           => optional($paso2->updated_at)->format('Y-m-d H:i'),
             ] : null,

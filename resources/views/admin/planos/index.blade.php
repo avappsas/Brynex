@@ -1140,7 +1140,9 @@
             (int)(ceil(($p->v_arl ??0)/100)*100) +
             (int)(ceil(($p->v_caja??0)/100)*100)
         );
-        $moraPagada   = ($valorPagado && $valorPagado > $ssBasePila) ? ($valorPagado - $ssBasePila) : null;
+        // Dos pasos: el total es la suma de las dos planillas.
+        $totalPagado  = $valorPagado ? $valorPagado + (int) ($pagoPaso1->valor ?? 0) : null;
+        $moraPagada   = ($totalPagado && $totalPagado > $ssBasePila) ? ($totalPagado - $ssBasePila) : null;
     @endphp
     <div class="mora-sep" style="background:#86efac"></div>
     <div class="mora-item">
@@ -1154,11 +1156,11 @@
         <span class="mv rojo">$ {{ number_format($moraPagada,0,',','.') }}</span>
     </div>
     @endif
-    @if($valorPagado)
+    @if($totalPagado)
     <div class="mora-sep" style="background:#c4b5fd"></div>
     <div class="mora-item">
         <span class="ml">Total pagado</span>
-        <span class="mv" style="color:#7c3aed">$ {{ number_format($valorPagado,0,',','.') }}</span>
+        <span class="mv" style="color:#7c3aed">$ {{ number_format($totalPagado,0,',','.') }}</span>
     </div>
     @endif
     @endif
@@ -1254,7 +1256,13 @@
                 <div style="flex:1">
                     <div style="font-size:.78rem;font-weight:700;color:#991b1b">Este plano ya fue confirmado como pagado</div>
                     <div style="font-size:.72rem;color:#b91c1c;margin-top:.2rem">
+                        @if($pagoPaso1)
+                        Pagado en dos planillas: paso 1 <strong>{{ $pagoPaso1->numero_planilla }}</strong>
+                        ($ {{ number_format((int) $pagoPaso1->valor,0,',','.') }}) y corrección
+                        <strong>{{ $numeroPlanillaPagado }}</strong> ($ {{ number_format((int) $valorPagado,0,',','.') }}).
+                        @else
                         N° Planilla: <strong>{{ $numeroPlanillaPagado }}</strong>.
+                        @endif
                         Las descargas están inhabilitadas para evitar modificaciones accidentales.
                     </div>
                 </div>
@@ -2728,6 +2736,8 @@ async function cargarEstadoEnlace() {
             else if (op.clave_vencida) bloqueo = `La clave secreta de ${op.nombre} venció. Genere una nueva desde el tablero del operador.`;
             else if (op.sin_codigo_ni)  bloqueo = `Falta el código PILA de ${op.nombre}. Configúrelo en Configuración → Operadores de planilla.`;
 
+            const faltaPaso2 = !!(op.e1 && !(op.e1.paso2 && op.e1.paso2.estado === 'validada'));
+
             const crearBoton = (etiqueta, paso, bloqueoPropio) => {
                 const btn = document.createElement('button');
                 btn.className = 'btn-descarga-principal';
@@ -2736,6 +2746,7 @@ async function cargarEstadoEnlace() {
                 btn.innerHTML = etiqueta;
 
                 const motivo = bloqueo || bloqueoPropio;
+
                 if (motivo) {
                     btn.disabled = true;
                     btn.title    = motivo;
@@ -2750,6 +2761,26 @@ async function cargarEstadoEnlace() {
             };
 
             if (op.e1) {
+                // El mes se paga en DOS planillas y el plano sigue pendiente
+                // hasta confirmar las dos. Sin este aviso, quien vea el pago
+                // del paso 1 da el mes por cubierto cuando todavía falta la
+                // corrección —que es la que lleva la salud o la caja—.
+                const paso2Pagado = !!(op.e1.paso2 && op.e1.paso2.pago_confirmado);
+                if (op.e1.pago_confirmado && !paso2Pagado) {
+                    const entidad = (op.e1.planes || []).join(' / ').replace('SOLO_EPS', 'la EPS')
+                        .replace('EPS_ARL', 'la EPS y la ARL').replace('SOLO_AFP', 'el fondo de pensión')
+                        .replace(/SOLO_CCF_\d+/, 'la caja');
+                    const falta = faltaPaso2
+                        ? '<strong>falta la corrección</strong>: hasta que se liquide y se pague'
+                        : `la corrección <strong>${op.e1.paso2.numero_planilla}</strong> ya está liquidada, `
+                          + '<strong>falta pagarla y confirmar el pago</strong>: hasta entonces';
+                    const pendiente = document.createElement('div');
+                    pendiente.innerHTML = avisoEnlace('#fffbeb', '#fde68a', '#92400e',
+                        '🟡 <strong>Pago 1 de 2.</strong> La planilla del paso 1 está pagada, pero '
+                        + falta + ', el mes no queda cubierto ante ' + entidad + '.');
+                    cont.appendChild(pendiente);
+                }
+
                 // Modalidad E-1: son dos liquidaciones encadenadas. La segunda
                 // no puede salir hasta que la primera esté pagada, porque el
                 // operador solo acepta corregir una planilla ya pagada y el
@@ -3709,7 +3740,10 @@ async function ejecutarConfirmarPago() {
             }
             res.innerHTML = `<div style="background:#dcfce7;border:1px solid #bbf7d0;border-radius:8px;padding:.65rem .9rem;color:#15803d;font-size:.82rem">✅ ${data.mensaje}${soporteHtml}</div>`;
             mostrarToast(data.mensaje, 'success');
-            if (_planoIdActual) {
+            if (data.pago_parcial) {
+                // Pago 1 de 2: el plano sigue pendiente, no se pinta nada.
+                setTimeout(() => location.reload(), 2500);
+            } else if (_planoIdActual) {
                 // Modo individual: actualizar visualmente la fila sin recargar
                 // Mismo chip que pinta el partial: el clic abre el menú de la
                 // planilla, con el gasto que acaba de crearse por si hay que

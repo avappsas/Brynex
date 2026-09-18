@@ -293,4 +293,58 @@ class PlanillaDosPasosService
 
         return false;
     }
+
+    /**
+     * En qué va el pago de la tanda de dos pasos a la que pertenece esa
+     * planilla, o null si el número no es de una tanda de dos pasos.
+     *
+     * El mes se paga en dos planillas y el plano solo queda pagado cuando las
+     * dos tienen su pago confirmado: con la primera sola el mes no está
+     * cubierto —la salud o la caja van en la corrección—, y pintar el plano de
+     * verde haría creer lo contrario. Ver PlanoPagoController::confirmarPago.
+     *
+     * @return array{paso:int, paso1:?string, paso2:?string, pagado1:bool, pagado2:bool, completo:bool}|null
+     */
+    public static function pagoDeLaTanda(int $aliadoId, string $numeroPlanilla): ?array
+    {
+        $fila = OperadorPlanillaApi::where('aliado_id', $aliadoId)
+            ->where('numero_planilla', trim($numeroPlanilla))
+            ->where('estado', 'validada')
+            ->latest('id')
+            ->first();
+
+        $tipos = $fila ? array_filter(explode(',', (string) $fila->tipos_modalidad), 'strlen') : [];
+
+        if (! $fila || ! self::aplica($tipos)) {
+            return null;
+        }
+
+        $delPaso = fn (int $paso) => OperadorPlanillaApi::where('aliado_id', $aliadoId)
+            ->where('razon_social_id', $fila->razon_social_id)
+            ->where('operador_planilla_id', $fila->operador_planilla_id)
+            ->where('anio', $fila->anio)
+            ->where('mes', $fila->mes)
+            ->where('n_plano', $fila->n_plano)
+            ->whereRaw("ISNULL(tipos_modalidad, '') = ?", [(string) $fila->tipos_modalidad])
+            ->where('paso', $paso)
+            ->where('estado', 'validada')
+            ->latest('id')
+            ->value('numero_planilla');
+
+        $paso1 = $delPaso(1);
+        $paso2 = $delPaso(2);
+
+        $pagado = fn (?string $n) => $n && PlanillaE1Service::pagoConfirmado($aliadoId, $n) !== null;
+        $pagado1 = $pagado($paso1);
+        $pagado2 = $pagado($paso2);
+
+        return [
+            'paso'     => (int) $fila->paso,
+            'paso1'    => $paso1,
+            'paso2'    => $paso2,
+            'pagado1'  => $pagado1,
+            'pagado2'  => $pagado2,
+            'completo' => $pagado1 && $pagado2,
+        ];
+    }
 }

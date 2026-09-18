@@ -135,10 +135,29 @@ class Gasto extends BaseModel
             return 0;
         }
 
-        return $this->planosPagados(null)->update([
+        $liberados = $this->planosPagados(null)->update([
             'numero_planilla' => null,
             'updated_at' => now(),
         ]);
+
+        // Dos pasos: el plano pagado lleva el número de la corrección, no el
+        // del paso 1. Sin el pago del paso 1 el mes tampoco está cubierto.
+        $correcciones = DB::table('operador_planillas_api')
+            ->where('aliado_id', $this->aliado_id)
+            ->where('paso', 2)
+            ->where('planilla_asociada_numero', trim((string) $this->numero_planilla))
+            ->whereNotNull('numero_planilla')
+            ->pluck('numero_planilla');
+
+        if ($correcciones->isNotEmpty()) {
+            $liberados += DB::table('planos')
+                ->where('aliado_id', $this->aliado_id)
+                ->whereNull('deleted_at')
+                ->whereIn('numero_planilla', $correcciones->all())
+                ->update(['numero_planilla' => null, 'updated_at' => now()]);
+        }
+
+        return $liberados;
     }
 
     // ── Relaciones ────────────────────────────────────────────────────

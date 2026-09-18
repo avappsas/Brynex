@@ -312,6 +312,7 @@ class PlanoPagoController extends Controller
         $planoPagado          = false;
         $numeroPlanillaPagado = null;
         $valorPagado          = null; // total real pagado (SS + mora) desde gastos
+        $pagoPaso1            = null; // dos pasos: el gasto de la planilla del paso 1
         $gastoPagoId          = null; // gasto que respalda el pago (para corregirlo)
         $puedeCorregirPago    = false;
         if ($planos->count() > 0) {
@@ -324,6 +325,20 @@ class PlanoPagoController extends Controller
                 $valorPagado = $gastosPago ? (int) $gastosPago->valor : null;
                 // Para el modal de corrección: hay que saber QUÉ gasto se toca.
                 $gastoPagoId = $gastosPago ? (int) $gastosPago->id : null;
+                // Dos pasos: el plano lleva el número de la corrección y el
+                // paso 1 fue otro pago, con su propio gasto. Se muestran los
+                // dos y el total es la suma.
+                $pagoPaso1 = DB::table('operador_planillas_api AS opa')
+                    ->join('gastos AS g', function ($j) {
+                        $j->on('g.numero_planilla', '=', 'opa.planilla_asociada_numero')
+                          ->on('g.aliado_id', '=', 'opa.aliado_id');
+                    })
+                    ->where('opa.aliado_id', $aliadoId)
+                    ->where('opa.numero_planilla', trim((string) $numeroPlanillaPagado))
+                    ->where('opa.paso', 2)
+                    ->where('g.tipo', 'pago_planilla')
+                    ->orderByDesc('g.id')
+                    ->first(['g.numero_planilla', 'g.valor']);
                 // En una RS independiente el recuadro no representa un pago
                 // solo: cada persona tiene su número y su gasto, y se corrigen
                 // desde el lápiz de su fila.
@@ -393,7 +408,7 @@ class PlanoPagoController extends Controller
             'rsSeleccionada', 'nPlanoActual',
             'totalSS', 'totalAdmon', 'totalPersonas',
             'bancos', 'operadores', 'operadoresApiIds',
-            'planoPagado', 'numeroPlanillaPagado', 'valorPagado',
+            'planoPagado', 'numeroPlanillaPagado', 'valorPagado', 'pagoPaso1',
             'gastoPagoId', 'puedeCorregirPago',
             'gastosPorPlanilla', 'puedeCorregir',
             'estadoPago',
@@ -1076,16 +1091,32 @@ class PlanoPagoController extends Controller
             $anioVencido = $mesPago > 1 ? $anioPago    : $anioPago - 1;
 
             // ── c) Actualizar numero_planilla ────────────────────────────────────────────────────────────────────────
+            // En las modalidades de dos pasos el mes se paga en dos planillas y
+            // el plano solo queda pagado con las dos confirmadas: con la
+            // primera sola se registra el gasto, pero el plano sigue pendiente
+            // ("Pago 1 de 2"). Completo, lleva el número de la corrección, que
+            // es la planilla que carga la salud o la caja del mes y la que
+            // sirve de soporte al cliente.
+            $tanda = \App\Services\PlanillaDosPasosService::pagoDeLaTanda(
+                (int) $aliadoId, (string) $validated['numero_planilla']
+            );
+            $numeroDelPlano = $tanda
+                ? ($tanda['completo'] ? $tanda['paso2'] : null)
+                : $validated['numero_planilla'];
+            $cantActualizados = 0;
+
             // Modo A) Individual (RS independiente): solo actualizar el plano_id recibido.
             // Modo B) Masivo: actualizar todos los planos del filtro (comportamiento original).
-            if (!empty($validated['plano_id'])) {
+            if ($numeroDelPlano === null) {
+                // Pago 1 de 2: el plano no se toca.
+            } elseif (!empty($validated['plano_id'])) {
                 // ── MODO INDIVIDUAL ──
                 $cantActualizados = DB::table('planos')
                     ->where('id',        $validated['plano_id'])
                     ->where('aliado_id', $aliadoId)
                     ->whereNull('deleted_at')
                     ->update([
-                        'numero_planilla' => $validated['numero_planilla'],
+                        'numero_planilla' => $numeroDelPlano,
                         'updated_at'      => now(),
                     ]);
             } else {
@@ -1107,7 +1138,7 @@ class PlanoPagoController extends Controller
                 }
 
                 $cantActualizados = $queryUpdate->update([
-                    'numero_planilla' => $validated['numero_planilla'],
+                    'numero_planilla' => $numeroDelPlano,
                     'updated_at'      => now(),
                 ]);
             }
@@ -1123,7 +1154,10 @@ class PlanoPagoController extends Controller
 
             return response()->json([
                 'ok'                => true,
-                'mensaje'           => "Pago confirmado. Se actualizaron {$cantActualizados} registros con la planilla {$validated['numero_planilla']}.",
+                'mensaje'           => $numeroDelPlano === null
+                    ? "Pago 1 de 2 registrado (planilla {$validated['numero_planilla']}). El plano sigue pendiente hasta que se pague y confirme la corrección."
+                    : "Pago confirmado. Se actualizaron {$cantActualizados} registros con la planilla {$numeroDelPlano}.",
+                'pago_parcial'      => $numeroDelPlano === null,
                 'gasto_id'          => $gasto->id,
                 'cant_actualizados' => $cantActualizados,
                 'soporte_url'       => $soporteUrl,

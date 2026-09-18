@@ -341,10 +341,9 @@ class PortalCorreccionSaludService
             ])->getBody();
         }
 
-        $numero = (string) $this->xpath($editor)
-            ->query('//input[@id="numeroPlanilla"]')->item(0)?->getAttribute('value');
+        $numero = $this->numeroDe($editor);
 
-        if ($numero === '' || $numero === '0') {
+        if ($numero === null) {
             throw new RuntimeException('El portal no devolvió el número de la corrección.');
         }
 
@@ -400,6 +399,40 @@ class PortalCorreccionSaludService
         return (string) $this->xpath($html)
             ->query("//form[@id='{$form}']//input[@name='javax.faces.ViewState']")
             ->item(0)?->getAttribute('value');
+    }
+
+    /**
+     * El número de la corrección recién guardada.
+     *
+     * El portal lo deja en tres sitios y no siempre en los tres: el aviso verde
+     * ("La planilla fue guardada exitosamente con el número de planilla: …"),
+     * el campo oculto `numeroPlanilla` de la pantalla de totales, y la ficha de
+     * datos. Se buscan los tres porque el primero que aparezca depende de en
+     * qué pestaña quedó el editor, y quedarse con uno solo fue lo que hizo
+     * fallar la primera corrección automática del 17-sep-2026 —la planilla
+     * 1085294570 sí se creó, pero BryNex la dio por perdida—.
+     */
+    private function numeroDe(string $html): ?string
+    {
+        $texto = preg_replace('/\s+/', ' ', html_entity_decode(strip_tags(
+            preg_replace('#<script.*?</script>#is', '', $html)
+        )));
+
+        if (preg_match('/n[úu]mero de planilla:?\s*(\d{6,})/iu', $texto, $m)) {
+            return $m[1];
+        }
+
+        $xpath = $this->xpath($html);
+
+        foreach (['numeroPlanilla', 'numeroPlanillaGenerada'] as $id) {
+            $valor = (string) $xpath->query("//input[@id='{$id}']")->item(0)?->getAttribute('value');
+
+            if (preg_match('/^\d{6,}$/', $valor)) {
+                return $valor;
+            }
+        }
+
+        return null;
     }
 
     /** Total a pagar de la planilla recién guardada. */
