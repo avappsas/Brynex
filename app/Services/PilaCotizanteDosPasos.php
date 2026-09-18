@@ -332,6 +332,14 @@ class PilaCotizanteDosPasos
             $res['vCcf'] = PilaCotizanteCalculator::roundPila(
                 $res['ibcCcf'] * (float) $res['tarifaCcfStr']
             );
+
+            // Horas del mes que respaldan ese salario, las mismas que se le
+            // declaran a la caja al afiliar: Comfandi exige sueldo = salario ×
+            // horas / 240, así que "Solo CCF 14" (medio mínimo) son 4 h × 30 =
+            // 120. Con el 0 del paso 1 la línea no decía cuánto se trabajó.
+            $res['horasLaboradas'] = (int) round(
+                240 * (TipoModalidad::FACTOR_SALARIO_POR_DIAS[$res['diasCcf']] ?? $res['diasCcf'] / 30)
+            );
         }
 
         return $res;
