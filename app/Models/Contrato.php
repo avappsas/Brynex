@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Services\PilaCotizanteCalculator;
+use App\Services\PilaCotizanteDosPasos;
 use App\Services\UpcAdicionalService;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -554,6 +556,17 @@ class Contrato extends BaseModel
             if ($caja === 0 && $dias > 0 && $this->aplicaCargoSinCcf()) {
                 $caja = self::CARGO_SIN_CCF;
             }
+        }
+
+        // ── Dos pasos: el día simbólico de pensión también se paga ─────────
+        // El operador no acepta al cotizante 01 sin pensión, así que la
+        // planilla de estas modalidades lleva un día a la AFP aunque el plan no
+        // la venda (PilaCotizanteDosPasos). Sin cobrarlo aquí, la factura y el
+        // valor del plano quedaban $9.400 por debajo de lo que se paga.
+        if ($dias > 0 && $pen === 0 && in_array((int) $this->tipo_modalidad_id, TipoModalidad::IDS_DOS_PASOS, true)) {
+            $pen = PilaCotizanteCalculator::roundPila(
+                PilaCotizanteDosPasos::ibcUnDia((int) round($ibc)) * ConfiguracionBrynex::pctPensionDependiente() / 100
+            );
         }
 
         $ss = $eps + $arl + $pen + $caja + $parafiscales;
