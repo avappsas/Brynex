@@ -446,6 +446,16 @@ class PortalCorreccionSaludService
             return (float) str_replace('.', '', $m[1]);
         }
 
+        // Pantalla de totales tras guardar (visto el 17-sep-2026): la fila
+        // "Subtotales" trae valor sin mora, mora y total, en formato
+        // "$70.100,00 $500,00 $70.600,00". Si el total no viene, se suman.
+        $monto = '\$\s*([\d.]+),\d{2}';
+        if (preg_match("/Subtotales\s*{$monto}\s*{$monto}(?:\s*{$monto})?/u", $texto, $m)) {
+            $num = fn ($v) => (float) str_replace('.', '', $v);
+
+            return ! empty($m[3]) ? $num($m[3]) : $num($m[1]) + $num($m[2]);
+        }
+
         // No se sabe aún cómo pinta Simple el total tras guardar: se deja
         // rastro de lo que dice cerca de "total" para ajustar el patrón. El
         // valor queda en cero y la pantalla deja escribirlo al confirmar.
