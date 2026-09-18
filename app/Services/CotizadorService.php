@@ -8,6 +8,8 @@ use App\Models\ConfiguracionBrynex;
 use App\Models\Contrato;
 use App\Models\PlanContrato;
 use App\Models\TipoModalidad;
+use App\Services\PilaCotizanteCalculator;
+use App\Services\PilaCotizanteDosPasos;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -212,6 +214,14 @@ class CotizadorService
             $caja = ($cajaMes === Contrato::CARGO_SIN_CCF)
                 ? $cajaMes
                 : ($dias < 30 ? $r($cajaMes * $dias / 30) : $cajaMes);
+            // Dos pasos: el día simbólico de pensión que la planilla paga aunque
+            // el plan no venda pensión. Misma regla que Contrato::calcularCotizacion().
+            if ($dias > 0 && $pen == 0 && in_array((int) ($p['tipo_modalidad_id'] ?? -99), TipoModalidad::IDS_DOS_PASOS, true)) {
+                $pen = $penMes = PilaCotizanteCalculator::roundPila(
+                    PilaCotizanteDosPasos::ibcUnDia((int) round($ibc)) * $pctPen / 100
+                );
+            }
+
             $diasArl = $dias;
             $diasAfp = $dias;
             $diasCaja = $dias;

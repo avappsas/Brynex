@@ -1404,7 +1404,10 @@ const MF = (function () {
             // cuánto vale la planilla completa antes de cualquier descuento.
             // Solo incluir cartera pendiente si el checkbox está marcado
             const chkCartera = document.getElementById('mf-chk-cartera');
-            const incluirCartera = chkCartera ? chkCartera.checked : true; // legacy: true si no existe
+            // Sin casilla no se suma: el total se calcula antes de que se pinte el
+            // panel de saldos, y suponer "incluida" cobraba la cartera dos veces
+            // en pantalla aunque nadie la hubiera marcado.
+            const incluirCartera = chkCartera ? chkCartera.checked : false;
             const cartValue = incluirCartera ? _saldoPendiente : 0;
             totalBruto = ss + admon + seg + iva + otros + otrosA + mora + afilVal + cartValue;
 
