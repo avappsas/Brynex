@@ -446,6 +446,7 @@ function sortClass($col, $currSort, $currDir) {
 
 
     <tbody>
+    @php ob_start(); @endphp
     @foreach($contratos as $c)
     @php
         $radicados         = $c->radicados->keyBy('tipo');
@@ -498,7 +499,10 @@ function sortClass($col, $currSort, $currDir) {
         $esFuturo = $c->fecha_ingreso && now()->startOfDay()->diffInDays(\Carbon\Carbon::parse($c->fecha_ingreso)->startOfDay(), false) > 1;
         $esRetirado = $c->estado === 'retirado';
     @endphp
-    <tr @if($esRetirado) style="background:#fef2f2;" title="Contrato retirado — la afiliación sí ocurrió en este período" @endif>
+    {{-- El contexto del contrato va una sola vez aquí, en la fila, y no en cada
+         botón de radicado: eran hasta cuatro copias idénticas por fila, el 26% de
+         la página (859 KB en el aliado 7). El JS lo busca en el <tr>. --}}
+    <tr data-ctx='{{ $contexto }}' @if($esRetirado) style="background:#fef2f2;" title="Contrato retirado — la afiliación sí ocurrió en este período" @endif>
         {{-- Empresa --}}
         <td>
             @if($c->razonSocial)
@@ -592,8 +596,7 @@ function sortClass($col, $currSort, $currDir) {
                 data-rad-id="{{ $rEps->id }}"
                 data-contrato-id="{{ $c->id }}"
                 data-eps-formulario="{{ $c->eps?->formulario_pdf ? '1' : '0' }}"
-                data-rad='{{ json_encode(['id'=>$rEps->id,'tipo'=>$rEps->tipo,'estado'=>$rEps->estado,'numero_radicado'=>$rEps->numero_radicado,'canal_envio'=>$rEps->canal_envio,'canal_envio_cliente'=>$rEps->canal_envio_cliente,'enviado_al_cliente'=>$rEps->enviado_al_cliente,'ruta_pdf'=>$rEps->ruta_pdf,'observacion'=>$rEps->observacion]) }}'
-                data-ctx='{{ $contexto }}'>
+                data-rad='{{ json_encode(['id'=>$rEps->id,'tipo'=>$rEps->tipo,'estado'=>$rEps->estado,'numero_radicado'=>$rEps->numero_radicado,'canal_envio'=>$rEps->canal_envio,'canal_envio_cliente'=>$rEps->canal_envio_cliente,'enviado_al_cliente'=>$rEps->enviado_al_cliente,'ruta_pdf'=>$rEps->ruta_pdf,'observacion'=>$rEps->observacion]) }}'>
                 {{ $rEps->estadoTextoEfectivo() }}
                 @if($rEps->tieneAlertaDias())<span class="alert-dias">{{ $rEps->diasEnEstado() }}d</span>@endif
             </button>
@@ -604,7 +607,6 @@ function sortClass($col, $currSort, $currDir) {
                 <button class="badge-estado badge-pendiente btn-rad-crear"
                     data-contrato-id="{{ $c->id }}" data-tipo="eps"
                     data-eps-formulario="{{ $c->eps?->formulario_pdf ? '1' : '0' }}"
-                    data-ctx='{{ $contexto }}'
                     title="Sin radicado registrado — clic para abrir el trámite">⏳ P</button>
                 @endif
             @else
@@ -631,8 +633,7 @@ function sortClass($col, $currSort, $currDir) {
             <button class="badge-estado badge-{{ $rArl->estadoClaseEfectiva() }} btn-rad"
                 @if($rArl->esConfirmadoPorEntidad()) title="{{ $rArl->textoConfirmacion() }}" @endif
                 data-rad-id="{{ $rArl->id }}"
-                data-rad='{{ json_encode(['id'=>$rArl->id,'tipo'=>$rArl->tipo,'estado'=>$rArl->estado,'numero_radicado'=>$rArl->numero_radicado,'canal_envio'=>$rArl->canal_envio,'canal_envio_cliente'=>$rArl->canal_envio_cliente,'enviado_al_cliente'=>$rArl->enviado_al_cliente,'ruta_pdf'=>$rArl->ruta_pdf,'observacion'=>$rArl->observacion]) }}'
-                data-ctx='{{ $contexto }}'>
+                data-rad='{{ json_encode(['id'=>$rArl->id,'tipo'=>$rArl->tipo,'estado'=>$rArl->estado,'numero_radicado'=>$rArl->numero_radicado,'canal_envio'=>$rArl->canal_envio,'canal_envio_cliente'=>$rArl->canal_envio_cliente,'enviado_al_cliente'=>$rArl->enviado_al_cliente,'ruta_pdf'=>$rArl->ruta_pdf,'observacion'=>$rArl->observacion]) }}'>
                 {{ $rArl->estadoTextoEfectivo() }}
                 @if($rArl->tieneAlertaDias())<span class="alert-dias">{{ $rArl->diasEnEstado() }}d</span>@endif
             </button>
@@ -642,7 +643,6 @@ function sortClass($col, $currSort, $currDir) {
                 @else
                 <button class="badge-estado badge-pendiente btn-rad-crear"
                     data-contrato-id="{{ $c->id }}" data-tipo="arl"
-                    data-ctx='{{ $contexto }}'
                     title="Sin radicado registrado — clic para abrir el trámite">⏳ P</button>
                 @endif
             @else
@@ -658,8 +658,7 @@ function sortClass($col, $currSort, $currDir) {
             <button class="badge-estado badge-{{ $rCaja->estadoClaseEfectiva() }} btn-rad"
                 @if($rCaja->esConfirmadoPorEntidad()) title="{{ $rCaja->textoConfirmacion() }}" @endif
                 data-rad-id="{{ $rCaja->id }}"
-                data-rad='{{ json_encode(['id'=>$rCaja->id,'tipo'=>$rCaja->tipo,'estado'=>$rCaja->estado,'numero_radicado'=>$rCaja->numero_radicado,'canal_envio'=>$rCaja->canal_envio,'canal_envio_cliente'=>$rCaja->canal_envio_cliente,'enviado_al_cliente'=>$rCaja->enviado_al_cliente,'ruta_pdf'=>$rCaja->ruta_pdf,'observacion'=>$rCaja->observacion]) }}'
-                data-ctx='{{ $contexto }}'>
+                data-rad='{{ json_encode(['id'=>$rCaja->id,'tipo'=>$rCaja->tipo,'estado'=>$rCaja->estado,'numero_radicado'=>$rCaja->numero_radicado,'canal_envio'=>$rCaja->canal_envio,'canal_envio_cliente'=>$rCaja->canal_envio_cliente,'enviado_al_cliente'=>$rCaja->enviado_al_cliente,'ruta_pdf'=>$rCaja->ruta_pdf,'observacion'=>$rCaja->observacion]) }}'>
                 {{ $rCaja->estadoTextoEfectivo() }}
                 @if($rCaja->tieneAlertaDias())<span class="alert-dias">{{ $rCaja->diasEnEstado() }}d</span>@endif
             </button>
@@ -669,7 +668,6 @@ function sortClass($col, $currSort, $currDir) {
                 @else
                 <button class="badge-estado badge-pendiente btn-rad-crear"
                     data-contrato-id="{{ $c->id }}" data-tipo="caja"
-                    data-ctx='{{ $contexto }}'
                     title="Sin radicado registrado — clic para abrir el trámite">⏳ P</button>
                 @endif
             @else
@@ -687,8 +685,7 @@ function sortClass($col, $currSort, $currDir) {
                 data-rad-id="{{ $rPen->id }}"
                 data-contrato-id="{{ $c->id }}"
                 data-pension-formulario="{{ $c->pension?->formulario_pdf ? '1' : '0' }}"
-                data-rad='{{ json_encode(['id'=>$rPen->id,'tipo'=>$rPen->tipo,'estado'=>$rPen->estado,'numero_radicado'=>$rPen->numero_radicado,'canal_envio'=>$rPen->canal_envio,'canal_envio_cliente'=>$rPen->canal_envio_cliente,'enviado_al_cliente'=>$rPen->enviado_al_cliente,'ruta_pdf'=>$rPen->ruta_pdf,'observacion'=>$rPen->observacion]) }}'
-                data-ctx='{{ $contexto }}'>
+                data-rad='{{ json_encode(['id'=>$rPen->id,'tipo'=>$rPen->tipo,'estado'=>$rPen->estado,'numero_radicado'=>$rPen->numero_radicado,'canal_envio'=>$rPen->canal_envio,'canal_envio_cliente'=>$rPen->canal_envio_cliente,'enviado_al_cliente'=>$rPen->enviado_al_cliente,'ruta_pdf'=>$rPen->ruta_pdf,'observacion'=>$rPen->observacion]) }}'>
                 {{ $rPen->estadoTextoEfectivo() }}
                 @if($rPen->tieneAlertaDias())<span class="alert-dias">{{ $rPen->diasEnEstado() }}d</span>@endif
             </button>
@@ -699,7 +696,6 @@ function sortClass($col, $currSort, $currDir) {
                 <button class="badge-estado badge-pendiente btn-rad-crear"
                     data-contrato-id="{{ $c->id }}" data-tipo="pension"
                     data-pension-formulario="{{ $c->pension?->formulario_pdf ? '1' : '0' }}"
-                    data-ctx='{{ $contexto }}'
                     title="Sin radicado registrado — clic para abrir el trámite">⏳ P</button>
                 @endif
             @else
@@ -731,6 +727,13 @@ function sortClass($col, $currSort, $currDir) {
         </td>
     </tr>
     @endforeach
+    @php
+        // La sangría del Blade viajaba entera en cada fila: 22% de la página.
+        // Solo se colapsa el espacio ENTRE etiquetas (nunca dentro de atributos
+        // ni de textos), que el navegador de todos modos reduce a uno. En estas
+        // filas no hay <pre>, <textarea> ni white-space: pre, donde sí importaría.
+        echo preg_replace('/>\s+</', ">\n<", ob_get_clean());
+    @endphp
     </tbody>
 </table>
 </div>
@@ -1568,12 +1571,19 @@ window.addEventListener('message', function(e) {
 let docContextCedula  = null;
 let docContextAlidoId = null;
 
+// El contexto del contrato vive una sola vez en su fila (<tr data-ctx>). Se lee
+// primero del botón por si algún día vuelve a traerlo, y si no, de la fila.
+function ctxDelRadicado(btn) {
+    const crudo = btn.dataset.ctx || btn.closest('tr')?.dataset.ctx;
+    return crudo ? JSON.parse(crudo) : {};
+}
+
 document.addEventListener('click', function(e) {
     const btn = e.target.closest('.btn-rad');
     if(btn) {
         const radId         = btn.dataset.radId;
         const radData       = JSON.parse(btn.dataset.rad);
-        const ctx           = btn.dataset.ctx ? JSON.parse(btn.dataset.ctx) : {};
+        const ctx           = ctxDelRadicado(btn);
         const contratoId    = btn.dataset.contratoId || null;
         // El formulario mapeado puede ser el de la EPS o el del fondo de pensión
         const tieneFormulario = btn.dataset.epsFormulario === '1' || btn.dataset.pensionFormulario === '1';
@@ -1630,7 +1640,7 @@ async function crearRadicadoPendiente(btn) {
         abrirModalRadicado(
             data.radicado.id,
             data.radicado,
-            btn.dataset.ctx ? JSON.parse(btn.dataset.ctx) : {},
+            ctxDelRadicado(btn),
             btn.dataset.contratoId || null,
             btn.dataset.epsFormulario === '1' || btn.dataset.pensionFormulario === '1'
         );
