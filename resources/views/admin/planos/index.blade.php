@@ -1481,6 +1481,8 @@
                 <strong>CONFIRMAR PAGO CON EL NÚMERO DE PLANILLA EXPEDIDO POR EL OPERADOR</strong>
                 Al confirmar, <strong>todas las personas incluidas en este filtro</strong> quedarán marcadas con el número de planilla asignado. Si alguna persona no entró en este pago, cámbiela de número de plano antes de confirmar.
             </div>
+            <div id="modal-pago-dos-pasos" style="display:none;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;
+                        padding:.55rem .8rem;margin-bottom:.75rem;font-size:.78rem;color:#92400e"></div>
 
             <div class="form-row">
                 <div class="form-grupo">
@@ -2578,6 +2580,12 @@ function abrirModalDescarga() {
     cargarEstadoEnlace();
 }
 function resetModalPago() {
+    // Vuelve a dejar editables los campos que fija el pago 2 de 2.
+    ['pago-operador', 'pago-numero', 'pago-valor'].forEach(id => {
+        const el = document.getElementById(id);
+        el.disabled = false; el.readOnly = false; el.style.background = '';
+    });
+    document.getElementById('modal-pago-dos-pasos').style.display = 'none';
     document.getElementById('pago-numero').value   = '';
     document.getElementById('pago-obs').value      = '';
     document.getElementById('pago-banco').value    = '';
@@ -2592,6 +2600,32 @@ function abrirModalPago() {
     document.getElementById('modal-pago-aviso').style.display = '';
     document.getElementById('pago-valor').value = window.CTX_TOTAL_PAGAR || CTX.ssBaseOperador;
     resetModalPago();
+
+    // Dos pasos con el paso 1 ya pagado: lo único que queda por confirmar es
+    // la corrección, en el mismo operador. Se fija todo para que no se
+    // confirme otra vez la planilla 1 ni un número equivocado.
+    const dp = window._pagoDosPasos;
+    if (dp) {
+        if (!dp.numero) {
+            mostrarToast(`La planilla ${dp.paso1} (paso 1) ya está pagada. Falta liquidar la corrección en ${dp.operador} `
+                + 'desde «Descargar Plano» antes de confirmar el segundo pago.', 'error');
+            return;
+        }
+        const op = document.getElementById('pago-operador');
+        op.value = dp.operador;
+        document.getElementById('pago-numero').value = dp.numero;
+        document.getElementById('pago-valor').value  = Math.round(dp.valor || 0);
+        ['pago-operador', 'pago-numero', 'pago-valor'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el.tagName === 'SELECT') el.disabled = true; else el.readOnly = true;
+            el.style.background = '#f1f5f9';
+        });
+        const nota = document.getElementById('modal-pago-dos-pasos');
+        nota.innerHTML = `🟡 <strong>Pago 2 de 2.</strong> La planilla del paso 1 (${dp.paso1}) ya está pagada. `
+            + `Aquí se confirma la corrección <strong>${dp.numero}</strong> en ${dp.operador}; con ella el plano queda pagado.`;
+        nota.style.display = '';
+    }
+
     const btn = document.getElementById('btn-confirmar-pago');
     btn.disabled = false; btn.textContent = '✅ CONFIRMAR PAGO PLANILLA';
     document.getElementById('modal-pago').classList.add('open');
@@ -2729,10 +2763,24 @@ async function cargarEstadoEnlace() {
             return;
         }
 
+        // Dos pasos: pagado el paso 1, la tanda queda atada a ese operador.
+        // La corrección solo existe sobre esa planilla, y liquidar el paso 1
+        // otra vez —allá o en otro— sería pagar dos veces el mismo mes.
+        const opPagado = data.operadores.find(o => o.e1 && o.e1.pago_confirmado);
+        const corr = opPagado && opPagado.e1.paso2 && opPagado.e1.paso2.estado === 'validada' ? opPagado.e1.paso2 : null;
+        window._pagoDosPasos = (opPagado && !CTX.planoPagado && !(corr && corr.pago_confirmado)) ? {
+            operador: opPagado.nombre,
+            paso1   : opPagado.e1.paso1 ? opPagado.e1.paso1.numero_planilla : '',
+            numero  : corr ? corr.numero_planilla : null,
+            valor   : corr ? corr.valor_total : null,
+        } : null;
+
         data.operadores.forEach(op => {
             // Motivos por los que no se puede liquidar con ese operador.
             let bloqueo = null;
             if (CTX.planoPagado)   bloqueo = 'Este plano ya fue confirmado como pagado.';
+            else if (opPagado && op.id !== opPagado.id)
+                bloqueo = `El paso 1 se pagó en ${opPagado.nombre}: la corrección solo se puede hacer allá.`;
             else if (op.clave_vencida) bloqueo = `La clave secreta de ${op.nombre} venció. Genere una nueva desde el tablero del operador.`;
             else if (op.sin_codigo_ni)  bloqueo = `Falta el código PILA de ${op.nombre}. Configúrelo en Configuración → Operadores de planilla.`;
 
@@ -2786,8 +2834,11 @@ async function cargarEstadoEnlace() {
                 // operador solo acepta corregir una planilla ya pagada y el
                 // archivo tiene que decir en qué fecha se pagó.
                 crearBoton(
-                    (op.e1.paso1_liquidado ? '✅ ' : '1️⃣ ') + `Paso 1 · Planilla de 1 día en ${op.nombre}`,
-                    1, null
+                    (op.e1.paso1_liquidado ? '✅ ' : '1️⃣ ') + `Paso 1 · Planilla de 1 día en ${op.nombre}`
+                        + (op.e1.pago_confirmado ? ` · ${op.e1.paso1.numero_planilla} pagada` : ''),
+                    1, op.e1.pago_confirmado
+                        ? `La planilla del paso 1 (${op.e1.paso1.numero_planilla}) ya está pagada. Solo falta la corrección.`
+                        : null
                 );
 
                 let bloqueoP2 = null;
@@ -2806,10 +2857,14 @@ async function cargarEstadoEnlace() {
                               + 'El operador rechaza una corrección sobre una planilla sin pagar.';
                 }
 
+                const p2 = op.e1.paso2 && op.e1.paso2.estado === 'validada' ? op.e1.paso2 : null;
                 crearBoton(
-                    (op.e1.paso2 && op.e1.paso2.estado === 'validada' ? '✅ ' : '2️⃣ ')
+                    (p2 ? '✅ ' : '2️⃣ ')
                         + 'Paso 2 · ' + (op.e1.etiqueta_paso2 || 'Corrección')
-                        + (op.e1.por_portal ? ' (por el portal)' : ''),
+                        + (op.e1.por_portal ? ' (por el portal)' : '')
+                        + (p2 && !p2.pago_confirmado
+                            ? ` · ${p2.numero_planilla} · $ ${fmtNum(Math.round(p2.valor_total || 0))} — pendiente de pago`
+                            : ''),
                     2, bloqueoP2
                 );
 
@@ -3081,7 +3136,12 @@ async function liquidarEnEnlace(operadorId, operadorNombre, paso = 1) {
                 ? 'Si continúa, ese número se reemplaza por el de la nueva liquidación y Brynex deja de tener la referencia anterior.'
                 : 'Esa planilla se liquidó con otro filtro. Si la gente de este archivo ya está incluida ahí, quedaría pagada dos veces en el operador.';
 
-            const ok = confirm(
+            const ok = paso === 2
+                ? confirm(
+                    `Ya existe la corrección ${data.numero_planilla}${total}, liquidada el ${data.fecha || ''} y pendiente de pago.\n\n` +
+                    `Si continúa, se crea OTRA corrección en ${operadorNombre} y hay que pagar la nueva, no la anterior.\n\n` +
+                    `¿Crear otra corrección?`)
+                : confirm(
                 `Esta tanda ya tiene la planilla ${data.numero_planilla}${total}, liquidada el ${data.fecha || ''}.\n\n` +
                 `${riesgo}\n\n` +
                 `¿Liquidar de nuevo?`);

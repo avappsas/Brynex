@@ -377,6 +377,25 @@ class PlanillaApiController extends Controller
             'tipos_modalidad'      => $filtro,
         ];
 
+        // ── Dos pasos con el paso 1 ya pagado ────────────────────────────
+        // Pagado el paso 1, la tanda queda atada a ese operador: la corrección
+        // solo existe sobre esa planilla, y volver a liquidar el paso 1 (allá
+        // o en otro operador) sería pagar dos veces el mismo mes.
+        if (PlanillaDosPasosService::aplica($validated['tipos_modalidad'] ?? [])) {
+            $pagadoEn = $this->paso1Pagado($llave);
+
+            if ($pagadoEn && ((int) $pagadoEn->operador_planilla_id !== (int) $operador->id || $paso === 1)) {
+                $nombreOp = \App\Models\OperadorPlanilla::whereKey($pagadoEn->operador_planilla_id)->value('nombre');
+
+                return response()->json([
+                    'success' => false,
+                    'message' => $paso === 1 && (int) $pagadoEn->operador_planilla_id === (int) $operador->id
+                        ? "La planilla del paso 1 ({$pagadoEn->numero_planilla}) ya está pagada. Solo falta la corrección."
+                        : "El paso 1 se pagó en {$nombreOp} (planilla {$pagadoEn->numero_planilla}): la corrección solo se puede hacer allá.",
+                ], 422);
+            }
+        }
+
         // ── Paso 2 de la E-1: la corrección ──────────────────────────────
         // Solo puede salir si la planilla del paso 1 ya está liquidada Y
         // pagada, porque de ahí salen los campos 9 y 10 del registro tipo 1.
@@ -412,7 +431,7 @@ class PlanillaApiController extends Controller
                 );
 
                 if (PlanillaDosPasosService::correccionPorPortal($planesTanda)) {
-                    return $this->correccionPorPortal($llave, $aliadoId);
+                    return $this->correccionPorPortal($llave, $aliadoId, (bool) ($validated['reliquidar'] ?? false));
                 }
             }
 
@@ -1266,6 +1285,29 @@ class PlanillaApiController extends Controller
         return implode(', ', array_map(fn ($id) => $nombres[$id] ?? "#$id", $ids));
     }
 
+    /**
+     * La planilla del paso 1 de esta tanda que ya tiene el pago confirmado,
+     * en cualquier operador, o null.
+     */
+    private function paso1Pagado(array $llave): ?OperadorPlanillaApi
+    {
+        $candidatas = OperadorPlanillaApi::where('aliado_id', $llave['aliado_id'])
+            ->where('razon_social_id', $llave['razon_social_id'])
+            ->where('anio', $llave['anio'])
+            ->where('mes', $llave['mes'])
+            ->where('n_plano', $llave['n_plano'])
+            ->whereRaw("ISNULL(tipos_modalidad, '') = ?", [(string) $llave['tipos_modalidad']])
+            ->where('paso', 1)
+            ->where('estado', 'validada')
+            ->whereNotNull('numero_planilla')
+            ->orderByDesc('id')
+            ->get();
+
+        return $candidatas->first(fn ($f) => PlanillaE1Service::pagoConfirmado(
+            (int) $llave['aliado_id'], (string) $f->numero_planilla
+        ) !== null);
+    }
+
     private function filtroModalidades(array $tipos): string
     {
         $tipos = array_values(array_unique(array_map('intval', $tipos)));
@@ -1286,8 +1328,34 @@ class PlanillaApiController extends Controller
      * Exige el pago confirmado del paso 1: el portal solo corrige planillas
      * pagadas, y de ahí sale la fecha del registro tipo 1.
      */
-    private function correccionPorPortal(array $llave, int $aliadoId)
+    private function correccionPorPortal(array $llave, int $aliadoId, bool $reliquidar = false)
     {
+        // El robot crea una planilla nueva en el portal cada vez: si ya hay una
+        // corrección, se pregunta antes (el mismo 409 del resto), y si ya está
+        // pagada no se rehace.
+        $previa = OperadorPlanillaApi::where($llave)->where('paso', 2)->where('estado', 'validada')->latest('id')->first();
+
+        if ($previa && $previa->numero_planilla
+            && PlanillaE1Service::pagoConfirmado($aliadoId, (string) $previa->numero_planilla)) {
+            return response()->json([
+                'success' => false,
+                'message' => "La corrección {$previa->numero_planilla} ya está pagada. No hay nada que rehacer.",
+            ], 422);
+        }
+
+        if ($previa && ! $reliquidar) {
+            return response()->json([
+                'success'               => false,
+                'requiere_confirmacion' => true,
+                'reemplaza'             => true,
+                'numero_planilla'       => $previa->numero_planilla,
+                'valor_total'           => $previa->valor_total,
+                'fecha'                 => optional($previa->updated_at)->format('Y-m-d H:i'),
+                'message'               => "Ya existe la corrección {$previa->numero_planilla}, pendiente de pago. "
+                    .'Si la vuelve a liquidar, el robot crea otra planilla en el portal.',
+            ], 409);
+        }
+
         $contexto = PlanillaDosPasosService::contextoCorreccion($llave);
 
         if (! $contexto['ok']) {
