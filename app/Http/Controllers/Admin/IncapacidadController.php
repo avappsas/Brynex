@@ -312,9 +312,12 @@ class IncapacidadController extends Controller
             // 'anulada' esta copia se quedó atrás y las anuladas volvían a
             // encabezar la tabla como si necesitaran gestión.
             $finales = "'".implode("','", self::ESTADOS_FINALES)."'";
+            // fecha_recibido no trae hora y hay 15-25 empatadas por página: sin
+            // desempate SQL Server las devolvía en cualquier orden, y una que
+            // cayera en el borde podía salir en dos páginas o en ninguna.
             $query->orderByRaw("
                 CASE WHEN estado IN ($finales) THEN 99 ELSE 0 END ASC
-            ")->orderByDesc('fecha_recibido');
+            ")->orderByDesc('fecha_recibido')->orderByDesc('incapacidades.id');
         }
 
         $incapacidades = $query->paginate(40)->withQueryString();
