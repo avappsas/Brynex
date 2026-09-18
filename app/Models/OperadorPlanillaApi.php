@@ -27,6 +27,11 @@ class OperadorPlanillaApi extends BaseModel
         'estado',
         'mensaje_error',
         'response_log',
+        // Sin estos, el `updateOrCreate` de la corrección por portal creaba el
+        // registro como paso 1 y sin la planilla que corrige.
+        'paso',
+        'planilla_asociada_numero',
+        'planilla_asociada_fecha_pago',
         // Lo que el operador reporta de la planilla, traído por
         // `planillas:sincronizar-totales`. Sin declararlos aquí el `update()`
         // los descarta sin decir nada.
