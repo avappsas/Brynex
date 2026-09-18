@@ -2915,7 +2915,13 @@ async function cargarEstadoEnlace() {
         // Si ya se liquidó este periodo, mostrarlo en vez de arrancar en blanco.
         const yaLiquidado = data.operadores.find(o => o.planilla);
         if (yaLiquidado) {
-            renderEstadoEnlace(yaLiquidado.planilla, yaLiquidado.nombre);
+            // En la E-1 `planilla` es el paso 1. Si ya está pagado y la
+            // corrección espera pago, lo que hay que mostrar —total y enlace
+            // PSE— es la corrección, no la planilla que ya se pagó.
+            const p2 = yaLiquidado.e1 && yaLiquidado.e1.paso2;
+            const mostrar = (p2 && p2.estado === 'validada' && !p2.pago_confirmado)
+                ? p2 : yaLiquidado.planilla;
+            renderEstadoEnlace(mostrar, yaLiquidado.nombre);
         } else {
             // No hay planilla para ESTE filtro, pero sí para la tanda con otro.
             // Callarlo hace creer que nunca se liquidó, y basta marcar una

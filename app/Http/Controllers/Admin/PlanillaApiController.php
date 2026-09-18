@@ -181,6 +181,15 @@ class PlanillaApiController extends Controller
             ? PlanillaE1Service::pagoConfirmado($aliadoId, (string) $paso1->numero_planilla)
             : null;
 
+        // La corrección por portal no trae el enlace de pago: el portal la deja
+        // guardada y ya. Se le pide al API la primera vez que se muestra
+        // pendiente, para que el "Ir a pagar en PSE" sea el de la corrección y
+        // no el del paso 1, que ya está pagado.
+        if ($paso2 && $paso2->estado === 'validada' && $paso2->numero_planilla && ! $paso2->url_pago
+            && ! PlanillaE1Service::pagoConfirmado($aliadoId, (string) $paso2->numero_planilla)) {
+            $this->completarUrlPago($paso2, $aliadoId);
+        }
+
         // Qué vende esta tanda. En Tipo E - Extras lo dice el plan y no la
         // modalidad, y de ahí sale tanto la etiqueta del botón como el camino
         // de la corrección: la de salud no la acepta la API del operador y hay
@@ -1388,8 +1397,12 @@ class PlanillaApiController extends Controller
             ], 422);
         }
 
+        $registro = OperadorPlanillaApi::find($resultado['registro_id'] ?? null);
+        $urlPago = $registro ? $this->completarUrlPago($registro, $aliadoId) : null;
+
         return response()->json([
             'success' => true,
+            'url_pago' => $urlPago,
             // Sin esto la pantalla toma el éxito por un archivo con errores
             // ("La planilla tiene undefined error(es)").
             'liquidada' => true,
@@ -1398,6 +1411,37 @@ class PlanillaApiController extends Controller
             'valor_total' => $resultado['valor_total'],
             'message' => "Corrección {$resultado['numero_planilla']} liquidada en el portal del operador.",
         ]);
+    }
+
+    /**
+     * Le pide al API el enlace PSE de una planilla que se liquidó por fuera de
+     * él (la corrección por portal) y lo guarda. Si el API no responde se
+     * queda sin enlace: se paga desde el portal, como antes.
+     */
+    private function completarUrlPago(OperadorPlanillaApi $registro, int $aliadoId): ?string
+    {
+        try {
+            $sesion = $this->abrirSesion($registro, $aliadoId);
+            if (! $sesion['success']) {
+                return null;
+            }
+
+            $pago = $sesion['api']->obtenerUrlPago((int) $registro->numero_planilla);
+            if (! ($pago['success'] ?? false) || empty($pago['url_pago'])) {
+                return null;
+            }
+
+            $registro->update(['url_pago' => $pago['url_pago']]);
+
+            return $pago['url_pago'];
+        } catch (\Throwable $e) {
+            Log::warning('No se pudo obtener la URL de pago de la corrección', [
+                'planilla' => $registro->numero_planilla,
+                'error'    => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     private function credencial(int $aliadoId, int $operadorId, ?int $razonSocialId): ?OperadorCredencial
