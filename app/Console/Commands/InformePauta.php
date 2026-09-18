@@ -58,6 +58,7 @@ class InformePauta extends Command
 
         if ($piezas->isEmpty()) {
             $this->line("{$aliado->nombre}: no hay piezas con pauta. Nada que informar.");
+
             return;
         }
 
@@ -69,22 +70,26 @@ class InformePauta extends Command
             $conv = WhatsappConversacion::where('origen_publicacion_id', $pieza->id)->count();
 
             $filas[] = [
-                'id'          => $pieza->id,
-                'estado'      => $pieza->pauta_estado,
-                'gasto_hoy'   => $hoy['gasto'],
+                'id' => $pieza->id,
+                // Por el conjunto en que vive el anuncio, que es donde de verdad sale la plata.
+                'publico' => $config->meta_adset_asesores_id
+                    && (string) $pieza->meta_adset_id === (string) $config->meta_adset_asesores_id
+                    ? 'asesores' : 'clientes',
+                'estado' => $pieza->pauta_estado,
+                'gasto_hoy' => $hoy['gasto'],
                 'impresiones' => $hoy['impresiones'],
                 'gasto_total' => (float) $pieza->pauta_gasto_total_cop,
-                'conv'        => $conv,
+                'conv' => $conv,
                 // Sin conversaciones no hay costo por conversación: mostrar el gasto como si
                 // fuera el costo sería inventar un dato que no existe todavía.
-                'costo_conv'  => $conv > 0 ? (float) $pieza->pauta_gasto_total_cop / $conv : null,
+                'costo_conv' => $conv > 0 ? (float) $pieza->pauta_gasto_total_cop / $conv : null,
             ];
         }
 
         $this->mostrar($aliado, $config, $filas);
 
-        if (!$this->option('no-enviar')) {
-            $enviado = $alertas->enviar('Pauta ' . $aliado->nombre, $this->resumen($config, $filas));
+        if (! $this->option('no-enviar')) {
+            $enviado = $alertas->enviar('Pauta '.$aliado->nombre, $this->resumen($config, $filas));
             $this->line($enviado ? "  → enviado a {$alertas->numeroDestino()}" : '  → no se pudo enviar (ver el log).');
         }
     }
@@ -92,14 +97,14 @@ class InformePauta extends Command
     /** @return array{gasto: float, impresiones: int} */
     private function gastoDelDia(string $adId, ?string $token): array
     {
-        $r = Http::get(self::BASE_URL . "/{$adId}/insights", [
-            'fields'       => 'spend,impressions',
-            'date_preset'  => 'today',
+        $r = Http::get(self::BASE_URL."/{$adId}/insights", [
+            'fields' => 'spend,impressions',
+            'date_preset' => 'today',
             'access_token' => $token,
         ]);
 
         return [
-            'gasto'       => (float) data_get($r->json(), 'data.0.spend', 0),
+            'gasto' => (float) data_get($r->json(), 'data.0.spend', 0),
             'impresiones' => (int) data_get($r->json(), 'data.0.impressions', 0),
         ];
     }
@@ -112,17 +117,18 @@ class InformePauta extends Command
             array_map(fn ($f) => [
                 "#{$f['id']}",
                 $f['estado'],
-                '$' . number_format($f['gasto_hoy']),
+                '$'.number_format($f['gasto_hoy']),
                 number_format($f['impresiones']),
-                '$' . number_format($f['gasto_total']),
+                '$'.number_format($f['gasto_total']),
                 $f['conv'],
-                $f['costo_conv'] === null ? '—' : '$' . number_format($f['costo_conv']),
+                $f['costo_conv'] === null ? '—' : '$'.number_format($f['costo_conv']),
             ], $filas)
         );
 
         $gastadoMes = $config->gastadoEsteMes();
-        $this->line('  Diario del conjunto: $' . number_format($config->presupuestoDiarioCop()));
-        $this->line('  Mes: $' . number_format($gastadoMes) . ' de $' . number_format((float) $config->limite_mensual_cop));
+        $this->line('  Diario: clientes $'.number_format($config->presupuestoDiarioCop())
+            .' · asesores $'.number_format((float) ($config->asesores_presupuesto_diario_cop ?: 0)));
+        $this->line('  Mes: $'.number_format($gastadoMes).' de $'.number_format((float) $config->limite_mensual_cop));
 
         if (array_sum(array_column($filas, 'conv')) === 0) {
             $this->warn('  Ninguna conversación viene atribuida a una pieza todavía.');
@@ -130,28 +136,47 @@ class InformePauta extends Command
         }
     }
 
-    /** Resumen corto para el WhatsApp: la plantilla aplana los saltos de línea, así que va en una tira. */
+    /**
+     * Resumen corto para el WhatsApp: la plantilla aplana los saltos de línea, así que va en una tira.
+     *
+     * Una cuenta por conjunto, cada una contra SU presupuesto. Desde que las piezas de asesores
+     * tienen conjunto propio (6-sep-2026) el aviso sumaba el gasto de los dos y lo comparaba
+     * solo con el de clientes: el 17-sep dijo "Hoy $16,687 de $5,000", que parece gastar el
+     * triple del tope cuando el tope real era $15.000. Y el "va ganando" comparaba piezas de
+     * públicos distintos, que no compiten por el mismo dinero.
+     */
     private function resumen(PautaConfig $config, array $filas): string
     {
-        $gastoHoy = array_sum(array_column($filas, 'gasto_hoy'));
-        $convTotal = array_sum(array_column($filas, 'conv'));
-
-        $partes = [
-            'Hoy $' . number_format($gastoHoy) . ' de $' . number_format($config->presupuestoDiarioCop()),
-            'mes $' . number_format($config->gastadoEsteMes()) . ' de $' . number_format((float) $config->limite_mensual_cop),
-            $convTotal . ' conversacion(es) atribuida(s)',
+        $topes = [
+            'clientes' => (float) $config->presupuestoDiarioCop(),
+            'asesores' => (float) ($config->asesores_presupuesto_diario_cop ?: 0),
         ];
+        $nombres = ['clientes' => 'Clientes', 'asesores' => 'Asesores'];
 
-        if ($convTotal > 0) {
-            // La que menos cuesta por conversación es la que hay que dejar corriendo.
-            $conDatos = array_filter($filas, fn ($f) => $f['costo_conv'] !== null);
-            usort($conDatos, fn ($a, $b) => $a['costo_conv'] <=> $b['costo_conv']);
-            $mejor = reset($conDatos);
-            $partes[] = "va ganando #{$mejor['id']} con {$mejor['conv']} a \$" . number_format($mejor['costo_conv']) . ' c/u';
-        } else {
-            $partes[] = 'sin datos para comparar piezas: la rotacion esta premiando lo mas nuevo, no lo que funciona';
+        $partes = [];
+        foreach ($topes as $publico => $tope) {
+            $suyas = array_values(array_filter($filas, fn ($f) => $f['publico'] === $publico));
+            if (empty($suyas)) {
+                continue;
+            }
+
+            $gastoHoy = array_sum(array_column($suyas, 'gasto_hoy'));
+            $conv = array_sum(array_column($suyas, 'conv'));
+            $texto = $nombres[$publico].' hoy $'.number_format($gastoHoy).' de $'.number_format($tope)
+                .', '.$conv.' conv';
+
+            // La que menos cuesta por conversación DENTRO de su conjunto.
+            $conDatos = array_filter($suyas, fn ($f) => $f['costo_conv'] !== null);
+            if ($conDatos) {
+                usort($conDatos, fn ($a, $b) => $a['costo_conv'] <=> $b['costo_conv']);
+                $mejor = reset($conDatos);
+                $texto .= ' (gana #'.$mejor['id'].' a $'.number_format($mejor['costo_conv']).' c/u)';
+            }
+            $partes[] = $texto;
         }
 
-        return implode('. ', $partes) . '.';
+        $partes[] = 'mes $'.number_format($config->gastadoEsteMes()).' de $'.number_format((float) $config->limite_mensual_cop);
+
+        return implode('. ', $partes).'.';
     }
 }
