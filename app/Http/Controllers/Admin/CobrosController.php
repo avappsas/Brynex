@@ -131,8 +131,7 @@ class CobrosController extends Controller
         // Solo incluir vigentes cuya fecha_ingreso <= último día del periodo consultado
         $q = Contrato::where('aliado_id', $aliadoId)
             ->whereIn('estado', ['vigente', 'activo'])
-            ->where('contratos.fecha_ingreso', '<=', $ultimoDiaPeriodo)
-            ->with(['cliente.empresa', 'tipoModalidad', 'razonSocial', 'asesor', 'plan', 'eps', 'arl', 'pension', 'caja']);
+            ->where('contratos.fecha_ingreso', '<=', $ultimoDiaPeriodo);
 
         // Filtro: tipo (individual / empresas / todos)
         if ($soloInd === 'individual') {
@@ -196,20 +195,38 @@ class CobrosController extends Controller
 
         $contratos = $q->get();
 
-        // ── Contratos RETIRADOS con factura de retiro en este periodo ──────
-        // Criterio: estado=retirado + EXISTS factura (numero_factura=0, tipo=planilla, mes/anio del periodo)
-        $qRet = Contrato::where('aliado_id', $aliadoId)
-            ->where('estado', 'retirado')
-            ->whereHas('facturas', fn($fq) => $fq
-                ->where('mes', $mes)
-                ->where('anio', $anio)
-                ->where('numero_factura', 0)
-                ->where('tipo', 'planilla')
-                ->whereNull('deleted_at')
-            )
-            ->with(['cliente.empresa', 'tipoModalidad', 'razonSocial', 'asesor', 'plan', 'eps', 'arl', 'pension', 'caja']);
+        // ── Retirados que igual salen en el listado del período ────────────
+        // Son tres grupos, y eran tres consultas: cada una recorría TODOS los
+        // contratos retirados del aliado (16.000 en el aliado 4, 25.000 en el 7)
+        // a ~110 ms la pasada, más sus propias diez cargas de relaciones. Ahora
+        // una sola consulta marca a qué grupo pertenece cada retirado, y los
+        // grupos se arman en PHP con las mismas exclusiones de antes:
+        //
+        //   A · con factura de retiro (n° 0) del período
+        //   B · con planilla o afiliación normal del período (se retiraron
+        //       después), si no están en A
+        //   C · retiro informativo: fecha de retiro en la ventana del período
+        //       y una factura de retiro con SS en cero de cualquier mes, si no
+        //       están en A ni en B
+        //
+        // (Antes B y C excluían también a los vigentes, pero esos tienen estado
+        // vigente/activo y estos retirado: no se pueden cruzar.)
+        $mesAntInf  = $mes === 1 ? 12 : $mes - 1;
+        $anioAntInf = $mes === 1 ? $anio - 1 : $anio;
 
-        // Aplicar los mismos filtros de tipo individual/empresa
+        $existeA = "EXISTS (SELECT 1 FROM facturas f WHERE f.contrato_id = contratos.id AND f.mes = ? AND f.anio = ?"
+                 . " AND f.numero_factura = 0 AND f.tipo = 'planilla' AND f.deleted_at IS NULL)";
+        $existeB = "EXISTS (SELECT 1 FROM facturas f WHERE f.contrato_id = contratos.id AND f.mes = ? AND f.anio = ?"
+                 . " AND f.numero_factura > 0 AND f.tipo IN ('planilla', 'afiliacion') AND f.deleted_at IS NULL)";
+        $existeC = "((contratos.paga_mes_actual = 1 AND MONTH(contratos.fecha_retiro) = ? AND YEAR(contratos.fecha_retiro) = ?)"
+                 . " OR (contratos.paga_mes_actual = 0 AND MONTH(contratos.fecha_retiro) = ? AND YEAR(contratos.fecha_retiro) = ?))"
+                 . " AND EXISTS (SELECT 1 FROM facturas f WHERE f.contrato_id = contratos.id AND f.numero_factura = 0"
+                 . " AND f.tipo = 'planilla' AND f.deleted_at IS NULL AND f.total_ss <= 0)";
+        $bindGrupos = [$mes, $anio, $mes, $anio, $mes, $anio, $mesAntInf, $anioAntInf];
+
+        $qRet = Contrato::where('aliado_id', $aliadoId)->where('estado', 'retirado');
+
+        // Los mismos filtros que el listado de vigentes
         if ($soloInd === 'individual') {
             $qRet->whereIn('cedula', function ($sub) use ($aliadoId) {
                 $sub->from('clientes')->select('cedula')->where('aliado_id', $aliadoId)
@@ -232,123 +249,41 @@ class CobrosController extends Controller
         }
         if ($tipoModalFiltro) $qRet->where('tipo_modalidad_id', $tipoModalFiltro);
 
-        $contratosRetirados = $qRet->get();
+        $gruposRetirados = $qRet
+            ->selectRaw(
+                "contratos.id, CASE WHEN {$existeA} THEN 1 ELSE 0 END AS g_a,"
+                . " CASE WHEN {$existeB} THEN 1 ELSE 0 END AS g_b,"
+                . " CASE WHEN {$existeC} THEN 1 ELSE 0 END AS g_c",
+                $bindGrupos
+            )
+            ->whereRaw("({$existeA} OR {$existeB} OR ({$existeC}))", $bindGrupos)
+            ->toBase()
+            ->get()
+            ->keyBy(fn ($r) => (int) $r->id);
 
-        // Marcar cada retirado (con factura de retiro en el periodo) para identificarlo más adelante
+        // Los modelos completos, solo de los retirados que entran (decenas, no miles).
+        // Las relaciones se cargan más abajo, una sola vez para todo el listado.
+        $retirados = new \Illuminate\Database\Eloquent\Collection(
+            $gruposRetirados->keys()->chunk(2000)
+                ->flatMap(fn ($ids) => Contrato::whereIn('id', $ids->all())->get())
+                ->all()
+        );
+
+        $enGrupo = fn ($c, string $g) => (int) ($gruposRetirados->get((int) $c->id)?->{$g} ?? 0) === 1;
+
+        $contratosRetirados = $retirados->filter(fn ($c) => $enGrupo($c, 'g_a'))->values();
+        $contratosRetNormal = $retirados->filter(fn ($c) => ! $enGrupo($c, 'g_a') && $enGrupo($c, 'g_b'))->values();
+        $contratosRetInf    = $retirados->filter(fn ($c) => ! $enGrupo($c, 'g_a') && ! $enGrupo($c, 'g_b') && $enGrupo($c, 'g_c'))->values();
+
         $contratosRetirados->each(fn($c) => $c->_es_retirado_periodo = true);
-
-        // ── TERCER GRUPO: Retirados con PLANILLA NORMAL en el periodo ─────────
-        // Estos son contratos que estaban vigentes en el mes consultado (tenían planilla
-        // o afiliación pagada en ese mes) pero se retiraron DESPUÉS (mes siguiente, etc.).
-        // El informe consolidado los cuenta en ADMON VIGENTES o AFILIACIONES del mes.
-        // Su factura de retiro (numero_factura=0) es de un mes POSTERIOR, no del periodo.
-        $idsYaCaptados = $contratos->pluck('id')->merge($contratosRetirados->pluck('id'))->unique()->toArray();
-
-        $qRetNormal = Contrato::where('aliado_id', $aliadoId)
-            ->where('estado', 'retirado')
-            ->whereNotIn('contratos.id', $idsYaCaptados)
-            ->whereHas('facturas', fn($fq) => $fq
-                ->where('mes', $mes)
-                ->where('anio', $anio)
-                ->where('numero_factura', '>', 0)
-                ->whereIn('tipo', ['planilla', 'afiliacion'])
-                ->whereNull('deleted_at')
-            )
-            ->with(['cliente.empresa', 'tipoModalidad', 'razonSocial', 'asesor', 'plan', 'eps', 'arl', 'pension', 'caja']);
-
-        // Aplicar los mismos filtros opcionales
-        if ($soloInd === 'individual') {
-            $qRetNormal->whereIn('cedula', function ($sub) use ($aliadoId) {
-                $sub->from('clientes')->select('cedula')->where('aliado_id', $aliadoId)
-                    ->where(function ($sq) { $sq->where('cod_empresa', 1)->orWhereNull('cod_empresa'); });
-            });
-        } elseif ($soloInd === 'empresas') {
-            $qRetNormal->whereIn('cedula', function ($sub) use ($aliadoId) {
-                $sub->from('clientes')->select('cedula')->where('aliado_id', $aliadoId)
-                    ->where('cod_empresa', '>', 1)->whereNotNull('cod_empresa');
-            });
-        }
-        if ($rsId)     $qRetNormal->where('razon_social_id', $rsId);
-        if ($asesorId) $qRetNormal->where('asesor_id', $asesorId);
-        if ($buscar) {
-            $qRetNormal->where(function ($sq) use ($buscar) {
-                $sq->where('cedula', 'like', "%$buscar%")
-                   ->orWhereHas('cliente', fn($cq) => $cq
-                       ->wherePalabrasSinTildes(['primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido'], $buscar));
-            });
-        }
-        if ($tipoModalFiltro) $qRetNormal->where('tipo_modalidad_id', $tipoModalFiltro);
-
-        $contratosRetNormal = $qRetNormal->get();
-        // Marcar como "retirado posterior al periodo" para tratamiento diferenciado
         $contratosRetNormal->each(fn($c) => $c->_es_retirado_posterior = true);
-
-        // ── CUARTO GRUPO: Retiros Informativos por fecha_retiro (igual que InformeController) ──
-        // Criterio (igual al informe consolidado):
-        //   - tipo_modalidad=11: fecha_retiro en el mes consultado
-        //   - Otros: fecha_retiro en el mes ANTERIOR al consultado
-        // Estos tienen factura retiro con total_ss=0. Su invoice puede ser de CUALQUIER mes.
-        $mesAntInf  = $mes === 1 ? 12 : $mes - 1;
-        $anioAntInf = $mes === 1 ? $anio - 1 : $anio;
-
-        $idsYaCaptadosTodos = $contratos->pluck('id')
-            ->merge($contratosRetirados->pluck('id'))
-            ->merge($contratosRetNormal->pluck('id'))
-            ->unique()->toArray();
-
-        $qRetInf = Contrato::where('aliado_id', $aliadoId)
-            ->where('estado', 'retirado')
-            ->whereNotIn('contratos.id', $idsYaCaptadosTodos)
-            ->where(function ($q) use ($mes, $anio, $mesAntInf, $anioAntInf) {
-                // Mes actual: fecha_retiro en el mes consultado
-                $q->where(function ($q1) use ($mes, $anio) {
-                    $q1->where('paga_mes_actual', 1)
-                       ->whereMonth('fecha_retiro', $mes)
-                       ->whereYear('fecha_retiro', $anio);
-                // Resto: fecha_retiro en el mes ANTERIOR
-                })->orWhere(function ($q2) use ($mesAntInf, $anioAntInf) {
-                    $q2->where('paga_mes_actual', 0)
-                    ->whereMonth('fecha_retiro', $mesAntInf)
-                    ->whereYear('fecha_retiro', $anioAntInf);
-                });
-            })
-            // Solo los que tengan factura retiro con total_ss=0 (informativos)
-            ->whereHas('facturas', fn($fq) => $fq
-                ->where('numero_factura', 0)
-                ->where('tipo', 'planilla')
-                ->whereNull('deleted_at')
-                ->where('total_ss', '<=', 0)
-            )
-            ->with(['cliente.empresa', 'tipoModalidad', 'razonSocial', 'asesor', 'plan', 'eps', 'arl', 'pension', 'caja']);
-
-        // Aplicar filtros opcionales
-        if ($soloInd === 'individual') {
-            $qRetInf->whereIn('cedula', function ($sub) use ($aliadoId) {
-                $sub->from('clientes')->select('cedula')->where('aliado_id', $aliadoId)
-                    ->where(function ($sq) { $sq->where('cod_empresa', 1)->orWhereNull('cod_empresa'); });
-            });
-        } elseif ($soloInd === 'empresas') {
-            $qRetInf->whereIn('cedula', function ($sub) use ($aliadoId) {
-                $sub->from('clientes')->select('cedula')->where('aliado_id', $aliadoId)
-                    ->where('cod_empresa', '>', 1)->whereNotNull('cod_empresa');
-            });
-        }
-        if ($rsId)     $qRetInf->where('razon_social_id', $rsId);
-        if ($asesorId) $qRetInf->where('asesor_id', $asesorId);
-        if ($buscar) {
-            $qRetInf->where(function ($sq) use ($buscar) {
-                $sq->where('cedula', 'like', "%$buscar%")
-                   ->orWhereHas('cliente', fn($cq) => $cq
-                       ->wherePalabrasSinTildes(['primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido'], $buscar));
-            });
-        }
-        if ($tipoModalFiltro) $qRetInf->where('tipo_modalidad_id', $tipoModalFiltro);
-
-        $contratosRetInf = $qRetInf->get();
         $contratosRetInf->each(fn($c) => $c->_es_retiro_informativo_directo = true);
 
         // Unir vigentes + retirados-con-factura-retiro + retirados-con-planilla-normal + informativos
         $contratos = $contratos->concat($contratosRetirados)->concat($contratosRetNormal)->concat($contratosRetInf);
+
+        // Relaciones una sola vez para todo el listado, no una tanda por grupo.
+        $contratos->load(['cliente.empresa', 'tipoModalidad', 'razonSocial', 'asesor', 'plan', 'eps', 'arl', 'pension', 'caja']);
 
 
         // ── Facturas del mes para estos contratos ───────────────────
