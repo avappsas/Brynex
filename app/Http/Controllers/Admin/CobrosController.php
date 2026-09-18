@@ -1113,11 +1113,19 @@ class CobrosController extends Controller
                     ->whereIn('cod_empresa', $empresaIds);
             })
             ->whereIn('estado', ['vigente', 'activo'])
-            ->with(['tipoModalidad', 'razonSocial'])   // << eager load razonSocial para evitar N+1
+            // `cliente` y `plan` también: sin ellos, el cálculo de cotización de
+            // más abajo los pedía uno por uno. En el aliado 7 eran 730 consultas
+            // por el plan y 1.360 por el cliente —directas y a través de
+            // IvaService— sobre 730 contratos.
+            ->with(['tipoModalidad', 'razonSocial', 'cliente', 'plan'])
             ->get();
 
         // Cédulas reales de contratos activos (ya filtradas, número manejable por empresa)
         $cedulasActivas = $contratosActivos->pluck('cedula')->unique()->values()->toArray();
+
+        // El IVA de cada cédula en dos consultas, como ya lo hace facturación:
+        // resuelto por contrato son dos viajes más por cada uno.
+        $ivaPorCedula = \App\Services\IvaService::mapaPorCedulas($aliadoId, $cedulasActivas);
 
         // Facturas del mes — subquery si hay muchas cédulas, array si son pocas
         $factQuery = Factura::where('aliado_id', $aliadoId)
@@ -1162,7 +1170,7 @@ class CobrosController extends Controller
             $rsNit   = $c->nitParaMora();
             $rsDiaH  = $c->diaHabilParaMora();
             // Calcular aportes exactos por entidad (evita estimación 28.5%)
-            $cotiz   = $c->calcularCotizacion(30);
+            $cotiz   = $c->calcularCotizacion(30, $ivaPorCedula[$c->cedula] ?? null);
             $vSsCont = (int) ($cotiz['ss'] ?? 0);
             if ($rsNit && $vSsCont > 0) {
                 $moraEmpLoteInput[] = [
