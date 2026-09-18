@@ -269,8 +269,7 @@ class PilaCotizanteDosPasos
             // iguales (1, 30, 1)" (planilla 1085295297, 17-sep-2026). La forma
             // que sí se paga es 1 / 30 / 30 / 1 —pensión, salud, riesgos,
             // caja—: la de Juan Carlos Castro (SUPPLIESALUD, planilla
-            // 1084672324, pagada el 27-ago-2026). La pensión sí puede quedarse
-            // en su día.
+            // 1084672324, pagada el 27-ago-2026).
             //
             // La tarifa es la real cuando el paso 1 no llevó VAC-LR; con VAC-LR
             // (paso 1 solo pensión) sigue en cero, que es lo que esa novedad
@@ -283,6 +282,22 @@ class PilaCotizanteDosPasos
                 $res['tarifaArlDecimal'] = (float) $tarifaArlReal;
                 $res['vArl'] = PilaCotizanteCalculator::roundPila($res['ibcArl'] * (float) $tarifaArlReal);
             }
+
+            // Subtipo 4 y ninguna pensión en la línea C (18-sep-2026). Con
+            // subtipo 0 el cotejo 2.198/2.244 amarra la salud de 30 días a la
+            // pensión de uno, y Simple no deja pagarla. El subtipo 3/4 apaga
+            // ese cotejo, pero a cambio la pensión no puede llevar
+            // administradora ni valor (2.053.1 / 2.116), así que sale entera:
+            // sin AFP, días, IBC ni aporte. La línea A no se toca: repite lo
+            // que ya quedó pagado.
+            $res['subtipoCotizante'] = 4;
+            $res['tienePension'] = false;
+            $res['codAfpPila'] = '';
+            $res['diasPension'] = 0;
+            $res['ibcAfp'] = 0;
+            $res['tarifaAfpDecimal'] = 0.0;
+            $res['vAfp'] = 0;
+            unset($res['tarifaAfpStr']);
 
             return $res;
         }
