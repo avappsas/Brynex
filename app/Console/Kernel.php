@@ -248,6 +248,18 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/marketing-pauta-sync.log'));
 
+        // ── Gente esperando respuesta en WhatsApp ────────────────────────────
+        // A las 8:00, antes de que arranque la jornada: la lista de quién escribió y lleva horas
+        // sin que una persona le conteste. Ahí se perdían las ventas (sep-2026), no en la pauta.
+        // Si no hay nadie esperando no manda nada.
+        // Ejecución manual: php artisan whatsapp:sin-respuesta --no-enviar
+        $schedule->command('whatsapp:sin-respuesta')
+            ->dailyAt('08:00')
+            ->timezone('America/Bogota')
+            ->withoutOverlapping(15)
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/whatsapp-sin-respuesta.log'));
+
         // ── Informe diario de la pauta ───────────────────────────────────────
         // Diario a las 20:00, con el día ya corrido: qué se gastó y qué trajo.
         // Va a esa hora y no en la mañana porque las métricas de Meta llegan con

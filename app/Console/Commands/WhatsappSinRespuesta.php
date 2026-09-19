@@ -41,8 +41,14 @@ class WhatsappSinRespuesta extends Command
 
     protected $description = 'Avisa por WhatsApp quién escribió y lleva horas sin que una persona le responda';
 
-    /** Lo que se contesta para despedirse: no pide respuesta. */
-    private const DESPEDIDA = '/^\s*(ok+|okey|oki|vale|listo|bueno|dale|gracias|muchas gracias|ok gracias|ok muchas gracias|igualmente|bendiciones|feliz (tarde|noche|d[ií]a)|[\p{So}\p{Sk}\s!.]+)\s*[.!👍🙏😊]*\s*$/iu';
+    /**
+     * Lo que se contesta para despedirse: no pide respuesta.
+     *
+     * Tiene que haber una palabra de despedida ("gracias", "igualmente") o un "ok" solo; y nunca
+     * cuenta si trae una pregunta o habla de plata: "ok, ¿cuánto vale?" o "soporte de pago,
+     * gracias" sí piden que alguien haga algo.
+     */
+    private const DESPEDIDA = '/^(?!.*(\?|cu[aá]nt|c[oó]mo|qu[eé]\b|d[oó]nde|cu[aá]ndo|precio|valor|pag|soporte|comprobante|planilla|necesit|quiero|ayuda))\s*((ok+|okey|oki|vale|listo|bueno|dale|perfecto|entendido)[\s,.!]*)?(((muchas|mil)\s+)?(gracia[s]?|igualmente|bendiciones)(\s+\p{L}+){0,4})?[\s\p{So}\p{Sk}\p{P}]*$/iu';
 
     /** El tope de la plantilla es 600 caracteres; lo que no quepa se resume en "y N más". */
     private const MAX_CARACTERES = 560;
@@ -53,8 +59,14 @@ class WhatsappSinRespuesta extends Command
         $horas = (int) $this->option('horas');
         $numeroDueno = preg_replace('/\D/', '', (string) config('finanzas.whatsapp_personal_dueno'));
 
+        // Los que el bot pasó a un asesor se miran con el doble de margen: son justo los casos que
+        // alguien prometió atender. Un asesor con empresa propia llevaba 14 días así y, con la
+        // ventana normal, ya no habría salido en el aviso.
+        $dias = (int) $this->option('dias');
         $conversaciones = WhatsappConversacion::where('aliado_id', $aliadoId)
-            ->where('ultimo_mensaje_at', '>=', now()->subDays((int) $this->option('dias')))
+            ->where(fn ($q) => $q->where('ultimo_mensaje_at', '>=', now()->subDays($dias))
+                ->orWhere(fn ($q2) => $q2->where('pendiente_atencion', true)
+                    ->where('ultimo_mensaje_at', '>=', now()->subDays($dias * 2))))
             ->get();
 
         $esperando = [];
