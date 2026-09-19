@@ -365,6 +365,13 @@ class WhatsappWebhookService
             return;
         }
 
+        // Las notas de voz se transcriben SIEMPRE, atienda el bot o una persona: el texto queda en
+        // el inbox y en el aviso de pendientes, donde antes solo se leía "[nota de voz]" y había
+        // que escucharlas una por una. Responder sí depende del bot; eso lo decide el propio job.
+        if ($tipo === 'audio' && !$esRechazoPublicidad) {
+            WhatsappTranscribirAudioJob::dispatch($mensaje->id)->delay(now()->addSeconds(5));
+        }
+
         // Asistente IA: solo si el bot está activo en esta conversación y el aliado
         // tiene la IA activada para WhatsApp. Se procesa en un Job para no bloquear
         // la respuesta al webhook de Meta (~20s de margen).
@@ -400,10 +407,6 @@ class WhatsappWebhookService
                     Cache::put(self::claveDebounce($conversacion->id), $mensaje->id, now()->addSeconds(30));
                     WhatsappResponderIaJob::dispatch($conversacion->id, $mensaje->id)
                         ->delay(now()->addSeconds($delay));
-                } elseif ($tipo === 'audio') {
-                    // La nota de voz se transcribe y sigue como si fuera texto. Si no se puede,
-                    // ese job escala igual que antes: nadie se queda sin respuesta.
-                    WhatsappTranscribirAudioJob::dispatch($mensaje->id)->delay(now()->addSeconds(5));
                 } elseif (in_array($tipo, ['image', 'document', 'video'], true)) {
                     // El bot no puede leer multimedia: avisa al cliente y escala a un humano
                     // en vez de quedarse en silencio (ej. comprobantes de pago requieren revisión humana).

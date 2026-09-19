@@ -53,6 +53,11 @@ return [
         'app_secret' => env('WHATSAPP_APP_SECRET'),
         // Destino de las alertas operativas a BryNex (backups, accesos raros).
         'alertas_numero' => env('WHATSAPP_ALERTAS_NUMERO', '3117762689'),
+
+        // A quién le llega el aviso de conversaciones esperando respuesta. Es lista aparte
+        // porque no lo atiende quien recibe las alertas de infraestructura: aquí van los
+        // números de quienes de verdad contestan. Separados por coma.
+        'pendientes_numeros' => env('WHATSAPP_PENDIENTES_NUMEROS', '3117762689'),
         // Rechazar los payloads cuya firma no valide. Arranca en false a
         // propósito: el webhook de Meta no apunta directo a BryNex sino a un
         // relay, y si ese relay reserializa el cuerpo o no reenvía la cabecera

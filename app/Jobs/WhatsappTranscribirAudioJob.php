@@ -53,15 +53,22 @@ class WhatsappTranscribirAudioJob implements ShouldQueue
         }
 
         $conversacion = WhatsappConversacion::find($mensaje->conversacion_id);
-        if (! $conversacion || ! $conversacion->bot_activo) {
-            return; // la tomó un humano mientras tanto
+        if (! $conversacion) {
+            return;
         }
+
+        // Se transcribe aunque la conversación ya la lleve una persona: el texto sirve igual en
+        // el inbox y en el aviso de pendientes, donde antes solo se leía "[nota de voz]" y tocaba
+        // escucharla una por una para saber qué pedían. Lo que sí depende del bot es responder.
+        $contestaElBot = (bool) $conversacion->bot_activo;
 
         // El archivo lo baja WhatsappDescargarMediaJob. Si todavía no llegó, se reintenta:
         // el release cuenta como intento, así que tras agotarlos se escala igual.
         if (! $mensaje->mediaExiste()) {
             if ($this->attempts() >= $this->tries) {
-                $this->escalar($conversacion);
+                if ($contestaElBot) {
+                    $this->escalar($conversacion);
+                }
 
                 return;
             }
@@ -72,7 +79,9 @@ class WhatsappTranscribirAudioJob implements ShouldQueue
 
         $apiKey = IaConfiguracionAliado::paraAliado($conversacion->aliado_id)->gemini_api_key;
         if (! $apiKey) {
-            $this->escalar($conversacion);
+            if ($contestaElBot) {
+                $this->escalar($conversacion);
+            }
 
             return;
         }
@@ -85,7 +94,9 @@ class WhatsappTranscribirAudioJob implements ShouldQueue
 
         if (! $r['ok']) {
             Log::warning("No se pudo transcribir el audio del mensaje {$mensaje->id}: {$r['error']}");
-            $this->escalar($conversacion);
+            if ($contestaElBot) {
+                $this->escalar($conversacion);
+            }
 
             return;
         }
@@ -93,6 +104,10 @@ class WhatsappTranscribirAudioJob implements ShouldQueue
         // El texto queda como contenido del mensaje: así lo lee la IA y también se ve en el
         // inbox, junto al audio original, que no se toca.
         $mensaje->update(['contenido' => $r['texto']]);
+
+        if (! $contestaElBot) {
+            return; // la lleva una persona: el texto ya quedó, no hay que responder nada
+        }
 
         // Si mientras se transcribía llegó otro mensaje del cliente, ese ya programó su propia
         // respuesta y va a leer el historial completo —con esta transcripción ya guardada—.

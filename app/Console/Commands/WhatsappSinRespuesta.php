@@ -125,11 +125,23 @@ class WhatsappSinRespuesta extends Command
         }
 
         if (! $this->option('no-enviar')) {
-            $ok = $alertas->enviar('Esperando respuesta', $this->resumen($esperando));
-            $this->line($ok ? '  → enviado a '.$alertas->numeroDestino() : '  → no se pudo enviar (ver el log).');
+            $texto = $this->resumen($esperando);
+            foreach ($this->destinatarios() as $numero) {
+                $ok = $alertas->enviarA($numero, 'Esperando respuesta', $texto);
+                $this->line($ok ? "  → enviado a {$numero}" : "  → no se pudo enviar a {$numero} (ver el log).");
+            }
         }
 
         return self::SUCCESS;
+    }
+
+    /** @return string[] */
+    private function destinatarios(): array
+    {
+        $crudos = explode(',', (string) config('services.whatsapp.pendientes_numeros'));
+        $numeros = array_filter(array_map(fn ($n) => preg_replace('/\D/', '', $n), $crudos));
+
+        return array_values(array_unique($numeros));
     }
 
     private function textoDe(WhatsappMensaje $m): string
