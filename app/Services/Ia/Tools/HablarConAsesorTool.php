@@ -40,10 +40,15 @@ class HablarConAsesorTool implements IaToolInterface
             WhatsappConversacion::find($contexto['wa_conversacion_id'])?->escalarAHumano($motivo);
         }
 
+        // Lo que el modelo diga después sale de aquí más que de las reglas generales del prompt:
+        // con solo la regla, en las pruebas seguía diciendo "ya dejé registrado que inicias en
+        // octubre" o "te dejamos agendado". Lo único que pasó es que una persona fue avisada.
         return [
             'ok'      => true,
-            'mensaje' => 'Un asesor humano continuará esta conversación. Despídete brevemente y avísale al '
-                . 'cliente que en breve será atendido.',
+            'mensaje' => 'Una persona del equipo quedó avisada y continuará esta conversación. Dile al cliente '
+                . 'SOLO eso, en una o dos frases: que le pasaste su caso a un asesor y que lo va a contactar. '
+                . 'NO digas que algo quedó registrado, agendado, programado, reservado ni guardado, ni prometas '
+                . 'un día u hora: nada de eso se hizo.',
         ];
     }
 }
