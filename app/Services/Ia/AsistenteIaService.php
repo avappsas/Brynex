@@ -189,21 +189,22 @@ class AsistenteIaService
         // No solo el asesor de seguridad social: el público es quien YA tiene la relación con el
         // cliente y hoy no maneja las afiliaciones —contadores, asesores de EPS o de seguros,
         // oficinas con cartera—. A todos se les atiende con el mismo guion.
-        $esDelOficio = false;
-        foreach (['asesor', 'contador', 'contadora', 'contabilidad'] as $oficio) {
-            if (str_contains($texto, $oficio)) {
-                $esDelOficio = true;
-                break;
-            }
-        }
+        //
+        // Palabra COMPLETA, no pedazo: con str_contains, "asesoría sin costo" —que dicen varias
+        // piezas de clientes— contaba como "asesor". Así la #81, de confianza para clientes, cayó
+        // en el conjunto de asesores (sep-2026) y gastó ahí $13.852.
+        $esDelOficio = preg_match(
+            '/(?<!\p{L})(asesor|asesora|asesores|asesoras|contador|contadora|contadores|contadoras|contabilidad)(?!\p{L})/u',
+            $texto
+        ) === 1;
 
         if (! $esDelOficio) {
             return false;
         }
 
-        // Dos anuncios distintos apuntan al mismo perfil: el de comisiones y el de "te ayudamos a
-        // montar tu propia empresa". Ambos traen asesores con cartera, no gente queriendo afiliarse.
-        foreach (['comision', 'trabaj', 'cartera', 'propia empresa', 'empresa propia'] as $senal) {
+        // Las señales de que se le habla a alguien con CARTERA, no a alguien que quiere afiliarse.
+        // "trabaj" salió de la lista: casaba con "trabajadores", que está en medio copy de clientes.
+        foreach (['comision', 'cartera', 'propia empresa', 'empresa propia'] as $senal) {
             if (str_contains($texto, $senal)) {
                 return true;
             }
