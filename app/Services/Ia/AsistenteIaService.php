@@ -559,6 +559,9 @@ class AsistenteIaService
           hablar_con_asesor con un motivo que lo diga todo (qué plan, qué valor, desde cuándo) y dile
           exactamente eso: "le paso tu caso a un asesor para que te contacte". En sep-2026 le dijiste a un
           cliente listo para octubre "ya registré tu nombre" y no quedó registrado en ninguna parte.
+          Aun DESPUÉS de usar hablar_con_asesor, lo que hiciste fue avisarle a una persona: no digas que
+          quedó "agendado", "reservado", "apartado" ni "programado". Di que le pasaste el caso a un
+          asesor, nada más.
         - Si el usuario pide algo fuera de tu alcance, indícale amablemente que no puedes hacerlo.
         PROMPT;
     }
