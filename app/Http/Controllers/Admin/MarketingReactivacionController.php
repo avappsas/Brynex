@@ -19,6 +19,27 @@ use Illuminate\Http\Request;
  */
 class MarketingReactivacionController extends Controller
 {
+    /**
+     * Las dos plantillas de reactivación, y para quién es cada una.
+     *
+     * A quien se fue el mes pasado le sirve "no te quedes sin cobertura"; a quien se fue hace un
+     * año eso no le dice nada, porque ya lleva un año sin ella. La segunda le habla de cuánto
+     * cuesta volver y lleva un video: la de texto plano tuvo 0 respuestas en 58 envíos, todas
+     * leídas (sep-2026).
+     */
+    private const PLANTILLAS = [
+        'reactivacion_afiliacion' => 'Retiro reciente — "no te quedes sin cobertura"',
+        'reactivacion_antiguos'   => 'Retiro antiguo — video + cuánto cuesta volver',
+    ];
+
+    /** Desde los 3 meses, el retiro ya no es reciente. */
+    private const DIAS_RETIRO_ANTIGUO = 91;
+
+    private static function plantillaSugerida(int $desde): string
+    {
+        return $desde >= self::DIAS_RETIRO_ANTIGUO ? 'reactivacion_antiguos' : 'reactivacion_afiliacion';
+    }
+
     public function index(Request $request)
     {
         $aliadoId = session('aliado_id_activo');
@@ -50,7 +71,8 @@ class MarketingReactivacionController extends Controller
             'pendientes'  => $r['elegibles'],
             'envios'      => $envios,
             'enviadosMes' => $enviadosMes,
-            'plantilla'   => 'reactivacion_afiliacion',
+            'plantillas'  => self::PLANTILLAS,
+            'plantilla'   => self::plantillaSugerida($desde),
         ]);
     }
 
@@ -64,7 +86,7 @@ class MarketingReactivacionController extends Controller
     {
         $datos = $request->validate([
             'cantidad'  => 'required|integer|min:1|max:200',
-            'plantilla' => 'required|string|max:120',
+            'plantilla' => 'required|string|in:'.implode(',', array_keys(self::PLANTILLAS)),
             'desde'     => 'required|integer|min:1',
             'hasta'     => 'required|integer|min:2',
         ]);

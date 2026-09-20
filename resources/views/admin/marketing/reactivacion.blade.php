@@ -50,16 +50,23 @@
             @csrf
             <input type="hidden" name="desde" value="{{ $desde }}">
             <input type="hidden" name="hasta" value="{{ $hasta }}">
-            <input type="hidden" name="plantilla" value="{{ $plantilla }}">
+
             <div style="display:flex;gap:.75rem;align-items:end;flex-wrap:wrap;">
                 <label style="font-size:.8rem;color:#475569;">¿A cuántos les escribimos ahora?
                     <input type="number" name="cantidad" value="10" min="1" max="{{ min(200, $pendientes->count()) }}"
                            style="display:block;width:110px;padding:.4rem .55rem;border:1px solid #cbd5e1;border-radius:8px;font-size:.9rem;">
                 </label>
+                <label style="font-size:.8rem;color:#475569;">¿Qué mensaje les llega?
+                    <select name="plantilla" style="display:block;padding:.4rem .55rem;border:1px solid #cbd5e1;border-radius:8px;font-size:.85rem;max-width:340px;">
+                        @foreach($plantillas as $nombre => $descripcion)
+                            <option value="{{ $nombre }}" @selected($nombre === $plantilla)>{{ $descripcion }}</option>
+                        @endforeach
+                    </select>
+                </label>
                 <button type="submit" style="padding:.55rem 1.25rem;border:none;border-radius:8px;background:#16a34a;color:#fff;font-size:.85rem;font-weight:600;cursor:pointer;">
                     Enviar por WhatsApp
                 </button>
-                <span style="font-size:.75rem;color:#64748b;">Se toman los primeros de la fila. Plantilla: <code>{{ $plantilla }}</code></span>
+                <span style="font-size:.75rem;color:#64748b;">Se toman los primeros de la fila. Viene marcada la que corresponde a estos días de retiro.</span>
             </div>
         </form>
     @endif
