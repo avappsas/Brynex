@@ -468,6 +468,7 @@ class EnlaceInformeIndividualService
         if (! $reusada) {
             $opciones = [
                 'cookies'         => new CookieJar(),
+                'curl'            => SuaporteApiService::opcionesCurlTls(),
                 'timeout'         => 40,
                 'connect_timeout' => 10,
                 'http_errors'     => false,

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -128,6 +129,30 @@ class SuaporteApiService
         return $codigo !== null && isset(self::HOSTS[strtoupper($codigo)]);
     }
 
+    // ── 0a. TLS ──────────────────────────────────────────────────────────
+
+    /**
+     * Opciones cURL que suman los intermedios de `resources/certs` a los CA
+     * del sistema (CAPATH se consulta además de CAINFO, no en su lugar).
+     *
+     * Desde el 20-sep-2026 www.suaporte.com.co dejó de enviar el intermedio
+     * "DigiCert Global G2 TLS RSA SHA256 2020 CA1": el navegador lo baja
+     * solo por AIA, pero cURL no, y todo moría en cifrar-datos con "SSL
+     * certificate problem: unable to get local issuer certificate".
+     * Los archivos van nombrados por su hash (`openssl x509 -hash`) + `.0`,
+     * que es como OpenSSL los busca en un CAPATH.
+     */
+    public static function opcionesCurlTls(): array
+    {
+        return [CURLOPT_CAPATH => resource_path('certs')];
+    }
+
+    private function http(): PendingRequest
+    {
+        return Http::timeout($this->timeout)
+            ->withOptions(['curl' => self::opcionesCurlTls()]);
+    }
+
     // ── 0. Cifrado (opcional) ────────────────────────────────────────────
 
     /**
@@ -137,7 +162,7 @@ class SuaporteApiService
     public function cifrarDato(string $dato): ?string
     {
         try {
-            $response = Http::timeout($this->timeout)
+            $response = $this->http()
                 ->post("{$this->authUrl}/crypto/cifrar-datos", ['datoACifrar' => $dato]);
 
             if ($response->successful()) {
@@ -234,7 +259,7 @@ class SuaporteApiService
             }
 
             try {
-                $response = Http::timeout($this->timeout)
+                $response = $this->http()
                     ->withHeaders(['clave-secreta' => $this->claveSecreta])
                     ->asJson()
                     ->post("{$this->authUrl}/login", [
@@ -294,7 +319,7 @@ class SuaporteApiService
     public function consultarAportante(string $tipoDocumento, string $numeroDocumento): array
     {
         try {
-            $response = Http::timeout($this->timeout)
+            $response = $this->http()
                 ->withHeaders($this->headers)
                 ->get("{$this->apiUrl}/gestion/aportante/{$tipoDocumento}/{$numeroDocumento}");
 
@@ -339,7 +364,7 @@ class SuaporteApiService
     {
         foreach (['pyme', 'corporate'] as $segmento) {
             try {
-                $response = Http::timeout($this->timeout)
+                $response = $this->http()
                     ->withHeaders($this->headers)
                     ->get("{$this->apiUrl}/gestion/aportante/{$segmento}", ['id' => $aportanteId]);
 
@@ -425,7 +450,7 @@ class SuaporteApiService
     public function buscarActividadEconomica(string $termino): ?int
     {
         try {
-            $response = Http::timeout($this->timeout)
+            $response = $this->http()
                 ->withHeaders($this->headers)
                 ->get("{$this->apiUrl}/gestion/economicactivities/find", ['name' => $termino]);
 
@@ -513,7 +538,7 @@ class SuaporteApiService
         }
 
         try {
-            $response = Http::timeout($this->timeout)
+            $response = $this->http()
                 ->withHeaders($this->headers)
                 ->asJson()
                 ->post("{$this->apiUrl}/gestion/aportante", $payload);
@@ -569,7 +594,7 @@ class SuaporteApiService
         }
 
         try {
-            $response = Http::timeout($this->timeout)
+            $response = $this->http()
                 ->withHeaders($this->headers)
                 ->get("{$this->apiUrl}/gestion/authorization/user/contributor", $query);
 
@@ -627,7 +652,7 @@ class SuaporteApiService
         ]);
 
         try {
-            $response = Http::timeout($this->timeout)
+            $response = $this->http()
                 ->withHeaders($this->headers)
                 ->attach('archivo', $contenidoTxt, $nombreArchivo)
                 ->post("{$this->apiUrl}/generadorPlanillas/v1/planillas/validacion?".http_build_query([
@@ -675,7 +700,7 @@ class SuaporteApiService
     public function corregirPlanilla(int $codigoPlanilla, array $opciones = []): array
     {
         try {
-            $response = Http::timeout($this->timeout)
+            $response = $this->http()
                 ->withHeaders($this->headers)
                 ->post("{$this->apiUrl}/generadorPlanillas/v1/planillas/{$codigoPlanilla}/correccion", [
                     'codigoPlanilla' => $codigoPlanilla,
@@ -746,7 +771,7 @@ class SuaporteApiService
     public function consultarInconsistencias(int $codigoPlanilla, int $registroInicial = 0, int $limite = 100): array
     {
         try {
-            $response = Http::timeout($this->timeout)
+            $response = $this->http()
                 ->withHeaders($this->headers)
                 ->get("{$this->apiUrl}/generadorPlanillas/v1/planillas/{$codigoPlanilla}/inconsistencias", [
                     'registro-inicial' => $registroInicial,
@@ -788,7 +813,7 @@ class SuaporteApiService
         }
 
         try {
-            $response = Http::timeout($this->timeout)
+            $response = $this->http()
                 ->withHeaders($this->headers)
                 ->get("{$this->apiUrl}/generadorPlanillas/v1/administradoras/bdua-ruaf/{$tipoDocumento}/{$numeroDocumento}");
 
@@ -846,7 +871,7 @@ class SuaporteApiService
     public function consultarTotales(int $numeroPlanilla): array
     {
         try {
-            $response = Http::timeout($this->timeout)
+            $response = $this->http()
                 ->withHeaders($this->headers)
                 ->get("{$this->apiUrl}/generadorPlanillas/v1/planillas/{$numeroPlanilla}/totales");
 
@@ -893,7 +918,7 @@ class SuaporteApiService
     public function obtenerUrlPago(int $numeroPlanilla): array
     {
         try {
-            $response = Http::timeout($this->timeout)
+            $response = $this->http()
                 ->withHeaders($this->headers)
                 ->get("{$this->apiUrl}/generadorPlanillas/v1/planillas/{$numeroPlanilla}/pago/url");
 

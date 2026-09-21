@@ -196,6 +196,7 @@ class PortalCorreccionSaludService
 
         $this->http = new Client([
             'cookies' => new CookieJar,
+            'curl' => SuaporteApiService::opcionesCurlTls(),
             'timeout' => 120,
             'http_errors' => false,
             'headers' => ['User-Agent' => 'Mozilla/5.0', 'Accept-Language' => 'es-CO,es;q=0.9'],
