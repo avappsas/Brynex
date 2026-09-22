@@ -56,6 +56,9 @@
  *                                        {listo: true, pdf, nombre} o {listo: true, mensaje} después
  */
 
+// Módulo Renta (BryNex Renta ↔ MUISCA): archivo y puente propios, ver renta.js.
+importScripts('renta.js');
+
 const ORIGENES_BRYNEX = ['https://brynex.co', 'https://www.brynex.co', 'http://localhost:8000'];
 
 const SOS_ORIGEN = 'https://centralaplicaciones.sos.com.co';

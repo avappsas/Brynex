@@ -34,3 +34,14 @@ se vuelve a BryNex. Mientras corre el trámite no hay que usar la pestaña de S.
   pestaña de S.O.S. y ejecuta los pasos en ella con `chrome.scripting`.
 - BryNex (`SosController`) prepara los datos, entrega el lado B y registra en el
   radicado lo que la extensión trajo.
+
+## Módulo Renta (BryNex Renta)
+
+`renta.js` + `puente-renta.js`: trae la exógena de la DIAN ("Información reportada
+por terceros") a BryNex Renta (renta.brynex.co / localhost:8010) con la sesión que la
+persona abre en MUISCA. En la ficha de la persona → **Traer de la DIAN**: aceptar las
+condiciones de la DIAN, **Abrir MUISCA** (iniciar sesión ahí) y **Traer mi exógena**.
+
+Va en archivos propios (canal `brynex-renta`, cargado con `importScripts`) para poder
+armar un paquete **solo de renta** cuando BryNex Renta se abra al público: alguien de
+afuera no debe instalar una extensión con permisos sobre los portales de las EPS.
