@@ -1134,6 +1134,14 @@ function sortClass($col, $currSort, $currDir) {
                 <strong>morosos y con inexactitud</strong> de la empresa y abre una <strong>tarea</strong> por cada uno,
                 que se cierra sola cuando la caja deja de reportarlo. Aquí basta una consulta para toda la empresa,
                 así que es cuestión de segundos. Va en la misma pasada de los botones de abajo.
+                <div style="margin-top:0.5rem;display:flex;gap:0.4rem;flex-wrap:wrap;">
+                    <button type="button" onclick="revisarSubsidiosComfenalco(true)" class="btn-export" style="background:#64748b;cursor:pointer;">
+                        🔎 Solo consultar
+                    </button>
+                    <button type="button" onclick="revisarSubsidiosComfenalco(false)" class="btn-export" style="background:#b45309;cursor:pointer;">
+                        💰 Revisar subsidios y crear tareas
+                    </button>
+                </div>
                 <div id="ceps-caja-subsidios-estado" style="margin-top:0.4rem;font-weight:700;color:#92400e;"></div>
             </div>
         </div>
