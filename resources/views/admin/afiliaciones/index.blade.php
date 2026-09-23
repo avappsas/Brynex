@@ -2981,22 +2981,29 @@ async function revisarSubsidiosSiFalta() {
 
     const est = document.getElementById('ceps-comfandi-subsidios-estado');
     try {
-        const cand = await fetch(COMFANDI_URL_SUBSIDIOS_CANDIDATOS + '?alcance=candidatos',
+        // El candado es por empresa, así que primero hay que saber cuál está
+        // abierta: preguntarlo sin NIT respondería "no se ha hecho" siempre y
+        // el portal se recorrería entero cada vez que alguien abre la pestaña.
+        const emp = await comfandiExt('cfdEmpresa', {}, 40).catch(() => null);
+        if (!emp?.nit) return;
+
+        const cand = await fetch(COMFANDI_URL_SUBSIDIOS_CANDIDATOS + '?nit=' + encodeURIComponent(emp.nit) + '&alcance=candidatos',
             { headers: { 'Accept': 'application/json' } }).then(r => r.json());
 
         if (!cand?.ok) return;
 
         if (cand.ya_revisado_hoy) {
-            if (est) est.textContent = '✅ Los subsidios ya se revisaron hoy.';
+            if (est) est.textContent = '✅ Los subsidios de ' + (emp.empresa || emp.nit) + ' ya se revisaron hoy.';
             return;
         }
 
         if (!cand.total) {
-            if (est) est.textContent = '✅ Hoy no hay nadie por revisar.';
+            if (est) est.textContent = '✅ Hoy no hay nadie por revisar en ' + (emp.empresa || emp.nit) + '.';
             return;
         }
 
-        await revisarSubsidiosComfandi('candidatos');
+        await revisarSubsidiosDe('candidatos', false, emp,
+            (t) => { if (est) est.textContent = t; });
     } catch (e) {
         if (est) est.textContent = '';
     }
