@@ -3116,18 +3116,19 @@ async function conciliarCajaComfandi(simular) {
             (data.confirmados_ok ? ` · ${data.confirmados_ok} que ya estaban en OK quedan confirmados` : '') + '.';
         if (!simular && data.cerrados > 0) mostrarToast(`${data.cerrados} radicados de caja pasaron a OK. Recarga para verlos.`, 'success');
 
-        // Los subsidios van en la misma pasada: ya está la sesión abierta y la
-        // empresa comprobada, y es el mismo trabajo de cruzar lo que la caja
-        // dice con lo que BryNex tiene.
-        await revisarSubsidiosComfandi(
-            document.getElementById('ceps-comfandi-subsidios-todos')?.checked ? 'completa' : 'candidatos',
-            simular,
-            cuerpo.nit
-        );
     } catch (err) {
         estado.innerHTML = '❌ ' + err.message;
     } finally {
         document.getElementById('ceps-acciones').style.display = 'flex';
+
+        // Los subsidios van en la misma pasada, y también cuando la
+        // conciliación falla: que no se pueda generar el Excel del listado no
+        // tiene nada que ver con los bloqueos, y dejarlos sin revisar por eso
+        // obligaba a repetir todo el recorrido.
+        await revisarSubsidiosComfandi(
+            document.getElementById('ceps-comfandi-subsidios-todos')?.checked ? 'completa' : 'candidatos',
+            simular
+        );
     }
 }
 
