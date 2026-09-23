@@ -198,12 +198,15 @@ const escogerEmpresa = async (pagina) => {
 
   await esperar(900);
 
-  const opciones = [...await pagina.$$('[class*=option]'), ...await pagina.$$('li')];
+  // La opción del desplegable no es un <li>: el portal la dibuja como un botón
+  // más, así que se busca por texto entre todo lo pulsable, saltándose el
+  // propio "Selecciona tu empresa" y los enlaces del menú.
+  const menu = /^(inicio|ir al inicio|radicados|cerrar sesi|gesti[oó]n de trabajadores|certificados|actualizar datos|administraci[oó]n|selecciona tu empresa|aceptar|c\.)/i;
   let elegida = null;
 
-  for (const o of opciones) {
+  for (const o of [...await pagina.$$('[class*=option]'), ...await pagina.$$('li'), ...await pagina.$$('button,[role=button]')]) {
     const texto = await o.evaluate(e => (e.offsetParent ? (e.innerText || '').trim() : '')).catch(() => '');
-    if (!texto) continue;
+    if (!texto || texto.length > 120 || menu.test(texto)) continue;
     if (!elegida) elegida = o;
     if (saludada && texto.toUpperCase().includes(saludada.toUpperCase().slice(0, 12))) { elegida = o; break; }
   }
