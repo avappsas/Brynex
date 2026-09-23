@@ -82,8 +82,20 @@ class CajaRevisarSubsidios extends Command
         $totales = ['revisados' => 0, 'bloqueados' => 0, 'tareas_nuevas' => 0, 'tareas_cerradas' => 0];
         $fallos = [];
 
+        $sinClave = 0;
+
         foreach ($porEmpresa as $nit => $gente) {
             $documentos = array_column($gente, 'cedula');
+
+            // Sin clave guardada no hay nada que intentar. Son la mayoría de las
+            // empresas, así que van aparte: si entraran como fallo, el mensaje
+            // de la revisión sería una lista de NIT y no se vería lo que sí pasó.
+            if (! $portal->credencial((string) $nit)) {
+                $sinClave += count($documentos);
+
+                continue;
+            }
+
             $this->line("[{$aliadoId}] {$nit}: ".count($documentos).' trabajador(es)…');
 
             try {
@@ -126,6 +138,10 @@ class CajaRevisarSubsidios extends Command
         $resumen = "{$totales['revisados']} revisados · {$totales['bloqueados']} bloqueos · "
             ."{$totales['tareas_nuevas']} nuevas · {$totales['tareas_cerradas']} cerradas";
 
+        if ($sinClave) {
+            $resumen .= " · {$sinClave} sin clave de Comfandi guardada";
+        }
+
         $this->line("Aliado {$aliadoId}: {$resumen}");
 
         if (! $revision) {
@@ -134,8 +150,13 @@ class CajaRevisarSubsidios extends Command
 
         // Una corrida en la que ninguna empresa se pudo consultar no vale como
         // revisión del día: queda fallida para poder reintentarla.
+        $aviso = $fallos ? 'Con fallos: '.implode(' | ', $fallos) : null;
+        if ($sinClave) {
+            $aviso = trim(($aviso ?? '')." · {$sinClave} trabajador(es) de empresas sin clave de Comfandi.");
+        }
+
         $totales['revisados'] > 0
-            ? $revision->terminar($totales, $fallos ? 'Con fallos: '.implode(' | ', $fallos) : null)
+            ? $revision->terminar($totales, $aviso)
             : $revision->fallar($fallos ? implode(' | ', $fallos) : 'No se pudo consultar ninguna empresa.');
     }
 
