@@ -41,11 +41,15 @@ class ComfandiSubsidiosHeadless
             return ['ok' => false, 'error' => "La empresa {$nit} no tiene la clave de Comfandi en el módulo de claves."];
         }
 
+        // El proxy va por stdin junto con la clave, para que no quede en `ps`.
+        // Comfandi tiene Akamai delante y le niega el acceso a la IP del
+        // servidor: sin él, el portal ni siquiera muestra el login.
         $entrada = json_encode([
             'usuario' => $clave['usuario'],
             'contrasena' => $clave['contrasena'],
             'documentos' => $documentos,
             'meses' => $meses,
+            'proxy' => config('services.proxy_colombia.url'),
         ], JSON_UNESCAPED_UNICODE);
 
         $resultado = Process::path(base_path())

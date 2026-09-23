@@ -82,6 +82,24 @@ const meses = Math.max(1, Math.min(12, parseInt(entrada.meses) || 4));
 if (!usuario || !contrasena) salir({ ok: false, error: 'Faltan usuario o contraseña.' });
 if (!documentos.length) salir({ ok: false, error: 'No llegó ninguna cédula para consultar.' });
 
+// Comfandi tiene Akamai delante y le contesta "Access Denied" a la IP del
+// servidor (datacenter fuera de Colombia): sin proxy colombiano el login no
+// llega ni a mostrarse. Chrome no acepta la clave en --proxy-server, así que se
+// entrega con page.authenticate(). Ver PROXY_COLOMBIA.
+let proxy = null;
+if (entrada.proxy) {
+  try {
+    const u = new URL(entrada.proxy);
+    proxy = {
+      servidor: `${u.protocol}//${u.hostname}:${u.port}`,
+      usuario: decodeURIComponent(u.username || ''),
+      clave: decodeURIComponent(u.password || ''),
+    };
+  } catch {
+    salir({ ok: false, error: 'La dirección del proxy no es válida (se espera http://usuario:clave@host:puerto).' });
+  }
+}
+
 const ejecutable = await (async () => {
   const { access } = await import('node:fs/promises');
   for (const ruta of CHROME_CANDIDATOS) {
@@ -95,7 +113,13 @@ if (!ejecutable) salir({ ok: false, error: 'No se encontró Chrome. Instálalo o
 const navegador = await puppeteer.launch({
   executablePath: ejecutable,
   headless: 'new',
-  args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled', '--window-size=1400,900'],
+  args: [
+    '--no-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-blink-features=AutomationControlled',
+    '--window-size=1400,900',
+    ...(proxy ? [`--proxy-server=${proxy.servidor}`] : []),
+  ],
 });
 
 /** La empresa en la que está la sesión, o null si aún no se ha entrado. */
@@ -257,6 +281,7 @@ let pagina;
 try {
   pagina = await navegador.newPage();
   await pagina.setViewport({ width: 1400, height: 900 });
+  if (proxy?.usuario) await pagina.authenticate({ username: proxy.usuario, password: proxy.clave });
 
   // ── Entrar ────────────────────────────────────────────────────────────────
   await pagina.goto(`${BASE}/guest`, { waitUntil: 'networkidle2', timeout: 60000 });
@@ -294,7 +319,9 @@ try {
 
     salir({
       ok: false,
-      error: `El login de Comfandi no mostró el campo de tipo de documento. Quedó en ${pantalla.donde}: "${pantalla.texto}"`,
+      error: /access denied|edgesuite/i.test(pantalla.texto)
+        ? 'Comfandi (Akamai) le niega el acceso a la IP del servidor: hace falta salir por el proxy colombiano (PROXY_COLOMBIA).'
+        : `El login de Comfandi no mostró el campo de tipo de documento. Quedó en ${pantalla.donde}: "${pantalla.texto}"`,
       url: pantalla.donde,
     });
   }
