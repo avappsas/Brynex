@@ -142,14 +142,24 @@ class NuevaEpsPortalService
         return true;
     }
 
-    /** El proxy va por stdin junto con los datos, para que no quede en `ps`. */
+    /**
+     * El proxy va por stdin junto con los datos, para que no quede en `ps`.
+     *
+     * Dos salidas colombianas y basta con una: manda el proxy, que no depende
+     * de que nadie deje encendido el PC de la oficina, y el túnel queda de
+     * respaldo para cuando no haya proxy contratado. Pasar las dos a la vez no
+     * sirve: el `--host-rules` del túnel manda el tráfico a un puerto local y
+     * el proxy nunca llegaría a verlo.
+     */
     private static function correrScript(array $entrada): array
     {
+        $proxy = config('services.proxy_colombia.url');
+
         $resultado = Process::path(base_path())
             ->timeout(self::TIMEOUT_SEGUNDOS)
             ->input(json_encode($entrada + [
-                'proxy' => config('services.proxy_colombia.url'),
-                'tunel' => config('services.nueva_eps.tunel'),
+                'proxy' => $proxy,
+                'tunel' => $proxy ? null : config('services.nueva_eps.tunel'),
             ], JSON_UNESCAPED_UNICODE))
             ->run(ArlSuraSesionService::binarioNode().' scripts/nueva-eps-portal.mjs');
 
