@@ -135,6 +135,18 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/caja-subsidios.log'));
 
+        // La misma revisión, en Comfenalco Valle. Media hora después de la de
+        // Comfandi: cada una levanta su propio Chrome. Aquí la consulta es por
+        // empresa —una pantalla cubre la nómina entera—, así que dura poco.
+        // Sale por PROXY_COLOMBIA: el portal no atiende a la IP del servidor.
+        $schedule->command('caja:revisar-subsidios --caja=COMFENALCO')
+            ->dailyAt('22:40')
+            ->timezone('America/Bogota')
+            ->name('caja-revisar-subsidios-comfenalco')
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/caja-subsidios.log'));
+
         // Agente del buzón de afiliaciones (seguridadsocial.brygar@gmail.com): cada
         // 30 min lee lo que llega de las entidades, aplica los radicados que
         // envían los asesores y avisa por WhatsApp. Solo lectura en Gmail.
