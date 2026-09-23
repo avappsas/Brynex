@@ -121,6 +121,20 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/arl-confirmacion.log'));
 
+        // Los subsidios que Comfandi dejó bloqueados, convertidos en tareas. A las
+        // 22:00 porque el portal avisa que está fuera de servicio de 5 a 8 PM y
+        // porque a esa hora ya terminaron los dos cruces de arriba: cada uno
+        // levanta su propio Chrome y no conviene solaparlos.
+        // Si alguien ya la corrió desde Afiliaciones, esta no repite.
+        // Ejecución manual: php artisan caja:revisar-subsidios --aliado=2 --simular
+        $schedule->command('caja:revisar-subsidios')
+            ->dailyAt('22:00')
+            ->timezone('America/Bogota')
+            ->name('caja-revisar-subsidios')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/caja-subsidios.log'));
+
         // Agente del buzón de afiliaciones (seguridadsocial.brygar@gmail.com): cada
         // 30 min lee lo que llega de las entidades, aplica los radicados que
         // envían los asesores y avisa por WhatsApp. Solo lectura en Gmail.
