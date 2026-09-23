@@ -1999,6 +1999,48 @@ async function cfdSubsidios(pestana, d = {}) {
 }
 
 /**
+ * Elige una opción de un combo del portal.
+ *
+ * Los filtros de Comfandi son react-select: el input va siempre vacío aunque
+ * haya valor —el elegido se lee del contenedor del control—, no tienen
+ * placeholder, y un clic sintético no despliega el menú. La flecha abajo sí lo
+ * abre, y ya desplegado el clic sobre la opción vale. Mirar `input.value`, como
+ * se hacía antes, daba el combo por vacío para siempre y la búsqueda no salía
+ * nunca de la primera pantalla.
+ *
+ * @param tab       pestaña del portal
+ * @param opcion    texto de la opción, tal como la lista el portal
+ * @param cual      índice del combo en la pantalla (casi siempre hay uno solo)
+ */
+async function cfdElegirCombo(tab, opcion, cual = 0) {
+  const elegido = await esperarQue(tab, (texto, i) => {
+    const combos = [...document.querySelectorAll('input[role=combobox]')];
+    const combo = combos[i];
+    if (!combo) return false;
+
+    const re = new RegExp('^\\s*' + texto, 'i');
+    if (re.test(combo.closest('[class*=control]')?.innerText || '')) return 'ya';
+
+    combo.focus();
+    combo.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'ArrowDown', code: 'ArrowDown', keyCode: 40, which: 40 }));
+    return 'abierto';
+  }, [opcion, cual], 15000);
+
+  if (!elegido) return false;
+  if (elegido === 'ya') return true;
+
+  await esperar(600);
+
+  return !!await esperarQue(tab, (texto) => {
+    const re = new RegExp('^\\s*' + texto, 'i');
+    const o = [...document.querySelectorAll('[class*=option]')].find(e => re.test(e.innerText || ''));
+    if (!o) return false;
+    ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(t => o.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+    return true;
+  }, [opcion], 10000);
+}
+
+/**
  * Los bloqueos de un trabajador, o null si no se pudo llegar a su pantalla.
  *
  * El camino es siempre el mismo: buscarlo en el listado, "Gestionar", "Subsidio
@@ -2008,22 +2050,15 @@ async function cfdSubsidios(pestana, d = {}) {
 async function cfdBloqueosDe(tab, documento, meses) {
   if (!await cfdIr(tab, 'workers')) return null;
 
-  // Buscar al trabajador: el tipo de documento es un combo propio, así que se
-  // abre y se pulsa la opción, como en el resto del portal.
+  // Buscar al trabajador. Sin tipo de documento el portal no filtra —saca la
+  // lista entera paginada— y el de al lado saldría como "sin bloqueos".
+  if (!await cfdElegirCombo(tab, 'C[ée]dula de Ciudadan')) return null;
+
   const buscado = await esperarQue(tab, (doc) => {
     const golpe = (e) => ['pointerdown', 'mousedown', 'mouseup', 'click']
       .forEach(t => e.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
-    const ins = [...document.querySelectorAll('input')];
-    const combo = ins.find(i => /tipo de documento/i.test(i.placeholder || ''));
-    const num = ins.find(i => /documento del trabajador/i.test(i.placeholder || ''));
-    if (!combo || !num) return false;
-
-    if (!combo.value) { golpe(combo); return false; }
-
-    const op = [...document.querySelectorAll('li,div,span,p,button')]
-      .filter(e => e.children.length === 0)
-      .find(e => /^\s*C[ée]dula de Ciudadan/i.test(e.innerText || ''));
-    if (op && !/ciudadan/i.test(combo.value)) { golpe(op); return false; }
+    const num = [...document.querySelectorAll('input')].find(i => /documento del trabajador/i.test(i.placeholder || ''));
+    if (!num) return false;
 
     const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
     set.call(num, doc);
@@ -2068,24 +2103,9 @@ async function cfdBloqueosDe(tab, documento, meses) {
 
   if (!listo) return null;
 
-  await ejecutar(tab, () => {
-    const golpe = (e) => ['pointerdown', 'mousedown', 'mouseup', 'click']
-      .forEach(t => e.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
-    const combo = [...document.querySelectorAll('input')][0];
-    if (combo) golpe(combo);
-  }).catch(() => null);
+  if (!await cfdElegirCombo(tab, 'Bloqueos de subsidio')) return null;
 
-  await esperar(800);
-
-  await ejecutar(tab, () => {
-    const o = [...document.querySelectorAll('li,[role=option],[class*=option]')]
-      .find(e => /^Bloqueos de subsidio/i.test((e.innerText || '').trim()));
-    if (!o) return false;
-    ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(t => o.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
-    return true;
-  }).catch(() => null);
-
-  await esperar(800);
+  await esperar(600);
 
   // La fecha inicial es un react-datepicker: se abre con un clic, se retrocede
   // con su flecha y se pulsa el día 1. Escribirle el texto no sirve.

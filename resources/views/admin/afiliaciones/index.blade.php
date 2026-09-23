@@ -3042,6 +3042,16 @@ async function revisarSubsidiosDe(alcance, simular, emp, pinta) {
     const leido = await comfandiExt('cfdSubsidios', { documentos, meses: 4 }, 60 * documentos.length + 120);
     if (!leido?.ok) { pinta('El portal no respondió: ' + (leido?.error || 'sin detalle')); return; }
 
+    // Si no se pudo abrir la pantalla de ninguno, el motivo está en los errores
+    // de la extensión, no en BryNex: decirlo aquí evita el "no se pudo guardar"
+    // a secas, que no señalaba a ninguna parte.
+    if (!(leido.revisados || []).length) {
+        pinta('⚠️ El portal no dejó abrir el subsidio monetario de ninguno de los ' + documentos.length
+            + ': ' + ((leido.errores || [])[0]?.error || 'sin detalle')
+            + ' Recarga la extensión BryNex Portales y vuelve a intentar.');
+        return;
+    }
+
     pinta('Guardando en BryNex…');
     const res = await fetch(COMFANDI_URL_SUBSIDIOS, {
         method: 'POST',
@@ -3055,7 +3065,7 @@ async function revisarSubsidiosDe(alcance, simular, emp, pinta) {
         }),
     }).then(r => r.json()).catch(() => null);
 
-    if (!res?.ok) { pinta('No se pudo guardar: ' + (res?.mensaje || 'error')); return; }
+    if (!res?.ok) { pinta('No se pudo guardar: ' + (res?.mensaje || res?.message || 'error')); return; }
 
     const fallos = (leido.errores || []).length;
     pinta((simular ? '🔎 (solo consulta) ' : '✅ ') + (leido.revisados || []).length + ' revisados · ' + res.bloqueos + ' bloqueos · '

@@ -172,7 +172,7 @@ class ComfandiCajaController extends Controller
             'movimientos' => 'array|max:8000',
             'movimientos.*' => 'array|max:10',
             'nit' => 'nullable|string|max:20',
-            'revisados' => 'required|array|max:3000',
+            'revisados' => 'present|array|max:3000',
             'revisados.*' => 'string|max:20',
             'alcance' => 'nullable|in:candidatos,completa',
             'simular' => 'boolean',
@@ -184,6 +184,18 @@ class ComfandiCajaController extends Controller
         $alcance = $datos['alcance'] ?? CajaRevision::ALCANCE_CANDIDATOS;
 
         $revision = $simular ? null : CajaRevision::abrir($aliadoId, CajaRevision::ENTIDAD_COMFANDI, $alcance);
+
+        // Sin nadie consultado no hay revisión que valer: el portal no dejó
+        // entrar a ninguna pantalla de subsidio. Se marca fallida para poder
+        // reintentar hoy mismo, en vez de dar el día por revisado en falso.
+        if (! $datos['revisados']) {
+            $revision?->fallar('El portal no dejó consultar a ninguno de los trabajadores.');
+
+            return response()->json([
+                'ok' => false,
+                'mensaje' => 'El portal no dejó abrir el subsidio monetario de ningún trabajador. Revisa que la extensión esté al día y vuelve a intentar.',
+            ], 422);
+        }
 
         try {
             $nit = ! empty($datos['nit']) ? ComfandiCajaConciliacionService::nitComoLoGuardaBryNex($datos['nit']) : null;
