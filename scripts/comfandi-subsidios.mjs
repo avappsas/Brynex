@@ -255,7 +255,19 @@ const bloqueosDe = async (pagina, documento) => {
     return true;
   }, [documento], 20000);
 
-  if (!entro) return null;
+  if (!entro) {
+    // Distinto de que el portal falle: puede que esa persona no esté afiliada a
+    // esta empresa en Comfandi (BryNex la tiene, la caja no). Eso no se
+    // reintenta ni se reporta como avería.
+    const vacia = await pagina.evaluate((doc) => {
+      const filas = [...document.querySelectorAll('tbody tr')];
+      const suya = filas.some(r => r.innerText.replace(/\D/g, '').includes(doc));
+
+      return !suya && (filas.length > 0 || /no se encontraron|sin resultados/i.test(document.body.innerText || ''));
+    }, documento).catch(() => false);
+
+    return vacia ? 'no-esta' : null;
+  }
 
   const abrio = await insistir(pagina, () => {
     const e = [...document.querySelectorAll('button,div,span')].filter(x => x.children.length === 0)
@@ -491,6 +503,11 @@ try {
     try {
       const filas = await bloqueosDe(pagina, documento);
       if (filas === null) return { documento, error: 'No se pudo abrir su subsidio monetario.' };
+
+      if (filas === 'no-esta') {
+        return { documento, error: 'No aparece en el listado de trabajadores de esa empresa en Comfandi.', noEsta: true };
+      }
+
       revisados.push(documento);
       filas.forEach(f => movimientos.push({ ...f, documento }));
 
@@ -509,11 +526,12 @@ try {
   // la tabla y el paso siguiente encuentra la de antes—, y al reintentarlo sí
   // responde. Un trabajador no consultado deja su tarea sin cerrar, así que
   // vale la pena la vuelta extra.
-  if (errores.length) {
-    const reintentar = errores.map(e => e.documento);
-    errores = [];
+  const averias = errores.filter(e => !e.noEsta);
 
-    for (const documento of reintentar) {
+  if (averias.length) {
+    errores = errores.filter(e => e.noEsta);
+
+    for (const { documento } of averias) {
       const fallo = await consultar(documento);
       if (fallo) errores.push(fallo);
     }
