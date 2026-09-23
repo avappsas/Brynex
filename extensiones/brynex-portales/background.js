@@ -1108,6 +1108,12 @@ async function atenderCcfcv(accion, d = {}) {
         if (clave && c) poner(clave, c); else clave?.focus();
         return true;
       }, [String(d.usuario), d.contrasena ? String(d.contrasena) : ''], 20000);
+
+      // Con la clave a mano, entrar del todo: hasta ahora se dejaba el
+      // formulario lleno y alguien pulsaba. AuthComfe es un login normal de
+      // correo y contraseña —sin código ni imagen que descifrar—, así que la
+      // sesión se abre sola y la revisión de subsidios puede correr sin nadie.
+      if (d.contrasena) return ccfEntrar(p.id);
     }
     return { ok: true, abierta: true };
   }
@@ -1127,6 +1133,56 @@ async function atenderCcfcv(accion, d = {}) {
   if (accion === 'ccfGrupoFamiliar') return ccfGrupoFamiliar(pestana, d);
 
   throw new Error(`Acción de Comfenalco desconocida: ${accion}`);
+}
+
+/**
+ * Pulsa INICIAR SESIÓN y espera a estar dentro.
+ *
+ * AuthComfe es una app aparte (Firebase) que, al validar, devuelve a la
+ * Sucursal Virtual; la señal de que se entró es el `usuario` en localStorage
+ * del portal, no la pantalla de AuthComfe.
+ */
+async function ccfEntrar(tab) {
+  const pulsado = await esperarQue(tab, () => {
+    const btn = [...document.querySelectorAll('button,input[type=submit]')]
+      .find(b => /iniciar sesi/i.test(b.innerText || b.value || ''));
+    if (!btn || btn.disabled) return false;
+    btn.click();
+
+    return true;
+  }, [], 20000);
+
+  if (!pulsado) return { ok: false, abierta: true, error: 'No se encontró el botón de acceso de Comfenalco.' };
+
+  const limite = Date.now() + 90000;
+
+  while (Date.now() < limite) {
+    await esperar(2000);
+
+    const estado = await ejecutar(tab, pCcfEstado).catch(() => null);
+    if (estado?.sesion) return { ok: true, abierta: true, sesion: true, empresa: estado.empresa };
+
+    const error = await ejecutar(tab, () =>
+      /contrase|incorrect|inv[aá]lid|no existe/i.test(document.body.innerText || '')
+        ? (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 200)
+        : null).catch(() => null);
+
+    if (error && /incorrect|inv[aá]lid|no existe/i.test(error)) {
+      return { ok: false, abierta: true, error: 'Comfenalco rechazó el usuario o la clave guardada en BryNex.' };
+    }
+  }
+
+  const pantalla = await ejecutar(tab, () => ({
+    donde: location.host + location.pathname,
+    texto: (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 250),
+  })).catch(() => null);
+
+  return {
+    ok: false,
+    abierta: true,
+    error: 'No se llegó a abrir la sesión de Comfenalco.'
+      + (pantalla ? ` Quedó en ${pantalla.donde}: "${pantalla.texto}"` : ''),
+  };
 }
 
 /** Busca al trabajador en "Realizar Afiliación" y devuelve lo que ofrece el portal. */
