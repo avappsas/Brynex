@@ -227,7 +227,7 @@ const escogerEmpresa = async (pagina) => {
 /** Los bloqueos de un trabajador, o null si no se pudo llegar a su pantalla. */
 const bloqueosDe = async (pagina, documento) => {
   await pagina.goto(`${BASE}/workers`, { waitUntil: 'networkidle2', timeout: 60000 });
-  await esperar(2000);
+  await esperar(3000);
 
   // Sin tipo de documento el portal no filtra: saca la lista entera paginada y
   // el trabajador podría no estar en la primera página.
@@ -485,19 +485,37 @@ try {
   // ── Recorrer a los trabajadores ───────────────────────────────────────────
   const movimientos = [];
   const revisados = [];
-  const errores = [];
+  let errores = [];
 
-  for (const documento of documentos) {
+  const consultar = async (documento) => {
     try {
       const filas = await bloqueosDe(pagina, documento);
-      if (filas === null) {
-        errores.push({ documento, error: 'No se pudo abrir su subsidio monetario.' });
-        continue;
-      }
+      if (filas === null) return { documento, error: 'No se pudo abrir su subsidio monetario.' };
       revisados.push(documento);
       filas.forEach(f => movimientos.push({ ...f, documento }));
+
+      return null;
     } catch (e) {
-      errores.push({ documento, error: String(e?.message || e).slice(0, 150) });
+      return { documento, error: String(e?.message || e).slice(0, 150) };
+    }
+  };
+
+  for (const documento of documentos) {
+    const fallo = await consultar(documento);
+    if (fallo) errores.push(fallo);
+  }
+
+  // Segunda pasada: el portal se traba con uno de cada dos —tarda en repintar
+  // la tabla y el paso siguiente encuentra la de antes—, y al reintentarlo sí
+  // responde. Un trabajador no consultado deja su tarea sin cerrar, así que
+  // vale la pena la vuelta extra.
+  if (errores.length) {
+    const reintentar = errores.map(e => e.documento);
+    errores = [];
+
+    for (const documento of reintentar) {
+      const fallo = await consultar(documento);
+      if (fallo) errores.push(fallo);
     }
   }
 
