@@ -41,15 +41,14 @@ class ComfenalcoSubsidiosHeadless
             return ['ok' => false, 'error' => "La empresa {$nit} no tiene la clave de Comfenalco en el módulo de claves."];
         }
 
-        // El túnel lo mantiene un PC de la oficina: si está apagado, el puerto
-        // no escucha y Chrome se quedaría esperando. Mejor decirlo aquí y no
-        // dar la clave por mala.
-        foreach (['tunel', 'tunel_auth'] as $cual) {
-            $destino = config("services.comfenalco.{$cual}");
+        // Hay dos salidas colombianas y basta con una. El túnel manda cuando
+        // está en pie —es la conexión propia—, pero si el PC de la oficina está
+        // apagado y hay proxy contratado, se sigue por ahí en vez de cortar.
+        $tunelListo = $this->tunelEnPie();
+        $hayProxy = (bool) config('services.proxy_colombia.url');
 
-            if ($destino && ! $this->escucha($destino)) {
-                return ['ok' => false, 'error' => "El túnel de la oficina no está abierto ({$destino}): revisa que el PC esté encendido."];
-            }
+        if (! $tunelListo && ! $hayProxy) {
+            return ['ok' => false, 'error' => 'No hay salida colombiana: ni el túnel de la oficina ni PROXY_COLOMBIA.'];
         }
 
         $resultado = Process::path(base_path())
@@ -63,9 +62,11 @@ class ComfenalcoSubsidiosHeadless
                 // El portal rechaza la IP del servidor: sale por el proxy
                 // colombiano, igual que Nueva EPS. Va por stdin con la clave
                 // para que no quede en `ps`.
-                'proxy' => config('services.proxy_colombia.url'),
-                'tunel' => config('services.comfenalco.tunel'),
-                'tunel_auth' => config('services.comfenalco.tunel_auth'),
+                // Con el túnel en pie no se usa el proxy: gastar tráfico de
+                // pago teniendo la conexión de la oficina no tiene sentido.
+                'proxy' => $tunelListo ? null : config('services.proxy_colombia.url'),
+                'tunel' => $tunelListo ? config('services.comfenalco.tunel') : null,
+                'tunel_auth' => $tunelListo ? config('services.comfenalco.tunel_auth') : null,
             ], JSON_UNESCAPED_UNICODE))
             ->run($this->comando());
 
@@ -134,6 +135,20 @@ class ComfenalcoSubsidiosHeadless
         }
 
         return $movimientos;
+    }
+
+    /** ¿Están abiertos los dos puertos del túnel de la oficina? */
+    private function tunelEnPie(): bool
+    {
+        foreach (['tunel', 'tunel_auth'] as $cual) {
+            $destino = config("services.comfenalco.{$cual}");
+
+            if (! $destino || ! $this->escucha($destino)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /** ¿Hay algo escuchando en `host:puerto`? */
