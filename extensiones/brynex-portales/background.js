@@ -1130,6 +1130,7 @@ async function atenderCcfcv(accion, d = {}) {
   if (accion === 'ccfPaso') return { ok: true, ...(await ejecutar(pestana.id, pCcfPaso, [d])) };
   if (accion === 'ccfResultado') return { ok: true, ...(await ejecutar(pestana.id, pCcfResultado)) };
   if (accion === 'ccfTrabajadores') return ccfTrabajadores(pestana);
+  if (accion === 'ccfMorosos') return ccfMorosos(pestana);
   if (accion === 'ccfGrupoFamiliar') return ccfGrupoFamiliar(pestana, d);
 
   throw new Error(`Acción de Comfenalco desconocida: ${accion}`);
@@ -1183,6 +1184,83 @@ async function ccfEntrar(tab) {
     error: 'No se llegó a abrir la sesión de Comfenalco.'
       + (pantalla ? ` Quedó en ${pantalla.donde}: "${pantalla.texto}"` : ''),
   };
+}
+
+/**
+ * Los trabajadores que la caja reporta morosos o con inexactitud.
+ *
+ * Es el equivalente de los bloqueos de subsidio de Comfandi, pero esta consulta
+ * es **por empresa**: una sola pantalla cubre la nómina entera, en vez de los
+ * diez segundos por persona del otro portal. Por eso, si responde, todos los
+ * candidatos quedan revisados y a quien no aparezca se le puede cerrar la tarea.
+ *
+ * Lo hace la extensión y no el servidor porque el portal tiene un WAF que
+ * bloquea a cualquier navegador automatizado —da igual la IP: se probó desde
+ * netcup y desde una conexión de Cali—, mientras que en el navegador de la
+ * persona, con su sesión, entra sin problema.
+ */
+async function ccfMorosos(pestana) {
+  const tab = pestana.id;
+  const est = await ejecutar(tab, pCcfEstado).catch(() => ({ sesion: false }));
+
+  if (!est.sesion) return { ok: false, error: 'El portal de Comfenalco no tiene la sesión iniciada.' };
+
+  await chrome.tabs.update(tab, { url: `${CCFCV_BASE}/consultaTrabajadorMoroso.html` });
+  await esperarCarga(tab);
+
+  const listo = await esperarQue(tab, () => !!document.getElementById('cmbSucursalEmpresa'), [], 30000);
+  if (!listo) return { ok: false, error: 'No cargó la consulta de trabajadores morosos.' };
+
+  await esperar(1500);
+
+  const sucursales = await ejecutar(tab, () =>
+    [...document.querySelectorAll('#cmbSucursalEmpresa option')]
+      .map(o => o.value).filter(v => v && v !== '-1')).catch(() => []);
+
+  if (!sucursales.length) return { ok: false, error: 'La empresa no tiene sucursales en Comfenalco.' };
+
+  const movimientos = [];
+
+  for (const sucursal of sucursales) {
+    await ejecutar(tab, (v) => {
+      const s = document.getElementById('cmbSucursalEmpresa');
+      s.value = v;
+      // Los combos son Chosen: sin avisarle, el que manda sigue mostrando lo de
+      // antes y la consulta sale con la sucursal vieja.
+      if (window.$) $(s).trigger('change').trigger('chosen:updated');
+      else s.dispatchEvent(new Event('change', { bubbles: true }));
+
+      const btn = [...document.querySelectorAll('button')].find(b => /^\s*consultar\s*$/i.test((b.innerText || '').trim()));
+      btn?.click();
+
+      return true;
+    }, [sucursal]).catch(() => null);
+
+    await esperar(6000);
+
+    const filas = await ejecutar(tab, () => {
+      const leer = (id, origen) => [...document.querySelectorAll(`#${id} tbody tr`)]
+        .map(r => [...r.querySelectorAll('td')].map(c => c.innerText.trim()))
+        .filter(c => c.length >= 4)
+        .map(c => ({ periodo: c[0], clase: c[1], documento: c[2], nombre: c[3], valor: c[4] || '0', origen }));
+
+      return [...leer('tablaMorosidad', 'mora'), ...leer('tablaInexactitud', 'inexactitud')];
+    }).catch(() => []);
+
+    (filas || []).forEach(f => movimientos.push({ ...f, sucursal }));
+
+    // El aviso de "no hay información" tapa la pantalla y deja la consulta
+    // siguiente sin poder pulsarse.
+    await ejecutar(tab, () => {
+      [...document.querySelectorAll('button,a')]
+        .filter(e => /^\s*cerrar\s*$/i.test((e.innerText || '').trim()))
+        .forEach(e => e.click());
+    }).catch(() => null);
+
+    await esperar(800);
+  }
+
+  return { ok: true, empresa: est.empresa, sucursales: sucursales.length, movimientos };
 }
 
 /** Busca al trabajador en "Realizar Afiliación" y devuelve lo que ofrece el portal. */

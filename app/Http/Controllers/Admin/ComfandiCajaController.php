@@ -136,10 +136,13 @@ class ComfandiCajaController extends Controller
         $datos = $request->validate([
             'nit' => 'nullable|string|max:20',
             'alcance' => 'nullable|in:candidatos,completa',
+            'caja' => 'nullable|in:COMFANDI,COMFENALCO',
         ]);
 
         $aliadoId = (int) session('aliado_id_activo');
         $completa = ($datos['alcance'] ?? 'candidatos') === 'completa';
+        $caja = $datos['caja'] ?? SubsidioCandidatosService::CAJA_POR_DEFECTO;
+        $entidad = $caja === 'COMFENALCO' ? CajaRevision::ENTIDAD_COMFENALCO : CajaRevision::ENTIDAD_COMFANDI;
 
         // El portal da el NIT con el dígito de verificación pegado
         // (9016037383) y BryNex lo guarda sin él: sin traducirlo, la empresa no
@@ -148,14 +151,16 @@ class ComfandiCajaController extends Controller
             ? ComfandiCajaConciliacionService::nitComoLoGuardaBryNex($datos['nit'])
             : null;
 
-        $lista = $completa ? $candidatos->todos($aliadoId, $nit) : $candidatos->candidatos($aliadoId, $nit);
+        $lista = $completa
+            ? $candidatos->todos($aliadoId, $nit, $caja)
+            : $candidatos->candidatos($aliadoId, $nit, $caja);
 
         return response()->json([
             'ok' => true,
             'alcance' => $completa ? 'completa' : 'candidatos',
             // El candado es por empresa: sin NIT no hay nada que preguntar, y
             // la pantalla solo lo usa para no repetir la de la empresa abierta.
-            'ya_revisado_hoy' => $nit ? CajaRevision::yaSeHizo($nit) : false,
+            'ya_revisado_hoy' => $nit ? CajaRevision::yaSeHizo($nit, $entidad) : false,
             'total' => collect($lista)->map(fn ($f) => count($f))->sum(),
             'por_empresa' => $lista,
         ]);
@@ -179,17 +184,22 @@ class ComfandiCajaController extends Controller
             'alcance' => 'nullable|in:candidatos,completa',
             'simular' => 'boolean',
             'cerrar_revision' => 'boolean',
+            // Qué caja mandó estos movimientos. El proceso es el mismo para
+            // todas; lo único propio de cada una es quién lee su portal.
+            'caja' => 'nullable|in:COMFANDI,COMFENALCO',
         ]);
 
         $aliadoId = (int) session('aliado_id_activo');
         $simular = (bool) ($datos['simular'] ?? false);
         $alcance = $datos['alcance'] ?? CajaRevision::ALCANCE_CANDIDATOS;
+        $caja = $datos['caja'] ?? SubsidioCandidatosService::CAJA_POR_DEFECTO;
+        $entidad = $caja === 'COMFENALCO' ? CajaRevision::ENTIDAD_COMFENALCO : CajaRevision::ENTIDAD_COMFANDI;
 
         $nit = ! empty($datos['nit']) ? ComfandiCajaConciliacionService::nitComoLoGuardaBryNex($datos['nit']) : null;
 
         $revision = $simular || ! $nit
             ? null
-            : CajaRevision::abrir($nit, CajaRevision::ENTIDAD_COMFANDI, $alcance, $aliadoId);
+            : CajaRevision::abrir($nit, $entidad, $alcance, $aliadoId);
 
         // Sin nadie consultado no hay revisión que valer: el portal no dejó
         // entrar a ninguna pantalla de subsidio. Se marca fallida para poder
@@ -204,7 +214,7 @@ class ComfandiCajaController extends Controller
         }
 
         try {
-            $r = $servicio->procesar($aliadoId, $datos['movimientos'] ?? [], $datos['revisados'], $simular, $nit);
+            $r = $servicio->procesar($aliadoId, $datos['movimientos'] ?? [], $datos['revisados'], $simular, $nit, $caja);
         } catch (Throwable $e) {
             $revision?->fallar($e->getMessage());
 
