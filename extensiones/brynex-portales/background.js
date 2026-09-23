@@ -49,6 +49,8 @@
  *  cfdResultado                        → {radicado, numero, texto} tras Finalizar
  *  cfdTrabajadores                     → {nit, empresa, filas, radicados} para la conciliación
  *  cfdListado                          → {nit, empresa, archivoUrl} del Excel del portal (listado + beneficiarios)
+ *  cfdEmpresa                          → {nit, empresa} de la empresa abierta en el portal
+ *  cfdSubsidios {documentos, meses}    → {movimientos, revisados} de bloqueos de subsidio monetario
  *
  * Pedidos Fondo de Solidaridad Pensional (portal: 'fsp', certificado del PSAP en Equiedad):
  *  fspAbrir {tipoDoc, documento}       → abre la consulta del certificado con tipo y número escritos
@@ -1379,6 +1381,8 @@ async function atenderCfd(accion, d = {}) {
   if (accion === 'cfdResultado') return { ok: true, ...(await ejecutar(pestana.id, pCfdResultado)) };
   if (accion === 'cfdTrabajadores') return cfdTrabajadores(pestana);
   if (accion === 'cfdListado') return cfdListado(pestana);
+  if (accion === 'cfdEmpresa') return { ok: true, ...(await cfdNitEmpresa(pestana.id) || {}) };
+  if (accion === 'cfdSubsidios') return cfdSubsidios(pestana, d);
 
   throw new Error(`Acción de Comfandi desconocida: ${accion}`);
 }
@@ -1940,6 +1944,215 @@ async function cfdFilaListado(tab) {
     const c = [...f.querySelectorAll('td')].map(x => (x.innerText || '').replace(/\s+/g, ' ').trim());
     return { numero: c[0], fecha: c[4] || null };
   }).catch(() => null);
+}
+
+/**
+ * Bloqueos de subsidio monetario de una lista de trabajadores.
+ *
+ * El portal solo responde de a una persona: hay que buscarla en Gestión de
+ * trabajadores, entrar a "Subsidio monetario" y consultar el rango. Por eso
+ * BryNex no manda a todos los afiliados sino a los sospechosos del día — quien
+ * pagó con mora, quien ya tiene tarea abierta y los recién afiliados— y aquí se
+ * recorren uno por uno.
+ *
+ * Detrás hay un API (`ria.sucursalcomfandi.com/monetary-subsidy/getMovements`),
+ * pero rechaza los tokens de la sesión del navegador: la llamada la hace el
+ * servidor del portal con uno propio. Mientras eso siga así, se lee la pantalla.
+ *
+ * `revisados` son las cédulas que sí se alcanzaron a consultar. BryNex solo
+ * cierra tareas de esas: un bloqueo que nadie miró no está resuelto.
+ */
+async function cfdSubsidios(pestana, d = {}) {
+  const tab = pestana.id;
+  const est = await ejecutar(tab, pCfdEstado);
+  if (!est.sesion) return { ok: false, error: 'El portal no tiene la sesión iniciada. Entra con el NIT de la empresa y selecciona la empresa.' };
+
+  const empresa = await cfdNitEmpresa(tab);
+  if (!empresa?.nit) return { ok: false, error: 'No se pudo leer el NIT de la empresa seleccionada en el portal.' };
+
+  const documentos = (d.documentos || []).map(x => String(x).replace(/\D/g, '')).filter(Boolean);
+  if (!documentos.length) return { ok: false, error: 'No llegó ninguna cédula para consultar.' };
+
+  // Cuántos meses atrás se pide. El portal abre en el mes en curso y los
+  // bloqueos se acumulan del ciclo anterior, así que por defecto van cuatro.
+  const meses = Math.max(1, Math.min(12, parseInt(d.meses) || 4));
+
+  const movimientos = [];
+  const revisados = [];
+  const errores = [];
+
+  for (const documento of documentos) {
+    try {
+      const filas = await cfdBloqueosDe(tab, documento, meses);
+      if (filas === null) {
+        errores.push({ documento, error: 'No se pudo abrir su subsidio monetario.' });
+        continue;
+      }
+      revisados.push(documento);
+      filas.forEach(f => movimientos.push({ ...f, documento }));
+    } catch (e) {
+      errores.push({ documento, error: String(e?.message || e).slice(0, 150) });
+    }
+  }
+
+  return { ok: true, nit: empresa.nit, empresa: empresa.empresa, movimientos, revisados, errores };
+}
+
+/**
+ * Los bloqueos de un trabajador, o null si no se pudo llegar a su pantalla.
+ *
+ * El camino es siempre el mismo: buscarlo en el listado, "Gestionar", "Subsidio
+ * monetario", escoger el tipo de búsqueda, correr la fecha inicial hacia atrás
+ * y pulsar Buscar.
+ */
+async function cfdBloqueosDe(tab, documento, meses) {
+  if (!await cfdIr(tab, 'workers')) return null;
+
+  // Buscar al trabajador: el tipo de documento es un combo propio, así que se
+  // abre y se pulsa la opción, como en el resto del portal.
+  const buscado = await esperarQue(tab, (doc) => {
+    const golpe = (e) => ['pointerdown', 'mousedown', 'mouseup', 'click']
+      .forEach(t => e.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+    const ins = [...document.querySelectorAll('input')];
+    const combo = ins.find(i => /tipo de documento/i.test(i.placeholder || ''));
+    const num = ins.find(i => /documento del trabajador/i.test(i.placeholder || ''));
+    if (!combo || !num) return false;
+
+    if (!combo.value) { golpe(combo); return false; }
+
+    const op = [...document.querySelectorAll('li,div,span,p,button')]
+      .filter(e => e.children.length === 0)
+      .find(e => /^\s*C[ée]dula de Ciudadan/i.test(e.innerText || ''));
+    if (op && !/ciudadan/i.test(combo.value)) { golpe(op); return false; }
+
+    const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    set.call(num, doc);
+    num.dispatchEvent(new Event('input', { bubbles: true }));
+
+    const btn = [...document.querySelectorAll('button')].find(b => /^\s*Buscar\s*$/i.test(b.innerText));
+    if (!btn) return false;
+    golpe(btn);
+    return true;
+  }, [documento], 25000);
+
+  if (!buscado) return null;
+
+  // Su fila y, dentro, el botón Gestionar → "Subsidio monetario".
+  const entro = await esperarQue(tab, (doc) => {
+    const fila = [...document.querySelectorAll('tbody tr')].find(r => r.innerText.replace(/\D/g, '').includes(doc));
+    if (!fila) return false;
+    const b = fila.querySelector('button');
+    if (!b) return false;
+    b.click();
+    return true;
+  }, [documento], 20000);
+
+  if (!entro) return null;
+
+  const abrio = await esperarQue(tab, () => {
+    const e = [...document.querySelectorAll('button,div,span')].filter(x => x.children.length === 0)
+      .find(x => /^\s*Subsidio monetario\s*$/i.test(x.innerText || ''));
+    if (!e) return false;
+    const c = e.closest('button') || e;
+    ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(t => c.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+    return true;
+  }, [], 20000);
+
+  if (!abrio) return null;
+
+  // La pantalla de subsidio: tipo de búsqueda "Bloqueos" y fecha inicial atrás.
+  const listo = await esperarQue(tab, () => {
+    const ins = [...document.querySelectorAll('input')];
+    return ins.some(i => /fecha inicial/i.test(i.placeholder || '')) ? true : false;
+  }, [], 25000);
+
+  if (!listo) return null;
+
+  await ejecutar(tab, () => {
+    const golpe = (e) => ['pointerdown', 'mousedown', 'mouseup', 'click']
+      .forEach(t => e.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+    const combo = [...document.querySelectorAll('input')][0];
+    if (combo) golpe(combo);
+  }).catch(() => null);
+
+  await esperar(800);
+
+  await ejecutar(tab, () => {
+    const o = [...document.querySelectorAll('li,[role=option],[class*=option]')]
+      .find(e => /^Bloqueos de subsidio/i.test((e.innerText || '').trim()));
+    if (!o) return false;
+    ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(t => o.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+    return true;
+  }).catch(() => null);
+
+  await esperar(800);
+
+  // La fecha inicial es un react-datepicker: se abre con un clic, se retrocede
+  // con su flecha y se pulsa el día 1. Escribirle el texto no sirve.
+  await ejecutar(tab, async (n) => {
+    const espera = ms => new Promise(r => setTimeout(r, ms));
+    const campo = [...document.querySelectorAll('input')].find(i => /fecha inicial/i.test(i.placeholder || ''));
+    if (!campo) return false;
+    campo.focus();
+    ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(t => campo.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+    await espera(600);
+    for (let i = 0; i < n; i++) {
+      document.querySelector('.react-datepicker__navigation--previous')?.click();
+      await espera(250);
+    }
+    const dia = [...document.querySelectorAll('.react-datepicker__day:not(.react-datepicker__day--outside-month)')]
+      .find(e => e.innerText.trim() === '1');
+    dia?.click();
+    return true;
+  }, [meses]).catch(() => null);
+
+  await esperar(600);
+
+  const respondio = await esperarQue(tab, () => {
+    const btn = [...document.querySelectorAll('button')].find(b => /^\s*Buscar\s*$/i.test(b.innerText));
+    if (!btn) return false;
+    ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(t => btn.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+    return true;
+  }, [], 20000);
+
+  if (!respondio) return null;
+
+  // Resultado: tarjetas con período, fecha, motivo y valor, o el "¡Upss!" de
+  // que no hay movimientos — que también es una respuesta válida.
+  const filas = await esperarQue(tab, () => {
+    const texto = document.body.innerText || '';
+    if (/no se encontraron movimientos/i.test(texto)) return { vacio: true, filas: [] };
+
+    const tarjetas = [...document.querySelectorAll('*')]
+      .filter(e => e.children.length === 0 && /Periodo de bloqueo/i.test(e.innerText || ''))
+      .map(e => e.closest('div[class*=border], div[class*=rounded], li, article') || e.parentElement);
+
+    const vistos = new Set();
+    const filas = [];
+
+    for (const t of tarjetas) {
+      const txt = (t?.innerText || '').replace(/\s+/g, ' ').trim();
+      if (!txt || vistos.has(txt)) continue;
+      vistos.add(txt);
+      const periodo = txt.match(/Periodo de bloqueo:\s*([^|]+?)\s*(?:\||Fecha)/i);
+      const fecha = txt.match(/Fecha de Bloqueo:\s*([0-9]{1,2}\s+\w+\s+[0-9]{4})/i);
+      const motivo = txt.match(/Motivo de Bloqueo:\s*(.+?)\s*$/i);
+      const valor = txt.match(/-?\$\s*([\d.,]+)/);
+      filas.push({
+        tipo: 'BLOQUEO',
+        periodo: periodo ? periodo[1].trim() : '',
+        fecha: fecha ? fecha[1].trim() : null,
+        motivo: motivo ? motivo[1].trim() : '',
+        valor: valor ? valor[1] : '0',
+      });
+    }
+
+    return filas.length ? { vacio: false, filas } : null;
+  }, [], 30000);
+
+  if (!filas) return null;
+
+  return filas.filas;
 }
 
 // ── Fondo de Solidaridad Pensional: certificado del PSAP ─────────────────

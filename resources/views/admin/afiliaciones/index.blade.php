@@ -1139,6 +1139,21 @@ function sortClass($col, $currSort, $currDir) {
             el motivo antes de volver a radicar, y sin radicado <strong>falta afiliar</strong> (🏢 Afiliar a Comfandi).
             También lista a los afiliados de la caja que BryNex no tiene como contrato vigente con Comfandi.
             <div id="ceps-comfandi-sesion" style="margin-top:0.45rem;"></div>
+
+            <div style="margin-top:0.7rem;padding-top:0.6rem;border-top:1px dashed #cbd5e1;">
+                <strong>💰 Subsidios bloqueados.</strong> Consulta en el portal, trabajador por trabajador, los
+                <strong>bloqueos de subsidio monetario</strong> de esta empresa y abre una <strong>tarea</strong> por cada uno:
+                de tipo <em>Subsidios</em> cuando la caja espera los aportes, y de <em>Solicitud de documentos</em> cuando pide
+                el certificado escolar o papeles del beneficiario. La tarea queda con el encargado del contrato y
+                <strong>se cierra sola</strong> cuando la caja deja de reportar el bloqueo.
+                Solo se revisan los sospechosos del día —pago con mora, tarea abierta o afiliado nuevo—; una vez al mes
+                conviene el barrido completo. Tarda unos 10 segundos por persona.
+                <div id="ceps-comfandi-subsidios" style="margin-top:0.5rem;display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+                    <button type="button" onclick="revisarSubsidiosComfandi('candidatos')" class="btn-export" style="background:#b45309;cursor:pointer;">💰 Revisar subsidios del día</button>
+                    <button type="button" onclick="revisarSubsidiosComfandi('completa')" class="btn-export" style="background:#78350f;cursor:pointer;">📅 Barrido completo</button>
+                    <span id="ceps-comfandi-subsidios-estado" style="font-weight:700;color:#92400e;"></span>
+                </div>
+            </div>
         </div>
 
         <div id="ceps-descripcion-pension" style="display:none;font-size:0.78rem;color:#475569;line-height:1.45;margin-bottom:0.8rem;">
@@ -2678,7 +2693,7 @@ async function consultarConciliacionEpsSura() {
     try {
         if (_cepsEntidad === 'sanitas') revisarSesionSanitas();
         if (_cepsEntidad === 'caja_comfenalco') revisarSesionCajaConciliacion();
-        if (_cepsEntidad === 'caja_comfandi') revisarSesionComfandiConciliacion();
+        if (_cepsEntidad === 'caja_comfandi') revisarSesionComfandiConciliacion().then(s => { if (s) revisarSubsidiosSiFalta(); });
         const url = _cepsEntidad === 'sanitas' ? SANITAS_URL_ESTADO
             : (_cepsEntidad === 'caja_comfenalco' ? CAJA_URL_ESTADO
                 : (_cepsEntidad === 'caja_comfandi' ? COMFANDI_URL_ESTADO : CEPS_URL_ESTADO + '?entidad=' + _cepsEntidad));
@@ -2893,6 +2908,8 @@ function cambiarRazonConciliacion() {
 // ── Caja Comfandi: conciliación con la extensión BryNex Portales ──
 const COMFANDI_URL_CONCILIAR = @json(route('admin.afiliaciones.caja-comfandi.conciliar'));
 const COMFANDI_URL_ESTADO = @json(route('admin.afiliaciones.caja-comfandi.conciliar.estado'));
+const COMFANDI_URL_SUBSIDIOS_CANDIDATOS = @json(route('admin.afiliaciones.caja-comfandi.subsidios.candidatos'));
+const COMFANDI_URL_SUBSIDIOS = @json(route('admin.afiliaciones.caja-comfandi.subsidios'));
 
 function comfandiExt(accion, datos = {}, limiteSeg = 120) {
     return brynexExt('cfd', accion, datos, limiteSeg);
@@ -2914,6 +2931,100 @@ async function revisarSesionComfandiConciliacion() {
     }
     caja.innerHTML = `✅ Portal abierto${e.empresa ? ' con <strong>' + e.empresa + '</strong>' : ''}.` + abrir;
     return e;
+}
+
+/**
+ * Revisión de subsidios bloqueados de la empresa abierta en el portal.
+ *
+ * El portal responde de a un trabajador, así que BryNex dice a quién preguntarle
+ * —los sospechosos del día o, con `completa`, todos los vigentes— y la extensión
+ * los recorre. Lo que vuelve se convierte en tareas: las nuevas se abren y las
+ * que la caja ya no reporta se cierran solas.
+ *
+ * Solo se manda la cédula de gente de ESA empresa: buscar en el portal a alguien
+ * de otra no devuelve nada, y BryNex lo leería como "ya no tiene bloqueo".
+ */
+/**
+ * Dispara la revisión del día la primera vez que alguien abre la pestaña con la
+ * sesión del portal lista, y no más: es el "una vez al día" del proceso.
+ *
+ * La marca de que ya se hizo vive en BryNex (`caja_revisiones`), no en el
+ * navegador, así que da igual quién la haya corrido o desde qué equipo.
+ */
+let _subsidiosDisparados = false;
+
+async function revisarSubsidiosSiFalta() {
+    if (_subsidiosDisparados) return;
+    _subsidiosDisparados = true;
+
+    const est = document.getElementById('ceps-comfandi-subsidios-estado');
+    try {
+        const cand = await fetch(COMFANDI_URL_SUBSIDIOS_CANDIDATOS + '?alcance=candidatos',
+            { headers: { 'Accept': 'application/json' } }).then(r => r.json());
+
+        if (!cand?.ok) return;
+
+        if (cand.ya_revisado_hoy) {
+            if (est) est.textContent = '✅ Los subsidios ya se revisaron hoy.';
+            return;
+        }
+
+        if (!cand.total) {
+            if (est) est.textContent = '✅ Hoy no hay nadie por revisar.';
+            return;
+        }
+
+        await revisarSubsidiosComfandi('candidatos');
+    } catch (e) {
+        if (est) est.textContent = '';
+    }
+}
+
+async function revisarSubsidiosComfandi(alcance) {
+    const est = document.getElementById('ceps-comfandi-subsidios-estado');
+    const pinta = (t) => { if (est) est.textContent = t; };
+
+    if (!await revisarSesionComfandiConciliacion()) { alert('Primero inicia sesión en la Sucursal Virtual Empresas de Comfandi.'); return; }
+
+    pinta('Leyendo la empresa abierta…');
+    const emp = await comfandiExt('cfdEmpresa', {}, 40);
+    if (!emp?.nit) { pinta('No se pudo leer el NIT de la empresa abierta en el portal.'); return; }
+
+    pinta('Pidiendo a quién consultar…');
+    const url = COMFANDI_URL_SUBSIDIOS_CANDIDATOS + '?nit=' + encodeURIComponent(emp.nit) + '&alcance=' + alcance;
+    const cand = await fetch(url, { headers: { 'Accept': 'application/json' } }).then(r => r.json()).catch(() => null);
+    if (!cand?.ok) { pinta('No se pudo consultar la lista de candidatos.'); return; }
+
+    const grupo = Object.values(cand.por_empresa || {})[0] || [];
+    if (!grupo.length) { pinta('✅ ' + (emp.empresa || emp.nit) + ': nadie por revisar hoy.'); return; }
+
+    if (cand.ya_revisado_hoy && !confirm('Los subsidios ya se revisaron hoy. ¿Volver a revisarlos?')) return;
+
+    const documentos = grupo.map(c => c.cedula);
+    pinta('Consultando ' + documentos.length + ' trabajador(es) en el portal… (unos ' + Math.ceil(documentos.length * 10 / 60) + ' min)');
+
+    const leido = await comfandiExt('cfdSubsidios', { documentos, meses: 4 }, 60 * documentos.length + 120);
+    if (!leido?.ok) { pinta('El portal no respondió: ' + (leido?.error || 'sin detalle')); return; }
+
+    pinta('Guardando en BryNex…');
+    const res = await fetch(COMFANDI_URL_SUBSIDIOS, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
+        body: JSON.stringify({
+            nit: emp.nit,
+            alcance,
+            movimientos: leido.movimientos || [],
+            revisados: leido.revisados || [],
+        }),
+    }).then(r => r.json()).catch(() => null);
+
+    if (!res?.ok) { pinta('No se pudo guardar: ' + (res?.mensaje || 'error')); return; }
+
+    const fallos = (leido.errores || []).length;
+    pinta('✅ ' + (leido.revisados || []).length + ' revisados · ' + res.bloqueos + ' bloqueos · '
+        + res.nuevas + ' tarea(s) nueva(s) · ' + res.cerradas + ' cerrada(s)'
+        + (res.sin_contrato ? ' · ' + res.sin_contrato + ' sin contrato' : '')
+        + (fallos ? ' · ' + fallos + ' no se pudieron consultar' : ''));
 }
 
 async function conciliarCajaComfandi(simular) {
