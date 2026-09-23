@@ -89,6 +89,22 @@ if (entrada.proxy) {
   }
 }
 
+// La otra salida colombiana: el túnel inverso desde el PC de la oficina, que
+// ya trae a Nueva EPS. Un puerto por dominio, y `--host-rules` manda el tráfico
+// de cada uno al suyo. El TLS sigue validándose contra el certificado real del
+// portal, así que el túnel no ve nada del contenido.
+const mapa = [];
+for (const [host, destino] of [
+  ['virtual.comfenalcovalle.com.co', entrada.tunel],
+  ['authcomfeempresasprod.web.app', entrada.tunel_auth],
+]) {
+  if (!destino) continue;
+  if (!/^[\w.-]+:\d{2,5}$/.test(String(destino))) {
+    salir({ ok: false, error: `La dirección del túnel de ${host} no es válida (se espera 127.0.0.1:18444).` });
+  }
+  mapa.push(`MAP ${host} ${destino}`);
+}
+
 const ejecutable = await (async () => {
   const { access } = await import('node:fs/promises');
   for (const ruta of CHROME_CANDIDATOS) {
@@ -108,6 +124,7 @@ const navegador = await puppeteer.launch({
     '--disable-blink-features=AutomationControlled',
     '--window-size=1400,900',
     ...(proxy ? [`--proxy-server=${proxy.servidor}`] : []),
+    ...(mapa.length ? [`--host-rules=${mapa.join(',')}`, '--disable-quic'] : []),
   ],
 });
 

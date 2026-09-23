@@ -53,6 +53,8 @@ class ComfenalcoSubsidiosHeadless
                 // colombiano, igual que Nueva EPS. Va por stdin con la clave
                 // para que no quede en `ps`.
                 'proxy' => config('services.proxy_colombia.url'),
+                'tunel' => config('services.comfenalco.tunel'),
+                'tunel_auth' => config('services.comfenalco.tunel_auth'),
             ], JSON_UNESCAPED_UNICODE))
             ->run($this->comando());
 

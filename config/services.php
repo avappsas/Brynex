@@ -137,4 +137,13 @@ return [
         'tunel' => env('NUEVA_EPS_TUNEL'),
     ],
 
+    // El portal de Comfenalco solo atiende a un navegador con ventana desde una
+    // conexión colombiana, así que la corrida del servidor sale por el mismo
+    // túnel de la oficina que Nueva EPS. Un puerto por dominio: el destino es
+    // fijo para que el servidor no alcance nada más de esa red.
+    'comfenalco' => [
+        'tunel' => env('COMFENALCO_TUNEL'),
+        'tunel_auth' => env('COMFENALCO_TUNEL_AUTH'),
+    ],
+
 ];
