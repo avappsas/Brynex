@@ -30,6 +30,9 @@ class SubsidioTareasService
     /** Los que se resuelven mandándole un papel a la caja. */
     private const MOTIVO_DOCUMENTOS = '/certificad|escolar|estudio|documento|superviv/i';
 
+    /** Con qué caja se trabaja si no dicen otra. */
+    public const CAJA_POR_DEFECTO = 'COMFANDI';
+
     public function __construct(private TareaAutomaticaService $tareas) {}
 
     /**
@@ -37,10 +40,10 @@ class SubsidioTareasService
      * @param  array<string>  $revisados  documentos que sí se consultaron, para poder cerrar lo que ya no aparece
      * @return array{nuevas:int, cerradas:int, sin_contrato:int, detalle:array}
      */
-    public function procesar(int $aliadoId, array $movimientos, array $revisados, bool $simular = false, ?string $nit = null): array
+    public function procesar(int $aliadoId, array $movimientos, array $revisados, bool $simular = false, ?string $nit = null, string $caja = self::CAJA_POR_DEFECTO): array
     {
         $bloqueos = $this->leer($movimientos);
-        $contratos = $this->contratosDe($aliadoId, $revisados, $nit);
+        $contratos = $this->contratosDe($aliadoId, $revisados, $nit, $caja);
 
         $detalle = [];
         $nuevas = 0;
@@ -57,7 +60,7 @@ class SubsidioTareasService
                 continue;
             }
 
-            $llave = $this->llave($bloqueo);
+            $llave = $this->llave($bloqueo, $caja);
 
             // El portal repite la fila del bloqueo una vez por beneficiario, y
             // las tres de Yesenia son el mismo hallazgo: una sola tarea. Sin
@@ -89,9 +92,9 @@ class SubsidioTareasService
                 'cedula' => $bloqueo['documento'],
                 'contrato_id' => $contrato->id,
                 'razon_social_id' => $contrato->razon_social_id,
-                'entidad' => 'COMFANDI',
-                'tarea' => $this->texto($bloqueo),
-                'observacion' => $this->observacion($bloqueo),
+                'entidad' => mb_strtoupper($caja),
+                'tarea' => $this->texto($bloqueo, $caja),
+                'observacion' => $this->observacion($bloqueo, $caja),
                 'llave_auto' => $llave,
             ]);
 
@@ -101,7 +104,7 @@ class SubsidioTareasService
             }
         }
 
-        $cerradas = $this->cerrarResueltas($aliadoId, $revisados, $vistas, $simular, $detalle);
+        $cerradas = $this->cerrarResueltas($aliadoId, $revisados, $vistas, $simular, $detalle, $caja);
 
         return [
             'nuevas' => $nuevas,
@@ -119,7 +122,7 @@ class SubsidioTareasService
      * le consultó, su tarea se queda como está. Cerrar por no haber mirado sería
      * dar por resuelto lo que nadie comprobó.
      */
-    private function cerrarResueltas(int $aliadoId, array $revisados, array $vistas, bool $simular, array &$detalle): int
+    private function cerrarResueltas(int $aliadoId, array $revisados, array $vistas, bool $simular, array &$detalle, string $caja = self::CAJA_POR_DEFECTO): int
     {
         if (! $revisados) {
             return 0;
@@ -129,7 +132,7 @@ class SubsidioTareasService
 
         $abiertas = Tarea::where('aliado_id', $aliadoId)
             ->whereNotNull('llave_auto')
-            ->where('llave_auto', 'like', 'comfandi:%')
+            ->where('llave_auto', 'like', self::prefijo($caja).':%')
             ->whereIn('estado', Tarea::ESTADOS_ACTIVOS)
             ->whereIn('cedula', $documentos)
             ->get();
@@ -148,7 +151,7 @@ class SubsidioTareasService
                 continue;
             }
 
-            if ($this->tareas->cerrar($tarea, 'Comfandi ya no reporta este bloqueo el '.now()->format('d/m/Y').': el subsidio quedó liberado.')) {
+            if ($this->tareas->cerrar($tarea, mb_convert_case($caja, MB_CASE_TITLE).' ya no reporta este bloqueo el '.now()->format('d/m/Y').': el subsidio quedó liberado.')) {
                 $cerradas++;
                 $detalle[] = ['documento' => (string) $tarea->cedula, 'accion' => 'cerrada', 'tarea_id' => $tarea->id];
             }
@@ -178,11 +181,22 @@ class SubsidioTareasService
     }
 
     /** Trabajador + motivo + período: lo que identifica al hallazgo. */
-    public function llave(array $bloqueo): string
+    public function llave(array $bloqueo, string $caja = self::CAJA_POR_DEFECTO): string
     {
-        return 'comfandi:'.$this->claseMotivo($bloqueo['motivo'])
+        return self::prefijo($caja).':'.$this->claseMotivo($bloqueo['motivo'])
             .':'.$bloqueo['documento']
             .':'.Str::slug($bloqueo['periodo'] ?: 'sin-periodo');
+    }
+
+    /**
+     * Con qué empieza la llave de las tareas de esa caja.
+     *
+     * Un slug y no el nombre tal cual: "COMFENALCO VALLE" dejaría un espacio en
+     * medio de la llave, que se busca con LIKE y se lee a diario.
+     */
+    public static function prefijo(string $caja): string
+    {
+        return Str::slug($caja);
     }
 
     /** aportes | documentos | otro */
@@ -204,18 +218,20 @@ class SubsidioTareasService
         return $this->claseMotivo($motivo) === 'documentos' ? 'solicitud_documentos' : 'subsidios';
     }
 
-    private function texto(array $bloqueo): string
+    private function texto(array $bloqueo, string $caja = self::CAJA_POR_DEFECTO): string
     {
         $valor = $bloqueo['valor'] ? ' por $'.number_format($bloqueo['valor'], 0, ',', '.') : '';
+        $nombre = mb_convert_case($caja, MB_CASE_TITLE);
 
         return $this->claseMotivo($bloqueo['motivo']) === 'documentos'
-            ? "Comfandi bloqueó el subsidio de {$bloqueo['periodo']}{$valor}: {$bloqueo['motivo']}. Conseguir el documento y radicarlo en la caja."
-            : "Comfandi bloqueó el subsidio de {$bloqueo['periodo']}{$valor}: {$bloqueo['motivo']}. Verificar que el aporte esté pagado y reclamar la liberación.";
+            ? "{$nombre} bloqueó el subsidio de {$bloqueo['periodo']}{$valor}: {$bloqueo['motivo']}. Conseguir el documento y radicarlo en la caja."
+            : "{$nombre} bloqueó el subsidio de {$bloqueo['periodo']}{$valor}: {$bloqueo['motivo']}. Verificar que el aporte esté pagado y reclamar la liberación.";
     }
 
-    private function observacion(array $bloqueo): string
+    private function observacion(array $bloqueo, string $caja = self::CAJA_POR_DEFECTO): string
     {
-        return sprintf('Bloqueo reportado por Comfandi el %s. Período %s, valor retenido $%s. Motivo: %s.',
+        return sprintf('Bloqueo reportado por %s el %s. Período %s, valor retenido $%s. Motivo: %s.',
+            mb_convert_case($caja, MB_CASE_TITLE),
             $bloqueo['fecha'] ?? 'sin fecha',
             $bloqueo['periodo'] ?: '—',
             number_format($bloqueo['valor'], 0, ',', '.'),
@@ -232,7 +248,7 @@ class SubsidioTareasService
      *
      * @return Collection<string, Contrato>
      */
-    private function contratosDe(int $aliadoId, array $documentos, ?string $nit = null): Collection
+    private function contratosDe(int $aliadoId, array $documentos, ?string $nit = null, string $caja = self::CAJA_POR_DEFECTO): Collection
     {
         if (! $documentos) {
             return collect();
@@ -244,7 +260,7 @@ class SubsidioTareasService
             ->where('aliado_id', $aliadoId)
             ->where('estado', 'vigente')
             ->whereIn('cedula', array_map(fn ($d) => $this->documento($d), $documentos))
-            ->whereHas('caja', fn ($k) => $k->where('nombre', 'like', '%COMFANDI%'))
+            ->whereHas('caja', fn ($k) => $k->where('nombre', 'like', '%'.$caja.'%'))
             ->orderByDesc('id')
             ->get()
             ->groupBy(fn ($c) => $this->documento((string) $c->cedula))

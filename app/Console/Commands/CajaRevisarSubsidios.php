@@ -33,6 +33,7 @@ class CajaRevisarSubsidios extends Command
     protected $signature = 'caja:revisar-subsidios
                             {--aliado= : Solo los afiliados de este aliado (por defecto, todos)}
                             {--nit= : Solo esta empresa}
+                            {--caja=COMFANDI : Qué caja se revisa}
                             {--completa : Barrido de todos los afiliados, no solo de los sospechosos}
                             {--forzar : Revisa aunque ya se haya hecho hoy}
                             {--simular : Consulta el portal pero no crea ni cierra tareas}';
@@ -46,6 +47,16 @@ class CajaRevisarSubsidios extends Command
     ): int {
         $simular = (bool) $this->option('simular');
         $completa = (bool) $this->option('completa');
+        $caja = mb_strtoupper(trim((string) $this->option('caja'))) ?: SubsidioCandidatosService::CAJA_POR_DEFECTO;
+
+        // Por ahora el único portal con recorrido propio es el de Comfandi. El
+        // resto del proceso —candidatos, tareas, candado— ya no depende de la
+        // caja, así que enchufar otra es traer su lector, no rehacer esto.
+        if ($caja !== SubsidioCandidatosService::CAJA_POR_DEFECTO) {
+            $this->error("Todavía no hay recorrido del portal de {$caja}.");
+
+            return self::FAILURE;
+        }
         $alcance = $completa ? CajaRevision::ALCANCE_COMPLETA : CajaRevision::ALCANCE_CANDIDATOS;
 
         $empresas = $this->empresas($candidatos, $completa);

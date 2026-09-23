@@ -28,6 +28,8 @@ class CajaRevision extends BaseModel
 
     public const ENTIDAD_COMFANDI = 'comfandi';
 
+    public const ENTIDAD_COMFENALCO = 'comfenalco';
+
     public const ESTADO_CORRIENDO = 'corriendo';
 
     public const ESTADO_OK = 'ok';

@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
 /**
  * A quién hay que preguntarle a la caja por sus bloqueos de subsidio.
  *
- * Consultar los 799 afiliados con Comfandi cuesta horas, porque el portal
+ * Consultar los 799 afiliados de una caja cuesta horas, porque el portal
  * responde de a un trabajador. Pero el bloqueo más común —"en espera de
  * aportes"— lo produce algo que BryNex ya sabe: que la planilla se pagó tarde.
  * Así que la revisión diaria se limita a los sospechosos:
@@ -26,16 +26,17 @@ class SubsidioCandidatosService
     /** Cuántos meses atrás se mira la mora. */
     private const MESES_MORA = 3;
 
-    private const CAJA = 'COMFANDI';
+    /** Con qué caja se trabaja si no dicen otra. */
+    public const CAJA_POR_DEFECTO = 'COMFANDI';
 
     /**
      * Los sospechosos del día, agrupados por NIT de la razón social.
      *
      * @return array<string, array<int, array{cedula:string, contrato_id:int, nombre:string, motivo:string}>>
      */
-    public function candidatos(int $aliadoId, ?string $nit = null): array
+    public function candidatos(int $aliadoId, ?string $nit = null, string $caja = self::CAJA_POR_DEFECTO): array
     {
-        $porMora = $this->base($aliadoId, $nit)
+        $porMora = $this->base($aliadoId, $nit, $caja)
             ->join('facturas as f', function ($j) {
                 $j->on('f.contrato_id', '=', 'c.id')->whereNull('f.deleted_at')->where('f.mora', '>', 0);
             })
@@ -48,17 +49,17 @@ class SubsidioCandidatosService
             ->get(['c.id as contrato_id', 'c.cedula', 'rs.nit', 'cl.primer_nombre', 'cl.primer_apellido'])
             ->map(fn ($f) => (array) $f + ['motivo' => 'pago con mora']);
 
-        $conTarea = $this->base($aliadoId, $nit)
-            ->join('tareas as t', function ($j) use ($aliadoId) {
+        $conTarea = $this->base($aliadoId, $nit, $caja)
+            ->join('tareas as t', function ($j) use ($aliadoId, $caja) {
                 $j->on('t.cedula', '=', 'c.cedula')->where('t.aliado_id', $aliadoId)
                     ->whereNull('t.deleted_at')->whereIn('t.estado', Tarea::ESTADOS_ACTIVOS)
-                    ->where('t.llave_auto', 'like', 'comfandi:%');
+                    ->where('t.llave_auto', 'like', SubsidioTareasService::prefijo($caja).':%');
             })
             ->distinct()
             ->get(['c.id as contrato_id', 'c.cedula', 'rs.nit', 'cl.primer_nombre', 'cl.primer_apellido'])
             ->map(fn ($f) => (array) $f + ['motivo' => 'tarea abierta']);
 
-        $nuevos = $this->base($aliadoId, $nit)
+        $nuevos = $this->base($aliadoId, $nit, $caja)
             ->whereDate('c.fecha_ingreso', '>=', now()->subMonths(2)->startOfMonth())
             ->distinct()
             ->get(['c.id as contrato_id', 'c.cedula', 'rs.nit', 'cl.primer_nombre', 'cl.primer_apellido'])
@@ -72,10 +73,10 @@ class SubsidioCandidatosService
      *
      * @return array<string, array<int, array{cedula:string, contrato_id:int, nombre:string, motivo:string}>>
      */
-    public function todos(int $aliadoId, ?string $nit = null): array
+    public function todos(int $aliadoId, ?string $nit = null, string $caja = self::CAJA_POR_DEFECTO): array
     {
         return $this->agrupar(
-            $this->base($aliadoId, $nit)
+            $this->base($aliadoId, $nit, $caja)
                 ->get(['c.id as contrato_id', 'c.cedula', 'rs.nit', 'cl.primer_nombre', 'cl.primer_apellido'])
                 ->map(fn ($f) => (array) $f + ['motivo' => 'barrido completo'])
         );
@@ -85,7 +86,7 @@ class SubsidioCandidatosService
      * Contratos vigentes con la caja, ya afiliados (el ingreso no es futuro) y
      * con NIT de verdad: sin NIT no hay empresa que consultar en el portal.
      */
-    private function base(int $aliadoId, ?string $nit)
+    private function base(int $aliadoId, ?string $nit, string $caja = self::CAJA_POR_DEFECTO)
     {
         return DB::table('contratos as c')
             ->join('cajas as k', 'k.id', '=', 'c.caja_id')
@@ -96,7 +97,7 @@ class SubsidioCandidatosService
             ->where('c.aliado_id', $aliadoId)
             ->where('c.estado', 'vigente')
             ->whereDate('c.fecha_ingreso', '<=', today())
-            ->where('k.nombre', 'like', '%'.self::CAJA.'%')
+            ->where('k.nombre', 'like', '%'.$caja.'%')
             ->where('rs.es_independiente', false)
             ->whereNotNull('rs.nit')
             ->whereRaw("LEN(LTRIM(RTRIM(rs.nit))) >= 9")
