@@ -41,6 +41,17 @@ class ComfenalcoSubsidiosHeadless
             return ['ok' => false, 'error' => "La empresa {$nit} no tiene la clave de Comfenalco en el módulo de claves."];
         }
 
+        // El túnel lo mantiene un PC de la oficina: si está apagado, el puerto
+        // no escucha y Chrome se quedaría esperando. Mejor decirlo aquí y no
+        // dar la clave por mala.
+        foreach (['tunel', 'tunel_auth'] as $cual) {
+            $destino = config("services.comfenalco.{$cual}");
+
+            if ($destino && ! $this->escucha($destino)) {
+                return ['ok' => false, 'error' => "El túnel de la oficina no está abierto ({$destino}): revisa que el PC esté encendido."];
+            }
+        }
+
         $resultado = Process::path(base_path())
             ->timeout(self::SEGUNDOS)
             ->input(json_encode([
@@ -123,6 +134,21 @@ class ComfenalcoSubsidiosHeadless
         }
 
         return $movimientos;
+    }
+
+    /** ¿Hay algo escuchando en `host:puerto`? */
+    private function escucha(string $destino): bool
+    {
+        [$host, $puerto] = array_pad(explode(':', $destino, 2), 2, null);
+        $socket = @fsockopen($host, (int) $puerto, $e, $m, 1.5);
+
+        if (! $socket) {
+            return false;
+        }
+
+        fclose($socket);
+
+        return true;
     }
 
     private function comando(): string
