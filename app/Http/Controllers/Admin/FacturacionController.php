@@ -1311,7 +1311,16 @@ class FacturacionController extends Controller
         // validacion de pago rechazaba el lote por la diferencia, sin decir que
         // la culpa era la mora (caso AGROMACZO, sep-2026: $1.300 escritos,
         // $6.265 cobrados, "faltan $4.965").
-        $moraManualLote = ! empty($validated['mora_manual']);
+        // Manda la mora que viene del modal, la haya escrito el usuario o no: es
+        // la que vio en pantalla y la que el cliente va a pagar. Cuando el
+        // backend la recalculaba por su cuenta, cobraba una mora que el recibo
+        // no mostraba y la validacion de pago rebotaba el lote por la
+        // diferencia (ALIADO-ESTEBAN ROMERO, 22-sep-2026: $300 en pantalla,
+        // $3.990 cobrados, "faltan $3.690"). Lo que el aliado no le cobra al
+        // cliente lo asume el aliado, no se le arrastra al cliente.
+        // Sin la clave —otro llamador que no sea el modal— se calcula como antes.
+        $moraManualLote = array_key_exists('mora', $validated)
+            || ! empty($validated['mora_manual']);
         $moraLoteManual = max(0, (int) ($validated['mora'] ?? 0));
 
         // Fecha del recibo: si el pago es solo consignación, la fecha en que
