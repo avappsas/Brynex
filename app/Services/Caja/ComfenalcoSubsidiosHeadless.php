@@ -67,7 +67,7 @@ class ComfenalcoSubsidiosHeadless
         return [
             'ok' => true,
             'empresa' => $salida['empresa'] ?? null,
-            'movimientos' => $this->traducir($salida['movimientos'] ?? [], $documentos),
+            'movimientos' => self::traducir($salida['movimientos'] ?? [], $documentos),
             // La consulta es de la empresa entera: todos quedan mirados, también
             // los que no salieron en ninguna tabla.
             'revisados' => $documentos,
@@ -81,8 +81,12 @@ class ComfenalcoSubsidiosHeadless
      * El motivo se redacta aquí y no en el portal: de él depende si la tarea
      * sale como de subsidios o de documentos, y las dos tablas de Comfenalco
      * —mora e inexactitud— se trabajan pagando o corrigiendo el aporte.
+     *
+     * Es estática porque las filas llegan por dos caminos —este Chrome y la
+     * extensión, que las manda crudas— y el motivo tiene que redactarse igual
+     * en los dos.
      */
-    private function traducir(array $filas, array $documentos): array
+    public static function traducir(array $filas, array $documentos): array
     {
         $movimientos = [];
 

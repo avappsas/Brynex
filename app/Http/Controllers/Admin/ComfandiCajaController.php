@@ -8,6 +8,7 @@ use App\Models\Contrato;
 use App\Services\Caja\ComfandiCajaConciliacionService;
 use App\Services\Caja\ComfandiCajaService;
 use App\Services\Caja\ComfandiListadoDescarga;
+use App\Services\Caja\ComfenalcoSubsidiosHeadless;
 use App\Services\Caja\SubsidioCandidatosService;
 use App\Services\Caja\SubsidioTareasService;
 use Illuminate\Http\Request;
@@ -213,8 +214,15 @@ class ComfandiCajaController extends Controller
             ], 422);
         }
 
+        // De Comfenalco llegan las filas tal como las pinta el portal, sin el
+        // motivo redactado: eso se hace en un solo sitio, que es el que sabe
+        // qué significa cada tabla suya.
+        $movimientos = $caja === 'COMFENALCO'
+            ? ComfenalcoSubsidiosHeadless::traducir($datos['movimientos'] ?? [], $datos['revisados'])
+            : ($datos['movimientos'] ?? []);
+
         try {
-            $r = $servicio->procesar($aliadoId, $datos['movimientos'] ?? [], $datos['revisados'], $simular, $nit, $caja);
+            $r = $servicio->procesar($aliadoId, $movimientos, $datos['revisados'], $simular, $nit, $caja);
         } catch (Throwable $e) {
             $revision?->fallar($e->getMessage());
 
