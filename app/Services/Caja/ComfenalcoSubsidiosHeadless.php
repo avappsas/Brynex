@@ -27,7 +27,7 @@ class ComfenalcoSubsidiosHeadless
      * @param  array<string>  $documentos  cédulas de esa empresa que interesan
      * @return array{ok:bool, empresa?:?string, movimientos?:array, revisados?:array, errores?:array, error?:string}
      */
-    public function bloqueos(string $nit, array $documentos, int $meses = 4): array
+    public function bloqueos(string $nit, array $documentos, int $meses = 4, ?bool $conVentana = null): array
     {
         $documentos = array_values(array_filter(array_map(fn ($d) => preg_replace('/\D/', '', (string) $d), $documentos)));
 
@@ -46,7 +46,13 @@ class ComfenalcoSubsidiosHeadless
             ->input(json_encode([
                 'usuario' => $clave['usuario'],
                 'contrasena' => $clave['contrasena'],
-                'visible' => is_executable('/usr/bin/xvfb-run'),
+                // Con ventana siempre que se pueda: el portal atiende peor a un
+                // Chrome sin pantalla. En el servidor la pone Xvfb.
+                'visible' => $conVentana ?? is_executable('/usr/bin/xvfb-run'),
+                // El portal rechaza la IP del servidor: sale por el proxy
+                // colombiano, igual que Nueva EPS. Va por stdin con la clave
+                // para que no quede en `ps`.
+                'proxy' => config('services.proxy_colombia.url'),
             ], JSON_UNESCAPED_UNICODE))
             ->run($this->comando());
 

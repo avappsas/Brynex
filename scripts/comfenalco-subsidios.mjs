@@ -70,6 +70,25 @@ const contrasena = String(entrada.contrasena || '');
 
 if (!usuario || !contrasena) salir({ ok: false, error: 'Faltan usuario o contraseña.' });
 
+// El WAF del portal atiende a un Chrome con ventana desde una conexión
+// colombiana, y rechaza tanto el headless como la IP del servidor (datacenter,
+// fuera del país). Por eso la corrida de netcup sale por el proxy colombiano —
+// el mismo de Nueva EPS— y con la ventana que le pone Xvfb. Chrome no acepta la
+// clave en --proxy-server: se entrega con page.authenticate().
+let proxy = null;
+if (entrada.proxy) {
+  try {
+    const u = new URL(entrada.proxy);
+    proxy = {
+      servidor: `${u.protocol}//${u.hostname}:${u.port}`,
+      usuario: decodeURIComponent(u.username || ''),
+      clave: decodeURIComponent(u.password || ''),
+    };
+  } catch {
+    salir({ ok: false, error: 'La dirección del proxy no es válida (se espera http://usuario:clave@host:puerto).' });
+  }
+}
+
 const ejecutable = await (async () => {
   const { access } = await import('node:fs/promises');
   for (const ruta of CHROME_CANDIDATOS) {
@@ -83,13 +102,20 @@ if (!ejecutable) salir({ ok: false, error: 'No se encontró Chrome. Instálalo o
 const navegador = await puppeteer.launch({
   executablePath: ejecutable,
   headless: entrada.visible ? false : 'new',
-  args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled', '--window-size=1400,900'],
+  args: [
+    '--no-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-blink-features=AutomationControlled',
+    '--window-size=1400,900',
+    ...(proxy ? [`--proxy-server=${proxy.servidor}`] : []),
+  ],
 });
 
 let pagina;
 try {
   pagina = await navegador.newPage();
   await pagina.setViewport({ width: 1400, height: 900 });
+  if (proxy?.usuario) await pagina.authenticate({ username: proxy.usuario, password: proxy.clave });
 
   // ── Entrar ────────────────────────────────────────────────────────────────
   await pagina.goto(LOGIN, { waitUntil: 'networkidle2', timeout: 60000 });
@@ -149,12 +175,16 @@ try {
       texto: (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 250),
     })).catch(() => null);
 
+    const bloqueado = /web page blocked|attack id/i.test(pantalla?.texto || '');
+
     salir({
       ok: false,
       error: /incorrect|inv[aá]lid|no existe/i.test(pantalla?.texto || '')
         ? 'Comfenalco rechazó el usuario o la clave guardada en BryNex.'
-        : 'No se llegó a abrir la sesión de Comfenalco.'
-          + (pantalla ? ` Quedó en ${pantalla.donde}: "${pantalla.texto}"` : ''),
+        : bloqueado
+          ? 'El portal de Comfenalco le niega el acceso a esta salida a internet. Atiende a un navegador con ventana desde una conexión colombiana: hace falta el proxy (PROXY_COLOMBIA).'
+          : 'No se llegó a abrir la sesión de Comfenalco.'
+            + (pantalla ? ` Quedó en ${pantalla.donde}: "${pantalla.texto}"` : ''),
     });
   }
 

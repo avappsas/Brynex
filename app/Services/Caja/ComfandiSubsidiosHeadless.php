@@ -27,7 +27,7 @@ class ComfandiSubsidiosHeadless
      * @param  array<string>  $documentos  cédulas de esa empresa
      * @return array{ok:bool, nit?:string, empresa?:?string, movimientos?:array, revisados?:array, errores?:array, error?:string}
      */
-    public function bloqueos(string $nit, array $documentos, int $meses = 4): array
+    public function bloqueos(string $nit, array $documentos, int $meses = 4, ?bool $conVentana = null): array
     {
         $documentos = array_values(array_filter(array_map(fn ($d) => preg_replace('/\D/', '', (string) $d), $documentos)));
 
@@ -50,13 +50,13 @@ class ComfandiSubsidiosHeadless
             'documentos' => $documentos,
             'meses' => $meses,
             'proxy' => config('services.proxy_colombia.url'),
-            'visible' => $this->hayXvfb(),
+            'visible' => $conVentana ?? $this->hayXvfb(),
         ], JSON_UNESCAPED_UNICODE);
 
         $resultado = Process::path(base_path())
             ->timeout(self::SEGUNDOS_BASE + self::SEGUNDOS_POR_TRABAJADOR * count($documentos))
             ->input($entrada)
-            ->run($this->comando());
+            ->run($this->comando($conVentana ?? $this->hayXvfb()));
 
         $salida = json_decode(trim($resultado->output()), true) ?: [];
 
@@ -87,11 +87,11 @@ class ComfandiSubsidiosHeadless
      * sin pantalla donde dibujar. Donde no hay Xvfb (el Mac) se usa el modo sin
      * ventana, que sirve para todo menos para hablar con Comfandi.
      */
-    private function comando(): string
+    private function comando(bool $conVentana): string
     {
         $node = ArlSuraSesionService::binarioNode().' scripts/comfandi-subsidios.mjs';
 
-        return $this->hayXvfb()
+        return $conVentana && $this->hayXvfb()
             ? 'xvfb-run -a --server-args="-screen 0 1400x900x24" '.$node
             : $node;
     }

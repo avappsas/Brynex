@@ -38,6 +38,7 @@ class CajaRevisarSubsidios extends Command
                             {--caja=COMFANDI : Qué caja se revisa}
                             {--completa : Barrido de todos los afiliados, no solo de los sospechosos}
                             {--forzar : Revisa aunque ya se haya hecho hoy}
+                            {--con-ventana : Abre el navegador con ventana (para probar fuera del servidor)}
                             {--simular : Consulta el portal pero no crea ni cierra tareas}';
 
     protected $description = 'Revisa en la caja los subsidios bloqueados y abre (o cierra) las tareas que correspondan';
@@ -108,7 +109,7 @@ class CajaRevisarSubsidios extends Command
         $revision = $simular ? null : CajaRevision::abrir($nit, $this->entidad($caja), $alcance, (int) array_key_first($porAliado));
 
         try {
-            $leido = $portal->bloqueos($nit, $documentos);
+            $leido = $portal->bloqueos($nit, $documentos, 4, $this->option('con-ventana') ?: null);
         } catch (Throwable $e) {
             $leido = ['ok' => false, 'error' => $e->getMessage()];
         }
