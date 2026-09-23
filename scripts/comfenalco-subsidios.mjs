@@ -100,23 +100,37 @@ try {
 
   if (!campos) salir({ ok: false, error: 'No apareció el formulario de acceso de Comfenalco.' });
 
-  await pagina.evaluate((u, c) => {
-    const poner = (e, v) => {
-      const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-      set.call(e, v);
-      e.dispatchEvent(new Event('input', { bubbles: true }));
-      e.dispatchEvent(new Event('change', { bubbles: true }));
-    };
-    poner(document.querySelector('input[name=email], input[type=email], input[type=text]'), u);
-    poner(document.querySelector('input[type=password]'), c);
-  }, usuario, contrasena);
+  // Se teclea de verdad: AuthComfe es un formulario de Angular que valida con
+  // los eventos del teclado, y con el valor puesto por script daba el campo por
+  // vacío —dejaba el botón sin habilitar y el acceso no salía de esta pantalla—.
+  const campoUsuario = await pagina.$('input[name=email], input[type=email]')
+    ?? await pagina.$('input[type=text]');
+  const campoClave = await pagina.$('input[type=password]');
 
-  await esperar(500);
+  if (!campoUsuario || !campoClave) salir({ ok: false, error: 'El formulario de Comfenalco no tiene los campos esperados.' });
+
+  await campoUsuario.click({ clickCount: 3 });
+  await campoUsuario.type(usuario, { delay: 40 });
+  await campoClave.click({ clickCount: 3 });
+  await campoClave.type(contrasena, { delay: 40 });
+
+  await esperar(800);
+
+  let pulsado = false;
 
   for (const b of await pagina.$$('button,input[type=submit]')) {
     const texto = await b.evaluate(e => (e.innerText || e.value || '')).catch(() => '');
-    if (/iniciar sesi/i.test(texto)) { await b.click().catch(() => null); break; }
+    if (!/iniciar sesi/i.test(texto)) continue;
+
+    const apagado = await b.evaluate(e => e.disabled === true).catch(() => false);
+    if (apagado) break;
+
+    await b.click().catch(() => null);
+    pulsado = true;
+    break;
   }
+
+  if (!pulsado) salir({ ok: false, error: 'El botón de acceso de Comfenalco no se dejó pulsar (¿quedó deshabilitado?).' });
 
   // La señal de estar dentro es el `usuario` del localStorage del portal, no la
   // pantalla de AuthComfe, que es una aplicación aparte.
