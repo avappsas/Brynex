@@ -104,28 +104,42 @@ const empresaAbierta = (pagina) => pagina.evaluate(() => {
   return m && !/\/guest/.test(location.pathname) ? m[1].trim() : null;
 });
 
-/** Elige una opción de un react-select del portal. */
+/**
+ * Elige una opción de un react-select del portal.
+ *
+ * Aquí, a diferencia de la extensión, se usan el teclado y el clic de verdad de
+ * Puppeteer: los eventos fabricados a mano abren el menú en un Chrome con
+ * ventana, pero en headless no siempre, y el filtro se quedaba sin poner.
+ */
 const elegirCombo = async (pagina, opcion, cual = 0) => {
-  const estado = await insistir(pagina, (texto, i) => {
+  const re = new RegExp('^\\s*' + opcion, 'i');
+
+  const yaEsta = await pagina.evaluate((texto, i) => {
     const combo = [...document.querySelectorAll('input[role=combobox]')][i];
-    if (!combo) return false;
-    if (new RegExp('^\\s*' + texto, 'i').test(combo.closest('[class*=control]')?.innerText || '')) return 'ya';
-    combo.focus();
-    combo.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'ArrowDown', code: 'ArrowDown', keyCode: 40, which: 40 }));
-    return 'abierto';
-  }, [opcion, cual], 15000);
+    return !!combo && new RegExp('^\\s*' + texto, 'i').test(combo.closest('[class*=control]')?.innerText || '');
+  }, opcion, cual).catch(() => false);
 
-  if (!estado) return false;
-  if (estado === 'ya') return true;
+  if (yaEsta) return true;
 
-  await esperar(600);
+  const combos = await pagina.$$('input[role=combobox]');
+  const combo = combos[cual];
+  if (!combo) return false;
 
-  return !!await insistir(pagina, (texto) => {
-    const o = [...document.querySelectorAll('[class*=option]')].find(e => new RegExp('^\\s*' + texto, 'i').test(e.innerText || ''));
-    if (!o) return false;
-    ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(t => o.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
-    return true;
-  }, [opcion], 10000);
+  await combo.focus();
+  await pagina.keyboard.press('ArrowDown');
+  await esperar(700);
+
+  const opciones = await pagina.$$('[class*=option]');
+  for (const o of opciones) {
+    const texto = await o.evaluate(e => e.innerText || '').catch(() => '');
+    if (re.test(texto)) {
+      await o.click().catch(() => null);
+      await esperar(600);
+      return true;
+    }
+  }
+
+  return false;
 };
 
 /** Los bloqueos de un trabajador, o null si no se pudo llegar a su pantalla. */
@@ -257,28 +271,31 @@ try {
   await insistir(pagina, () =>
     !!document.querySelector('input[name=password]') && !!document.querySelector('input[name=identification_type_up]'), [], 30000);
 
-  // El tipo de documento: con "CC" el portal rechaza la clave buena.
-  await insistir(pagina, () => {
-    const oculto = document.querySelector('input[name=identification_type_up]');
-    if (!oculto) return false;
-    if (oculto.value === 'NIT') return true;
-    const caja = [...document.querySelectorAll('input')].find(e => /tipo de documento/i.test(e.placeholder || ''));
-    if (!caja) return false;
-    caja.focus();
-    const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-    set.call(caja, 'NIT');
-    caja.dispatchEvent(new Event('input', { bubbles: true }));
-    return false;
-  }, [], 20000);
+  // El tipo de documento: con "CC" el portal rechaza la clave buena. Es un
+  // typeahead de PatternFly cuya lista vive oculta en el DOM y sólo se
+  // despliega al enfocarlo de verdad; en headless los eventos fabricados no la
+  // abrían y el login se quedaba aquí.
+  const campoTipo = await pagina.$('input.documentTypeSearchInput') ?? await (async () => {
+    for (const i of await pagina.$$('input')) {
+      const ph = await i.evaluate(e => e.placeholder || '').catch(() => '');
+      if (/tipo de documento/i.test(ph)) return i;
+    }
+    return null;
+  })();
 
-  await insistir(pagina, () => {
-    if (document.querySelector('input[name=identification_type_up]')?.value === 'NIT') return true;
-    const li = [...document.querySelectorAll('li')].filter(e => e.offsetParent && /^\s*NIT\b/i.test(e.innerText || ''))[0];
-    if (!li) return false;
-    const destino = li.querySelector('button,a,span') || li;
-    ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(t => destino.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
-    return false;
-  }, [], 20000);
+  if (!campoTipo) salir({ ok: false, error: 'El login de Comfandi no tiene el campo de tipo de documento.' });
+
+  await campoTipo.click({ clickCount: 3 }).catch(() => null);
+  await campoTipo.type('NIT', { delay: 60 }).catch(() => null);
+  await esperar(900);
+
+  for (const li of await pagina.$$('li')) {
+    const texto = await li.evaluate(e => (e.offsetParent ? (e.innerText || '') : '')).catch(() => '');
+    if (/^\s*NIT\b/i.test(texto)) {
+      await li.click().catch(() => null);
+      break;
+    }
+  }
 
   const tipoOk = await insistir(pagina, () =>
     document.querySelector('input[name=identification_type_up]')?.value === 'NIT', [], 8000);
