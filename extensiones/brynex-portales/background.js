@@ -43,7 +43,7 @@
  *
  * Pedidos caja Comfandi (portal: 'cfd', Sucursal Virtual Empresas):
  *  cfdEstado                           → {abierta, sesion, empresa, pagina}
- *  cfdAbrir {usuario, contrasena}      → abre el login y deja escrito el NIT
+ *  cfdAbrir {usuario, contrasena, empresa} → entra a la Sucursal Virtual: clave, 2FA omitido y empresa
  *  cfdConsultar {…datos}               → abre Afiliación individual y consulta al trabajador
  *  cfdLlenar {…datos}                  → llena el formulario; Finalizar lo pulsa la persona
  *  cfdResultado                        → {radicado, numero, texto} tras Finalizar
@@ -1306,17 +1306,219 @@ async function ccfTrabajadores(pestana) {
 const CFD_HOST = 'afiliaciones.sucursalcomfandi.com';
 const CFD_BASE = `https://${CFD_HOST}/sakaar`;
 
+/**
+ * La pestaña del portal en la que se trabaja.
+ *
+ * Con dos pestañas abiertas del portal —lo normal cuando alguien deja una y el
+ * proceso abre otra— la elección cambiaba de una llamada a la siguiente: se
+ * escribía en una y se leía la otra, y el trámite parecía no avanzar. Ahora la
+ * primera que se use queda apuntada y se conserva mientras exista.
+ */
 async function pestanaCfd() {
+  const { cfdTab } = await chrome.storage.session.get('cfdTab').catch(() => ({}));
+
+  if (cfdTab) {
+    const viva = await chrome.tabs.get(cfdTab).catch(() => null);
+    if (viva && /sucursalcomfandi|iam\.comfandi/.test(viva.url || '')) return viva;
+  }
+
   const ps = await chrome.tabs.query({ url: [`https://${CFD_HOST}/*`, 'https://iam.comfandi.com.co/*'] });
-  return ps.find(p => (p.url || '').includes(CFD_HOST)) || ps[0] || null;
+  const elegida = ps.find(p => (p.url || '').includes(CFD_HOST)) || ps[0] || null;
+
+  if (elegida) await chrome.storage.session.set({ cfdTab: elegida.id }).catch(() => null);
+
+  return elegida;
 }
 
 function pCfdEstado() {
-  if (!/sucursalcomfandi/.test(location.host)) return { sesion: false, enLogin: true, pagina: 'login' };
+  if (!/sucursalcomfandi/.test(location.host)) return { sesion: false, enLogin: true, pagina: 'login', donde: location.host + location.pathname };
   const t = document.body.innerText || '';
   const m = t.match(/actualmente est[aá]s en:\s*\n+\s*([^\n]+)/i);
   const enGuest = /\/guest/.test(location.pathname) || /Para acceder a tu cuenta/i.test(t);
-  return { sesion: !!m && !enGuest, empresa: m ? m[1].trim() : null, pagina: location.pathname };
+  return { sesion: !!m && !enGuest, empresa: m ? m[1].trim() : null, pagina: location.pathname, donde: location.host + location.pathname };
+}
+
+/**
+ * Entra a la Sucursal Virtual: tipo de documento, usuario, clave, el "Omitir
+ * por ahora" del 2FA y la empresa.
+ *
+ * Antes esto se quedaba a medias —dejaba escrito el NIT y la persona terminaba
+ * a mano—, y por eso la revisión de subsidios no podía correr de noche. El
+ * portal encadena tres pantallas distintas después de Entrar (el 2FA, la
+ * elección de empresa y el inicio), y cuál toca no se sabe de antemano: se
+ * mira en qué está y se responde, hasta que aparece el "actualmente estás en".
+ *
+ * El login es Keycloak (PatternFly), no el react-select del portal: aquí el
+ * tipo de documento sí se abre con un clic.
+ */
+async function cfdEntrar(tab, d) {
+  const usuario = String(d.usuario || '').replace(/\D/g, '');
+  if (!usuario || !d.contrasena) return { ok: false, abierta: true, error: 'Faltan el usuario o la clave de la empresa.' };
+
+  // Si la pestaña no tiene el formulario de acceso, se va a él. No basta con
+  // estar en iam.comfandi: después de enviar, Keycloak deja la pestaña en una
+  // pantalla de ese mismo dominio que ya no tiene los campos, y darla por buena
+  // hacía fallar el login sin salir nunca de ahí.
+  const enLogin = await ejecutar(tab, () =>
+    !!document.querySelector('input[name=password]') && !!document.querySelector('input[name=identification_type_up]')
+  ).catch(() => false);
+
+  if (!enLogin) {
+    await chrome.tabs.update(tab, { url: `${CFD_BASE}/guest` });
+    await esperarCarga(tab);
+    await esperarQue(tab, () => {
+      const b = [...document.querySelectorAll('button,a')].find(e => /iniciar sesi/i.test(e.innerText || ''));
+      if (!b) return false;
+      b.click();
+      return true;
+    }, [], 20000);
+    await esperarQue(tab, () =>
+      !!document.querySelector('input[name=password]') && !!document.querySelector('input[name=identification_type_up]'),
+    [], 25000);
+  }
+
+  // El tipo de documento: el usuario de la empresa es el NIT, y con "CC" el
+  // portal contesta "Documento o contraseña incorrectos" con la clave buena.
+  //
+  // Es un typeahead de PatternFly: la lista está siempre en el DOM pero oculta,
+  // y un clic sintético no la despliega —solo uno de verdad—. Con `focus()` sí
+  // se abre, y escribirle "NIT" la deja en una sola opción, que ya acepta el
+  // clic. Pulsar el combo, como se hacía antes, no elegía nada.
+  await esperarQue(tab, () => {
+    const oculto = document.querySelector('input[name=identification_type_up]');
+    if (!oculto) return false;
+    if (oculto.value === 'NIT') return true;
+
+    const caja = [...document.querySelectorAll('input')].find(e => /tipo de documento/i.test(e.placeholder || ''));
+    if (!caja) return false;
+
+    caja.focus();
+    const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    set.call(caja, 'NIT');
+    caja.dispatchEvent(new Event('input', { bubbles: true }));
+    return false;                                            // se elige en la vuelta siguiente
+  }, [], 20000);
+
+  await esperarQue(tab, () => {
+    if (document.querySelector('input[name=identification_type_up]')?.value === 'NIT') return true;
+
+    const li = [...document.querySelectorAll('li')].filter(e => e.offsetParent && /^\s*NIT\b/i.test(e.innerText || ''))[0];
+    if (!li) return false;
+
+    const destino = li.querySelector('button,a,span') || li;
+    ['pointerdown', 'mousedown', 'mouseup', 'click']
+      .forEach(t => destino.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+    return false;
+  }, [], 20000);
+
+  // Se comprueba esperando: leerlo una sola vez daba "no se pudo" cuando el
+  // campo aún no había recogido la elección, con el NIT ya puesto en pantalla.
+  const tipoOk = await esperarQue(tab,
+    () => document.querySelector('input[name=identification_type_up]')?.value === 'NIT', [], 8000);
+
+  if (!tipoOk) {
+    return { ok: false, abierta: true, avisoTipo: 'No se pudo escoger "NIT" en Tipo de documento: el portal cambió el formulario.' };
+  }
+
+  const enviado = await esperarQue(tab, (u, c) => {
+    const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    const num = document.querySelector('input[name=identificationNumber]');
+    const clave = document.querySelector('input[name=password]');
+    const btn = document.querySelector('input[name=login]');
+    if (!num || !clave || !btn) return false;
+
+    set.call(num, u);
+    num.dispatchEvent(new Event('input', { bubbles: true }));
+    num.dispatchEvent(new Event('change', { bubbles: true }));
+    set.call(clave, c);
+    clave.dispatchEvent(new Event('input', { bubbles: true }));
+    clave.dispatchEvent(new Event('change', { bubbles: true }));
+    btn.click();
+    return true;
+  }, [usuario, String(d.contrasena)], 20000);
+
+  if (!enviado) return { ok: false, abierta: true, error: 'No se encontró el formulario de acceso de Comfandi.' };
+
+  return cfdDespuesDeEntrar(tab, d);
+}
+
+/**
+ * Las pantallas que el portal encadena después de Entrar, hasta quedar dentro.
+ *
+ * El 2FA se omite a propósito: con Authenticator haría falta un código del
+ * teléfono en cada corrida y la revisión nocturna no podría existir.
+ */
+async function cfdDespuesDeEntrar(tab, d) {
+  const nit = String(d.usuario || '').replace(/\D/g, '');
+  const limite = Date.now() + 150000;
+
+  while (Date.now() < limite) {
+    await esperar(1500);
+
+    const paso = await ejecutar(tab, (nitBuscado, nombre) => {
+      const golpe = (e) => ['pointerdown', 'mousedown', 'mouseup', 'click']
+        .forEach(t => e.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+      const texto = document.body.innerText || '';
+
+      if (/documento o contrase|credenciales inv[aá]lidas|usuario o contrase/i.test(texto)) return { fin: 'clave' };
+
+      // Ya dentro: el portal saluda con "actualmente estás en: EMPRESA".
+      const dentro = texto.match(/actualmente est[aá]s en:\s*\n+\s*([^\n]+)/i);
+      if (dentro && !/\/guest/.test(location.pathname)) return { fin: 'dentro', empresa: dentro[1].trim() };
+
+      // El 2FA con Authenticator: se omite. Son dos pantallas — la primera solo
+      // avisa y ofrece "Continuar", y el "Omitir por ahora" está en la
+      // siguiente, con el código QR.
+      const botones = [...document.querySelectorAll('button,a,input[type=submit],[role=button]')]
+        .filter(e => (e.innerText || e.value || '').trim());
+
+      const omitir = botones.find(e => /omitir|m[aá]s tarde|ahora no|despu[eé]s/i.test(e.innerText || e.value || ''));
+      if (omitir) { golpe(omitir); return { paso: '2fa-omitir' }; }
+
+      const continuar = botones.find(e => /^\s*continuar\s*$/i.test((e.innerText || e.value || '').trim()));
+      if (continuar) { golpe(continuar); return { paso: '2fa-continuar' }; }
+
+      // La empresa: su tarjeta lleva el NIT o el nombre. Con una sola, esa.
+      const candidatos = [...document.querySelectorAll('button,[role=button],li,div[class*=card]')]
+        .filter(e => {
+          const t = (e.innerText || '').trim();
+          return t && t.length < 200 && (t.replace(/\D/g, '').includes(nitBuscado.slice(0, 9))
+            || (nombre && t.toUpperCase().includes(String(nombre).toUpperCase().slice(0, 12))));
+        });
+      if (candidatos.length) { golpe(candidatos[candidatos.length - 1]); return { paso: 'empresa' }; }
+
+      return { paso: 'esperando', pagina: location.pathname };
+    }, [nit, d.empresa || ''], []).catch(() => ({ paso: 'cargando' }));
+
+    if (paso?.fin === 'clave') {
+      return { ok: false, abierta: true, error: 'Comfandi rechazó el usuario o la clave guardada en BryNex.' };
+    }
+
+    if (paso?.fin === 'dentro') {
+      return { ok: true, abierta: true, sesion: true, empresa: paso.empresa };
+    }
+  }
+
+  const estado = await ejecutar(tab, pCfdEstado).catch(() => ({ sesion: false }));
+  if (estado.sesion) return { ok: true, abierta: true, sesion: true, empresa: estado.empresa };
+
+  // Sin esto el fallo era mudo y había que adivinar en qué pantalla se quedó.
+  const pantalla = await ejecutar(tab, () => ({
+    donde: location.host + location.pathname,
+    texto: (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 300),
+    // Qué se podía pulsar: sin esto, un botón con otro nombre deja el trámite
+    // parado sin decir cuál era.
+    clicables: [...document.querySelectorAll('button,a,input[type=submit],[role=button]')]
+      .map(e => (e.innerText || e.value || '').replace(/\s+/g, ' ').trim())
+      .filter(Boolean).slice(0, 12),
+  })).catch(() => null);
+
+  return {
+    ok: false,
+    abierta: true,
+    error: 'Se entró al portal pero no se llegó a la empresa.'
+      + (pantalla ? ` Quedó en ${pantalla.donde}: "${pantalla.texto}" · botones: ${pantalla.clicables.join(' | ')}` : ''),
+  };
 }
 
 async function atenderCfd(accion, d = {}) {
@@ -1327,54 +1529,16 @@ async function atenderCfd(accion, d = {}) {
       await chrome.windows.update(p.windowId, { focused: true });
     } else {
       p = await chrome.tabs.create({ url: `${CFD_BASE}/guest`, active: true });
+      await chrome.storage.session.set({ cfdTab: p.id }).catch(() => null);
       await esperarCarga(p.id);
     }
+
     const estado = await ejecutar(p.id, pCfdEstado).catch(() => ({ sesion: false }));
-    if (!estado.sesion && d.usuario) {
-      // El login vive en iam.comfandi.com.co. El tipo de documento NO es un
-      // <select>: es un combo propio con un input oculto detrás, así que
-      // escribirle "NIT" al oculto no cambia lo que el formulario envía y el
-      // portal responde "Documento o contraseña incorrectos" con la clave
-      // buena. Hay que abrir la lista y pulsar la opción, como una persona.
-      const clic = (e) => ['pointerdown', 'mousedown', 'mouseup', 'click']
-        .forEach(t => e.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+    if (estado.sesion) return { ok: true, abierta: true, sesion: true, empresa: estado.empresa };
 
-      await esperarQue(p.id, () => {
-        const oculto = document.querySelector('input[name=identification_type_up]');
-        if (!oculto) return false;
-        if (oculto.value === 'NIT') return true;                 // ya está elegido
-        const caja = [...document.querySelectorAll('input')].find(e => /tipo de documento/i.test(e.placeholder || ''));
-        if (caja) { caja.click(); caja.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); }
-        return false;
-      }, [], 20000);
+    if (!d.usuario) return { ok: true, abierta: true };
 
-      await esperarQue(p.id, () => {
-        const oculto = document.querySelector('input[name=identification_type_up]');
-        if (oculto && oculto.value === 'NIT') return true;
-        const op = [...document.querySelectorAll('li,div,span,p,button')]
-          .filter(e => e.children.length === 0)
-          .find(e => /^\s*NIT\b/i.test(e.innerText || ''));
-        if (!op) return false;
-        ['pointerdown', 'mousedown', 'mouseup', 'click']
-          .forEach(t => op.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
-        return false;                                            // se confirma en la vuelta siguiente
-      }, [], 20000);
-
-      await esperarQue(p.id, (u) => {
-        const n = document.querySelector('input[name=identificationNumber]');
-        if (!n) return false;
-        const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-        set.call(n, u);
-        n.dispatchEvent(new Event('input', { bubbles: true }));
-        n.dispatchEvent(new Event('change', { bubbles: true }));
-        document.querySelector('input[name=password]')?.focus();
-        return true;
-      }, [String(d.usuario).replace(/\D/g, '')], 20000);
-
-      const tipo = await ejecutar(p.id, () => document.querySelector('input[name=identification_type_up]')?.value || '').catch(() => '');
-      return { ok: true, abierta: true, tipoDocumento: tipo, avisoTipo: tipo === 'NIT' ? null : 'Escoge "NIT" en Tipo de documento antes de entrar: el usuario de la empresa es el NIT, no una cédula.' };
-    }
-    return { ok: true, abierta: true };
+    return cfdEntrar(p.id, d);
   }
 
   const pestana = await pestanaCfd();
