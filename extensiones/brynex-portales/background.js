@@ -75,7 +75,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.canal !== 'brynex-portales' || !ORIGENES_BRYNEX.includes(origen) || sender.id !== chrome.runtime.id) return;
 
   // Ver el estado o abrir la pestaña no espera a que termine un trámite en curso.
-  const directo = ['estado', 'abrir', 'novedadEstado', 'novedadAbrir', 'novedadResultado', 'boxEstado', 'boxAbrir', 'boxResultado', 'ccfEstado', 'ccfAbrir', 'ccfPaso', 'ccfResultado', 'cfdEstado', 'cfdAbrir', 'cfdLlenar', 'cfdResultado', 'fspAbrir', 'fspCertificado'].includes(msg.accion);
+  const directo = ['recargar', 'estado', 'abrir', 'novedadEstado', 'novedadAbrir', 'novedadResultado', 'boxEstado', 'boxAbrir', 'boxResultado', 'ccfEstado', 'ccfAbrir', 'ccfPaso', 'ccfResultado', 'cfdEstado', 'cfdAbrir', 'cfdLlenar', 'cfdResultado', 'fspAbrir', 'fspCertificado'].includes(msg.accion);
   (directo ? atender(msg, origen) : enCola(() => atender(msg, origen)))
     .then(sendResponse)
     .catch(e => sendResponse({ ok: false, error: String(e?.message || e).slice(0, 400) }));
@@ -87,6 +87,15 @@ let cola = Promise.resolve();
 const enCola = (fn) => (cola = cola.then(fn, fn));
 
 async function atender({ portal, accion, datos = {} }, origen) {
+  // Recargarse a sí misma. Al cambiar el código hay que pulsar "recargar" en
+  // chrome://extensions, y esa página no se puede automatizar desde ninguna
+  // parte: con esto basta el botón de BryNex. El reload mata el service worker,
+  // así que se contesta primero y se recarga un instante después.
+  if (portal === 'sys' && accion === 'recargar') {
+    setTimeout(() => chrome.runtime.reload(), 300);
+    return { ok: true, version: chrome.runtime.getManifest().version };
+  }
+
   if (portal === 'sanitas') return atenderSanitas(accion, datos, origen);
   if (portal === 'boxalud') return atenderBoxalud(accion, datos, origen);
   if (portal === 'ccfcv') return atenderCcfcv(accion, datos);

@@ -1155,6 +1155,11 @@ function sortClass($col, $currSort, $currDir) {
                     Revisar a todos los afiliados de la empresa, no solo a los sospechosos (barrido mensual)
                 </label>
                 <div id="ceps-comfandi-subsidios-estado" style="margin-top:0.4rem;font-weight:700;color:#92400e;"></div>
+                <button type="button" onclick="recargarExtensionPortales()" class="btn-export"
+                        style="background:#475569;cursor:pointer;margin-top:0.5rem;"
+                        title="Cuando BryNex actualiza la extensión, esto la pone al día sin ir a chrome://extensions">
+                    🔄 Recargar la extensión
+                </button>
             </div>
         </div>
 
@@ -2995,6 +3000,36 @@ async function revisarSubsidiosSiFalta() {
     } catch (e) {
         if (est) est.textContent = '';
     }
+}
+
+/**
+ * Pone la extensión al día sin ir a chrome://extensions.
+ *
+ * Los cambios en la extensión no llegan solos: hay que recargarla, y esa página
+ * de Chrome no se puede automatizar. La extensión sabe recargarse a sí misma,
+ * así que basta pedírselo desde aquí.
+ */
+async function recargarExtensionPortales() {
+    const est = document.getElementById('ceps-comfandi-subsidios-estado');
+    const antes = document.documentElement.dataset.brynexPortales || '—';
+
+    if (!document.documentElement.dataset.brynexPortales) {
+        if (est) est.textContent = 'La extensión BryNex Portales no está instalada en este navegador.';
+        return;
+    }
+
+    if (est) est.textContent = 'Recargando la extensión…';
+    const r = await brynexExt('sys', 'recargar', {}, 20);
+
+    if (!r?.ok) {
+        if (est) est.textContent = '🧩 Esta versión de la extensión todavía no sabe recargarse sola: hazlo una última vez en chrome://extensions.';
+        return;
+    }
+
+    // Tras el reload la página necesita recargarse para volver a enlazar con
+    // ella: el puente viejo quedó desconectado.
+    if (est) est.textContent = 'Extensión recargada (estaba en ' + antes + '). Recargando la página…';
+    setTimeout(() => location.reload(), 1500);
 }
 
 async function revisarSubsidiosComfandi(alcance, simular = false, nitConocido = null) {
