@@ -283,7 +283,21 @@ try {
     return null;
   })();
 
-  if (!campoTipo) salir({ ok: false, error: 'El login de Comfandi no tiene el campo de tipo de documento.' });
+  if (!campoTipo) {
+    // Sin esto el fallo no decía nada: el portal puede haber contestado otra
+    // cosa (mantenimiento, bloqueo por país) y el script solo veía que faltaba
+    // un campo.
+    const pantalla = await pagina.evaluate(() => ({
+      donde: location.host + location.pathname,
+      texto: (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 400),
+    })).catch(() => ({ donde: '', texto: '' }));
+
+    salir({
+      ok: false,
+      error: `El login de Comfandi no mostró el campo de tipo de documento. Quedó en ${pantalla.donde}: "${pantalla.texto}"`,
+      url: pantalla.donde,
+    });
+  }
 
   await campoTipo.click({ clickCount: 3 }).catch(() => null);
   await campoTipo.type('NIT', { delay: 60 }).catch(() => null);
