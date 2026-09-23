@@ -140,7 +140,13 @@ class ComfandiCajaController extends Controller
 
         $aliadoId = (int) session('aliado_id_activo');
         $completa = ($datos['alcance'] ?? 'candidatos') === 'completa';
-        $nit = $datos['nit'] ?? null;
+
+        // El portal da el NIT con el dígito de verificación pegado
+        // (9016037383) y BryNex lo guarda sin él: sin traducirlo, la empresa no
+        // existe y la lista sale vacía.
+        $nit = ! empty($datos['nit'])
+            ? ComfandiCajaConciliacionService::nitComoLoGuardaBryNex($datos['nit'])
+            : null;
 
         $lista = $completa ? $candidatos->todos($aliadoId, $nit) : $candidatos->candidatos($aliadoId, $nit);
 
@@ -180,7 +186,8 @@ class ComfandiCajaController extends Controller
         $revision = $simular ? null : CajaRevision::abrir($aliadoId, CajaRevision::ENTIDAD_COMFANDI, $alcance);
 
         try {
-            $r = $servicio->procesar($aliadoId, $datos['movimientos'] ?? [], $datos['revisados'], $simular, $datos['nit'] ?? null);
+            $nit = ! empty($datos['nit']) ? ComfandiCajaConciliacionService::nitComoLoGuardaBryNex($datos['nit']) : null;
+            $r = $servicio->procesar($aliadoId, $datos['movimientos'] ?? [], $datos['revisados'], $simular, $nit);
         } catch (Throwable $e) {
             $revision?->fallar($e->getMessage());
 

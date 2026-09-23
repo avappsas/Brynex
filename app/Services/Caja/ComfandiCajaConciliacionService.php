@@ -59,6 +59,11 @@ class ComfandiCajaConciliacionService
      * dígito, comprobando contra la tabla en vez de recortar a ciegas: hay NITs
      * legítimos de 10 dígitos.
      */
+    public static function nitComoLoGuardaBryNex(string $nit): string
+    {
+        return (new self)->nitBryNex($nit);
+    }
+
     private function nitBryNex(string $nit): string
     {
         // "901709476-5" → el NIT es lo de antes del guion; el resto es el DV.
