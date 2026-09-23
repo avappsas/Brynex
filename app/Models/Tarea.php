@@ -21,6 +21,9 @@ class Tarea extends BaseModel
         'encargado_id', 'creado_por',
         'fecha_limite', 'fecha_alerta',
         'fecha_radicado', 'numero_radicado', 'correo',
+        // De qué hallazgo automático nació, para no repetirla cada noche.
+        // Ver TareaAutomaticaService.
+        'llave_auto',
     ];
 
     protected $casts = [
