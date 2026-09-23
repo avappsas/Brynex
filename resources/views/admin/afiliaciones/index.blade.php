@@ -1146,13 +1146,15 @@ function sortClass($col, $currSort, $currDir) {
                 de tipo <em>Subsidios</em> cuando la caja espera los aportes, y de <em>Solicitud de documentos</em> cuando pide
                 el certificado escolar o papeles del beneficiario. La tarea queda con el encargado del contrato y
                 <strong>se cierra sola</strong> cuando la caja deja de reportar el bloqueo.
-                Solo se revisan los sospechosos del día —pago con mora, tarea abierta o afiliado nuevo—; una vez al mes
-                conviene el barrido completo. Tarda unos 10 segundos por persona.
-                <div id="ceps-comfandi-subsidios" style="margin-top:0.5rem;display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
-                    <button type="button" onclick="revisarSubsidiosComfandi('candidatos')" class="btn-export" style="background:#b45309;cursor:pointer;">💰 Revisar subsidios del día</button>
-                    <button type="button" onclick="revisarSubsidiosComfandi('completa')" class="btn-export" style="background:#78350f;cursor:pointer;">📅 Barrido completo</button>
-                    <span id="ceps-comfandi-subsidios-estado" style="font-weight:700;color:#92400e;"></span>
-                </div>
+                Va en la misma pasada de los botones de abajo: con <strong>Solo consultar</strong> se ve qué tareas se abrirían
+                y con <strong>Actualizar radicados y tareas</strong> se crean. Se revisan los sospechosos del día —pago con mora,
+                tarea abierta o afiliado nuevo—, y una vez al mes conviene marcar el barrido completo.
+                Tarda unos 10 segundos por persona.
+                <label style="display:flex;align-items:center;gap:0.35rem;margin-top:0.5rem;font-weight:700;color:#334155;">
+                    <input type="checkbox" id="ceps-comfandi-subsidios-todos">
+                    Revisar a todos los afiliados de la empresa, no solo a los sospechosos (barrido mensual)
+                </label>
+                <div id="ceps-comfandi-subsidios-estado" style="margin-top:0.4rem;font-weight:700;color:#92400e;"></div>
             </div>
         </div>
 
@@ -2656,6 +2658,14 @@ function elegirEntidadConciliacion(entidad) {
             : (['caja_comfenalco', 'caja_comfandi'].includes(entidad) ? '🏢 Conciliar radicados de caja con ' : '🩺 Conciliar radicados de EPS con ') + (CEPS_NOMBRES[entidad] || 'el portal');
         b.style.color = activo ? '#fff' : '#334155';
     });
+    // En Comfandi el botón no solo mueve radicados: también abre y cierra las
+    // tareas de subsidio bloqueado.
+    const btnAplicar = document.querySelector('#ceps-acciones button:last-child');
+    if (btnAplicar) {
+        btnAplicar.textContent = entidad === 'caja_comfandi'
+            ? '✅ Actualizar radicados y tareas'
+            : '✅ Consultar y actualizar radicados';
+    }
     Object.keys(CEPS_NOMBRES).forEach(k => {
         document.getElementById('ceps-descripcion-' + k).style.display = k === entidad ? 'block' : 'none';
     });
@@ -2980,9 +2990,13 @@ async function revisarSubsidiosSiFalta() {
     }
 }
 
-async function revisarSubsidiosComfandi(alcance) {
+async function revisarSubsidiosComfandi(alcance, simular = false, nitConocido = null) {
     const est = document.getElementById('ceps-comfandi-subsidios-estado');
     const pinta = (t) => { if (est) est.textContent = t; };
+
+    // Cuando la llama la conciliación, la empresa ya está comprobada y su NIT
+    // leído: no hay que volver a preguntárselo al portal.
+    if (nitConocido) return revisarSubsidiosDe(alcance, simular, { nit: nitConocido }, pinta);
 
     if (!await revisarSesionComfandiConciliacion()) { alert('Primero inicia sesión en la Sucursal Virtual Empresas de Comfandi.'); return; }
 
@@ -2999,6 +3013,11 @@ async function revisarSubsidiosComfandi(alcance) {
 
     if (!emp?.nit) { pinta('No se pudo leer el NIT de la empresa abierta en el portal' + (emp?.error ? ': ' + emp.error : '.')); return; }
 
+    return revisarSubsidiosDe(alcance, simular, emp, pinta);
+}
+
+/** El recorrido en sí, ya sabiendo de qué empresa se trata. */
+async function revisarSubsidiosDe(alcance, simular, emp, pinta) {
     pinta('Pidiendo a quién consultar…');
     const url = COMFANDI_URL_SUBSIDIOS_CANDIDATOS + '?nit=' + encodeURIComponent(emp.nit) + '&alcance=' + alcance;
     const cand = await fetch(url, { headers: { 'Accept': 'application/json' } }).then(r => r.json()).catch(() => null);
@@ -3007,7 +3026,7 @@ async function revisarSubsidiosComfandi(alcance) {
     const grupo = Object.values(cand.por_empresa || {})[0] || [];
     if (!grupo.length) { pinta('✅ ' + (emp.empresa || emp.nit) + ': nadie por revisar hoy.'); return; }
 
-    if (cand.ya_revisado_hoy && !confirm('Los subsidios ya se revisaron hoy. ¿Volver a revisarlos?')) return;
+    if (!simular && cand.ya_revisado_hoy && !confirm('Los subsidios ya se revisaron hoy. ¿Volver a revisarlos?')) return;
 
     const documentos = grupo.map(c => c.cedula);
     pinta('Consultando ' + documentos.length + ' trabajador(es) en el portal… (unos ' + Math.ceil(documentos.length * 10 / 60) + ' min)');
@@ -3022,6 +3041,7 @@ async function revisarSubsidiosComfandi(alcance) {
         body: JSON.stringify({
             nit: emp.nit,
             alcance,
+            simular,
             movimientos: leido.movimientos || [],
             revisados: leido.revisados || [],
         }),
@@ -3030,8 +3050,8 @@ async function revisarSubsidiosComfandi(alcance) {
     if (!res?.ok) { pinta('No se pudo guardar: ' + (res?.mensaje || 'error')); return; }
 
     const fallos = (leido.errores || []).length;
-    pinta('✅ ' + (leido.revisados || []).length + ' revisados · ' + res.bloqueos + ' bloqueos · '
-        + res.nuevas + ' tarea(s) nueva(s) · ' + res.cerradas + ' cerrada(s)'
+    pinta((simular ? '🔎 (solo consulta) ' : '✅ ') + (leido.revisados || []).length + ' revisados · ' + res.bloqueos + ' bloqueos · '
+        + res.nuevas + (simular ? ' tarea(s) se abrirían' : ' tarea(s) nueva(s)') + ' · ' + res.cerradas + (simular ? ' se cerrarían' : ' cerrada(s)')
         + (res.sin_contrato ? ' · ' + res.sin_contrato + ' sin contrato' : '')
         + (fallos ? ' · ' + fallos + ' no se pudieron consultar' : ''));
 }
@@ -3087,6 +3107,15 @@ async function conciliarCajaComfandi(simular) {
             (data.beneficiarios_nuevos ? ` · <strong>${data.beneficiarios_nuevos} beneficiarios</strong> de ${data.beneficiarios_personas} trabajadores ${simular ? 'se guardarían' : 'guardados'} en BryNex` : '') +
             (data.confirmados_ok ? ` · ${data.confirmados_ok} que ya estaban en OK quedan confirmados` : '') + '.';
         if (!simular && data.cerrados > 0) mostrarToast(`${data.cerrados} radicados de caja pasaron a OK. Recarga para verlos.`, 'success');
+
+        // Los subsidios van en la misma pasada: ya está la sesión abierta y la
+        // empresa comprobada, y es el mismo trabajo de cruzar lo que la caja
+        // dice con lo que BryNex tiene.
+        await revisarSubsidiosComfandi(
+            document.getElementById('ceps-comfandi-subsidios-todos')?.checked ? 'completa' : 'candidatos',
+            simular,
+            cuerpo.nit
+        );
     } catch (err) {
         estado.innerHTML = '❌ ' + err.message;
     } finally {
