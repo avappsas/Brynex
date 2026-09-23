@@ -405,8 +405,21 @@ try {
   if (!empresa) empresa = await empresaAbierta(pagina);
 
   if (!empresa) {
-    const donde = await pagina.evaluate(() => location.host + location.pathname).catch(() => '');
-    salir({ ok: false, error: 'Se entró al portal pero no se llegó a la empresa.', url: donde });
+    // Sin el detalle el fallo era mudo y había que adivinar en qué pantalla se
+    // quedó: el portal encadena varias y cada una tiene sus botones.
+    const pantalla = await pagina.evaluate(() => ({
+      donde: location.host + location.pathname,
+      texto: (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 300),
+      clicables: [...document.querySelectorAll('button,a,input[type=submit],[role=button]')]
+        .map(e => (e.innerText || e.value || '').replace(/\s+/g, ' ').trim())
+        .filter(Boolean).slice(0, 12),
+    })).catch(() => ({ donde: '', texto: '', clicables: [] }));
+
+    salir({
+      ok: false,
+      error: `Se entró al portal pero no se llegó a la empresa. Quedó en ${pantalla.donde}: "${pantalla.texto}" · botones: ${pantalla.clicables.join(' | ')}`,
+      url: pantalla.donde,
+    });
   }
 
   // ── Recorrer a los trabajadores ───────────────────────────────────────────
