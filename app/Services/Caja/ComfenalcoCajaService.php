@@ -82,7 +82,7 @@ class ComfenalcoCajaService
             $problemas[] = 'El radicado de caja ya está en OK.';
         }
 
-        $cred = $rs ? EpsClavePortal::para(self::ENTIDAD, '%COMFENALCO%', 'Comfenalco Valle', (string) $rs->nit) : ['error' => 'Sin razón social.'];
+        $cred = $rs ? EpsClavePortal::para(self::ENTIDAD, '%COMFENALCO%', 'Comfenalco Valle', (string) $rs->nit, 'CAJA') : ['error' => 'Sin razón social.'];
         if (isset($cred['error'])) {
             $avisos[] = $cred['error'].' Tendrás que iniciar sesión a mano en el portal.';
         }
@@ -149,7 +149,7 @@ class ComfenalcoCajaService
     public function credencial(Contrato $contrato): array
     {
         $contrato->loadMissing('razonSocial');
-        $cred = EpsClavePortal::para(self::ENTIDAD, '%COMFENALCO%', 'Comfenalco Valle', (string) $contrato->razonSocial?->nit);
+        $cred = EpsClavePortal::para(self::ENTIDAD, '%COMFENALCO%', 'Comfenalco Valle', (string) $contrato->razonSocial?->nit, 'CAJA');
 
         return isset($cred['error']) ? $cred : ['usuario' => $cred['usuario'], 'contrasena' => $cred['contrasena'], 'host' => self::HOST];
     }

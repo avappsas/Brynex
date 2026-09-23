@@ -19,7 +19,13 @@ class EpsClavePortal
      * @param  string  $patronEntidad  LIKE contra clave_accesos.entidad, p. ej. '%SALUD%TOTAL%'
      * @return array{usuario:string, contrasena:string, empresa:EpsPortalEmpresa}|array{error:string}
      */
-    public static function para(string $entidad, string $patronEntidad, string $nombre, string $nit): array
+    /**
+     * @param  string  $tipoClave  tipo en el llavero: 'EPS' o 'CAJA'. Importa
+     *                             cuando una entidad tiene las dos —Comfenalco
+     *                             es EPS y caja a la vez, con claves distintas—,
+     *                             y sin esto la caja recibía la de la EPS.
+     */
+    public static function para(string $entidad, string $patronEntidad, string $nombre, string $nit, string $tipoClave = 'EPS'): array
     {
         $nit     = preg_replace('/\D/', '', $nit);
         $empresa = EpsPortalEmpresa::de($entidad, $nit);
@@ -31,7 +37,7 @@ class EpsClavePortal
             $fila = DB::table('clave_accesos as c')
                 ->join('razones_sociales as rs', 'rs.id', '=', 'c.razon_social_id')
                 ->where('rs.nit', $nit)
-                ->where('c.tipo', 'EPS')
+                ->where('c.tipo', $tipoClave)
                 ->where('c.entidad', 'like', $patronEntidad)
                 ->where('c.activo', true)
                 ->whereNotNull('c.usuario')->where('c.usuario', '<>', '')
