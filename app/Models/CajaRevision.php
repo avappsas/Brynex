@@ -3,17 +3,22 @@
 namespace App\Models;
 
 /**
- * Una corrida de la revisión de subsidios de una caja, para un aliado y un día.
+ * Una corrida de la revisión de subsidios de una caja, para una empresa y un día.
  *
  * Es el candado que evita repetir el barrido: el comando nocturno y el disparo
  * desde el portal preguntan `yaSeHizo()` antes de arrancar.
+ *
+ * La unidad es la **empresa**, no el aliado: la clave del portal vive en la
+ * razón social y lo que se consulta es la empresa entera, así que una corrida
+ * vale para todos los aliados que la compartan. `aliado_id` queda solo como
+ * dato de quién la disparó.
  */
 class CajaRevision extends BaseModel
 {
     protected $table = 'caja_revisiones';
 
     protected $fillable = [
-        'aliado_id', 'entidad', 'fecha', 'estado', 'alcance',
+        'aliado_id', 'entidad', 'nit', 'fecha', 'estado', 'alcance',
         'revisados', 'bloqueados', 'tareas_nuevas', 'tareas_cerradas', 'mensaje',
     ];
 
@@ -34,15 +39,16 @@ class CajaRevision extends BaseModel
     public const ALCANCE_COMPLETA = 'completa';
 
     /**
-     * ¿Ya se revisó hoy? Una corrida con error no cuenta: se puede reintentar.
+     * ¿Ya se revisó hoy esta empresa? Una corrida con error no cuenta: se puede
+     * reintentar.
      *
      * Una que quedó en `corriendo` sí cuenta durante dos horas —es la que está
      * en curso— y después se da por colgada, para que un proceso muerto no deje
-     * al aliado sin revisión el resto del día.
+     * a la empresa sin revisión el resto del día.
      */
-    public static function yaSeHizo(int $aliadoId, string $entidad = self::ENTIDAD_COMFANDI): bool
+    public static function yaSeHizo(string $nit, string $entidad = self::ENTIDAD_COMFANDI): bool
     {
-        $hoy = static::where('aliado_id', $aliadoId)->where('entidad', $entidad)
+        $hoy = static::where('nit', static::nit($nit))->where('entidad', $entidad)
             ->whereDate('fecha', today())->latest('id')->first();
 
         if (! $hoy) {
@@ -59,23 +65,30 @@ class CajaRevision extends BaseModel
     }
 
     /**
-     * Abre (o retoma) la corrida del día y la deja en `corriendo`.
+     * Abre (o retoma) la corrida del día de esa empresa y la deja en `corriendo`.
      */
-    public static function abrir(int $aliadoId, string $entidad, string $alcance): self
+    public static function abrir(string $nit, string $entidad, string $alcance, ?int $aliadoId = null): self
     {
         $revision = static::firstOrNew([
-            'aliado_id' => $aliadoId,
             'entidad' => $entidad,
+            'nit' => static::nit($nit),
             'fecha' => today()->toDateString(),
         ]);
 
         $revision->fill([
+            'aliado_id' => $aliadoId ?? $revision->aliado_id,
             'estado' => self::ESTADO_CORRIENDO,
             'alcance' => $alcance,
             'mensaje' => null,
         ])->save();
 
         return $revision;
+    }
+
+    /** Solo dígitos: el portal da el NIT con el de verificación pegado. */
+    public static function nit(string $nit): string
+    {
+        return preg_replace('/\D/', '', $nit);
     }
 
     /** Cierra la corrida con sus totales. */

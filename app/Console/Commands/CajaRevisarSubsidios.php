@@ -19,15 +19,19 @@ use Throwable;
  * reportar se cierran solas. Es el mismo trabajo que hace la extensión cuando
  * alguien abre Afiliaciones, con un Chrome del servidor en lugar del suyo.
  *
- * Una vez al día por aliado: si alguien ya lo corrió desde el portal, esta no
- * repite. Programado en el Kernel; a mano:
+ * **La unidad es la empresa, no el aliado.** La clave del portal vive en la
+ * razón social, así que una sola consulta sirve para todos los aliados que
+ * compartan la empresa: se entra una vez y las tareas se reparten a cada uno
+ * según sus contratos. Por eso el candado del día también es por empresa.
  *
- *   php artisan caja:revisar-subsidios --aliado=2 --nit=901603738 --simular
+ * Programado en el Kernel; a mano:
+ *
+ *   php artisan caja:revisar-subsidios --nit=901603738 --simular
  */
 class CajaRevisarSubsidios extends Command
 {
     protected $signature = 'caja:revisar-subsidios
-                            {--aliado= : Solo este aliado (por defecto, todos los que tengan afiliados con la caja)}
+                            {--aliado= : Solo los afiliados de este aliado (por defecto, todos)}
                             {--nit= : Solo esta empresa}
                             {--completa : Barrido de todos los afiliados, no solo de los sospechosos}
                             {--forzar : Revisa aunque ya se haya hecho hoy}
@@ -44,120 +48,138 @@ class CajaRevisarSubsidios extends Command
         $completa = (bool) $this->option('completa');
         $alcance = $completa ? CajaRevision::ALCANCE_COMPLETA : CajaRevision::ALCANCE_CANDIDATOS;
 
-        foreach ($this->aliados() as $aliadoId) {
-            if (! $simular && ! $this->option('forzar') && CajaRevision::yaSeHizo($aliadoId)) {
-                $this->line("Aliado {$aliadoId}: ya se revisó hoy.");
+        $empresas = $this->empresas($candidatos, $completa);
 
-                continue;
-            }
+        if (! $empresas) {
+            $this->line('Nadie por revisar.');
 
-            $lista = $completa
-                ? $candidatos->todos($aliadoId, $this->option('nit') ?: null)
-                : $candidatos->candidatos($aliadoId, $this->option('nit') ?: null);
+            return self::SUCCESS;
+        }
 
-            if (! $lista) {
-                $this->line("Aliado {$aliadoId}: nadie por revisar.");
-
-                continue;
-            }
-
-            $this->revisarAliado($aliadoId, $lista, $alcance, $simular, $tareas, $portal);
+        foreach ($empresas as $nit => $porAliado) {
+            $this->revisarEmpresa((string) $nit, $porAliado, $alcance, $simular, $tareas, $portal);
         }
 
         return self::SUCCESS;
     }
 
     /**
-     * @param  array<string, array>  $porEmpresa  candidatos agrupados por NIT
+     * @param  array<int, array<string>>  $porAliado  aliado => cédulas suyas en esa empresa
      */
-    private function revisarAliado(
-        int $aliadoId,
-        array $porEmpresa,
+    private function revisarEmpresa(
+        string $nit,
+        array $porAliado,
         string $alcance,
         bool $simular,
         SubsidioTareasService $tareas,
         ComfandiSubsidiosHeadless $portal,
     ): void {
-        $revision = $simular ? null : CajaRevision::abrir($aliadoId, CajaRevision::ENTIDAD_COMFANDI, $alcance);
-        $totales = ['revisados' => 0, 'bloqueados' => 0, 'tareas_nuevas' => 0, 'tareas_cerradas' => 0];
-        $fallos = [];
+        $aliados = implode(', ', array_keys($porAliado));
 
-        $sinClave = 0;
+        if (! $portal->credencial($nit)) {
+            $this->line("{$nit}: sin clave de Comfandi guardada, no se puede consultar.");
 
-        foreach ($porEmpresa as $nit => $gente) {
-            $documentos = array_column($gente, 'cedula');
+            return;
+        }
 
-            // Sin clave guardada no hay nada que intentar. Son la mayoría de las
-            // empresas, así que van aparte: si entraran como fallo, el mensaje
-            // de la revisión sería una lista de NIT y no se vería lo que sí pasó.
-            if (! $portal->credencial((string) $nit)) {
-                $sinClave += count($documentos);
+        if (! $simular && ! $this->option('forzar') && CajaRevision::yaSeHizo($nit)) {
+            $this->line("{$nit}: ya se revisó hoy.");
 
+            return;
+        }
+
+        // Una sola consulta para todos los aliados: lo caro es el recorrido por
+        // el portal, y lo que devuelve es de la empresa, no de quien la factura.
+        $documentos = array_values(array_unique(array_merge(...array_values($porAliado))));
+
+        $this->line("{$nit} (aliados {$aliados}): ".count($documentos).' trabajador(es)…');
+
+        $revision = $simular ? null : CajaRevision::abrir($nit, CajaRevision::ENTIDAD_COMFANDI, $alcance, (int) array_key_first($porAliado));
+
+        try {
+            $leido = $portal->bloqueos($nit, $documentos);
+        } catch (Throwable $e) {
+            $leido = ['ok' => false, 'error' => $e->getMessage()];
+        }
+
+        if (! ($leido['ok'] ?? false)) {
+            $this->warn('  ⚠️ '.$leido['error']);
+            $revision?->fallar($leido['error']);
+
+            return;
+        }
+
+        // Sin nadie consultado no hay nada que concluir: cerrar tareas aquí
+        // sería darlas por resueltas sin haberlas mirado.
+        if (! $leido['revisados']) {
+            $this->warn('  ⚠️ El portal no dejó abrir el subsidio monetario de ninguno.');
+            $revision?->fallar('El portal no dejó abrir el subsidio monetario de ninguno.');
+
+            return;
+        }
+
+        $totales = ['revisados' => count($leido['revisados']), 'bloqueados' => 0, 'tareas_nuevas' => 0, 'tareas_cerradas' => 0];
+
+        foreach ($porAliado as $aliadoId => $suyos) {
+            // Cada aliado solo responde por su gente: las tareas y los cierres
+            // se calculan con las cédulas que él tiene en esa empresa.
+            $revisadosSuyos = array_values(array_intersect($leido['revisados'], $suyos));
+
+            if (! $revisadosSuyos) {
                 continue;
             }
 
-            $this->line("[{$aliadoId}] {$nit}: ".count($documentos).' trabajador(es)…');
+            $movimientosSuyos = array_values(array_filter(
+                $leido['movimientos'],
+                fn ($m) => in_array((string) ($m['documento'] ?? ''), $suyos, true)
+            ));
 
-            try {
-                $leido = $portal->bloqueos((string) $nit, $documentos);
-            } catch (Throwable $e) {
-                $leido = ['ok' => false, 'error' => $e->getMessage()];
-            }
+            $r = $tareas->procesar((int) $aliadoId, $movimientosSuyos, $revisadosSuyos, $simular, $nit);
 
-            if (! ($leido['ok'] ?? false)) {
-                $fallos[] = "{$nit}: ".($leido['error'] ?? 'sin detalle');
-                $this->warn("  ⚠️ {$leido['error']}");
-
-                continue;
-            }
-
-            // Sin nadie consultado no hay nada que concluir: cerrar tareas aquí
-            // sería darlas por resueltas sin haberlas mirado.
-            if (! $leido['revisados']) {
-                $fallos[] = "{$nit}: el portal no dejó abrir el subsidio monetario de ninguno.";
-
-                continue;
-            }
-
-            $r = $tareas->procesar($aliadoId, $leido['movimientos'], $leido['revisados'], $simular, (string) $nit);
-
-            $totales['revisados'] += count($leido['revisados']);
             $totales['bloqueados'] += $r['bloqueos'];
             $totales['tareas_nuevas'] += $r['nuevas'];
             $totales['tareas_cerradas'] += $r['cerradas'];
 
-            $this->info("  ✅ ".count($leido['revisados'])." revisados · {$r['bloqueos']} bloqueos · {$r['nuevas']} tarea(s) nueva(s) · {$r['cerradas']} cerrada(s)");
+            $this->info("  [aliado {$aliadoId}] {$r['bloqueos']} bloqueos · {$r['nuevas']} tarea(s) nueva(s) · {$r['cerradas']} cerrada(s)");
+        }
 
-            // A quién no se pudo consultar importa tanto como lo encontrado: su
-            // tarea no se cierra, y si se repite hay algo que arreglar.
-            foreach ($leido['errores'] ?? [] as $fallo) {
-                $this->warn("  · {$fallo['documento']}: {$fallo['error']}");
+        // A quién no se pudo consultar importa tanto como lo encontrado: su
+        // tarea no se cierra, y si se repite hay algo que arreglar.
+        foreach ($leido['errores'] ?? [] as $fallo) {
+            $this->warn("  · {$fallo['documento']}: {$fallo['error']}");
+        }
+
+        $revision?->terminar($totales, $this->aviso($leido['errores'] ?? []));
+    }
+
+    private function aviso(array $errores): ?string
+    {
+        if (! $errores) {
+            return null;
+        }
+
+        return 'No se pudo consultar a: '.implode(', ', array_map(fn ($e) => $e['documento'], $errores));
+    }
+
+    /**
+     * Los candidatos del día, por empresa y dentro de ella por aliado.
+     *
+     * @return array<string, array<int, array<string>>>
+     */
+    private function empresas(SubsidioCandidatosService $candidatos, bool $completa): array
+    {
+        $nit = $this->option('nit') ?: null;
+        $empresas = [];
+
+        foreach ($this->aliados() as $aliadoId) {
+            $lista = $completa ? $candidatos->todos($aliadoId, $nit) : $candidatos->candidatos($aliadoId, $nit);
+
+            foreach ($lista as $nitEmpresa => $gente) {
+                $empresas[(string) $nitEmpresa][$aliadoId] = array_values(array_unique(array_column($gente, 'cedula')));
             }
         }
 
-        $resumen = "{$totales['revisados']} revisados · {$totales['bloqueados']} bloqueos · "
-            ."{$totales['tareas_nuevas']} nuevas · {$totales['tareas_cerradas']} cerradas";
-
-        if ($sinClave) {
-            $resumen .= " · {$sinClave} sin clave de Comfandi guardada";
-        }
-
-        $this->line("Aliado {$aliadoId}: {$resumen}");
-
-        if (! $revision) {
-            return;
-        }
-
-        // Una corrida en la que ninguna empresa se pudo consultar no vale como
-        // revisión del día: queda fallida para poder reintentarla.
-        $aviso = $fallos ? 'Con fallos: '.implode(' | ', $fallos) : null;
-        if ($sinClave) {
-            $aviso = trim(($aviso ?? '')." · {$sinClave} trabajador(es) de empresas sin clave de Comfandi.");
-        }
-
-        $totales['revisados'] > 0
-            ? $revision->terminar($totales, $aviso)
-            : $revision->fallar($fallos ? implode(' | ', $fallos) : 'No se pudo consultar ninguna empresa.');
+        return $empresas;
     }
 
     /** @return array<int> */

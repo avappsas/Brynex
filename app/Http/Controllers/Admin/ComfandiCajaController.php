@@ -153,7 +153,9 @@ class ComfandiCajaController extends Controller
         return response()->json([
             'ok' => true,
             'alcance' => $completa ? 'completa' : 'candidatos',
-            'ya_revisado_hoy' => CajaRevision::yaSeHizo($aliadoId),
+            // El candado es por empresa: sin NIT no hay nada que preguntar, y
+            // la pantalla solo lo usa para no repetir la de la empresa abierta.
+            'ya_revisado_hoy' => $nit ? CajaRevision::yaSeHizo($nit) : false,
             'total' => collect($lista)->map(fn ($f) => count($f))->sum(),
             'por_empresa' => $lista,
         ]);
@@ -183,7 +185,11 @@ class ComfandiCajaController extends Controller
         $simular = (bool) ($datos['simular'] ?? false);
         $alcance = $datos['alcance'] ?? CajaRevision::ALCANCE_CANDIDATOS;
 
-        $revision = $simular ? null : CajaRevision::abrir($aliadoId, CajaRevision::ENTIDAD_COMFANDI, $alcance);
+        $nit = ! empty($datos['nit']) ? ComfandiCajaConciliacionService::nitComoLoGuardaBryNex($datos['nit']) : null;
+
+        $revision = $simular || ! $nit
+            ? null
+            : CajaRevision::abrir($nit, CajaRevision::ENTIDAD_COMFANDI, $alcance, $aliadoId);
 
         // Sin nadie consultado no hay revisión que valer: el portal no dejó
         // entrar a ninguna pantalla de subsidio. Se marca fallida para poder
@@ -198,7 +204,6 @@ class ComfandiCajaController extends Controller
         }
 
         try {
-            $nit = ! empty($datos['nit']) ? ComfandiCajaConciliacionService::nitComoLoGuardaBryNex($datos['nit']) : null;
             $r = $servicio->procesar($aliadoId, $datos['movimientos'] ?? [], $datos['revisados'], $simular, $nit);
         } catch (Throwable $e) {
             $revision?->fallar($e->getMessage());
