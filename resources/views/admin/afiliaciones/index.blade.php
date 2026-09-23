@@ -1128,6 +1128,14 @@ function sortClass($col, $currSort, $currDir) {
                 </span>
                 <div id="ceps-caja-familias" style="font-size:0.72rem;color:#475569;margin-top:0.3rem;"></div>
             </div>
+
+            <div style="margin-top:0.7rem;padding-top:0.6rem;border-top:1px dashed #cbd5e1;">
+                <strong>💰 Subsidios retenidos.</strong> Pregunta a Comfenalco por los trabajadores
+                <strong>morosos y con inexactitud</strong> de la empresa y abre una <strong>tarea</strong> por cada uno,
+                que se cierra sola cuando la caja deja de reportarlo. Aquí basta una consulta para toda la empresa,
+                así que es cuestión de segundos. Va en la misma pasada de los botones de abajo.
+                <div id="ceps-caja-subsidios-estado" style="margin-top:0.4rem;font-weight:700;color:#92400e;"></div>
+            </div>
         </div>
 
         <div id="ceps-descripcion-caja_comfandi" style="display:none;font-size:0.78rem;color:#475569;line-height:1.45;margin-bottom:0.8rem;">
@@ -2880,7 +2888,60 @@ async function conciliarCajaComfenalco(simular) {
         estado.innerHTML = '❌ ' + err.message;
     } finally {
         document.getElementById('ceps-acciones').style.display = 'flex';
+
+        // Los subsidios van en la misma pasada, y también si la conciliación
+        // falla: que no se pueda bajar la lista de afiliados no dice nada de
+        // los morosos, y dejarlos sin mirar obligaría a repetir el recorrido.
+        await revisarSubsidiosComfenalco(simular);
     }
+}
+
+/**
+ * Los subsidios que Comfenalco tiene retenidos, convertidos en tareas.
+ *
+ * Su consulta de morosos e inexactos es **por empresa**, así que con una
+ * pantalla se cubre la nómina entera: no hace falta ni la lista de candidatos
+ * para saber a quién preguntar, solo para saber de quién responde BryNex.
+ */
+async function revisarSubsidiosComfenalco(simular = false) {
+    const est = document.getElementById('ceps-caja-subsidios-estado');
+    const pinta = (t) => { if (est) est.textContent = t; };
+
+    pinta('Consultando morosos e inexactos en Comfenalco…');
+
+    const leido = await cajaExt('ccfMorosos', {}, 200).catch(e => ({ error: String(e?.message || e) }));
+
+    if (!leido?.ok) { pinta('El portal no respondió: ' + (leido?.error || 'sin detalle')); return; }
+    if (!leido.nit) { pinta('El portal no mostró el NIT de la empresa de la sesión.'); return; }
+
+    const url = COMFANDI_URL_SUBSIDIOS_CANDIDATOS + '?nit=' + encodeURIComponent(leido.nit) + '&alcance=candidatos&caja=COMFENALCO';
+    const cand = await fetch(url, { headers: { 'Accept': 'application/json' } }).then(r => r.json()).catch(() => null);
+
+    if (!cand?.ok) { pinta('No se pudo consultar la lista de candidatos.'); return; }
+
+    const grupo = Object.values(cand.por_empresa || {})[0] || [];
+    if (!grupo.length) { pinta('✅ ' + (leido.empresa || leido.nit) + ': nadie por revisar hoy en Comfenalco.'); return; }
+
+    const res = await fetch(COMFANDI_URL_SUBSIDIOS, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
+        body: JSON.stringify({
+            nit: leido.nit,
+            caja: 'COMFENALCO',
+            alcance: 'candidatos',
+            simular,
+            movimientos: leido.movimientos || [],
+            // La consulta es de la empresa entera: quien no salió en las tablas
+            // también quedó mirado, y por eso su tarea se puede cerrar.
+            revisados: grupo.map(c => c.cedula),
+        }),
+    }).then(r => r.json()).catch(() => null);
+
+    if (!res?.ok) { pinta('No se pudo guardar: ' + (res?.mensaje || res?.message || 'error')); return; }
+
+    pinta((simular ? '🔎 (solo consulta) ' : '✅ ') + grupo.length + ' revisados · ' + res.bloqueos + ' retenidos · '
+        + res.nuevas + (simular ? ' tarea(s) se abrirían' : ' tarea(s) nueva(s)') + ' · ' + res.cerradas + (simular ? ' se cerrarían' : ' cerrada(s)')
+        + (res.sin_contrato ? ' · ' + res.sin_contrato + ' sin contrato' : ''));
 }
 
 // ── Razón social elegida para conciliar ───────────────────────────────

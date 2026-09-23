@@ -1213,6 +1213,13 @@ async function ccfMorosos(pestana) {
 
   await esperar(1500);
 
+  // El NIT de la sesión, para que BryNex sepa de qué empresa son estas filas y
+  // avise si no es la que se escogió.
+  const empresa = await ejecutar(tab, () => ({
+    nit: (document.getElementById('txtNumDocumentoEmp')?.value || '').replace(/\D/g, ''),
+    razon: document.getElementById('txtRazonSocal')?.value || null,
+  })).catch(() => ({ nit: '', razon: null }));
+
   const sucursales = await ejecutar(tab, () =>
     [...document.querySelectorAll('#cmbSucursalEmpresa option')]
       .map(o => o.value).filter(v => v && v !== '-1')).catch(() => []);
@@ -1260,7 +1267,7 @@ async function ccfMorosos(pestana) {
     await esperar(800);
   }
 
-  return { ok: true, empresa: est.empresa, sucursales: sucursales.length, movimientos };
+  return { ok: true, nit: empresa.nit, empresa: empresa.razon || est.empresa, sucursales: sucursales.length, movimientos };
 }
 
 /** Busca al trabajador en "Realizar Afiliación" y devuelve lo que ofrece el portal. */
