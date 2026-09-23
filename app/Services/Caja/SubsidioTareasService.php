@@ -58,6 +58,16 @@ class SubsidioTareasService
             }
 
             $llave = $this->llave($bloqueo);
+
+            // El portal repite la fila del bloqueo una vez por beneficiario, y
+            // las tres de Yesenia son el mismo hallazgo: una sola tarea. Sin
+            // esto, la simulación contaba una por fila.
+            if (in_array($llave, $vistas, true)) {
+                $detalle[] = $bloqueo + ['accion' => 'repetido'];
+
+                continue;
+            }
+
             $vistas[] = $llave;
 
             if ($ya = $this->tareas->activaPorLlave($aliadoId, $llave)) {

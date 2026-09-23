@@ -3,10 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\CajaRevision;
 use App\Models\Contrato;
 use App\Services\Caja\ComfandiCajaConciliacionService;
 use App\Services\Caja\ComfandiCajaService;
 use App\Services\Caja\ComfandiListadoDescarga;
+use App\Services\Caja\SubsidioCandidatosService;
+use App\Services\Caja\SubsidioTareasService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
@@ -118,6 +121,83 @@ class ComfandiCajaController extends Controller
         Cache::put($this->claveEstado(), $estado, now()->addDay());
 
         return response()->json(['ok' => true] + $estado);
+    }
+
+    /**
+     * A quién hay que consultarle los bloqueos de subsidio, agrupado por NIT.
+     *
+     * La extensión pide esta lista, recorre el portal trabajador por trabajador
+     * y devuelve lo que encuentre a `subsidios()`. El alcance normal son los
+     * sospechosos del día (pago con mora, tarea abierta, afiliado nuevo); el
+     * completo se usa una vez al mes, después del ciclo de la caja.
+     */
+    public function subsidiosCandidatos(Request $request, SubsidioCandidatosService $candidatos)
+    {
+        $datos = $request->validate([
+            'nit' => 'nullable|string|max:20',
+            'alcance' => 'nullable|in:candidatos,completa',
+        ]);
+
+        $aliadoId = (int) session('aliado_id_activo');
+        $completa = ($datos['alcance'] ?? 'candidatos') === 'completa';
+        $nit = $datos['nit'] ?? null;
+
+        $lista = $completa ? $candidatos->todos($aliadoId, $nit) : $candidatos->candidatos($aliadoId, $nit);
+
+        return response()->json([
+            'ok' => true,
+            'alcance' => $completa ? 'completa' : 'candidatos',
+            'ya_revisado_hoy' => CajaRevision::yaSeHizo($aliadoId),
+            'total' => collect($lista)->map(fn ($f) => count($f))->sum(),
+            'por_empresa' => $lista,
+        ]);
+    }
+
+    /**
+     * Recibe los movimientos de subsidio que la extensión leyó del portal y los
+     * convierte en tareas.
+     *
+     * `revisados` son las cédulas que sí se alcanzaron a consultar: solo de esas
+     * se cierran tareas, porque un bloqueo que nadie miró no está resuelto.
+     */
+    public function subsidios(Request $request, SubsidioTareasService $servicio)
+    {
+        $datos = $request->validate([
+            'movimientos' => 'array|max:8000',
+            'movimientos.*' => 'array|max:10',
+            'revisados' => 'required|array|max:3000',
+            'revisados.*' => 'string|max:20',
+            'alcance' => 'nullable|in:candidatos,completa',
+            'simular' => 'boolean',
+            'cerrar_revision' => 'boolean',
+        ]);
+
+        $aliadoId = (int) session('aliado_id_activo');
+        $simular = (bool) ($datos['simular'] ?? false);
+        $alcance = $datos['alcance'] ?? CajaRevision::ALCANCE_CANDIDATOS;
+
+        $revision = $simular ? null : CajaRevision::abrir($aliadoId, CajaRevision::ENTIDAD_COMFANDI, $alcance);
+
+        try {
+            $r = $servicio->procesar($aliadoId, $datos['movimientos'] ?? [], $datos['revisados'], $simular);
+        } catch (Throwable $e) {
+            $revision?->fallar($e->getMessage());
+
+            return response()->json(['ok' => false, 'mensaje' => $e->getMessage()], 422);
+        }
+
+        // La revisión se cierra cuando la extensión termina con todas las
+        // empresas, no con la primera: hasta entonces queda en `corriendo`.
+        if ($revision && ($datos['cerrar_revision'] ?? true)) {
+            $revision->terminar([
+                'revisados' => $revision->revisados + count($datos['revisados']),
+                'bloqueados' => $revision->bloqueados + $r['bloqueos'],
+                'tareas_nuevas' => $revision->tareas_nuevas + $r['nuevas'],
+                'tareas_cerradas' => $revision->tareas_cerradas + $r['cerradas'],
+            ]);
+        }
+
+        return response()->json(['ok' => true] + $r);
     }
 
     public function estado()

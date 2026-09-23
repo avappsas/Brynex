@@ -1008,6 +1008,10 @@ Route::middleware('auth')->group(function () {
             Route::post('/{contrato}/caja-comfandi/aplicar', [$cfd, 'aplicar'])->name('caja-comfandi.aplicar');
             Route::post('/caja-comfandi/conciliar', [$cfd, 'conciliar'])->name('caja-comfandi.conciliar');
             Route::get('/caja-comfandi/conciliar/estado', [$cfd, 'estado'])->name('caja-comfandi.conciliar.estado');
+            // Revisión de subsidios bloqueados: la extensión pide a quién
+            // consultar y devuelve lo que lee del portal, que se vuelve tareas.
+            Route::get('/caja-comfandi/subsidios/candidatos', [$cfd, 'subsidiosCandidatos'])->name('caja-comfandi.subsidios.candidatos');
+            Route::post('/caja-comfandi/subsidios', [$cfd, 'subsidios'])->name('caja-comfandi.subsidios');
             // Portal Boxalud (Emssanar): afiliación con la extensión BryNex Portales.
             $bxc = \App\Http\Controllers\Admin\BoxaludController::class;
             Route::get('/{contrato}/boxalud/{eps}/precheck', [$bxc, 'precheck'])->name('boxalud.precheck')->where('eps', '[a-z_]+');
