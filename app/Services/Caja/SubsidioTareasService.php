@@ -37,10 +37,10 @@ class SubsidioTareasService
      * @param  array<string>  $revisados  documentos que sí se consultaron, para poder cerrar lo que ya no aparece
      * @return array{nuevas:int, cerradas:int, sin_contrato:int, detalle:array}
      */
-    public function procesar(int $aliadoId, array $movimientos, array $revisados, bool $simular = false): array
+    public function procesar(int $aliadoId, array $movimientos, array $revisados, bool $simular = false, ?string $nit = null): array
     {
         $bloqueos = $this->leer($movimientos);
-        $contratos = $this->contratosDe($aliadoId, $revisados);
+        $contratos = $this->contratosDe($aliadoId, $revisados, $nit);
 
         $detalle = [];
         $nuevas = 0;
@@ -222,20 +222,42 @@ class SubsidioTareasService
             $bloqueo['motivo']);
     }
 
-    /** @return Collection<string, Contrato> */
-    private function contratosDe(int $aliadoId, array $documentos): Collection
+    /**
+     * El contrato al que pertenece cada bloqueo.
+     *
+     * La misma persona puede tener dos contratos vigentes en el aliado —Yesenia
+     * tiene el de Construtech con Comfandi y otro de solo salud—, así que no
+     * sirve el último por id: manda el de la empresa que se está revisando y,
+     * en su defecto, cualquiera que cotice a esta caja.
+     *
+     * @return Collection<string, Contrato>
+     */
+    private function contratosDe(int $aliadoId, array $documentos, ?string $nit = null): Collection
     {
         if (! $documentos) {
             return collect();
         }
 
-        return Contrato::where('aliado_id', $aliadoId)
+        $nit = $nit ? preg_replace('/\D/', '', $nit) : null;
+
+        return Contrato::with('razonSocial')
+            ->where('aliado_id', $aliadoId)
             ->where('estado', 'vigente')
             ->whereIn('cedula', array_map(fn ($d) => $this->documento($d), $documentos))
+            ->whereHas('caja', fn ($k) => $k->where('nombre', 'like', '%COMFANDI%'))
             ->orderByDesc('id')
             ->get()
             ->groupBy(fn ($c) => $this->documento((string) $c->cedula))
-            ->map(fn ($g) => $g->first());
+            ->map(function ($suyos) use ($nit) {
+                if ($nit) {
+                    $deLaEmpresa = $suyos->first(fn ($c) => preg_replace('/\D/', '', (string) $c->razonSocial?->nit) === $nit);
+                    if ($deLaEmpresa) {
+                        return $deLaEmpresa;
+                    }
+                }
+
+                return $suyos->first();
+            });
     }
 
     private function documento(string $valor): string

@@ -165,6 +165,7 @@ class ComfandiCajaController extends Controller
         $datos = $request->validate([
             'movimientos' => 'array|max:8000',
             'movimientos.*' => 'array|max:10',
+            'nit' => 'nullable|string|max:20',
             'revisados' => 'required|array|max:3000',
             'revisados.*' => 'string|max:20',
             'alcance' => 'nullable|in:candidatos,completa',
@@ -179,7 +180,7 @@ class ComfandiCajaController extends Controller
         $revision = $simular ? null : CajaRevision::abrir($aliadoId, CajaRevision::ENTIDAD_COMFANDI, $alcance);
 
         try {
-            $r = $servicio->procesar($aliadoId, $datos['movimientos'] ?? [], $datos['revisados'], $simular);
+            $r = $servicio->procesar($aliadoId, $datos['movimientos'] ?? [], $datos['revisados'], $simular, $datos['nit'] ?? null);
         } catch (Throwable $e) {
             $revision?->fallar($e->getMessage());
 
