@@ -18,15 +18,18 @@ class NuevaEpsConexion extends Command
 
     public function handle(): int
     {
-        $tunel = config('services.nueva_eps.tunel');
+        // El mismo orden que usa el servicio: manda el proxy y el túnel es el
+        // respaldo. Antes esto anunciaba el túnel aunque no se fuera a usar.
+        $proxy = config('services.proxy_colombia.url');
+        $tunel = $proxy ? null : config('services.nueva_eps.tunel');
 
         $this->line(match (true) {
-            (bool) $tunel                                => "Probando por el túnel de la oficina ({$tunel})…",
-            (bool) config('services.proxy_colombia.url') => 'Probando por el proxy de PROXY_COLOMBIA…',
-            default                                      => 'Sin túnel ni proxy: probando con la IP directa del servidor…',
+            (bool) $proxy => 'Probando por el proxy de PROXY_COLOMBIA…',
+            (bool) $tunel => "Probando por el túnel de la oficina ({$tunel})…",
+            default       => 'Sin proxy ni túnel: probando con la IP directa del servidor…',
         });
 
-        if (NuevaEpsPortalService::tunelConectado() === false) {
+        if ($tunel && NuevaEpsPortalService::tunelConectado() === false) {
             $this->error("El túnel no está escuchando en {$tunel}: el PC de la oficina no está conectado.");
 
             return self::FAILURE;
