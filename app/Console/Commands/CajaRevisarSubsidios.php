@@ -114,7 +114,13 @@ class CajaRevisarSubsidios extends Command
             $totales['tareas_nuevas'] += $r['nuevas'];
             $totales['tareas_cerradas'] += $r['cerradas'];
 
-            $this->info("  ✅ {$r['bloqueos']} bloqueos · {$r['nuevas']} tarea(s) nueva(s) · {$r['cerradas']} cerrada(s)");
+            $this->info("  ✅ ".count($leido['revisados'])." revisados · {$r['bloqueos']} bloqueos · {$r['nuevas']} tarea(s) nueva(s) · {$r['cerradas']} cerrada(s)");
+
+            // A quién no se pudo consultar importa tanto como lo encontrado: su
+            // tarea no se cierra, y si se repite hay algo que arreglar.
+            foreach ($leido['errores'] ?? [] as $fallo) {
+                $this->warn("  · {$fallo['documento']}: {$fallo['error']}");
+            }
         }
 
         $resumen = "{$totales['revisados']} revisados · {$totales['bloqueados']} bloqueos · "
