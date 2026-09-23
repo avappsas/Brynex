@@ -169,6 +169,58 @@ const elegirCombo = async (pagina, opcion, cual = 0) => {
   return false;
 };
 
+/**
+ * El modal de bienvenida: escoge la empresa y acepta.
+ *
+ * Nada más entrar, el portal dice "Aún no tiene permisos para gestionar
+ * afiliaciones" y pide elegir la empresa en un desplegable; hasta que no se
+ * acepta, el menú no lleva a ninguna parte. El usuario del login es el NIT de
+ * la empresa, así que casi siempre hay una sola, pero si hay varias manda la
+ * que el portal saluda arriba.
+ */
+const escogerEmpresa = async (pagina) => {
+  const saludada = await pagina.evaluate(() =>
+    ((document.body.innerText || '').match(/Hola,\s*([^\n.]+)/i) || [])[1]?.trim() || '').catch(() => '');
+
+  // El desplegable: react-select si lo hay, y si no el propio "Selecciona tu
+  // empresa", que el portal dibuja como un botón.
+  const combo = (await pagina.$$('input[role=combobox]'))[0];
+
+  if (combo) {
+    await combo.focus();
+    await pagina.keyboard.press('ArrowDown');
+  } else {
+    for (const b of await pagina.$$('button,[role=button],div[class*=select]')) {
+      const texto = await b.evaluate(e => (e.offsetParent ? (e.innerText || '') : '')).catch(() => '');
+      if (/selecciona tu empresa/i.test(texto)) { await b.click().catch(() => null); break; }
+    }
+  }
+
+  await esperar(900);
+
+  const opciones = [...await pagina.$$('[class*=option]'), ...await pagina.$$('li')];
+  let elegida = null;
+
+  for (const o of opciones) {
+    const texto = await o.evaluate(e => (e.offsetParent ? (e.innerText || '').trim() : '')).catch(() => '');
+    if (!texto) continue;
+    if (!elegida) elegida = o;
+    if (saludada && texto.toUpperCase().includes(saludada.toUpperCase().slice(0, 12))) { elegida = o; break; }
+  }
+
+  if (elegida) {
+    await elegida.click().catch(() => null);
+    await esperar(700);
+  }
+
+  for (const b of await pagina.$$('button,[role=button],input[type=submit]')) {
+    const texto = await b.evaluate(e => (e.offsetParent ? (e.innerText || e.value || '') : '')).catch(() => '');
+    if (/^\s*aceptar\s*$/i.test(texto.trim())) { await b.click().catch(() => null); return true; }
+  }
+
+  return !!elegida;
+};
+
 /** Los bloqueos de un trabajador, o null si no se pudo llegar a su pantalla. */
 const bloqueosDe = async (pagina, documento) => {
   await pagina.goto(`${BASE}/workers`, { waitUntil: 'networkidle2', timeout: 60000 });
@@ -388,18 +440,23 @@ try {
       const continuar = botones.find(e => /^\s*continuar\s*$/i.test((e.innerText || e.value || '').trim()));
       if (continuar) { golpe(continuar); return { paso: '2fa-continuar' }; }
 
-      const empresas = [...document.querySelectorAll('button,[role=button],li,div[class*=card]')]
+      // La empresa se escoge fuera de aquí: su desplegable necesita el teclado
+      // y el clic de verdad de Puppeteer, no eventos fabricados.
+      if (/selecciona (tu|la) empresa|no tiene permisos para gestionar/i.test(texto)) return { paso: 'empresa' };
+
+      const tarjetas = [...document.querySelectorAll('button,[role=button],li,div[class*=card]')]
         .filter(e => {
           const t = (e.innerText || '').trim();
           return t && t.length < 200 && t.replace(/\D/g, '').includes(nit.slice(0, 9));
         });
-      if (empresas.length) { golpe(empresas[empresas.length - 1]); return { paso: 'empresa' }; }
+      if (tarjetas.length) { golpe(tarjetas[tarjetas.length - 1]); return { paso: 'tarjeta' }; }
 
       return { paso: 'esperando' };
     }, usuario).catch(() => ({ paso: 'cargando' }));
 
     if (paso?.fin === 'clave') salir({ ok: false, error: 'Comfandi rechazó el usuario o la clave guardada en BryNex.' });
     if (paso?.fin === 'dentro') empresa = paso.empresa;
+    if (paso?.paso === 'empresa') await escogerEmpresa(pagina);
   }
 
   if (!empresa) empresa = await empresaAbierta(pagina);
