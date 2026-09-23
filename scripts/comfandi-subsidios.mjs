@@ -110,9 +110,12 @@ const ejecutable = await (async () => {
 
 if (!ejecutable) salir({ ok: false, error: 'No se encontró Chrome. Instálalo o define CHROME_PATH.' });
 
+// El portal solo atiende a un navegador con ventana. En el servidor la ventana
+// la da Xvfb (un display virtual), asi que Chrome corre normal, sin pantalla
+// donde dibujar. Ver ComfandiSubsidiosHeadless.
 const navegador = await puppeteer.launch({
   executablePath: ejecutable,
-  headless: 'new',
+  headless: entrada.visible ? false : 'new',
   args: [
     '--no-sandbox',
     '--disable-dev-shm-usage',
