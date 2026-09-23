@@ -2930,9 +2930,16 @@ async function abrirPortalComfandiConciliacion() {
     if (r?.avisoTipo) document.getElementById('ceps-comfandi-sesion').innerHTML += `<br>⚠️ ${r.avisoTipo}`;
 }
 
-async function revisarSesionComfandiConciliacion() {
+async function revisarSesionComfandiConciliacion(reintentos = 2) {
     const caja = document.getElementById('ceps-comfandi-sesion');
-    const e = await comfandiExt('cfdEstado', {}, 25);
+    let e = await comfandiExt('cfdEstado', {}, 25);
+
+    // El letrero "actualmente estás en" desaparece mientras el portal navega,
+    // y entonces parecía que la sesión se había caído en plena gestión.
+    for (let i = 0; i < reintentos && e?.abierta && !e?.sesion; i++) {
+        await new Promise(r => setTimeout(r, 1500));
+        e = await comfandiExt('cfdEstado', {}, 25);
+    }
     const abrir = `<button type="button" onclick="abrirPortalComfandiConciliacion()" class="btn-export" style="background:#1e3a8a;cursor:pointer;margin-left:0.4rem;">🌐 Abrir la Sucursal Virtual</button>`;
     if (e.sinExtension) { caja.innerHTML = '🧩 Instala o recarga la extensión BryNex Portales (1.8.0) y recarga esta página.'; return null; }
     if (!e.abierta || !e.sesion) {
@@ -3026,7 +3033,8 @@ async function revisarSubsidiosDe(alcance, simular, emp, pinta) {
     const grupo = Object.values(cand.por_empresa || {})[0] || [];
     if (!grupo.length) { pinta('✅ ' + (emp.empresa || emp.nit) + ': nadie por revisar hoy.'); return; }
 
-    if (!simular && cand.ya_revisado_hoy && !confirm('Los subsidios ya se revisaron hoy. ¿Volver a revisarlos?')) return;
+    // El candado del día frena al disparo automático, no a quien pulsa el botón:
+    // si alguien lo pide a mano es porque quiere mirar otra vez.
 
     const documentos = grupo.map(c => c.cedula);
     pinta('Consultando ' + documentos.length + ' trabajador(es) en el portal… (unos ' + Math.ceil(documentos.length * 10 / 60) + ' min)');
