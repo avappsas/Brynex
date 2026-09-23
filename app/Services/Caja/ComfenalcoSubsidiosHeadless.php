@@ -97,7 +97,10 @@ class ComfenalcoSubsidiosHeadless
                 continue;
             }
 
+            // La columna "Clase" suele repetir la tabla de la que sale ("Mora",
+            // "Inexactitud"): solo se añade cuando dice algo más.
             $clase = trim((string) ($fila['clase'] ?? ''));
+            $clase = preg_match('/^(mora|inexactitud)$/i', $clase) ? '' : $clase;
 
             $movimientos[] = [
                 'documento' => $documento,
