@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\CajaRevision;
 use App\Services\Caja\ComfandiSubsidiosHeadless;
+use App\Services\Caja\ComfenalcoSubsidiosHeadless;
 use App\Services\Caja\SubsidioCandidatosService;
 use App\Services\Caja\SubsidioTareasService;
 use Illuminate\Console\Command;
@@ -11,7 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
- * Revisión nocturna de los subsidios que Comfandi tiene bloqueados.
+ * Revisión nocturna de los subsidios que una caja tiene retenidos.
  *
  * Le pregunta al portal, empresa por empresa, por los sospechosos del día
  * —quien pagó con mora, quien ya tiene una tarea abierta y los afiliados
@@ -27,6 +28,7 @@ use Throwable;
  * Programado en el Kernel; a mano:
  *
  *   php artisan caja:revisar-subsidios --nit=901603738 --simular
+ *   php artisan caja:revisar-subsidios --caja=COMFENALCO --simular
  */
 class CajaRevisarSubsidios extends Command
 {
@@ -38,28 +40,25 @@ class CajaRevisarSubsidios extends Command
                             {--forzar : Revisa aunque ya se haya hecho hoy}
                             {--simular : Consulta el portal pero no crea ni cierra tareas}';
 
-    protected $description = 'Revisa en Comfandi los subsidios bloqueados y abre (o cierra) las tareas que correspondan';
+    protected $description = 'Revisa en la caja los subsidios bloqueados y abre (o cierra) las tareas que correspondan';
 
     public function handle(
         SubsidioCandidatosService $candidatos,
         SubsidioTareasService $tareas,
-        ComfandiSubsidiosHeadless $portal,
     ): int {
         $simular = (bool) $this->option('simular');
         $completa = (bool) $this->option('completa');
         $caja = mb_strtoupper(trim((string) $this->option('caja'))) ?: SubsidioCandidatosService::CAJA_POR_DEFECTO;
+        $lector = $this->lector($caja);
 
-        // Por ahora el único portal con recorrido propio es el de Comfandi. El
-        // resto del proceso —candidatos, tareas, candado— ya no depende de la
-        // caja, así que enchufar otra es traer su lector, no rehacer esto.
-        if ($caja !== SubsidioCandidatosService::CAJA_POR_DEFECTO) {
+        if (! $lector) {
             $this->error("Todavía no hay recorrido del portal de {$caja}.");
 
             return self::FAILURE;
         }
         $alcance = $completa ? CajaRevision::ALCANCE_COMPLETA : CajaRevision::ALCANCE_CANDIDATOS;
 
-        $empresas = $this->empresas($candidatos, $completa);
+        $empresas = $this->empresas($candidatos, $completa, $caja);
 
         if (! $empresas) {
             $this->line('Nadie por revisar.');
@@ -68,7 +67,7 @@ class CajaRevisarSubsidios extends Command
         }
 
         foreach ($empresas as $nit => $porAliado) {
-            $this->revisarEmpresa((string) $nit, $porAliado, $alcance, $simular, $tareas, $portal);
+            $this->revisarEmpresa((string) $nit, $porAliado, $alcance, $simular, $caja, $tareas, $lector);
         }
 
         return self::SUCCESS;
@@ -82,18 +81,19 @@ class CajaRevisarSubsidios extends Command
         array $porAliado,
         string $alcance,
         bool $simular,
+        string $caja,
         SubsidioTareasService $tareas,
-        ComfandiSubsidiosHeadless $portal,
+        ComfandiSubsidiosHeadless|ComfenalcoSubsidiosHeadless $portal,
     ): void {
         $aliados = implode(', ', array_keys($porAliado));
 
         if (! $portal->credencial($nit)) {
-            $this->line("{$nit}: sin clave de Comfandi guardada, no se puede consultar.");
+            $this->line("{$nit}: sin clave de ".mb_convert_case($caja, MB_CASE_TITLE).' guardada, no se puede consultar.');
 
             return;
         }
 
-        if (! $simular && ! $this->option('forzar') && CajaRevision::yaSeHizo($nit)) {
+        if (! $simular && ! $this->option('forzar') && CajaRevision::yaSeHizo($nit, $this->entidad($caja))) {
             $this->line("{$nit}: ya se revisó hoy.");
 
             return;
@@ -105,7 +105,7 @@ class CajaRevisarSubsidios extends Command
 
         $this->line("{$nit} (aliados {$aliados}): ".count($documentos).' trabajador(es)…');
 
-        $revision = $simular ? null : CajaRevision::abrir($nit, CajaRevision::ENTIDAD_COMFANDI, $alcance, (int) array_key_first($porAliado));
+        $revision = $simular ? null : CajaRevision::abrir($nit, $this->entidad($caja), $alcance, (int) array_key_first($porAliado));
 
         try {
             $leido = $portal->bloqueos($nit, $documentos);
@@ -145,7 +145,7 @@ class CajaRevisarSubsidios extends Command
                 fn ($m) => in_array((string) ($m['documento'] ?? ''), $suyos, true)
             ));
 
-            $r = $tareas->procesar((int) $aliadoId, $movimientosSuyos, $revisadosSuyos, $simular, $nit);
+            $r = $tareas->procesar((int) $aliadoId, $movimientosSuyos, $revisadosSuyos, $simular, $nit, $caja);
 
             $totales['bloqueados'] += $r['bloqueos'];
             $totales['tareas_nuevas'] += $r['nuevas'];
@@ -177,13 +177,15 @@ class CajaRevisarSubsidios extends Command
      *
      * @return array<string, array<int, array<string>>>
      */
-    private function empresas(SubsidioCandidatosService $candidatos, bool $completa): array
+    private function empresas(SubsidioCandidatosService $candidatos, bool $completa, string $caja): array
     {
         $nit = $this->option('nit') ?: null;
         $empresas = [];
 
-        foreach ($this->aliados() as $aliadoId) {
-            $lista = $completa ? $candidatos->todos($aliadoId, $nit) : $candidatos->candidatos($aliadoId, $nit);
+        foreach ($this->aliados($caja) as $aliadoId) {
+            $lista = $completa
+                ? $candidatos->todos($aliadoId, $nit, $caja)
+                : $candidatos->candidatos($aliadoId, $nit, $caja);
 
             foreach ($lista as $nitEmpresa => $gente) {
                 $empresas[(string) $nitEmpresa][$aliadoId] = array_values(array_unique(array_column($gente, 'cedula')));
@@ -193,8 +195,29 @@ class CajaRevisarSubsidios extends Command
         return $empresas;
     }
 
+    /**
+     * Quién lee el portal de esa caja, o null si esa caja todavía no tiene
+     * recorrido. El resto del proceso ya no depende de la caja.
+     */
+    private function lector(string $caja): ComfandiSubsidiosHeadless|ComfenalcoSubsidiosHeadless|null
+    {
+        return match (true) {
+            str_contains($caja, 'COMFANDI') => app(ComfandiSubsidiosHeadless::class),
+            str_contains($caja, 'COMFENALCO') => app(ComfenalcoSubsidiosHeadless::class),
+            default => null,
+        };
+    }
+
+    /** El nombre corto con el que la caja queda apuntada en `caja_revisiones`. */
+    private function entidad(string $caja): string
+    {
+        return str_contains($caja, 'COMFENALCO')
+            ? CajaRevision::ENTIDAD_COMFENALCO
+            : CajaRevision::ENTIDAD_COMFANDI;
+    }
+
     /** @return array<int> */
-    private function aliados(): array
+    private function aliados(string $caja): array
     {
         if ($this->option('aliado')) {
             return [(int) $this->option('aliado')];
@@ -203,7 +226,7 @@ class CajaRevisarSubsidios extends Command
         return DB::table('contratos as c')
             ->join('cajas as k', 'k.id', '=', 'c.caja_id')
             ->where('c.estado', 'vigente')
-            ->where('k.nombre', 'like', '%COMFANDI%')
+            ->where('k.nombre', 'like', '%'.$caja.'%')
             ->distinct()
             ->pluck('c.aliado_id')
             ->map(fn ($a) => (int) $a)
