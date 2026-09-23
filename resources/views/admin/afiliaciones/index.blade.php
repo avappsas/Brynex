@@ -2987,8 +2987,17 @@ async function revisarSubsidiosComfandi(alcance) {
     if (!await revisarSesionComfandiConciliacion()) { alert('Primero inicia sesión en la Sucursal Virtual Empresas de Comfandi.'); return; }
 
     pinta('Leyendo la empresa abierta…');
-    const emp = await comfandiExt('cfdEmpresa', {}, 40);
-    if (!emp?.nit) { pinta('No se pudo leer el NIT de la empresa abierta en el portal.'); return; }
+    const emp = await comfandiExt('cfdEmpresa', {}, 40).catch(e => ({ error: String(e?.message || e) }));
+
+    // La acción es de la 1.13.0: con la extensión sin recargar, el portal
+    // responde "acción desconocida" y sin este aviso parecería un fallo del
+    // portal.
+    if (/desconocida/i.test(emp?.error || '')) {
+        pinta('🧩 Recarga la extensión BryNex Portales en chrome://extensions (debe quedar en 1.13.0) y vuelve a intentar.');
+        return;
+    }
+
+    if (!emp?.nit) { pinta('No se pudo leer el NIT de la empresa abierta en el portal' + (emp?.error ? ': ' + emp.error : '.')); return; }
 
     pinta('Pidiendo a quién consultar…');
     const url = COMFANDI_URL_SUBSIDIOS_CANDIDATOS + '?nit=' + encodeURIComponent(emp.nit) + '&alcance=' + alcance;
