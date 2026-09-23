@@ -41,14 +41,15 @@ class ComfenalcoSubsidiosHeadless
             return ['ok' => false, 'error' => "La empresa {$nit} no tiene la clave de Comfenalco en el módulo de claves."];
         }
 
-        // Hay dos salidas colombianas y basta con una. El túnel manda cuando
-        // está en pie —es la conexión propia—, pero si el PC de la oficina está
-        // apagado y hay proxy contratado, se sigue por ahí en vez de cortar.
-        $tunelListo = $this->tunelEnPie();
-        $hayProxy = (bool) config('services.proxy_colombia.url');
+        // Hay dos salidas colombianas y basta con una. Manda el proxy: no
+        // depende de que nadie deje un PC encendido, y el tráfico que gasta
+        // esto —unas pocas páginas al día— es despreciable frente a lo
+        // contratado. El túnel de la oficina queda como respaldo.
+        $proxy = config('services.proxy_colombia.url');
+        $tunelListo = ! $proxy && $this->tunelEnPie();
 
-        if (! $tunelListo && ! $hayProxy) {
-            return ['ok' => false, 'error' => 'No hay salida colombiana: ni el túnel de la oficina ni PROXY_COLOMBIA.'];
+        if (! $proxy && ! $tunelListo) {
+            return ['ok' => false, 'error' => 'No hay salida colombiana: ni PROXY_COLOMBIA ni el túnel de la oficina.'];
         }
 
         $resultado = Process::path(base_path())
@@ -62,9 +63,7 @@ class ComfenalcoSubsidiosHeadless
                 // El portal rechaza la IP del servidor: sale por el proxy
                 // colombiano, igual que Nueva EPS. Va por stdin con la clave
                 // para que no quede en `ps`.
-                // Con el túnel en pie no se usa el proxy: gastar tráfico de
-                // pago teniendo la conexión de la oficina no tiene sentido.
-                'proxy' => $tunelListo ? null : config('services.proxy_colombia.url'),
+                'proxy' => $proxy,
                 'tunel' => $tunelListo ? config('services.comfenalco.tunel') : null,
                 'tunel_auth' => $tunelListo ? config('services.comfenalco.tunel_auth') : null,
             ], JSON_UNESCAPED_UNICODE))
