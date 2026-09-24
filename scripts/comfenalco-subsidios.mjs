@@ -253,10 +253,23 @@ try {
   }
 
   if (!dentro) {
-    const pantalla = await pagina.evaluate(() => ({
-      donde: location.host + location.pathname,
-      texto: (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 250),
-    })).catch(() => null);
+    // Qué quedó en pantalla: sin esto, "no se abrió la sesión" no distingue
+    // entre que el formulario no se llenara, que el botón no se dejara pulsar
+    // o que el portal tardara más de la cuenta.
+    const pantalla = await pagina.evaluate(() => {
+      const usuario = document.querySelector('input[name=email], input[type=email], input[type=text]');
+      const clave = document.querySelector('input[type=password]');
+      const boton = [...document.querySelectorAll('button,input[type=submit]')]
+        .find(b => /iniciar sesi/i.test(b.innerText || b.value || ''));
+
+      return {
+        donde: location.host + location.pathname,
+        texto: (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 250),
+        campos: `usuario ${usuario ? (usuario.value ? 'con valor' : 'vacío') : 'no está'}`
+          + `, clave ${clave ? (clave.value ? 'con valor' : 'vacía') : 'no está'}`
+          + `, botón ${boton ? (boton.disabled ? 'deshabilitado' : 'listo') : 'no está'}`,
+      };
+    }).catch(() => null);
 
     const bloqueado = /web page blocked|attack id/i.test(pantalla?.texto || '');
 
@@ -267,7 +280,7 @@ try {
         : bloqueado
           ? 'El portal de Comfenalco le niega el acceso a esta salida a internet. Atiende a un navegador con ventana desde una conexión colombiana: hace falta el proxy (PROXY_COLOMBIA).'
           : 'No se llegó a abrir la sesión de Comfenalco.'
-            + (pantalla ? ` Quedó en ${pantalla.donde}: "${pantalla.texto}"` : ''),
+            + (pantalla ? ` Quedó en ${pantalla.donde} [${pantalla.campos}]: "${pantalla.texto}"` : ''),
     });
   }
 
