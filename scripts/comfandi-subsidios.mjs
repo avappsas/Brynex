@@ -293,7 +293,7 @@ const bloqueosDe = async (pagina, documento) => {
 
   // Sin tipo de documento el portal no filtra: saca la lista entera paginada y
   // el trabajador podría no estar en la primera página.
-  if (!await elegirCombo(pagina, 'C[ée]dula de Ciudadan')) return `no se pudo elegir el tipo de documento en el listado [v2: ${ultimoComboVisto}]`;
+  if (!await elegirCombo(pagina, 'C[ée]dula de Ciudadan')) return `no se pudo elegir el tipo de documento en el listado (${ultimoComboVisto})`;
 
   const buscado = await insistir(pagina, (doc) => {
     const num = [...document.querySelectorAll('input')].find(i => /documento del trabajador/i.test(i.placeholder || ''));
