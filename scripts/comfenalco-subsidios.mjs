@@ -1,5 +1,11 @@
 /**
- * Los trabajadores que Comfenalco Valle reporta morosos o inexactos.
+ * Lo que hay que leerle a Comfenalco Valle desde el servidor.
+ *
+ * Dos consultas, según `modo`:
+ *   morosos      → los trabajadores morosos e inexactos (el bloqueo del subsidio)
+ *   trabajadores → los afiliados de la empresa, para conciliar los radicados de caja
+ *
+ * Lo de siempre:
  *
  * Es el equivalente de los bloqueos de subsidio de Comfandi, pero mucho más
  * barato: la Sucursal Virtual tiene «Trabajadores Morosos y con Inexactitud
@@ -128,6 +134,66 @@ const navegador = await puppeteer.launch({
   ],
 });
 
+/**
+ * Los afiliados que la caja tiene de esta empresa.
+ *
+ * Es la lista con la que se confirman los radicados de caja. Si el portal
+ * devuelve menos filas de las que él mismo dice tener, no se entrega nada: con
+ * la lista a medias media empresa parecería sin afiliar y la conciliación
+ * pondría en "falta afiliar" a gente que sí está.
+ */
+const afiliadosDeLaEmpresa = async (pagina) => {
+  await pagina.goto(`${BASE}/consultaTrabajadoresEmpresa.html`, { waitUntil: 'networkidle2', timeout: 60000 });
+
+  const listo = await insistir(pagina, () => !!document.getElementById('btnConsultar'), [], 30000);
+  if (!listo) return { ok: false, error: 'No cargó la consulta de trabajadores por empresa.' };
+
+  await esperar(2000);
+
+  const empresa = await pagina.evaluate(() => ({
+    nit: (document.getElementById('txtNumDocumentoEmp')?.value || '').replace(/\D/g, ''),
+    razon: document.getElementById('txtRazonSocal')?.value || null,
+  })).catch(() => ({ nit: '', razon: null }));
+
+  if (!empresa.nit) return { ok: false, error: 'El portal no mostró la empresa de la sesión.' };
+
+  await pagina.evaluate(() => document.getElementById('btnConsultar')?.click());
+
+  const filas = await insistir(pagina, () => {
+    const visible = (e) => !!(e && (e.offsetWidth || e.offsetHeight));
+    const modal = [...document.querySelectorAll('.jconfirm-content')].filter(visible)
+      .map(e => e.innerText.replace(/\s+/g, ' ').trim());
+    if (modal.length) return { error: modal.join(' ') };
+
+    const tabla = window.$ && $('#tablaTrabajadores').DataTable ? $('#tablaTrabajadores').DataTable() : null;
+    const datos = tabla ? tabla.rows().data().toArray() : [];
+    if (! datos.length) return null;
+
+    let esperadas = datos.length;
+    try {
+      const info = tabla.page.info();
+      esperadas = info.recordsTotal || info.recordsDisplay || datos.length;
+    } catch { /* sin paginación */ }
+
+    return {
+      datos: datos.map(f => [...f].slice(0, 4).map(x => String(x).replace(/<[^>]*>/g, '').trim())),
+      esperadas,
+    };
+  }, [], 90000);
+
+  if (! filas) return { ok: false, error: 'El portal no devolvió la lista de afiliados (¿la empresa no tiene ninguno?).' };
+  if (filas.error) return { ok: false, error: filas.error };
+
+  if (filas.datos.length < filas.esperadas) {
+    return {
+      ok: false,
+      error: `Solo se leyeron ${filas.datos.length} de ${filas.esperadas} afiliados; con la lista a medias no se concilia.`,
+    };
+  }
+
+  return { ok: true, nit: empresa.nit, empresa: empresa.razon, filas: filas.datos, completa: true };
+};
+
 let pagina;
 try {
   pagina = await navegador.newPage();
@@ -203,6 +269,10 @@ try {
           : 'No se llegó a abrir la sesión de Comfenalco.'
             + (pantalla ? ` Quedó en ${pantalla.donde}: "${pantalla.texto}"` : ''),
     });
+  }
+
+  if (entrada.modo === 'trabajadores') {
+    salir(await afiliadosDeLaEmpresa(pagina));
   }
 
   // ── La consulta, una por sucursal ─────────────────────────────────────────

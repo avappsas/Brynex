@@ -41,38 +41,13 @@ class ComfenalcoSubsidiosHeadless
             return ['ok' => false, 'error' => "La empresa {$nit} no tiene la clave de Comfenalco en el módulo de claves."];
         }
 
-        // Hay dos salidas colombianas y basta con una. Manda el proxy: no
-        // depende de que nadie deje un PC encendido, y el tráfico que gasta
-        // esto —unas pocas páginas al día— es despreciable frente a lo
-        // contratado. El túnel de la oficina queda como respaldo.
-        $proxy = config('services.proxy_colombia.url');
-        $tunelListo = ! $proxy && $this->tunelEnPie();
-
-        if (! $proxy && ! $tunelListo) {
-            return ['ok' => false, 'error' => 'No hay salida colombiana: ni PROXY_COLOMBIA ni el túnel de la oficina.'];
-        }
-
-        $resultado = Process::path(base_path())
-            ->timeout(self::SEGUNDOS)
-            ->input(json_encode([
-                'usuario' => $clave['usuario'],
-                'contrasena' => $clave['contrasena'],
-                // Con ventana siempre que se pueda: el portal atiende peor a un
-                // Chrome sin pantalla. En el servidor la pone Xvfb.
-                'visible' => $conVentana ?? is_executable('/usr/bin/xvfb-run'),
-                // El portal rechaza la IP del servidor: sale por el proxy
-                // colombiano, igual que Nueva EPS. Va por stdin con la clave
-                // para que no quede en `ps`.
-                'proxy' => $proxy,
-                'tunel' => $tunelListo ? config('services.comfenalco.tunel') : null,
-                'tunel_auth' => $tunelListo ? config('services.comfenalco.tunel_auth') : null,
-            ], JSON_UNESCAPED_UNICODE))
-            ->run($this->comando());
-
-        $salida = json_decode(trim($resultado->output()), true) ?: [];
+        $salida = $this->correr([
+            'usuario' => $clave['usuario'],
+            'contrasena' => $clave['contrasena'],
+        ], $conVentana);
 
         if (! ($salida['ok'] ?? false)) {
-            $error = $salida['error'] ?? trim($resultado->errorOutput()) ?: 'El portal no respondió.';
+            $error = $salida['error'] ?? 'El portal no respondió.';
 
             Log::warning('Comfenalco subsidios: no se pudo leer el portal', [
                 'nit' => $nit,
@@ -92,6 +67,40 @@ class ComfenalcoSubsidiosHeadless
             'revisados' => $documentos,
             'errores' => [],
         ];
+    }
+
+    /**
+     * Los afiliados que la caja tiene de esa empresa, para conciliar radicados.
+     *
+     * Misma entrada al portal que los morosos —login, salida colombiana— pero
+     * otra consulta. Si la lista viene incompleta el script no la entrega: con
+     * media empresa, la conciliación marcaría como "falta afiliar" a gente que
+     * sí está.
+     *
+     * @return array{ok:bool, nit?:string, empresa?:?string, filas?:array, error?:string}
+     */
+    public function trabajadores(string $nit): array
+    {
+        $clave = $this->credencial($nit);
+
+        if (! $clave) {
+            return ['ok' => false, 'error' => "La empresa {$nit} no tiene la clave de Comfenalco en el módulo de claves."];
+        }
+
+        $salida = $this->correr([
+            'usuario' => $clave['usuario'],
+            'contrasena' => $clave['contrasena'],
+            'modo' => 'trabajadores',
+        ]);
+
+        if (! ($salida['ok'] ?? false)) {
+            Log::warning('Comfenalco: no se pudo leer el listado de afiliados', [
+                'nit' => $nit,
+                'error' => $salida['error'] ?? null,
+            ]);
+        }
+
+        return $salida;
     }
 
     /**
@@ -163,6 +172,44 @@ class ComfenalcoSubsidiosHeadless
         fclose($socket);
 
         return true;
+    }
+
+    /**
+     * Lanza el script del portal con la salida colombiana que corresponda.
+     *
+     * Hay dos y basta con una. Manda el proxy: no depende de que nadie deje un
+     * PC encendido, y el tráfico que gasta esto —unas pocas páginas al día— es
+     * despreciable frente a lo contratado. El túnel de la oficina es el
+     * respaldo. Todo va por stdin para que las claves no queden en `ps`.
+     */
+    private function correr(array $entrada, ?bool $conVentana = null): array
+    {
+        $proxy = config('services.proxy_colombia.url');
+        $tunelListo = ! $proxy && $this->tunelEnPie();
+
+        if (! $proxy && ! $tunelListo) {
+            return ['ok' => false, 'error' => 'No hay salida colombiana: ni PROXY_COLOMBIA ni el túnel de la oficina.'];
+        }
+
+        $resultado = Process::path(base_path())
+            ->timeout(self::SEGUNDOS)
+            ->input(json_encode($entrada + [
+                // Con ventana siempre que se pueda: el portal atiende peor a un
+                // Chrome sin pantalla. En el servidor la pone Xvfb.
+                'visible' => $conVentana ?? is_executable('/usr/bin/xvfb-run'),
+                'proxy' => $proxy,
+                'tunel' => $tunelListo ? config('services.comfenalco.tunel') : null,
+                'tunel_auth' => $tunelListo ? config('services.comfenalco.tunel_auth') : null,
+            ], JSON_UNESCAPED_UNICODE))
+            ->run($this->comando());
+
+        $salida = json_decode(trim($resultado->output()), true) ?: [];
+
+        if (! $salida && ($err = trim($resultado->errorOutput()))) {
+            return ['ok' => false, 'error' => mb_substr($err, 0, 300)];
+        }
+
+        return $salida ?: ['ok' => false, 'error' => 'El portal no respondió.'];
     }
 
     private function comando(): string
