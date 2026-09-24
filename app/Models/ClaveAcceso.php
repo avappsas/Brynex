@@ -29,6 +29,50 @@ class ClaveAcceso extends BaseModel
     ];
 
     /**
+     * Deja en la bitácora cada cambio, con lo que había antes.
+     *
+     * Va en el modelo y no en el controlador porque la clave se actualiza desde
+     * varios sitios —el módulo, el sincronizador de ARL Sura, un comando— y la
+     * pregunta "¿quién me cambió esto?" aparece justo cuando el cambio no vino
+     * del sitio de siempre. Ahora que la clave es de la empresa y la puede
+     * tocar cualquier aliado que la comparta, sin esto no habría a quién
+     * preguntarle.
+     */
+    protected static function booted(): void
+    {
+        static::updating(function (self $clave) {
+            $cambios = collect($clave->getDirty())
+                ->except(['updated_at'])
+                ->map(fn ($nuevo, $campo) => [$clave->getOriginal($campo), $nuevo]);
+
+            if ($cambios->isEmpty()) {
+                return;
+            }
+
+            ClaveAccesoCambio::create([
+                'clave_acceso_id' => $clave->id,
+                'aliado_id' => session('aliado_id_activo') ?: $clave->aliado_id,
+                'user_id' => auth()->id(),
+                'usuario_anterior' => $clave->getOriginal('usuario'),
+                'contrasena_anterior' => $clave->getOriginal('contrasena'),
+                'usuario_nuevo' => $clave->usuario,
+                'contrasena_nueva' => $clave->contrasena,
+                // El resto, tal cual: activo, link, correo, observación…
+                'otros_cambios' => $cambios->except(['usuario', 'contrasena'])->isEmpty()
+                    ? null
+                    : json_encode($cambios->except(['usuario', 'contrasena']), JSON_UNESCAPED_UNICODE),
+                'created_at' => now(),
+            ]);
+        });
+    }
+
+    /** La bitácora de esta clave, de lo más nuevo a lo más viejo. */
+    public function cambios()
+    {
+        return $this->hasMany(ClaveAccesoCambio::class, 'clave_acceso_id')->orderByDesc('id');
+    }
+
+    /**
      * Las claves que ese aliado puede ver: las suyas y las de las empresas que
      * comparte con otro aliado.
      *

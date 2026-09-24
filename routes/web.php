@@ -256,6 +256,9 @@ Route::middleware('auth')->group(function () {
             Route::get('clave-accesos', [$cac, 'index'])->name('clave_accesos.index');
             Route::get('clave-accesos/razon-social/{id}', [$cac, 'indexRazonSocial'])->name('clave_accesos.razon_social');
             Route::get('clave-accesos/empresa/{id}', [$cac, 'indexEmpresa'])->name('clave_accesos.empresa');
+            // Quién cambió una clave y qué había antes: importa desde que la
+            // misma clave la pueden tocar varios aliados de la misma empresa.
+            Route::get('clave-accesos/{id}/historial', [$cac, 'historial'])->name('clave_accesos.historial');
         });
         Route::middleware('permiso:claves_acceso.gestionar')->group(function () use ($cac) {
             Route::post('clave-accesos', [$cac, 'store'])->name('clave_accesos.store');

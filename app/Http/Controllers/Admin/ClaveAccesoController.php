@@ -139,6 +139,38 @@ class ClaveAccesoController extends Controller
         return response()->json($this->taparContrasenas($claves));
     }
 
+    // ─── Bitácora de una clave ────────────────────────────────────────
+
+    /**
+     * Quién cambió esta clave y qué había antes.
+     *
+     * La contraseña anterior se tapa con el mismo permiso que la actual: sirve
+     * para restaurarla, no para repartirla.
+     */
+    public function historial(int $id)
+    {
+        $aliadoId = (int) session('aliado_id_activo');
+
+        $clave = ClaveAcceso::visiblesPara($aliadoId)->where('id', $id)->firstOrFail();
+
+        $puedeVer = auth()->user()->can('claves_acceso.ver_contrasena');
+
+        $cambios = $clave->cambios()->with(['usuario:id,name', 'aliado:id,nombre'])->limit(50)->get()
+            ->map(fn ($c) => [
+                'id' => $c->id,
+                'cuando' => $c->created_at?->format('d/m/Y H:i'),
+                'quien' => $c->usuario?->name ?? 'sistema',
+                'aliado' => $c->aliado?->nombre,
+                'resumen' => $c->resumen(),
+                'usuario_anterior' => $c->usuario_anterior,
+                'usuario_nuevo' => $c->usuario_nuevo,
+                'contrasena_anterior' => $puedeVer ? $c->contrasena_anterior : ($c->contrasena_anterior ? '__oculta__' : null),
+                'contrasena_nueva' => $puedeVer ? $c->contrasena_nueva : ($c->contrasena_nueva ? '__oculta__' : null),
+            ]);
+
+        return response()->json($cambios);
+    }
+
     // ─── Crear nueva clave ────────────────────────────────────────────
     public function store(Request $request)
     {
@@ -163,8 +195,11 @@ class ClaveAccesoController extends Controller
     public function update(Request $request, int $id)
     {
         $aliadoId = session('aliado_id_activo');
-        $clave    = ClaveAcceso::where('id', $id)
-            ->where('aliado_id', $aliadoId)
+        // Se puede editar lo que se ve: si la empresa es compartida, la clave
+        // es la misma ante la entidad y quien la tenga a mano debe poder
+        // corregirla. Quién lo hizo queda en la bitácora (ClaveAcceso::booted).
+        $clave    = ClaveAcceso::visiblesPara($aliadoId)
+            ->where('id', $id)
             ->firstOrFail();
 
         $data = $this->validar($request, $id);
