@@ -147,6 +147,18 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/caja-subsidios.log'));
 
+        // Y el cruce con el listado de afiliados de Comfenalco, que es lo que
+        // pasa los radicados de caja a OK confirmado. Hasta ahora solo ocurría
+        // cuando alguien abría la pantalla. Después de los subsidios, para no
+        // levantar dos Chrome a la vez.
+        $schedule->command('caja:conciliar --caja=COMFENALCO')
+            ->dailyAt('23:10')
+            ->timezone('America/Bogota')
+            ->name('caja-conciliar-comfenalco')
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/caja-conciliacion.log'));
+
         // Agente del buzón de afiliaciones (seguridadsocial.brygar@gmail.com): cada
         // 30 min lee lo que llega de las entidades, aplica los radicados que
         // envían los asesores y avisa por WhatsApp. Solo lectura en Gmail.
