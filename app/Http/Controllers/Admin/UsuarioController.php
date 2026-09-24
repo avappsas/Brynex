@@ -278,6 +278,11 @@ class UsuarioController extends Controller
         // genera `select [name], [name]` y sqlsrv lo rechaza por ambiguo.
         $roles = Role::orderBy('name')->get()->pluck('name', 'name');
 
+        // Lo que daría algo negado a quien reparte no se ofrece (ver
+        // autorizarRol), salvo el rol que el editado ya tiene.
+        $actual = $editado?->getRoleNames()->first();
+        $roles = $roles->reject(fn ($rol) => $rol !== $actual && auth()->user()->rolDaLoNegado($rol));
+
         if (auth()->user()->es_brynex || ($editado && $editado->hasRole('superadmin'))) {
             return $roles;
         }
@@ -298,6 +303,16 @@ class UsuarioController extends Controller
      */
     private function autorizarRol(string $rol, ?User $editado = null): void
     {
+        // Rol que entrega algo que a quien lo reparte le negaron (superadmin o
+        // contable, a quien no puede ver el estado financiero). Conservar el
+        // que el editado ya tiene no es escalada: autorizarUsuario ya impidió
+        // tocar a quien tenga lo negado.
+        abort_if(
+            auth()->user()->rolDaLoNegado($rol) && ! ($editado && $editado->hasRole($rol)),
+            403,
+            "No puedes asignar el rol {$rol}: incluye permisos que a ti te negaron."
+        );
+
         if ($rol !== 'superadmin' || auth()->user()->es_brynex) {
             return;
         }
@@ -321,6 +336,12 @@ class UsuarioController extends Controller
             $usuario->es_brynex && ! auth()->user()->es_brynex,
             403,
             'Solo un usuario de BryNex puede modificar una cuenta de BryNex.'
+        );
+
+        abort_if(
+            $usuario->tieneLoNegadoA(auth()->user()),
+            403,
+            'Ese usuario tiene permisos que a ti te negaron: no puedes modificar su cuenta.'
         );
     }
 }

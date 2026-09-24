@@ -38,13 +38,17 @@
         <div class="rs-h-sub">Empresas a través de las cuales se afilian trabajadores al sistema de seguridad social</div>
     </div>
     <div style="display:flex;gap:.5rem;align-items:center">
+        @can('traslados_rs.ver')
         <a href="{{ route('admin.traslados.index') }}"
            class="btn-nuevo"
            style="background:#7c3aed"
            title="Trasladar personas de una empresa a otra">
             🔄 Traslado RS
         </a>
+        @endcan
+        @can('razones_sociales.gestionar')
         <a href="{{ route('admin.configuracion.razones.create') }}" class="btn-nuevo">+ Nueva Razón Social</a>
+        @endcan
     </div>
 </div>
 
@@ -150,12 +154,16 @@
                 <td style="font-size:.75rem;color:#475569">{{ $rs->arl_nombre ?? '—' }}</td>
                 <td style="font-size:.75rem;color:#475569">{{ $rs->caja_nombre ?? '—' }}</td>
                 <td>
+                    @can('razones_sociales.gestionar')
                     <form method="POST" action="{{ route('admin.configuracion.razones.estado', $rs->id) }}" style="display:inline">
                         @csrf @method('PATCH')
                         <button type="submit" class="{{ $rs->estado === 'Activa' ? 'badge-activa' : 'badge-inactiva' }}" style="border:none;cursor:pointer;font-family:inherit">
                             {{ $rs->estado ?? 'Activa' }}
                         </button>
                     </form>
+                    @else
+                    <span class="{{ $rs->estado === 'Activa' ? 'badge-activa' : 'badge-inactiva' }}">{{ $rs->estado ?? 'Activa' }}</span>
+                    @endcan
                 </td>
                 <td>
                     @if($rs->es_independiente)
@@ -179,6 +187,10 @@
                     @endif
                 </td>
                 <td style="text-align:right;white-space:nowrap">
+                    {{-- Quien edita la razón social tiene los documentos en la
+                         pestaña Archivos de la ficha; quien solo sube documentos,
+                         en su página aparte. --}}
+                    @can('razones_sociales.gestionar')
                     <a href="{{ route('admin.configuracion.razones.edit', $rs->id) }}#cardDocumentos" class="btn-edit" title="Ver / Cargar documentos" style="margin-right: 4px">📁 Docs</a>
                     <a href="{{ route('admin.configuracion.razones.edit', $rs->id) }}" class="btn-edit">✏️ Editar</a>
                     <button type="button" class="btn-del"
@@ -186,6 +198,9 @@
                             title="Gestionar / Inactivar / Eliminar">
                         🗑
                     </button>
+                    @elsecan('razones_sociales.documentos')
+                    <a href="{{ route('admin.configuracion.razones.documentos.index', $rs->id) }}" class="btn-edit" title="Ver / Cargar documentos">📁 Docs</a>
+                    @endcan
                 </td>
             </tr>
             @empty

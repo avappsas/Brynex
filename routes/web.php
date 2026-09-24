@@ -426,7 +426,10 @@ Route::middleware('auth')->group(function () {
         });
 
         Route::get('configuracion/razones-sociales/documentos/{id}/descargar', [$rsdc, 'download'])->name('configuracion.razones.documentos.download')->middleware('permiso:razones_sociales.ver');
-        Route::middleware('permiso:razones_sociales.gestionar')->group(function () use ($rsdc) {
+        // Permiso propio, aparte de `gestionar`: subir la cámara de comercio o
+        // el RUT no tiene por qué dar también editar los datos de la empresa.
+        Route::middleware('permiso:razones_sociales.documentos')->group(function () use ($rsdc) {
+            Route::get('configuracion/razones-sociales/{id}/documentos', [$rsdc, 'index'])->whereNumber('id')->name('configuracion.razones.documentos.index');
             Route::post('configuracion/razones-sociales/{id}/documentos', [$rsdc, 'store'])->name('configuracion.razones.documentos.store');
             Route::delete('configuracion/razones-sociales/documentos/{id}', [$rsdc, 'destroy'])->name('configuracion.razones.documentos.destroy');
         });

@@ -21,6 +21,23 @@ class RazonSocialDocumentoController extends Controller
     }
 
     /**
+     * Página solo de documentos, para quien los sube sin poder editar los
+     * datos de la empresa. Quien sí puede editarlos los tiene además en la
+     * pestaña Archivos de la ficha.
+     */
+    public function index(int $id)
+    {
+        $rs = DB::table('razones_sociales')
+            ->where('id', $id)
+            ->where('aliado_id', session('aliado_id_activo'))
+            ->first();
+
+        abort_if(!$rs, 404, 'Razón Social no encontrada.');
+
+        return view('admin.razones_sociales.documentos', compact('rs'));
+    }
+
+    /**
      * Subir un documento para la Razón Social.
      */
     public function store(Request $request, int $id)

@@ -121,6 +121,9 @@ class ModulosPermisosSeeder extends Seeder
             ['razones_sociales', 'Razones sociales', 'operacion', '🏛️', 'admin.configuracion.razones.index', [
                 'ver' => ['Ver razones sociales',  ['A', 'C', 'U']],
                 'gestionar' => ['Crear, editar, inactivar', ['A']],
+                // Aparte de `gestionar`: quien sube la cámara de comercio o el
+                // RUT no tiene por qué poder cambiar los datos de la empresa.
+                'documentos' => ['Subir y eliminar documentos', ['A']],
                 'eliminar' => ['Eliminar razón social',  ['A']],
             ]],
 

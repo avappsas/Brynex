@@ -148,4 +148,57 @@ class User extends Authenticatable
     {
         return in_array($permiso, $this->permisos_negados ?? [], true);
     }
+
+    /*
+     * Una negación no sirve si quien la tiene puede darle la vuelta: un
+     * superadmin reparte roles, otorga permisos y cambia contraseñas. Sin
+     * estas dos reglas, a quien le negaron el estado financiero podía
+     * cambiarle la clave al dueño y entrar como él, subir su otra cuenta a
+     * `contable` o marcarle el permiso a dedo a otro usuario.
+     */
+
+    /**
+     * ¿$este tiene algo de lo que a $quien le negaron? Entonces $quien no
+     * puede tocar su ficha ni sus permisos: sería llegar por la puerta de
+     * atrás a lo que se le quitó.
+     */
+    public function tieneLoNegadoA(User $quien): bool
+    {
+        if ($this->id === $quien->id) {
+            return false;
+        }
+
+        foreach ($quien->permisos_negados ?? [] as $permiso) {
+            if ($this->can($permiso)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** ¿Repartir este rol entregaría algo que a este usuario le negaron? */
+    public function rolDaLoNegado(string $rol): bool
+    {
+        $negados = $this->permisos_negados ?? [];
+        if (! $negados) {
+            return false;
+        }
+
+        // superadmin no lleva permisos en la tabla: lo tiene todo menos lo
+        // restringido, por el Gate::before.
+        if ($rol === 'superadmin') {
+            foreach ($negados as $permiso) {
+                if (! PermisoService::esRestringido($permiso)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        $delRol = \Spatie\Permission\Models\Role::findByName($rol, 'web')->permissions->pluck('name')->all();
+
+        return (bool) array_intersect($negados, $delRol);
+    }
 }

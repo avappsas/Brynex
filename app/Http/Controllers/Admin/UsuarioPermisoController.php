@@ -101,6 +101,13 @@ class UsuarioPermisoController extends Controller
 
         $antes = $usuario->permissions->pluck('name')->all();
 
+        // Nadie reparte lo que a él mismo le negaron: sería dárselo a otra
+        // cuenta y entrar por ahí. Lo que el usuario ya tenía se conserva.
+        $nuevos = array_values(array_filter(
+            $nuevos,
+            fn ($p) => in_array($p, $antes, true) || ! auth()->user()->tienePermisoNegado($p)
+        ));
+
         // El formulario no pinta todos los permisos (los `asignable = false` y
         // el grupo brynex quedan fuera), así que un sync a secas borraría los
         // que ya tenía otorgados y no venían en el POST. Se conservan.
@@ -267,6 +274,12 @@ class UsuarioPermisoController extends Controller
             auth()->user()->puedeAccederAliado((int) $usuario->aliado_id),
             403,
             'Ese usuario pertenece a un aliado al que no tienes acceso.'
+        );
+
+        abort_if(
+            $usuario->tieneLoNegadoA(auth()->user()),
+            403,
+            'Ese usuario tiene permisos que a ti te negaron: no puedes modificar los suyos.'
         );
     }
 }
