@@ -245,11 +245,27 @@ const escogerEmpresa = async (pagina) => {
 /** Los bloqueos de un trabajador, o null si no se pudo llegar a su pantalla. */
 const bloqueosDe = async (pagina, documento) => {
   await pagina.goto(`${BASE}/workers`, { waitUntil: 'networkidle2', timeout: 60000 });
-  await esperar(3000);
+
+  // Esperar a que la pantalla se asiente antes de tocar el filtro: en las
+  // empresas con muchos afiliados la tabla tarda, y mientras carga el combo
+  // queda debajo del velo de "cargando", así que la pulsación se pierde. En
+  // Construtech, con seis afiliados, nunca se notó.
+  await insistir(pagina, () => {
+    const cargando = [...document.querySelectorAll('[class*=spinner], [class*=loading], [class*=backdrop], [class*=overlay]')]
+      .some(e => e.offsetParent !== null);
+    if (cargando) return false;
+
+    const combo = document.querySelector('input[role=combobox]');
+    const boton = [...document.querySelectorAll('button')].some(b => /^\s*Buscar\s*$/i.test(b.innerText));
+
+    return !!combo && boton;
+  }, [], 30000);
+
+  await esperar(1200);
 
   // Sin tipo de documento el portal no filtra: saca la lista entera paginada y
   // el trabajador podría no estar en la primera página.
-  if (!await elegirCombo(pagina, 'C[ée]dula de Ciudadan')) return `no se pudo elegir el tipo de documento en el listado (${ultimoComboVisto})`;
+  if (!await elegirCombo(pagina, 'C[ée]dula de Ciudadan')) return `no se pudo elegir el tipo de documento en el listado [v2: ${ultimoComboVisto}]`;
 
   const buscado = await insistir(pagina, (doc) => {
     const num = [...document.querySelectorAll('input')].find(i => /documento del trabajador/i.test(i.placeholder || ''));
