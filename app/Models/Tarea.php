@@ -38,6 +38,7 @@ class Tarea extends BaseModel
         'inclusion_beneficiarios' => '👥 Inclusión Beneficiarios',
         'exclusion' => '❌ Exclusión',
         'subsidios' => '💰 Subsidios',
+        'mora_eps' => '⚠️ Mora EPS',
         'actualizar_documentos' => '📄 Actualizar Documentos',
         'devolucion_aportes' => '💵 Devolución de Aportes',
         'solicitud_documentos' => '📋 Solicitud Documentos',
