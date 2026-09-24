@@ -403,7 +403,17 @@ try {
   let tipoOk = false;
 
   for (let intento = 0; intento < 4 && ! tipoOk; intento++) {
+    // Hay que vaciarlo antes: el campo llega con "CC - Cédula de ciudadanía"
+    // escrito y, si se teclea encima, queda "CC - Cédula de ciudadaníaNIT" y el
+    // typeahead responde "No se encontraron coincidencias". Con Construtech
+    // venía vacío y por eso parecía funcionar.
     await campoTipo.click({ clickCount: 3 }).catch(() => null);
+    await campoTipo.evaluate((e) => {
+      const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+      set.call(e, '');
+      e.dispatchEvent(new Event('input', { bubbles: true }));
+    }).catch(() => null);
+    await esperar(300);
     await campoTipo.type('NIT', { delay: 60 }).catch(() => null);
     await esperar(900);
 
