@@ -246,32 +246,37 @@ const escogerEmpresa = async (pagina) => {
 const bloqueosDe = async (pagina, documento) => {
   // La pantalla del filtro, hasta que esté de verdad.
   //
-  // El portal es un Next.js y, al venir de la pantalla de subsidio del
-  // trabajador anterior, a veces no vuelve a montar el formulario: la página
-  // carga pero no hay ni combo ni botón Buscar, y entonces no hay nada que
-  // pulsar. Recargando aparece.
-  let hayFiltro = false;
+  // Se vuelve por el menú, no por la URL: el portal es un Next.js y una
+  // navegación de las suyas remonta el formulario, mientras que recargar la
+  // página entera a veces lo deja sin combo ni botón Buscar —y entonces no hay
+  // nada que pulsar—. La recarga queda como último recurso.
+  const hayFiltro = async () => !!await insistir(pagina, () => {
+    const cargando = [...document.querySelectorAll('[class*=spinner], [class*=loading], [class*=backdrop], [class*=overlay]')]
+      .some(e => e.offsetParent !== null);
+    if (cargando) return false;
 
-  for (let intento = 0; intento < 3 && ! hayFiltro; intento++) {
-    if (intento === 0) {
-      await pagina.goto(`${BASE}/workers`, { waitUntil: 'networkidle2', timeout: 60000 }).catch(() => null);
-    } else {
-      await pagina.reload({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => null);
-    }
+    return !!document.querySelector('input[role=combobox]')
+      && [...document.querySelectorAll('button')].some(b => /^\s*Buscar\s*$/i.test(b.innerText));
+  }, [], 15000);
 
-    hayFiltro = !!await insistir(pagina, () => {
-      const cargando = [...document.querySelectorAll('[class*=spinner], [class*=loading], [class*=backdrop], [class*=overlay]')]
-        .some(e => e.offsetParent !== null);
-      if (cargando) return false;
+  const porElMenu = await pagina.evaluate(() => {
+    const a = document.querySelector('a[href="/sakaar/workers"]');
+    if (!a) return false;
+    ['pointerdown', 'mousedown', 'mouseup', 'click']
+      .forEach(t => a.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
 
-      const combo = document.querySelector('input[role=combobox]');
-      const boton = [...document.querySelectorAll('button')].some(b => /^\s*Buscar\s*$/i.test(b.innerText));
+    return true;
+  }).catch(() => false);
 
-      return !!combo && boton;
-    }, [], 25000);
+  if (!porElMenu) {
+    await pagina.goto(`${BASE}/workers`, { waitUntil: 'networkidle2', timeout: 60000 }).catch(() => null);
   }
 
-  if (! hayFiltro) return 'la pantalla de Gestión de trabajadores no mostró el filtro ni recargando';
+  if (! await hayFiltro()) {
+    await pagina.goto(`${BASE}/workers`, { waitUntil: 'networkidle2', timeout: 60000 }).catch(() => null);
+
+    if (! await hayFiltro()) return 'la pantalla de Gestión de trabajadores no mostró el filtro';
+  }
 
   await esperar(1200);
 
