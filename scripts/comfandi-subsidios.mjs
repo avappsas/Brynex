@@ -41,6 +41,9 @@ const CHROME_CANDIDATOS = [
 ].filter(Boolean);
 
 const esperar = (ms) => new Promise(r => setTimeout(r, ms));
+
+// Lo último que se vio al intentar abrir un combo, para que el fallo lo cuente.
+let ultimoComboVisto = '';
 const salir = (data) => { console.log(JSON.stringify(data)); process.exit(data.ok ? 0 : 1); };
 
 const leerStdin = async () => {
@@ -150,20 +153,35 @@ const elegirCombo = async (pagina, opcion, cual = 0) => {
 
   const combos = await pagina.$$('input[role=combobox]');
   const combo = combos[cual];
-  if (!combo) return false;
 
-  await combo.focus();
-  await pagina.keyboard.press('ArrowDown');
-  await esperar(700);
+  if (!combo) {
+    ultimoComboVisto = `no hay combo #${cual} en la página (${combos.length} en total)`;
 
-  const opciones = await pagina.$$('[class*=option]');
-  for (const o of opciones) {
-    const texto = await o.evaluate(e => e.innerText || '').catch(() => '');
-    if (re.test(texto)) {
+    return false;
+  }
+
+  // Dos intentos: el menú tarda en pintarse y una sola pulsación se pierde.
+  for (let intento = 0; intento < 2; intento++) {
+    await combo.focus();
+    await pagina.keyboard.press('ArrowDown');
+    await esperar(900);
+
+    const opciones = await pagina.$$('[class*=option]');
+    const vistas = [];
+
+    for (const o of opciones) {
+      const texto = await o.evaluate(e => e.innerText || '').catch(() => '');
+      vistas.push(texto.trim().slice(0, 28));
+
+      if (! re.test(texto)) continue;
+
       await o.click().catch(() => null);
       await esperar(600);
+
       return true;
     }
+
+    ultimoComboVisto = vistas.length ? `se veían [${vistas.slice(0, 6).join(' | ')}]` : 'el menú no se abrió';
   }
 
   return false;
@@ -231,7 +249,7 @@ const bloqueosDe = async (pagina, documento) => {
 
   // Sin tipo de documento el portal no filtra: saca la lista entera paginada y
   // el trabajador podría no estar en la primera página.
-  if (!await elegirCombo(pagina, 'C[ée]dula de Ciudadan')) return 'no se pudo elegir el tipo de documento en el listado';
+  if (!await elegirCombo(pagina, 'C[ée]dula de Ciudadan')) return `no se pudo elegir el tipo de documento en el listado (${ultimoComboVisto})`;
 
   const buscado = await insistir(pagina, (doc) => {
     const num = [...document.querySelectorAll('input')].find(i => /documento del trabajador/i.test(i.placeholder || ''));
@@ -285,7 +303,7 @@ const bloqueosDe = async (pagina, documento) => {
 
   if (!listo) return 'no cargó la pantalla de subsidio monetario';
 
-  if (!await elegirCombo(pagina, 'Bloqueos de subsidio')) return 'no se pudo elegir "Bloqueos de subsidio"';
+  if (!await elegirCombo(pagina, 'Bloqueos de subsidio')) return `no se pudo elegir "Bloqueos de subsidio" (${ultimoComboVisto})`;
 
   await esperar(600);
 
