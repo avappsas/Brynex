@@ -26,6 +26,9 @@ class NuevaEpsPortalService
     /** Login, elegir empresa y abrir la SPA ya suman cerca de un minuto. */
     private const TIMEOUT_SEGUNDOS = 240;
 
+    /** El reporte de mora se genera aparte y hay que esperar a que quede listo. */
+    private const TIMEOUT_MORA_SEGUNDOS = 480;
+
     /**
      * La clave de la empresa, o por qué no se puede usar.
      *
@@ -70,7 +73,7 @@ class NuevaEpsPortalService
     /**
      * @return array La salida del script; con `error` si no se pudo ni empezar.
      */
-    public static function ejecutar(string $nit, array $datos): array
+    public static function ejecutar(string $nit, array $datos, ?int $segundos = null): array
     {
         $cred = self::credencial($nit);
 
@@ -92,7 +95,7 @@ class NuevaEpsPortalService
             'usuario'    => $cred['usuario'],
             'contrasena' => $cred['contrasena'],
             'nitEmpresa' => preg_replace('/\D/', '', $nit),
-        ]);
+        ], $segundos);
 
         $empresa = $cred['empresa'];
 
@@ -111,6 +114,24 @@ class NuevaEpsPortalService
         }
 
         return $salida;
+    }
+
+    /**
+     * La mora por trabajador que Nueva EPS le tiene a esa empresa.
+     *
+     * El corte va en el primer día de un mes y el portal devuelve lo anterior a
+     * esa fecha: con el mes en curso se deja fuera el mes que todavía está a
+     * tiempo de pagarse, que si no saldría como mora de quien solo va tarde.
+     *
+     * Tarda: el portal genera el reporte aparte y hay que esperarlo, así que
+     * este modo lleva su propio plazo y no el de las consultas normales.
+     */
+    public static function mora(string $nit, ?string $fechaCorte = null): array
+    {
+        return self::ejecutar($nit, [
+            'modo'       => 'mora',
+            'fechaCorte' => $fechaCorte ?: now()->startOfMonth()->toDateString(),
+        ], self::TIMEOUT_MORA_SEGUNDOS);
     }
 
     /**
@@ -154,12 +175,12 @@ class NuevaEpsPortalService
      * sirve: el `--host-rules` del túnel manda el tráfico a un puerto local y
      * el proxy nunca llegaría a verlo.
      */
-    private static function correrScript(array $entrada): array
+    private static function correrScript(array $entrada, ?int $segundos = null): array
     {
         $proxy = config('services.proxy_colombia.url');
 
         $resultado = Process::path(base_path())
-            ->timeout(self::TIMEOUT_SEGUNDOS)
+            ->timeout($segundos ?? self::TIMEOUT_SEGUNDOS)
             ->input(json_encode($entrada + [
                 'proxy' => $proxy,
                 'tunel' => $proxy ? null : config('services.nueva_eps.tunel'),

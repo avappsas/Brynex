@@ -279,6 +279,97 @@ try {
     });
   }
 
+  // ── Mora por trabajador (Estado de cuenta individual) ──
+  // El portal la calcula solo: el reporte trae la mora ANTERIOR a la fecha que
+  // se le pide, así que pidiéndolo con el primer día del mes en curso queda
+  // fuera el mes que todavía se puede pagar sin estar en mora.
+  if (modo === 'mora') {
+    const fechaCorte = String(entrada.fechaCorte || '').match(/^\d{4}-\d{2}-\d{2}$/)
+      ? entrada.fechaCorte
+      : `${new Date().toISOString().slice(0, 7)}-01`;
+
+    paso = 'abrir estado de cuenta';
+    const destino = await pagina.evaluate(() => {
+      const a = [...document.querySelectorAll('a')].find((x) => /Estado Cuenta Individual/i.test(x.innerText || ''));
+      return a ? a.getAttribute('href') : null;
+    });
+    if (!destino) throw new Error('El menú del empleador no tiene Estado Cuenta Individual.');
+    await pagina.goto(new URL(destino, pagina.url()).href, { waitUntil: 'networkidle2', timeout: 60000 });
+
+    // El reporte es otra aplicación (report_portal) dentro de un iframe, con su
+    // propio sessionId en la ruta. Las llamadas salen de ahí, no de la página.
+    paso = 'abrir el reporte';
+    if (!await esperarQue(pagina, () => [...document.querySelectorAll('iframe')].some((f) => f.src.includes('estadoCuentaIndividual')), 30000)) {
+      throw new Error('No cargó el reporte de estado de cuenta.');
+    }
+
+    paso = 'pedir el reporte';
+    const crudo = await pagina.evaluate(async (fecha) => {
+      const marco = [...document.querySelectorAll('iframe')].find((x) => x.src.includes('estadoCuentaIndividual'));
+      const partes = marco.src.split('/');
+      const node = partes.pop();
+      const sid = partes.pop();
+      const w = marco.contentWindow;
+      const q = `sessionId=${sid}&node=${node}`;
+      const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+      const json = { 'Content-Type': 'application/json' };
+
+      const pedido = await w.fetch(`/report_portal/v1/api/saveReportRequest?${q}`, {
+        method: 'POST', headers: json,
+        body: JSON.stringify({
+          parameter: JSON.stringify({ fechaInicial: fecha, filter: 'mora' }),
+          classType: 'estadoCuentaIndividualService', method: 'generarReporte',
+        }),
+      });
+      if (!pedido.ok) return { error: `El portal rechazó la solicitud del reporte (${pedido.status}).` };
+
+      // Lo genera aparte y avisa por estado; en empresas grandes tarda minutos.
+      let estado = null;
+      for (let i = 0; i < 36; i++) {
+        await dormir(5000);
+        const r = await w.fetch(`/report_portal/v1/api/lastReportRequestByUser/estadoCuentaIndividualService?${q}`);
+        if (!r.ok) continue;
+        estado = (await r.json().catch(() => null))?.state || null;
+        if (estado === 'PROCESADO') break;
+      }
+      if (estado !== 'PROCESADO') return { error: `El reporte no quedó listo (estado: ${estado || 'sin respuesta'}).` };
+
+      // La pantalla lo pagina de 10 en 10; aquí se pide entero.
+      const r = await w.fetch(`/report_portal/v1/api/empleador/reporteEstadoCuentaIndividual?${q}`, {
+        method: 'POST', headers: json,
+        body: JSON.stringify({
+          page: 1, itemsPerPage: 2000, sortBy: [], sortDesc: [false], groupBy: [], groupDesc: [],
+          mustSort: false, multiSort: false, filter: { columns: [], value: '' }, busquedaGeneral: {},
+        }),
+      });
+      if (!r.ok) return { error: `El reporte respondió ${r.status}.` };
+      const j = await r.json();
+      return { data: j.data || [], total: j.pagination?.totalDesserts ?? null };
+    }, fechaCorte);
+
+    if (crudo.error) throw new Error(crudo.error);
+
+    // Una fila por persona y año: el mes en mora va como "70333 (M)".
+    const MESES = { ene: 1, feb: 2, mar: 3, abr: 4, may: 5, jun: 6, jul: 7, ago: 8, sept: 9, oct: 10, nov: 11, dic: 12 };
+    const trabajadores = (crudo.data || []).map((f) => ({
+      tipo: f.tipo || null,
+      documento: String(f.numeroDocumento || '').trim(),
+      nombre: String(f.nombreCotizante || '').replace(/\s+/g, ' ').trim(),
+      fecha_ingreso: f.fechaIngreso || null,
+      fecha_retiro: f.fechaRetiro || null,
+      salario: Number(f.salario || 0),
+      total_mora: Number(f.fullMora || 0),
+      periodos: Object.entries(MESES)
+        .filter(([nombre]) => f[nombre])
+        .map(([nombre, mes]) => ({
+          periodo: `${f.anuo}-${String(mes).padStart(2, '0')}`,
+          valor: Number(String(f[nombre]).replace(/\D/g, '')) || 0,
+        })),
+    }));
+
+    salir({ ok: true, modo, nit: String(nitEmpresa), fecha_corte: fechaCorte, filas: crudo.total, trabajadores });
+  }
+
   // ── Reingresos y Retiros (SPA) ──
   paso = 'abrir reingresos';
   await clicEnlace(pagina, 'Reingresos y Retiros Laborales');
