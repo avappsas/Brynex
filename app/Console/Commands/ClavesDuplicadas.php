@@ -23,7 +23,9 @@ use Illuminate\Support\Facades\DB;
 class ClavesDuplicadas extends Command
 {
     protected $signature = 'claves:duplicadas
-                            {--dejar= : Id de la clave que se queda; las otras de esa empresa+entidad se desactivan}';
+                            {--dejar= : Id de la clave que se queda; las otras de esa empresa+entidad se desactivan}
+                            {--consolidar-iguales : Deja una sola donde todas las copias tienen la misma contraseña}
+                            {--aliado= : Con --consolidar-iguales, de qué aliado se conserva la copia}';
 
     protected $description = 'Lista las claves repetidas de la misma empresa y entidad entre aliados';
 
@@ -31,6 +33,10 @@ class ClavesDuplicadas extends Command
     {
         if ($id = $this->option('dejar')) {
             return $this->dejarSolo((int) $id);
+        }
+
+        if ($this->option('consolidar-iguales')) {
+            return $this->consolidarIguales($this->option('aliado') ? (int) $this->option('aliado') : null);
         }
 
         $grupos = $this->grupos();
@@ -63,6 +69,42 @@ class ClavesDuplicadas extends Command
         $this->line('');
         $this->line('La marcada con → es la que usan hoy los procesos.');
         $this->line('Para dejar una sola:  php artisan claves:duplicadas --dejar=<id>');
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Deja una sola copia donde todas dicen lo mismo.
+     *
+     * Solo toca los grupos cuya contraseña coincide: ahí no hay nada que
+     * decidir, y quitar las repetidas evita que mañana alguien edite la copia
+     * que no manda. Las que difieren se quedan como están: cuál vale lo sabe
+     * una persona, no este comando.
+     */
+    private function consolidarIguales(?int $aliadoId): int
+    {
+        $hechos = 0;
+
+        foreach ($this->grupos() as $g) {
+            if ($g->claves->pluck('contrasena')->unique()->count() > 1) {
+                $this->warn("   se salta {$g->nit} · {$g->tipo} {$g->entidad}: las contraseñas no coinciden.");
+
+                continue;
+            }
+
+            $buena = ($aliadoId ? $g->claves->firstWhere('aliado_id', $aliadoId) : null)
+                ?? $g->claves->sortByDesc('updated_at')->first();
+
+            foreach ($g->claves->where('id', '<>', $buena->id) as $otra) {
+                $otra->update(['activo' => false]);
+            }
+
+            $buena->touch();
+            $hechos++;
+            $this->line("   {$g->nit} · {$g->tipo} {$g->entidad}: queda la #{$buena->id} ({$buena->aliado?->nombre})");
+        }
+
+        $this->info("{$hechos} grupo(s) consolidado(s).");
 
         return self::SUCCESS;
     }
