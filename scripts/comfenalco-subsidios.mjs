@@ -378,5 +378,18 @@ try {
   const donde = await pagina?.evaluate(() => location.host + location.pathname).catch(() => '');
   salir({ ok: false, error: String(e?.message || e).slice(0, 400), url: donde });
 } finally {
+  // Cerrar el navegador no cierra la sesión del portal: la siguiente empresa
+  // entraría sobre los restos de esta, y todas salen por la misma IP.
+  await pagina?.evaluate(() => {
+    const salir = [...document.querySelectorAll('a,button,div,span')]
+      .filter(e => e.children.length === 0)
+      .find(e => /^\s*cerrar sesi[oó]n\s*$/i.test(e.innerText || ''));
+
+    if (salir) (salir.closest('a,button') || salir).click();
+
+    try { localStorage.clear(); sessionStorage.clear(); } catch { /* da igual */ }
+  }).catch(() => null);
+
+  await esperar(2000);
   await navegador.close().catch(() => {});
 }

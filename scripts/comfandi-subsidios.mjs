@@ -409,6 +409,43 @@ const bloqueosDe = async (pagina, documento) => {
   return filas ? filas.filas : null;
 };
 
+/**
+ * Cierra la sesión del portal antes de irse.
+ *
+ * Cerrar el navegador no cierra la sesión: la de Keycloak sigue viva del lado
+ * de Comfandi, y como todas las empresas salen por la misma IP del servidor, la
+ * siguiente entraba sobre los restos de la anterior —el login devolvía una
+ * página en blanco, o el listado se quedaba sin filtro—. Por eso la primera
+ * empresa de cada corrida funcionaba y las de después no.
+ */
+const cerrarSesion = async (pagina) => {
+  if (! pagina) return;
+
+  await pagina.evaluate(() => {
+    const salir = [...document.querySelectorAll('a,button,div,span')]
+      .filter(e => e.children.length === 0)
+      .find(e => /^\s*cerrar sesi[oó]n\s*$/i.test(e.innerText || ''));
+
+    if (salir) {
+      const destino = salir.closest('a,button') || salir;
+      ['pointerdown', 'mousedown', 'mouseup', 'click']
+        .forEach(t => destino.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+
+      return true;
+    }
+
+    return false;
+  }).catch(() => null);
+
+  // Se le da un momento para que la petición salga, y se limpia lo local por si
+  // el botón no estaba a la vista.
+  await esperar(2500);
+
+  await pagina.evaluate(() => {
+    try { localStorage.clear(); sessionStorage.clear(); } catch { /* da igual */ }
+  }).catch(() => null);
+};
+
 let pagina;
 try {
   pagina = await navegador.newPage();
@@ -655,5 +692,6 @@ try {
   const donde = await pagina?.evaluate(() => location.host + location.pathname).catch(() => '');
   salir({ ok: false, error: String(e?.message || e).slice(0, 400), url: donde });
 } finally {
+  await cerrarSesion(pagina);
   await navegador.close().catch(() => {});
 }
