@@ -901,10 +901,21 @@
 
             {{-- DROPDOWN ADMIN: visible para admin y superadmin              --}}
             {{-- ───────────────────────────────────────────────────────────── --}}
-            @canany(['asesores.ver', 'usuarios.ver', 'configuracion.ver', 'bitacora.ver', 'traslados_rs.ejecutar'])
+            @canany(['asesores.ver', 'usuarios.ver', 'configuracion.ver', 'bitacora.ver', 'traslados_rs.ejecutar', 'razones_sociales.gestionar', 'razones_sociales.documentos'])
             <div class="menu-sep"></div>
             <div class="menu-dropdown">
-                <a href="{{ route('admin.configuracion.hub') }}" class="menu-dropdown-trigger {{ request()->routeIs('admin.asesores*', 'admin.bitacora*', 'admin.usuarios*', 'admin.configuracion*') ? 'activo' : '' }}">
+                {{-- Configuración pide `configuracion.ver`: a quien no la tiene
+                     (un trabajador que sube documentos de razón social) el
+                     botón lo mandaba a un 403. Se lleva a lo primero que sí ve. --}}
+                @php
+                    $adminInicio = match (true) {
+                        auth()->user()->can('configuracion.ver') => route('admin.configuracion.hub'),
+                        auth()->user()->can('razones_sociales.documentos') => route('admin.configuracion.razones.index'),
+                        auth()->user()->can('asesores.ver') => route('admin.asesores.index'),
+                        default => '#',
+                    };
+                @endphp
+                <a href="{{ $adminInicio }}" class="menu-dropdown-trigger {{ request()->routeIs('admin.asesores*', 'admin.bitacora*', 'admin.usuarios*', 'admin.configuracion*') ? 'activo' : '' }}">
                     <div class="icono">⚙️</div>
                     <div class="label">Admin</div>
                 </a>
@@ -921,6 +932,13 @@
                         <div class="pi">👁️</div> Auditoría
                     </a>
                     @endcan
+                    {{-- Tiene tarjeta en Configuración, pero quien solo sube
+                         documentos no entra allá: necesita su propio acceso. --}}
+                    @canany(['razones_sociales.gestionar', 'razones_sociales.documentos'])
+                    <a href="{{ route('admin.configuracion.razones.index') }}" class="panel-item {{ request()->routeIs('admin.configuracion.razones*') ? 'activo' : '' }}">
+                        <div class="pi">🏭</div> Razones sociales
+                    </a>
+                    @endcanany
 
                     @canany(['usuarios.ver', 'configuracion.ver'])
                     <div class="panel-sep"></div>
@@ -1170,7 +1188,7 @@
         @endcanany
 
         {{-- Sección administración --}}
-        @canany(['asesores.ver', 'usuarios.ver', 'configuracion.ver', 'bitacora.ver', 'traslados_rs.ejecutar'])
+        @canany(['asesores.ver', 'usuarios.ver', 'configuracion.ver', 'bitacora.ver', 'traslados_rs.ejecutar', 'razones_sociales.gestionar', 'razones_sociales.documentos'])
         <div class="drawer-sep"></div>
         <div class="drawer-section">
             <div class="drawer-section-label">Administración</div>
@@ -1194,6 +1212,11 @@
                 <span class="di-icon">👁️</span> Auditoría
             </a>
             @endcan
+            @canany(['razones_sociales.gestionar', 'razones_sociales.documentos'])
+            <a href="{{ route('admin.configuracion.razones.index') }}" class="drawer-item {{ request()->routeIs('admin.configuracion.razones*') ? 'activo' : '' }}">
+                <span class="di-icon">🏭</span> Razones sociales
+            </a>
+            @endcanany
             @can('traslados_rs.ejecutar')
             <a href="{{ route('admin.traslados.index') }}" class="drawer-item {{ request()->routeIs('admin.traslados*') ? 'activo' : '' }}">
                 <span class="di-icon">🔄</span> Traslados RS

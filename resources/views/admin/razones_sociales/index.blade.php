@@ -33,7 +33,9 @@
 {{-- Header --}}
 <div class="rs-header">
     <div>
+        @can('configuracion.ver')
         <a href="{{ route('admin.configuracion.hub') }}" style="color:#94a3b8;font-size:.73rem;text-decoration:none">← Configuración</a>
+        @endcan
         <div class="rs-h-title">🏭 Razones Sociales</div>
         <div class="rs-h-sub">Empresas a través de las cuales se afilian trabajadores al sistema de seguridad social</div>
     </div>
