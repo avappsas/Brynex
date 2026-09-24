@@ -79,8 +79,11 @@ class NuevaEpsPortalService
         }
 
         // Sin el túnel arriba Chrome solo diría ERR_CONNECTION_REFUSED; y no es
-        // un fallo de clave, así que no debe marcarla como rechazada.
-        if (self::tunelConectado() === false) {
+        // un fallo de clave, así que no debe marcarla como rechazada. Solo
+        // aplica cuando el túnel es la salida: con proxy contratado, correrScript()
+        // ni lo mira, y exigirlo aquí dejaba el portal inaccesible con el PC de
+        // la oficina apagado —que es justo lo que el proxy vino a evitar—.
+        if (! config('services.proxy_colombia.url') && self::tunelConectado() === false) {
             return ['ok' => false, 'paso' => 'tunel', 'error' => 'El PC de la oficina no tiene conectado el túnel hacia Nueva EPS ('
                 .config('services.nueva_eps.tunel').'). Revisa que esté encendido y con internet.'];
         }
