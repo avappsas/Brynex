@@ -227,13 +227,14 @@ class ComfenalcoSubsidiosHeadless
      * La clave de la **caja** Comfenalco de esa empresa, en cualquier aliado.
      *
      * El tipo importa: Comfenalco es EPS y caja a la vez, con claves distintas,
-     * y la de la EPS no entra al portal de afiliaciones.
+     * y la de la EPS no entra al portal de afiliaciones. El nombre también: hay
+     * Comfenalco en varias ciudades y son cajas independientes.
      *
      * @return array{usuario:string, contrasena:string}|null
      */
     public function credencial(string $nit): ?array
     {
-        $fila = DB::table('clave_accesos as c')
+        $filas = DB::table('clave_accesos as c')
             ->join('razones_sociales as rs', 'rs.id', '=', 'c.razon_social_id')
             ->where('rs.nit', preg_replace('/\D/', '', $nit))
             ->where('c.tipo', 'CAJA')
@@ -242,7 +243,11 @@ class ComfenalcoSubsidiosHeadless
             ->whereNotNull('c.usuario')->where('c.usuario', '<>', '')
             ->whereNotNull('c.contrasena')->where('c.contrasena', '<>', '')
             ->orderByDesc('c.updated_at')
-            ->first(['c.usuario', 'c.contrasena']);
+            ->get(['c.entidad', 'c.usuario', 'c.contrasena']);
+
+        // Comfenalco Cartagena no abre este portal: mejor quedarse sin clave que
+        // gastar intentos —y arriesgar un bloqueo— con la de otra ciudad.
+        $fila = $filas->first(fn ($f) => ComfenalcoCajaService::esDelValle((string) $f->entidad));
 
         return $fila ? ['usuario' => trim($fila->usuario), 'contrasena' => (string) $fila->contrasena] : null;
     }

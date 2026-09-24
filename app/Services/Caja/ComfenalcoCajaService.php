@@ -31,6 +31,24 @@ class ComfenalcoCajaService
     /** Nombre de la caja en BryNex (tabla cajas). */
     private const CAJA = 'COMFENALCO VALLE';
 
+    /**
+     * Cómo puede llamarse esta caja en el llavero de claves.
+     *
+     * Comfenalco no es una sola empresa: Valle, Cartagena, Antioquia y Quindío
+     * son cajas independientes, con portal y clave propios. Un `LIKE
+     * '%COMFENALCO%'` las confunde y entrega la clave de otra ciudad, así que
+     * el nombre tiene que estar en esta lista —sin el "CAJA " de adelante—.
+     */
+    private const NOMBRES = ['COMFENALCO', 'COMFENALCO VALLE', 'COMFENALCO VALLE DELAGENTE'];
+
+    /** ¿Ese nombre del llavero es el de Comfenalco Valle y no el de otra regional? */
+    public static function esDelValle(string $entidad): bool
+    {
+        $nombre = trim(preg_replace('/^\s*CAJA\s+/i', '', mb_strtoupper(trim($entidad))));
+
+        return in_array($nombre, self::NOMBRES, true);
+    }
+
     /** Tipo de documento de BryNex → valor del combo del portal. */
     private const TIPOS = ['CC' => 1, 'TI' => 2, 'CE' => 4, 'RC' => 5, 'PA' => 6, 'PP' => 6, 'PT' => 16, 'PPT' => 16];
 
@@ -82,7 +100,7 @@ class ComfenalcoCajaService
             $problemas[] = 'El radicado de caja ya está en OK.';
         }
 
-        $cred = $rs ? EpsClavePortal::para(self::ENTIDAD, '%COMFENALCO%', 'Comfenalco Valle', (string) $rs->nit, 'CAJA') : ['error' => 'Sin razón social.'];
+        $cred = $rs ? EpsClavePortal::para(self::ENTIDAD, '%COMFENALCO%', 'Comfenalco Valle', (string) $rs->nit, 'CAJA', self::esDelValle(...)) : ['error' => 'Sin razón social.'];
         if (isset($cred['error'])) {
             $avisos[] = $cred['error'].' Tendrás que iniciar sesión a mano en el portal.';
         }
@@ -149,7 +167,7 @@ class ComfenalcoCajaService
     public function credencial(Contrato $contrato): array
     {
         $contrato->loadMissing('razonSocial');
-        $cred = EpsClavePortal::para(self::ENTIDAD, '%COMFENALCO%', 'Comfenalco Valle', (string) $contrato->razonSocial?->nit, 'CAJA');
+        $cred = EpsClavePortal::para(self::ENTIDAD, '%COMFENALCO%', 'Comfenalco Valle', (string) $contrato->razonSocial?->nit, 'CAJA', self::esDelValle(...));
 
         return isset($cred['error']) ? $cred : ['usuario' => $cred['usuario'], 'contrasena' => $cred['contrasena'], 'host' => self::HOST];
     }

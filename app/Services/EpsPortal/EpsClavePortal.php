@@ -24,8 +24,13 @@ class EpsClavePortal
      *                             cuando una entidad tiene las dos —Comfenalco
      *                             es EPS y caja a la vez, con claves distintas—,
      *                             y sin esto la caja recibía la de la EPS.
+     * @param  ?\Closure  $aceptaEntidad  criba fina sobre el nombre de la entidad,
+     *                                    para cuando el LIKE no alcanza: hay cajas
+     *                                    que comparten apellido y no clave
+     *                                    —Comfenalco Valle y Comfenalco Cartagena
+     *                                    son dos empresas distintas—.
      */
-    public static function para(string $entidad, string $patronEntidad, string $nombre, string $nit, string $tipoClave = 'EPS'): array
+    public static function para(string $entidad, string $patronEntidad, string $nombre, string $nit, string $tipoClave = 'EPS', ?\Closure $aceptaEntidad = null): array
     {
         $nit     = preg_replace('/\D/', '', $nit);
         $empresa = EpsPortalEmpresa::de($entidad, $nit);
@@ -34,7 +39,7 @@ class EpsClavePortal
             $usuario = trim($portal->tipo_documento.' '.$portal->usuario);
             $clave   = (string) $portal->contrasena;
         } else {
-            $fila = DB::table('clave_accesos as c')
+            $filas = DB::table('clave_accesos as c')
                 ->join('razones_sociales as rs', 'rs.id', '=', 'c.razon_social_id')
                 ->where('rs.nit', $nit)
                 ->where('c.tipo', $tipoClave)
@@ -43,7 +48,9 @@ class EpsClavePortal
                 ->whereNotNull('c.usuario')->where('c.usuario', '<>', '')
                 ->whereNotNull('c.contrasena')->where('c.contrasena', '<>', '')
                 ->orderByDesc('c.updated_at')
-                ->first(['c.usuario', 'c.contrasena']);
+                ->get(['c.entidad', 'c.usuario', 'c.contrasena']);
+
+            $fila = $filas->first(fn ($f) => ! $aceptaEntidad || $aceptaEntidad((string) $f->entidad));
 
             if (! $fila) {
                 return ['error' => "La empresa no tiene la clave de {$nombre} en el módulo de claves."];
