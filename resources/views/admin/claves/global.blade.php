@@ -500,6 +500,13 @@
                         <td>
                             @if($c->razonSocial)
                                 <span class="badge-vinculo rs" title="{{ $c->razonSocial->razon_social }}">🏢 {{ $c->razonSocial->razon_social }}</span>
+                                {{-- La clave es de la empresa: si la cargó otro aliado que
+                                     comparte esa razón social, se ve igual y se puede corregir,
+                                     pero conviene saber a quién avisar. --}}
+                                @if($c->de_otro_aliado ?? false)
+                                <span style="background:#e0e7ff;color:#3730a3;padding:0.12rem 0.45rem;border-radius:999px;font-size:0.63rem;font-weight:700;margin-left:0.25rem;"
+                                      title="La cargó {{ $c->cargada_por }}; es la misma empresa ante la entidad">↔ {{ $c->cargada_por }}</span>
+                                @endif
                             @elseif($c->cliente)
                                 <span class="badge-vinculo cli" title="{{ $c->cliente->primer_nombre }} {{ $c->cliente->primer_apellido }}">👤 {{ $c->cliente->primer_nombre }} {{ $c->cliente->primer_apellido }}</span>
                             @elseif($c->empresa)
@@ -523,6 +530,7 @@
                         {{-- Acciones --}}
                         <td style="text-align:center;white-space:nowrap;">
                             <button onclick="abrirModalClaveGlobal({{ json_encode($c) }})" style="background:#fef3c7;border:1px solid #fde68a;border-radius:5px;padding:0.18rem 0.55rem;font-size:0.7rem;font-weight:600;cursor:pointer;color:#92400e;" title="Editar">✏️</button>
+                            <button onclick="verHistorialClave({{ $c->id }})" style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:5px;padding:0.18rem 0.55rem;font-size:0.7rem;font-weight:600;cursor:pointer;color:#3730a3;" title="Quién la cambió y qué había antes">🕘</button>
                             <button onclick="eliminarClaveGlobal({{ $c->id }})" style="background:#fee2e2;border:1px solid #fca5a5;border-radius:5px;padding:0.18rem 0.55rem;font-size:0.7rem;font-weight:600;cursor:pointer;color:#dc2626;" title="Eliminar">🗑</button>
                         </td>
                     </tr>
@@ -756,6 +764,65 @@ function guardarClaveGlobal() {
     .catch(function() {
         mostrarNotifGlobal('Error de conexión al guardar.', 'error');
     });
+}
+
+/**
+ * Quién cambió esta clave y qué había antes.
+ *
+ * Importa desde que la clave es de la empresa: la misma razón social la
+ * comparten varios aliados y cualquiera puede corregirla, así que cuando un
+ * trámite deja de funcionar lo primero es saber quién la tocó.
+ */
+async function verHistorialClave(id) {
+    let cambios;
+
+    try {
+        const r = await fetch(`/admin/clave-accesos/${id}/historial`, { headers: { 'Accept': 'application/json' } });
+        if (!r.ok) throw new Error('No se pudo consultar el historial.');
+        cambios = await r.json();
+    } catch (e) {
+        alert(e.message);
+        return;
+    }
+
+    if (!cambios.length) {
+        alert('Esta clave no se ha modificado desde que se lleva el registro.');
+        return;
+    }
+
+    const filas = cambios.map(c => {
+        const clave = c.contrasena_anterior === '__oculta__'
+            ? '🔒'
+            : (c.contrasena_anterior && c.contrasena_anterior !== c.contrasena_nueva
+                ? `antes: ${c.contrasena_anterior}`
+                : '');
+
+        return `<tr style="border-bottom:1px solid #e2e8f0;">
+            <td style="padding:0.4rem 0.6rem;white-space:nowrap;">${c.cuando}</td>
+            <td style="padding:0.4rem 0.6rem;">${c.quien}${c.aliado ? ` <span style="color:#64748b;">(${c.aliado})</span>` : ''}</td>
+            <td style="padding:0.4rem 0.6rem;">${c.resumen}</td>
+            <td style="padding:0.4rem 0.6rem;font-family:monospace;font-size:0.72rem;color:#b45309;">${clave}</td>
+        </tr>`;
+    }).join('');
+
+    const caja = document.createElement('div');
+    caja.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.6);z-index:1200;display:flex;align-items:center;justify-content:center;';
+    caja.onclick = (ev) => { if (ev.target === caja) caja.remove(); };
+    caja.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:820px;width:92%;max-height:80vh;overflow:auto;padding:1.2rem;">
+        <h3 style="margin:0 0 0.8rem;font-size:1rem;">🕘 Historial de la clave</h3>
+        <table style="width:100%;border-collapse:collapse;font-size:0.8rem;">
+            <thead><tr style="background:#f8fafc;text-align:left;">
+                <th style="padding:0.4rem 0.6rem;">Cuándo</th><th style="padding:0.4rem 0.6rem;">Quién</th>
+                <th style="padding:0.4rem 0.6rem;">Qué cambió</th><th style="padding:0.4rem 0.6rem;">Contraseña anterior</th>
+            </tr></thead>
+            <tbody>${filas}</tbody>
+        </table>
+        <div style="text-align:right;margin-top:0.9rem;">
+            <button onclick="this.closest('div[style*=fixed]').remove()" style="background:#1e293b;color:#fff;border:0;border-radius:7px;padding:0.4rem 1rem;cursor:pointer;">Cerrar</button>
+        </div>
+    </div>`;
+
+    document.body.appendChild(caja);
 }
 
 function eliminarClaveGlobal(id) {
