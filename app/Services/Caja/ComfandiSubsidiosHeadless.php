@@ -18,10 +18,18 @@ use Illuminate\Support\Facades\Process;
  */
 class ComfandiSubsidiosHeadless
 {
-    /** Diez segundos por trabajador más el login, con holgura. */
-    private const SEGUNDOS_BASE = 180;
+    /**
+     * Cuánto se le da al portal.
+     *
+     * No son diez segundos por trabajador: entre que la pantalla del filtro a
+     * veces hay que recargarla, la segunda pasada a los que fallan y lo que
+     * tarda el propio portal de noche, cada uno puede llevarse tres cuartos de
+     * minuto. Quedarse corto sale caro —corta la corrida entera a media
+     * empresa—, y sobrar no cuesta nada.
+     */
+    private const SEGUNDOS_BASE = 240;
 
-    private const SEGUNDOS_POR_TRABAJADOR = 30;
+    private const SEGUNDOS_POR_TRABAJADOR = 45;
 
     /**
      * @param  array<string>  $documentos  cédulas de esa empresa
