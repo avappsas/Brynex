@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\CajaRevision;
+use App\Models\Tarea;
 use App\Services\Caja\ComfandiSubsidiosHeadless;
 use App\Services\Caja\ComfenalcoSubsidiosHeadless;
 use App\Services\Caja\SubsidioCandidatosService;
@@ -38,6 +39,7 @@ class CajaRevisarSubsidios extends Command
                             {--caja=COMFANDI : Qué caja se revisa}
                             {--completa : Barrido de todos los afiliados, no solo de los sospechosos}
                             {--forzar : Revisa aunque ya se haya hecho hoy}
+                            {--max-por-empresa=12 : Cuántos trabajadores se consultan por empresa y corrida}
                             {--con-ventana : Abre el navegador con ventana (para probar fuera del servidor)}
                             {--simular : Consulta el portal pero no crea ni cierra tareas}';
 
@@ -104,7 +106,19 @@ class CajaRevisarSubsidios extends Command
         // el portal, y lo que devuelve es de la empresa, no de quien la factura.
         $documentos = array_values(array_unique(array_merge(...array_values($porAliado))));
 
-        $this->line("{$nit} (aliados {$aliados}): ".count($documentos).' trabajador(es)…');
+        // Y por tandas: el portal se toma casi un minuto por persona, así que
+        // una empresa de treinta se comía la corrida entera y se quedaba sin
+        // terminar. Con un tope, todas avanzan cada noche y en pocos días se
+        // cubren enteras; los bloqueos no cambian de un día para otro.
+        $tope = max(1, (int) $this->option('max-por-empresa'));
+        $total = count($documentos);
+
+        if ($total > $tope) {
+            $documentos = $this->porTandas($nit, $documentos, $tope);
+        }
+
+        $this->line("{$nit} (aliados {$aliados}): ".count($documentos).' trabajador(es)'
+            .($total > count($documentos) ? " de {$total} (por tandas)" : '').'…');
 
         $revision = $simular ? null : CajaRevision::abrir($nit, $this->entidad($caja), $alcance, (int) array_key_first($porAliado));
 
@@ -170,6 +184,36 @@ class CajaRevisarSubsidios extends Command
         }
 
         $revision?->terminar($totales, $this->aviso($leido['errores'] ?? []));
+    }
+
+    /**
+     * A quién le toca esta noche.
+     *
+     * Primero los que tienen una tarea abierta —hay que mirarlos hasta que la
+     * caja libere el subsidio, y son los únicos que se pueden cerrar—, y el
+     * resto por turnos, empezando por quien lleva más sin que lo miren.
+     *
+     * @param  array<string>  $documentos
+     * @return array<string>
+     */
+    private function porTandas(string $nit, array $documentos, int $tope): array
+    {
+        $conTarea = DB::table('tareas')
+            ->whereIn('estado', Tarea::ESTADOS_ACTIVOS)
+            ->where('llave_auto', 'like', 'comfandi:%')
+            ->whereIn('cedula', $documentos)
+            ->distinct()->pluck('cedula')
+            ->map(fn ($c) => (string) $c)->all();
+
+        $resto = array_values(array_diff($documentos, $conTarea));
+
+        // El turno sale del día del año y del NIT, para que cada empresa no
+        // empiece siempre por los mismos y la rotación no dependa de guardar
+        // nada.
+        $desde = $resto ? (int) ((now()->dayOfYear + crc32($nit)) % count($resto)) : 0;
+        $rotado = array_merge(array_slice($resto, $desde), array_slice($resto, 0, $desde));
+
+        return array_slice(array_merge($conTarea, $rotado), 0, $tope);
     }
 
     private function aviso(array $errores): ?string
