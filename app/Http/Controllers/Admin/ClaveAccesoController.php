@@ -20,8 +20,10 @@ class ClaveAccesoController extends Controller
     {
         $aliadoId = session('aliado_id_activo') ?: auth()->user()->aliado_id;
 
-        $query = ClaveAcceso::where('aliado_id', $aliadoId)
-            ->with(['razonSocial', 'cliente', 'empresa']);
+        // Se ven también las de las empresas compartidas con otro aliado: es la
+        // misma clave ante la entidad y es la que usan los procesos.
+        $query = ClaveAcceso::visiblesPara($aliadoId)
+            ->with(['razonSocial', 'cliente', 'empresa', 'aliado']);
 
         // Filtro por Razón Social
         if ($request->filled('razon_social_id')) {
@@ -72,6 +74,13 @@ class ClaveAccesoController extends Controller
      */
     private function taparContrasenas($claves)
     {
+        $aliadoId = (int) (session('aliado_id_activo') ?: auth()->user()->aliado_id);
+
+        $claves->each(function ($c) use ($aliadoId) {
+            $c->de_otro_aliado = $c->esDeOtroAliado($aliadoId);
+            $c->cargada_por = $c->de_otro_aliado ? ($c->aliado?->nombre ?? 'otro aliado') : null;
+        });
+
         if (auth()->user()->can('claves_acceso.ver_contrasena')) {
             return $claves;
         }
@@ -107,7 +116,7 @@ class ClaveAccesoController extends Controller
     {
         $aliadoId = session('aliado_id_activo');
 
-        $claves = ClaveAcceso::where('aliado_id', $aliadoId)
+        $claves = ClaveAcceso::visiblesPara($aliadoId)
             ->where('razon_social_id', $razonSocialId)
             ->orderBy('tipo')
             ->orderBy('entidad')
@@ -121,7 +130,7 @@ class ClaveAccesoController extends Controller
     {
         $aliadoId = session('aliado_id_activo');
 
-        $claves = ClaveAcceso::where('aliado_id', $aliadoId)
+        $claves = ClaveAcceso::visiblesPara($aliadoId)
             ->where('empresa_id', $empresaId)
             ->orderBy('tipo')
             ->orderBy('entidad')
