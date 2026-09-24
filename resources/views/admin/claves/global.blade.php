@@ -362,7 +362,12 @@
                                 <span style="background:{{ $ct[0] }};color:{{ $ct[1] }};padding:0.15rem 0.5rem;border-radius:999px;font-size:0.68rem;font-weight:700;">{{ $t }}</span>
                             @endforeach
                         </td>
-                        <td style="font-weight:700;">{{ $sinc::nombreGrupo($primera->tipo, $primera->entidad) }}</td>
+                        <td style="font-weight:700;">{{ $sinc::nombreGrupo($primera->tipo, $primera->entidad) }}
+                            @if($grupo->contains(fn ($g) => $g->de_otro_aliado ?? false))
+                            <span style="background:#e0e7ff;color:#3730a3;padding:0.1rem 0.4rem;border-radius:999px;font-size:0.62rem;font-weight:700;"
+                                  title="Hay claves de este grupo cargadas por otro aliado que comparte la empresa">↔ compartida</span>
+                            @endif
+                        </td>
                         <td style="font-family:monospace;font-size:0.77rem;font-weight:700;">{{ $usuarioSura }}</td>
                         <td>
                             @if($sinPermG)
@@ -403,6 +408,10 @@
                         <td></td>
                         <td colspan="2" style="font-size:0.75rem;color:#78350f;padding-left:1.2rem;">
                             ↳ {{ $hija->razonSocial->razon_social ?? ($hija->empresa->empresa ?? 'sin vínculo') }}
+                            @if($hija->de_otro_aliado ?? false)
+                            <span style="background:#e0e7ff;color:#3730a3;padding:0.1rem 0.4rem;border-radius:999px;font-size:0.62rem;font-weight:700;"
+                                  title="La cargó {{ $hija->cargada_por }}">↔ {{ $hija->cargada_por }}</span>
+                            @endif
                             @if($tipos->count() > 1)
                                 <span style="color:#92400e;font-weight:700;"> · {{ strtoupper($hija->tipo) }}</span>
                             @endif
