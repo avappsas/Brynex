@@ -71,6 +71,7 @@ class UsuarioPermisoController extends Controller
             'porRol' => $editado->roles->flatMap->permissions->pluck('name')->unique()->all(),
             'directos' => $editado->permissions->pluck('name')->all(),
             'esSuper' => $editado->roles->contains('name', 'superadmin'),
+            'negados' => $editado->permisos_negados ?? [],
             'quienTiene' => $this->quienTiene($editado, $modulos, $equipo),
         ]);
     }
@@ -174,6 +175,11 @@ class UsuarioPermisoController extends Controller
             $esSuper = $miembro->roles->contains('name', 'superadmin');
 
             foreach ($meta as $nombre => $m) {
+                // Gate::before, regla 0: lo negado no lo tiene, ni siendo superadmin
+                if ($miembro->tienePermisoNegado($nombre)) {
+                    continue;
+                }
+
                 // Gate::before, regla 1: los módulos de BryNex exigen es_brynex
                 if ($m['solo_brynex'] && ! $miembro->es_brynex) {
                     continue;

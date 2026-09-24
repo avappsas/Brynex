@@ -93,7 +93,8 @@
                                         $directo     = in_array($permiso->name, $directos, true);
                                         $restringido = $permiso->restringido || $modulo->restringido;
                                         // Un superadmin ya tiene todo lo no restringido por Gate::before
-                                        $heredado    = $viaRol || ($esSuper && ! $restringido);
+                                        $negado      = in_array($permiso->name, $negados, true);
+                                        $heredado    = ! $negado && ($viaRol || ($esSuper && ! $restringido));
                                         $loTienen    = $quienTiene[$permiso->name] ?? [];
                                     @endphp
                                     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.75rem;padding:0.3rem 0;border-top:1px solid #f8fafc;">
@@ -101,8 +102,8 @@
                                             <input type="checkbox"
                                                    name="permisos[]"
                                                    value="{{ $permiso->name }}"
-                                                   @checked($heredado || $directo)
-                                                   @disabled($heredado)
+                                                   @checked(! $negado && ($heredado || $directo))
+                                                   @disabled($heredado || $negado)
                                                    style="margin-top:0.18rem;accent-color:{{ $heredado ? '#94a3b8' : '#2563eb' }};">
                                             <span>
                                                 {{ $permiso->etiqueta }}
@@ -111,6 +112,10 @@
                                                 @endif
                                                 @if($heredado)
                                                     <span style="font-size:0.7rem;color:#cbd5e1;">(del rol)</span>
+                                                @endif
+                                                @if($negado)
+                                                    <span title="Negado a este usuario con permisos:negar: no lo tiene aunque su rol lo traiga"
+                                                          style="font-size:0.7rem;color:#dc2626;font-weight:600;">(negado)</span>
                                                 @endif
                                             </span>
                                         </label>

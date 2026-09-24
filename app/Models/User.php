@@ -51,6 +51,9 @@ class User extends Authenticatable
         'password' => 'hashed',
         'es_brynex' => 'boolean',
         'activo' => 'boolean',
+        // Fuera de $fillable a propósito: el formulario de usuarios no debe
+        // poder tocarla. Se maneja con `permisos:negar`.
+        'permisos_negados' => 'array',
     ];
 
     // Aliado principal del usuario
@@ -127,6 +130,22 @@ class User extends Authenticatable
             return false;
         }
 
+        // Mismo motivo: si el permiso le llega por rol o a dedo, Spatie
+        // contestaría `true` antes de que el Gate::before vea la negación.
+        if ($nombre !== null && $this->tienePermisoNegado($nombre)) {
+            return false;
+        }
+
         return $this->hasPermissionToSpatie($permission, $guardName);
+    }
+
+    /**
+     * Permiso que se le quitó a este usuario aunque su rol lo traiga — el caso
+     * de un superadmin de BryNex que no debe ver el estado financiero de los
+     * aliados. Gana sobre todo: rol, superadmin y permiso otorgado a mano.
+     */
+    public function tienePermisoNegado(string $permiso): bool
+    {
+        return in_array($permiso, $this->permisos_negados ?? [], true);
     }
 }

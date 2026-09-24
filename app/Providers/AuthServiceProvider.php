@@ -25,7 +25,12 @@ class AuthServiceProvider extends ServiceProvider
     public function boot(): void
     {
         /**
-         * Dos reglas transversales, antes de mirar roles y permisos:
+         * Tres reglas transversales, antes de mirar roles y permisos:
+         *
+         *  0. **Lo negado gana sobre todo.** `users.permisos_negados` le quita
+         *     a un usuario concreto un permiso que su rol sí trae — incluido
+         *     el superadmin. Es el único mecanismo que revoca en vez de
+         *     otorgar. Se maneja con `permisos:negar`.
          *
          *  1. **Los módulos `solo_brynex` exigen `es_brynex`.** El Hub BryNex,
          *     los cobros a aliados y el backup no son del aliado, son de la
@@ -42,6 +47,12 @@ class AuthServiceProvider extends ServiceProvider
         Gate::before(function (User $user, string $ability) {
             if (! array_key_exists($ability, PermisoService::meta())) {
                 return null;   // no es un permiso del catálogo: flujo normal
+            }
+
+            // Regla 0: lo negado a este usuario no lo tiene, ni siendo
+            // superadmin (ver `users.permisos_negados`).
+            if ($user->tienePermisoNegado($ability)) {
+                return false;
             }
 
             if (PermisoService::esSoloBrynex($ability) && ! $user->es_brynex) {
