@@ -337,7 +337,7 @@ body{display:flex;flex-direction:column}
             <a class="btn-accion btn-contrato" href="/admin/contratos/{{ $c->id }}/edit" title="Ver/Editar Contrato">
                 📄
             </a>
-            @can('automatizar-portales')
+            @can('automatizar-arl')
             <button class="btn-accion btn-renovar" onclick="abrirRenovar({{ $ctx }})" title="Mover la cobertura del trabajador a la fecha del mes nuevo en ARL Sura">
                 📅 Renovar
             </button>
@@ -352,7 +352,7 @@ body{display:flex;flex-direction:column}
             <button class="btn-accion btn-facturar" onclick="abrirFacturar({{ $ctx }})" title="Facturar afiliación ARL">
                 💳 Facturar
             </button>
-            <button class="btn-accion btn-retirar" onclick="abrirRetirar({{ $ctx->id ?? $c->id }}, '{{ addslashes($nombre) }}')" title="{{ Gate::allows('automatizar-portales') ? 'Anular la cobertura en Sura y dejar el contrato retirado' : 'Dejar el contrato retirado' }}">
+            <button class="btn-accion btn-retirar" onclick="abrirRetirar({{ $ctx->id ?? $c->id }}, '{{ addslashes($nombre) }}')" title="{{ Gate::allows('automatizar-arl') ? 'Anular la cobertura en Sura y dejar el contrato retirado' : 'Dejar el contrato retirado' }}">
                 ❌
             </button>
         </td>
@@ -479,7 +479,7 @@ body{display:flex;flex-direction:column}
 
     <div id="retirar-contenido" style="display:none;">
         <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:.65rem .8rem;margin-bottom:.75rem;font-size:.75rem;color:#991b1b;line-height:1.55;">
-            @can('automatizar-portales')
+            @can('automatizar-arl')
             El sistema va a <strong>anular la cobertura en el portal de Sura</strong> y dejar el contrato
             <strong>retirado</strong>, con retiro informativo (0 días cotizados).<br>
             <span style="color:#7f1d1d;">Si Sura ya no deja anularla, se te preguntará antes de hacer nada más.</span>
@@ -529,7 +529,7 @@ body{display:flex;flex-direction:column}
         <input type="hidden" id="retirar-contrato-id">
         <input type="hidden" id="retirar-mes-plano">
         <input type="hidden" id="retirar-anio-plano">
-        <button class="btn-save" id="retirar-btn" style="background:#b91c1c" onclick="confirmarRetiro()">❌ {{ Gate::allows('automatizar-portales') ? 'Anular en Sura y retirar' : 'Retirar' }}</button>
+        <button class="btn-save" id="retirar-btn" style="background:#b91c1c" onclick="confirmarRetiro()">❌ {{ Gate::allows('automatizar-arl') ? 'Anular en Sura y retirar' : 'Retirar' }}</button>
     </div>
 
     <div id="retirar-resultado" style="display:none;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:.75rem .9rem;font-size:.8rem;color:#166534;"></div>
@@ -551,7 +551,7 @@ body{display:flex;flex-direction:column}
 <script>
 const CSRF = document.querySelector('meta[name="csrf-token"]')?.content;
 // Automatización de portales: usuarios BryNex o aliado autorizado por BryNex.
-const PUEDE_AUTOMATIZAR = @json(Gate::allows('automatizar-portales'));
+const PUEDE_AUTOMATIZAR = @json(Gate::allows('automatizar-arl'));
 const RETIRAR_TEXTO = PUEDE_AUTOMATIZAR ? '❌ Anular en Sura y retirar' : '❌ Retirar';
 
 /* ── Helpers modales ── */

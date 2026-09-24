@@ -1476,6 +1476,8 @@ let radicadoActivo = null;
 const CSRF = document.querySelector('meta[name="csrf-token"]')?.content;
 // Automatización de portales: usuarios BryNex o aliado autorizado por BryNex.
 const PUEDE_AUTOMATIZAR = @json(Gate::allows('automatizar-portales'));
+// ARL por API (Sura y Colmena) va aparte: un aliado puede tenerla sin los portales de EPS.
+const PUEDE_ARL = @json(Gate::allows('automatizar-arl'));
 // EPS sin portal de empleador que se afilian por correo al asesor (config afiliaciones_correo.asesores).
 const CORREO_EPS = [{ entidad: 'comfenalco', nombre: 'Comfenalco Valle', patron: /COMFENALCO\s*VALLE|DELAGENTE/i }];
 // EPS con portal Boxalud (config/boxalud.php); su correo de plan B va dentro del modal.
@@ -1702,8 +1704,8 @@ function abrirModalRadicado(radId, radData, ctx = {}, contratoId = null, tieneFo
     const btnAnular = document.getElementById('btnAnularApi');
     const esArlSura = (radData.tipo === 'arl') && /SURA/i.test(ctx.arl || '');
 
-    btnApi.style.display    = (PUEDE_AUTOMATIZAR && esArlSura && radData.estado !== 'ok') ? 'inline-flex' : 'none';
-    btnAnular.style.display = (PUEDE_AUTOMATIZAR && esArlSura && radData.estado === 'ok') ? 'inline-flex' : 'none';
+    btnApi.style.display    = (PUEDE_ARL && esArlSura && radData.estado !== 'ok') ? 'inline-flex' : 'none';
+    btnAnular.style.display = (PUEDE_ARL && esArlSura && radData.estado === 'ok') ? 'inline-flex' : 'none';
     // El badge de un radicado existente no trae data-contrato-id (solo el de
     // crear), así que el id sale del contexto.
     btnApi._contratoId = btnAnular._contratoId = contratoId || ctx.id || null;
@@ -1712,8 +1714,8 @@ function abrirModalRadicado(radId, radData, ctx = {}, contratoId = null, tieneFo
     const btnColmena = document.getElementById('btnAfiliarColmena');
     const btnColmenaAnular = document.getElementById('btnAnularColmena');
     const esArlColmena = (radData.tipo === 'arl') && /COLMENA/i.test(ctx.arl || '');
-    btnColmena.style.display = (PUEDE_AUTOMATIZAR && esArlColmena && radData.estado !== 'ok') ? 'inline-flex' : 'none';
-    btnColmenaAnular.style.display = (PUEDE_AUTOMATIZAR && esArlColmena && radData.estado === 'ok') ? 'inline-flex' : 'none';
+    btnColmena.style.display = (PUEDE_ARL && esArlColmena && radData.estado !== 'ok') ? 'inline-flex' : 'none';
+    btnColmenaAnular.style.display = (PUEDE_ARL && esArlColmena && radData.estado === 'ok') ? 'inline-flex' : 'none';
     btnColmena._contratoId = btnColmenaAnular._contratoId = contratoId || ctx.id || null;
 
     // Reingreso por el portal: radicados de EPS de Nueva EPS que aún no están en OK.
@@ -3337,9 +3339,11 @@ function mostrarToast(msg, tipo) {
 @include('admin.partials._modal_claves_globales')
 
 
-@can('automatizar-portales')
+@can('automatizar-arl')
 @include('admin.partials._afiliar_arl_sura')
 @include('admin.partials._afiliar_arl_colmena')
+@endcan
+@can('automatizar-portales')
 @include('admin.partials._reingreso_nueva_eps')
 @include('admin.partials._novedad_salud_total')
 @include('admin.partials._novedad_sos')

@@ -79,5 +79,22 @@ class AuthServiceProvider extends ServiceProvider
 
             return BrynexModuloAliado::aliadoTiene((int) session('aliado_id_activo'), 'automatizacion_portales');
         });
+
+        /**
+         * Solo la parte de ARL: afiliar, anular, renovar y certificado en ARL
+         * Sura, y afiliar/anular/retirar en Colmena, por sus APIs. Un aliado
+         * puede tener esto sin los portales de EPS, Conciliar EPS ni el Buzón
+         * (módulo `arl_api`); quien tiene la automatización completa lo trae.
+         */
+        Gate::define('automatizar-arl', function (User $user) {
+            if ($user->es_brynex) {
+                return true;
+            }
+
+            $aliado = (int) session('aliado_id_activo');
+
+            return BrynexModuloAliado::aliadoTiene($aliado, 'arl_api')
+                || BrynexModuloAliado::aliadoTiene($aliado, 'automatizacion_portales');
+        });
     }
 }

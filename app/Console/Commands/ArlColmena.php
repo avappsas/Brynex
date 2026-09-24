@@ -12,7 +12,7 @@ use Throwable;
  * Opera ARL Colmena por consola: consultar, afiliar, anular y retirar.
  *
  * Existe para poder trabajar y depurar sin pantalla —la afiliación desde la
- * ficha del contrato va detrás del Gate `automatizar-portales`— y porque las
+ * ficha del contrato va detrás del Gate `automatizar-arl`— y porque las
  * pruebas contra Colmena son reales: no hay ambiente de pruebas, así que todo
  * lo que escribe exige `--ejecutar` y sin él solo muestra lo que enviaría.
  */

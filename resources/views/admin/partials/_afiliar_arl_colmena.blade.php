@@ -3,7 +3,7 @@
 
     Se incluye en el listado de afiliaciones y solo necesita que algo llame a
     `abrirAfiliarColmena(contratoId)`. Los endpoints viven en
-    admin.afiliaciones.colmena.* y van detrás del Gate `automatizar-portales`.
+    admin.afiliaciones.colmena.* y van detrás del Gate `automatizar-arl`.
 
     Dos avisos que no son decorativos, porque son reglas del portal:
     la vigencia no puede empezar hoy, y la anulación caduca un día calendario

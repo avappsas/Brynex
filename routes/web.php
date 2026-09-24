@@ -922,10 +922,11 @@ Route::middleware('auth')->group(function () {
 
         // Afiliación directa contra el API de ARL Sura. El precheck no toca el
         // portal: dice qué le falta al contrato antes de intentar nada.
-        // Todo lo que opera el portal exige el módulo de automatización (BryNex o aliado autorizado).
+        // Todo lo que opera el portal exige ARL por API (BryNex o aliado con el
+        // módulo `arl_api` o la automatización completa).
         $aa = \App\Http\Controllers\Admin\ArlAfiliacionController::class;
         Route::get('/{id}/datos-retiro', [$aa, 'datosRetiro'])->name('datos-retiro');
-        Route::middleware('can:automatizar-portales')->group(function () use ($aa) {
+        Route::middleware('can:automatizar-arl')->group(function () use ($aa) {
             Route::get('/{id}/precheck', [$aa, 'precheck'])->name('precheck');
             Route::post('/{id}/afiliar', [$aa, 'afiliar'])->name('afiliar');
             // Anular NO tiene API en Sura: lo hace un navegador sobre el Struts.
@@ -950,6 +951,16 @@ Route::middleware('auth')->group(function () {
         $fc = \App\Http\Controllers\Admin\FormularioEpsController::class;
         Route::get('/', [$ac, 'index'])->name('index');
         Route::get('/exportar', [$ac, 'exportar'])->name('exportar');
+        // ARL Colmena por su API, desde el radicado de ARL. Va con ARL Sura en
+        // `automatizar-arl`, no con los portales de EPS. Anular solo vale hasta
+        // un día después del inicio de la vigencia; luego es retiro.
+        Route::middleware('can:automatizar-arl')->group(function () {
+            $colm = \App\Http\Controllers\Admin\ArlColmenaController::class;
+            Route::get('/{contrato}/colmena/precheck', [$colm, 'precheck'])->name('colmena.precheck');
+            Route::post('/{contrato}/colmena/afiliar', [$colm, 'afiliar'])->name('colmena.afiliar');
+            Route::post('/{contrato}/colmena/anular', [$colm, 'anular'])->name('colmena.anular');
+            Route::post('/{contrato}/colmena/retirar', [$colm, 'retirar'])->name('colmena.retirar');
+        });
         // Automatización de portales, Conciliar EPS y Buzón: BryNex o aliado autorizado.
         Route::middleware('can:automatizar-portales')->group(function () {
             // Conciliación de radicados de EPS SURA contra el portal (proceso en segundo plano).
@@ -976,13 +987,6 @@ Route::middleware('auth')->group(function () {
             Route::get('/{contrato}/nueva-eps/precheck', [$nec, 'precheck'])->name('nueva-eps.precheck');
             Route::post('/{contrato}/nueva-eps/consultar', [$nec, 'consultar'])->name('nueva-eps.consultar');
             Route::post('/{contrato}/nueva-eps/registrar', [$nec, 'registrar'])->name('nueva-eps.registrar');
-            // ARL Colmena por su API, desde el radicado de ARL. Anular solo vale
-            // hasta un día después del inicio de la vigencia; luego es retiro.
-            $colm = \App\Http\Controllers\Admin\ArlColmenaController::class;
-            Route::get('/{contrato}/colmena/precheck', [$colm, 'precheck'])->name('colmena.precheck');
-            Route::post('/{contrato}/colmena/afiliar', [$colm, 'afiliar'])->name('colmena.afiliar');
-            Route::post('/{contrato}/colmena/anular', [$colm, 'anular'])->name('colmena.anular');
-            Route::post('/{contrato}/colmena/retirar', [$colm, 'retirar'])->name('colmena.retirar');
             // Novedad de inicio laboral en Salud Total desde el radicado de EPS.
             $stc = \App\Http\Controllers\Admin\SaludTotalController::class;
             Route::get('/{contrato}/salud-total/precheck', [$stc, 'precheck'])->name('salud-total.precheck');
