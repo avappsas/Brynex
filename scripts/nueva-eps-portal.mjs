@@ -246,7 +246,13 @@ try {
     if (!destino) throw new Error(`El menú no tiene la opción ${opcion}.`);
 
     await pagina.goto(new URL(destino, pagina.url()).href, { waitUntil: 'networkidle2', timeout: 60000 });
-    await esperar(2000);
+
+    // ICEfaces pinta la pantalla por AJAX después de cargar el marco: sin esto
+    // solo se ve la cabecera y parece que la opción está vacía.
+    await esperarQue(pagina, () => document.querySelectorAll(
+      'input:not([id^="headerForm"]):not([type=hidden]), select, table tr:nth-child(2)'
+    ).length > 0, 20000);
+    await esperar(2500);
 
     const campos = await pagina.evaluate(() => [...document.querySelectorAll('input, select, textarea')]
       .filter((e) => e.type !== 'hidden')
@@ -259,9 +265,17 @@ try {
         opciones: e.tagName === 'SELECT' ? [...e.options].slice(0, 14).map((o) => `${o.value}=${o.text}`.slice(0, 40)) : undefined,
       })));
 
+    // Las cabeceras de tabla dicen qué trae la consulta aunque venga vacía.
+    const tablas = await pagina.evaluate(() => [...document.querySelectorAll('table')]
+      .map((t) => ({
+        columnas: [...t.querySelectorAll('th')].map((c) => (c.innerText || '').replace(/\s+/g, ' ').trim()).filter(Boolean),
+        filas: t.querySelectorAll('tbody tr').length,
+      }))
+      .filter((t) => t.columnas.length));
+
     salir({
       ok: true, modo, opcion, url: pagina.url(), titulo: await pagina.title().catch(() => null),
-      campos, pantalla: (await texto(pagina)).replace(/\s+/g, ' ').slice(0, 2000),
+      campos, tablas, pantalla: (await texto(pagina)).replace(/\s+/g, ' ').slice(0, 2000),
     });
   }
 
