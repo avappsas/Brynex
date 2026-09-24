@@ -396,22 +396,56 @@ try {
     });
   }
 
-  await campoTipo.click({ clickCount: 3 }).catch(() => null);
-  await campoTipo.type('NIT', { delay: 60 }).catch(() => null);
-  await esperar(900);
+  // Se intenta varias veces y de dos maneras: anoche fallaron tres de cada
+  // cuatro empresas aqui. Entre escribir y elegir se puede perder el foco —y
+  // con el la lista—, y el clic de Puppeteer no siempre prende en el <li>, que
+  // a veces escucha en un hijo.
+  let tipoOk = false;
 
-  for (const li of await pagina.$$('li')) {
-    const texto = await li.evaluate(e => (e.offsetParent ? (e.innerText || '') : '')).catch(() => '');
-    if (/^\s*NIT\b/i.test(texto)) {
+  for (let intento = 0; intento < 4 && ! tipoOk; intento++) {
+    await campoTipo.click({ clickCount: 3 }).catch(() => null);
+    await campoTipo.type('NIT', { delay: 60 }).catch(() => null);
+    await esperar(900);
+
+    for (const li of await pagina.$$('li')) {
+      const texto = await li.evaluate(e => (e.offsetParent ? (e.innerText || '') : '')).catch(() => '');
+      if (! /^\s*NIT\b/i.test(texto)) continue;
+
       await li.click().catch(() => null);
+      await esperar(400);
+
+      const puesto = await pagina.evaluate(() =>
+        document.querySelector('input[name=identification_type_up]')?.value === 'NIT').catch(() => false);
+
+      if (! puesto) {
+        await li.evaluate((e) => {
+          const destino = e.querySelector('button,a,span') || e;
+          ['pointerdown', 'mousedown', 'mouseup', 'click']
+            .forEach(t => destino.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+        }).catch(() => null);
+      }
+
       break;
     }
+
+    tipoOk = await insistir(pagina, () =>
+      document.querySelector('input[name=identification_type_up]')?.value === 'NIT', [], 6000);
   }
 
-  const tipoOk = await insistir(pagina, () =>
-    document.querySelector('input[name=identification_type_up]')?.value === 'NIT', [], 8000);
+  if (! tipoOk) {
+    // Que habia en pantalla, en vez de culpar al portal de haber cambiado.
+    const estado = await pagina.evaluate(() => ({
+      donde: location.host + location.pathname,
+      valor: document.querySelector('input[name=identification_type_up]')?.value ?? 'no esta',
+      opciones: [...document.querySelectorAll('li')].filter(e => e.offsetParent).map(e => (e.innerText || '').trim().slice(0, 24)).slice(0, 6),
+    })).catch(() => null);
 
-  if (!tipoOk) salir({ ok: false, error: 'No se pudo escoger "NIT" en Tipo de documento: el portal cambió el formulario.' });
+    salir({
+      ok: false,
+      error: 'No se pudo escoger "NIT" en Tipo de documento.'
+        + (estado ? ` En ${estado.donde}: el campo vale "${estado.valor}" y se ven [${estado.opciones.join(' | ')}].` : ''),
+    });
+  }
 
   await insistir(pagina, (u, c) => {
     const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
