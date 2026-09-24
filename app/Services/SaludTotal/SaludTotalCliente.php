@@ -36,6 +36,11 @@ class SaludTotalCliente
 
     private ?string $jwtAfiliados = null;
 
+    /** El GUID de sesión del portal: de él salen los demás tokens. */
+    private ?string $tokenPortal = null;
+
+    private ?string $jwtReportesCartera = null;
+
     private ?string $appAbierta = null;
 
     private function __construct(private string $nit, private string $tipoUsuario, private string $documentoUsuario)
@@ -70,6 +75,8 @@ class SaludTotalCliente
         $jwt = $cliente->http()->post(self::BASE.'/ApiOficinaVirtual/Login/CreateJWT', ['Token' => $data['token'], 'Origen' => 'OficinaVirtual']);
         $cliente->jwtOficina = is_string($jwt->json('data')) ? $jwt->json('data') : null;
 
+        $cliente->tokenPortal = (string) $data['token'];
+
         $afi = $cliente->http()->get(self::BASE.'/APIOFVAfiliadosPBSEmpleador/api/Token/GetToken', ['Token' => $data['token'], 'Origen' => 'OficinaVirtual']);
         $cliente->jwtAfiliados = $afi->json('Valido') ? $afi->json('Token') : null;
 
@@ -78,6 +85,68 @@ class SaludTotalCliente
         }
 
         return $cliente;
+    }
+
+    /**
+     * Los tres reportes de cartera de un período (`'8/2026'`, sin cero delante).
+     *
+     * Salud Total ya los separa en el origen, que es justo lo que hace falta
+     * para saber qué hacer con cada uno: lo que no se pagó, lo que se pagó de
+     * más por alguien ya retirado, y lo que se pagó por quien nunca estuvo
+     * afiliado. Los dos últimos son plata de la empresa, no deuda.
+     *
+     * Cuando hay registros el portal responde con la URL de un archivo; cuando
+     * no, lo dice en `Descripcion`.
+     *
+     * @return array<string, array{hay:bool, url:?string, mensaje:?string}>
+     */
+    public function cartera(string $periodo): array
+    {
+        $reportes = [
+            'sin_pago'              => 'ConultaCotSinPago',
+            'desafiliados_con_pago' => 'ConultaCoDesafiliadoCP',
+            'pago_sin_afiliacion'   => 'ConultaCotizanteConPagoNA',
+        ];
+
+        $salida = [];
+
+        foreach ($reportes as $nombre => $ruta) {
+            // Las rutas van con la errata del portal ("Conulta"): así responden.
+            $r = $this->http()
+                ->withHeaders(['Authorization' => 'bearer '.$this->jwtCartera()])
+                ->get(self::BASE."/STAPI_ReportesCRInternet/api/Cotizantes/{$ruta}", [
+                    'EmpleadorId'     => $this->nit,
+                    'EmpleadorTipoId' => 'N',
+                    'Periodo'         => $periodo,
+                ]);
+
+            $j = $r->json() ?: [];
+
+            $salida[$nombre] = [
+                'hay'     => (bool) ($j['Valido'] ?? false),
+                'url'     => $j['Url'] ?? null,
+                'mensaje' => $j['Descripcion'] ?: ($j['Error'] ?: null),
+            ];
+        }
+
+        return $salida;
+    }
+
+    private function jwtCartera(): string
+    {
+        if (! $this->jwtReportesCartera) {
+            $r = $this->http()->get(self::BASE.'/STAPI_ReportesCRInternet/api/Token/GetToken', [
+                'Token' => $this->tokenPortal, 'Origen' => 'OficinaVirtual',
+            ]);
+
+            $this->jwtReportesCartera = $r->json('Valido') ? $r->json('Token') : null;
+
+            if (! $this->jwtReportesCartera) {
+                throw new RuntimeException('Salud Total no entregó el token de los reportes de cartera.');
+            }
+        }
+
+        return $this->jwtReportesCartera;
     }
 
     /**
