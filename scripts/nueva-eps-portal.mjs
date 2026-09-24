@@ -212,6 +212,24 @@ try {
     if (!await esperarQue(pagina, menuVisible, 30000)) throw new Error('No cargó el menú del empleador.');
   }
 
+  // ── Mapa del menú del empleador ──
+  // Exploración: qué ofrece el portal a esta empresa. No toca nada, solo lista
+  // los enlaces con su destino, que es como se descubre dónde vive cada cosa.
+  if (modo === 'menu') {
+    paso = 'leer menú';
+    const enlaces = await pagina.evaluate(() => [...document.querySelectorAll('a')]
+      .map((a) => ({
+        texto: (a.innerText || '').replace(/\s+/g, ' ').trim(),
+        destino: (a.getAttribute('href') || a.getAttribute('onclick') || '').slice(0, 120),
+      }))
+      .filter((e) => e.texto));
+
+    salir({
+      ok: true, modo, url: pagina.url(), titulo: await pagina.title().catch(() => null),
+      enlaces, pantalla: (await texto(pagina)).replace(/\s+/g, ' ').slice(0, 1200),
+    });
+  }
+
   // ── Reingresos y Retiros (SPA) ──
   paso = 'abrir reingresos';
   await clicEnlace(pagina, 'Reingresos y Retiros Laborales');
