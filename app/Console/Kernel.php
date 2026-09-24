@@ -159,6 +159,22 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/caja-conciliacion.log'));
 
+        // La mora que Nueva EPS le cobra a cada empresa, convertida en tareas.
+        // Semanal y no diaria: el reporte lo genera el portal aparte —minutos
+        // por empresa— y la mora solo cambia cuando alguien paga. Los lunes,
+        // para que la semana empiece sabiendo qué reclamar.
+        // El corte es el primer día del mes en curso: el portal devuelve la mora
+        // anterior a esa fecha, así que el mes que todavía se puede pagar no
+        // cuenta como mora.
+        // Ejecución manual: php artisan eps:revisar-mora --nit=901904750 --simular
+        $schedule->command('eps:revisar-mora')
+            ->weeklyOn(1, '21:30')
+            ->timezone('America/Bogota')
+            ->name('eps-revisar-mora')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/eps-mora.log'));
+
         // Agente del buzón de afiliaciones (seguridadsocial.brygar@gmail.com): cada
         // 30 min lee lo que llega de las entidades, aplica los radicados que
         // envían los asesores y avisa por WhatsApp. Solo lectura en Gmail.
