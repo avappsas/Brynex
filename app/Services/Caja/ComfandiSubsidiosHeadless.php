@@ -49,15 +49,19 @@ class ComfandiSubsidiosHeadless
             return ['ok' => false, 'error' => "La empresa {$nit} no tiene la clave de Comfandi en el módulo de claves."];
         }
 
-        // El proxy va por stdin junto con la clave, para que no quede en `ps`.
-        // Comfandi tiene Akamai delante y le niega el acceso a la IP del
-        // servidor: sin él, el portal ni siquiera muestra el login.
+        // Las credenciales van por stdin para que no queden en `ps`.
         $entrada = json_encode([
             'usuario' => $clave['usuario'],
             'contrasena' => $clave['contrasena'],
             'documentos' => $documentos,
             'meses' => $meses,
-            'proxy' => config('services.proxy_colombia.url'),
+            // Comfandi NO sale por el proxy, aunque esté configurado para otros:
+            // lo que rechaza es el navegador sin ventana, no la IP —con Xvfb
+            // entra desde netcup sin problema—. Mandarlo por el proxy
+            // residencial solo añadía lentitud y cortes
+            // (ERR_TUNNEL_CONNECTION_FAILED, navegaciones agotadas, pantallas a
+            // medio montar), y por eso lo que ayer funcionaba hoy fallaba.
+            'proxy' => null,
             'visible' => $conVentana ?? $this->hayXvfb(),
         ], JSON_UNESCAPED_UNICODE);
 
