@@ -125,7 +125,15 @@ class CajaRevisarSubsidios extends Command
         // sería darlas por resueltas sin haberlas mirado.
         if (! $leido['revisados']) {
             $this->warn('  ⚠️ El portal no dejó abrir el subsidio monetario de ninguno.');
-            $revision?->fallar('El portal no dejó abrir el subsidio monetario de ninguno.');
+
+            // El detalle importa más aquí que cuando falla uno suelto: si
+            // fallaron todos, el motivo es el mismo y está escrito abajo.
+            foreach (array_slice($leido['errores'] ?? [], 0, 3) as $fallo) {
+                $this->line("     · {$fallo['documento']}: {$fallo['error']}");
+            }
+
+            $primero = ($leido['errores'] ?? [])[0]['error'] ?? 'El portal no dejó abrir el subsidio monetario de ninguno.';
+            $revision?->fallar($primero);
 
             return;
         }
