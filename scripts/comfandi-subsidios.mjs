@@ -160,8 +160,16 @@ const elegirCombo = async (pagina, opcion, cual = 0) => {
     return false;
   }
 
-  // Dos intentos: el menú tarda en pintarse y una sola pulsación se pierde.
-  for (let intento = 0; intento < 2; intento++) {
+  // Varios intentos: el menú tarda en pintarse, una sola pulsación se pierde y
+  // —lo que costó encontrar— el portal carga las opciones por detrás, así que
+  // al abrirlo demasiado pronto contesta "No options" y se queda vacío para
+  // siempre si no se vuelve a intentar.
+  for (let intento = 0; intento < 5; intento++) {
+    if (intento > 0) {
+      await pagina.keyboard.press('Escape').catch(() => null);
+      await esperar(1500);
+    }
+
     await combo.focus();
     await pagina.keyboard.press('ArrowDown');
     await esperar(900);
@@ -182,6 +190,9 @@ const elegirCombo = async (pagina, opcion, cual = 0) => {
     }
 
     ultimoComboVisto = vistas.length ? `se veían [${vistas.slice(0, 6).join(' | ')}]` : 'el menú no se abrió';
+
+    // "No options" no es que falte la nuestra: es que aún no llegó ninguna.
+    if (vistas.some(v => /^no options/i.test(v))) await esperar(2500);
   }
 
   return false;
