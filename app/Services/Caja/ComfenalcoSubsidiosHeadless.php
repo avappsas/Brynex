@@ -21,7 +21,9 @@ use Illuminate\Support\Facades\Process;
  */
 class ComfenalcoSubsidiosHeadless
 {
-    private const SEGUNDOS = 420;
+    // Por el proxy residencial cada paso tarda: el login solo puede llevarse
+    // tres minutos.
+    private const SEGUNDOS = 600;
 
     /**
      * @param  array<string>  $documentos  cédulas de esa empresa que interesan

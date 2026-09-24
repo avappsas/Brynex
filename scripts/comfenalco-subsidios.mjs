@@ -243,13 +243,36 @@ try {
 
   // La señal de estar dentro es el `usuario` del localStorage del portal, no la
   // pantalla de AuthComfe, que es una aplicación aparte.
-  const limite = Date.now() + 90000;
+  //
+  // Se espera con paciencia y se vuelve a pulsar: por el proxy residencial cada
+  // salto tarda, y un clic que llega mientras la página aún se asienta no hace
+  // nada. Mientras sigamos en el formulario y esté listo, se insiste.
+  const limite = Date.now() + 180000;
   let dentro = false;
+  let ultimoIntento = Date.now();
 
   while (Date.now() < limite && !dentro) {
-    await esperar(2000);
+    await esperar(2500);
+
     dentro = await pagina.evaluate(() =>
       /comfenalcovalle/.test(location.host) && !!localStorage.getItem('usuario')).catch(() => false);
+
+    if (dentro || Date.now() - ultimoIntento < 30000) continue;
+
+    const reintentado = await pagina.evaluate(() => {
+      const clave = document.querySelector('input[type=password]');
+      if (!clave || !clave.value) return false;          // ya no estamos en el login
+
+      const btn = [...document.querySelectorAll('button,input[type=submit]')]
+        .find(b => /iniciar sesi/i.test(b.innerText || b.value || ''));
+      if (!btn || btn.disabled) return false;
+
+      btn.click();
+
+      return true;
+    }).catch(() => false);
+
+    if (reintentado) ultimoIntento = Date.now();
   }
 
   if (!dentro) {
