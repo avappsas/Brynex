@@ -6,6 +6,7 @@ use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
 
 class WhatsappPlantilla extends BaseModel
 {
@@ -159,6 +160,25 @@ class WhatsappPlantilla extends BaseModel
         return $texto;
     }
 
+    /**
+     * Deja un texto como Meta acepta dentro de una variable de plantilla.
+     *
+     * La API rechaza el mensaje entero —(#100) Invalid parameter— si una
+     * variable trae saltos de línea, tabulaciones o más de cuatro espacios
+     * seguidos. Pasa en cuanto el texto lo escribió una persona: el reenvío al
+     * dueño perdió 18 avisos el 24-sep-2026 por los saltos de línea de un
+     * mensaje de WhatsApp. Se aplana a " · " para que siga leyéndose.
+     */
+    public static function sanearParametro(string $texto): string
+    {
+        $texto = preg_replace('/[\r\n]+/u', ' · ', trim($texto));
+        $texto = preg_replace('/\t+/u', ' ', $texto);
+        $texto = preg_replace('/ {2,}/u', ' ', $texto);
+
+        // Tope de Meta por variable: 1024, y los puntos suspensivos cuentan.
+        return Str::limit($texto, 1023, '…');
+    }
+
     public function construirComponentes(array $parametros, ?string $headerImageUrl = null): array
     {
         $componentes = [];
@@ -170,7 +190,7 @@ class WhatsappPlantilla extends BaseModel
             if ($this->header_tipo === 'TEXT' && $headerValorEfectivo) {
                 $componentes[] = [
                     'type'       => 'header',
-                    'parameters' => [['type' => 'text', 'text' => $headerValorEfectivo]],
+                    'parameters' => [['type' => 'text', 'text' => self::sanearParametro($headerValorEfectivo)]],
                 ];
             } elseif (in_array($this->header_tipo, ['IMAGE', 'DOCUMENT', 'VIDEO'])) {
                 $tipoMedia = strtolower($this->header_tipo);
@@ -198,7 +218,7 @@ class WhatsappPlantilla extends BaseModel
 
         // ── Body con parámetros ──────────────────────────────────────
         if (!empty($parametros)) {
-            $bodyParams    = array_map(fn($val) => ['type' => 'text', 'text' => (string)$val], $parametros);
+            $bodyParams    = array_map(fn($val) => ['type' => 'text', 'text' => self::sanearParametro((string)$val)], $parametros);
             $componentes[] = ['type' => 'body', 'parameters' => $bodyParams];
         }
 

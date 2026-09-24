@@ -53,8 +53,10 @@ class Bitacora extends BaseModel
             static::insert([
                 'aliado_id'   => $alidoId,
                 'user_id'     => Auth::id(),
-                'accion'      => $accion,
-                'modelo'      => $modelo,
+                // Mismo motivo que la descripción de abajo: un valor que no
+                // cabe tumba el insert completo y el evento se pierde.
+                'accion'      => mb_strimwidth($accion, 0, 60, '…'),
+                'modelo'      => mb_strimwidth($modelo, 0, 50, '…'),
                 'registro_id' => $registroId,
                 // La columna aguanta 255: una descripción más larga hacía fallar
                 // el insert entero y, como abajo el error solo va al log, el

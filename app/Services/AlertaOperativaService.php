@@ -124,10 +124,8 @@ class AlertaOperativaService
      */
     private function sanear(string $texto): string
     {
-        $texto = preg_replace('/[\r\n]+/', ' · ', trim($texto));
-        $texto = preg_replace('/[\t]+/', ' ', $texto);
-        $texto = preg_replace('/ {2,}/', ' ', $texto);
-
-        return Str::limit($texto, self::MAX_PARAM, '…');
+        // La regla de Meta la aplica la plantilla; aquí solo se acorta más, que
+        // una alerta se lee en la notificación del teléfono.
+        return Str::limit(WhatsappPlantilla::sanearParametro($texto), self::MAX_PARAM, '…');
     }
 }

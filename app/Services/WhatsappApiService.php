@@ -443,7 +443,7 @@ class WhatsappApiService
         ];
 
         if (!empty($bodyParams)) {
-            $bodyParamsFormatted = array_map(fn($val) => ['type' => 'text', 'text' => (string)$val], $bodyParams);
+            $bodyParamsFormatted = array_map(fn($val) => ['type' => 'text', 'text' => WhatsappPlantilla::sanearParametro((string)$val)], $bodyParams);
             $componentes[] = ['type' => 'body', 'parameters' => $bodyParamsFormatted];
         }
 
