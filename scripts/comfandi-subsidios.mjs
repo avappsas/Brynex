@@ -244,22 +244,34 @@ const escogerEmpresa = async (pagina) => {
 
 /** Los bloqueos de un trabajador, o null si no se pudo llegar a su pantalla. */
 const bloqueosDe = async (pagina, documento) => {
-  await pagina.goto(`${BASE}/workers`, { waitUntil: 'networkidle2', timeout: 60000 });
+  // La pantalla del filtro, hasta que esté de verdad.
+  //
+  // El portal es un Next.js y, al venir de la pantalla de subsidio del
+  // trabajador anterior, a veces no vuelve a montar el formulario: la página
+  // carga pero no hay ni combo ni botón Buscar, y entonces no hay nada que
+  // pulsar. Recargando aparece.
+  let hayFiltro = false;
 
-  // Esperar a que la pantalla se asiente antes de tocar el filtro: en las
-  // empresas con muchos afiliados la tabla tarda, y mientras carga el combo
-  // queda debajo del velo de "cargando", así que la pulsación se pierde. En
-  // Construtech, con seis afiliados, nunca se notó.
-  await insistir(pagina, () => {
-    const cargando = [...document.querySelectorAll('[class*=spinner], [class*=loading], [class*=backdrop], [class*=overlay]')]
-      .some(e => e.offsetParent !== null);
-    if (cargando) return false;
+  for (let intento = 0; intento < 3 && ! hayFiltro; intento++) {
+    if (intento === 0) {
+      await pagina.goto(`${BASE}/workers`, { waitUntil: 'networkidle2', timeout: 60000 }).catch(() => null);
+    } else {
+      await pagina.reload({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => null);
+    }
 
-    const combo = document.querySelector('input[role=combobox]');
-    const boton = [...document.querySelectorAll('button')].some(b => /^\s*Buscar\s*$/i.test(b.innerText));
+    hayFiltro = !!await insistir(pagina, () => {
+      const cargando = [...document.querySelectorAll('[class*=spinner], [class*=loading], [class*=backdrop], [class*=overlay]')]
+        .some(e => e.offsetParent !== null);
+      if (cargando) return false;
 
-    return !!combo && boton;
-  }, [], 30000);
+      const combo = document.querySelector('input[role=combobox]');
+      const boton = [...document.querySelectorAll('button')].some(b => /^\s*Buscar\s*$/i.test(b.innerText));
+
+      return !!combo && boton;
+    }, [], 25000);
+  }
+
+  if (! hayFiltro) return 'la pantalla de Gestión de trabajadores no mostró el filtro ni recargando';
 
   await esperar(1200);
 
