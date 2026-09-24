@@ -231,7 +231,7 @@ const bloqueosDe = async (pagina, documento) => {
 
   // Sin tipo de documento el portal no filtra: saca la lista entera paginada y
   // el trabajador podría no estar en la primera página.
-  if (!await elegirCombo(pagina, 'C[ée]dula de Ciudadan')) return null;
+  if (!await elegirCombo(pagina, 'C[ée]dula de Ciudadan')) return 'no se pudo elegir el tipo de documento en el listado';
 
   const buscado = await insistir(pagina, (doc) => {
     const num = [...document.querySelectorAll('input')].find(i => /documento del trabajador/i.test(i.placeholder || ''));
@@ -245,7 +245,7 @@ const bloqueosDe = async (pagina, documento) => {
     return true;
   }, [documento], 25000);
 
-  if (!buscado) return null;
+  if (!buscado) return 'no apareció el campo del documento o el botón Buscar';
 
   const entro = await insistir(pagina, (doc) => {
     const fila = [...document.querySelectorAll('tbody tr')].find(r => r.innerText.replace(/\D/g, '').includes(doc));
@@ -266,7 +266,7 @@ const bloqueosDe = async (pagina, documento) => {
       return !suya && (filas.length > 0 || /no se encontraron|sin resultados/i.test(document.body.innerText || ''));
     }, documento).catch(() => false);
 
-    return vacia ? 'no-esta' : null;
+    return vacia ? 'no-esta' : 'no se encontró su fila en el listado ni se pudo pulsar Gestionar';
   }
 
   const abrio = await insistir(pagina, () => {
@@ -278,14 +278,14 @@ const bloqueosDe = async (pagina, documento) => {
     return true;
   }, [], 20000);
 
-  if (!abrio) return null;
+  if (!abrio) return 'no se abrió "Subsidio monetario" en el menú Gestionar';
 
   const listo = await insistir(pagina, () =>
     [...document.querySelectorAll('input')].some(i => /fecha inicial/i.test(i.placeholder || '')), [], 25000);
 
-  if (!listo) return null;
+  if (!listo) return 'no cargó la pantalla de subsidio monetario';
 
-  if (!await elegirCombo(pagina, 'Bloqueos de subsidio')) return null;
+  if (!await elegirCombo(pagina, 'Bloqueos de subsidio')) return 'no se pudo elegir "Bloqueos de subsidio"';
 
   await esperar(600);
 
@@ -316,7 +316,7 @@ const bloqueosDe = async (pagina, documento) => {
     return true;
   }, [], 20000);
 
-  if (!respondio) return null;
+  if (!respondio) return 'no se encontró el botón Buscar de la consulta';
 
   // "No se encontraron movimientos" también es una respuesta: significa que ese
   // trabajador no tiene bloqueos, y su tarea se puede cerrar.
@@ -536,7 +536,14 @@ try {
   const consultar = async (documento) => {
     try {
       const filas = await bloqueosDe(pagina, documento);
-      if (filas === null) return { documento, error: 'No se pudo abrir su subsidio monetario.' };
+
+      // Un texto en vez de las filas es el paso donde se quedó: saber cuál es
+      // la diferencia entre arreglarlo y volver a mirar a ciegas.
+      if (typeof filas === 'string' && filas !== 'no-esta') {
+        return { documento, error: `No se pudo abrir su subsidio monetario: ${filas}.` };
+      }
+
+      if (! filas) return { documento, error: 'No se pudo abrir su subsidio monetario.' };
 
       if (filas === 'no-esta') {
         return { documento, error: 'No aparece en el listado de trabajadores de esa empresa en Comfandi.', noEsta: true };
