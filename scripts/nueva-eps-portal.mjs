@@ -230,6 +230,41 @@ try {
     });
   }
 
+  // ── Abrir una opción del menú y describirla ──
+  // Sigue siendo exploración: entra a la pantalla que se le pida y cuenta qué
+  // campos tiene y qué muestra, sin rellenar ni enviar nada.
+  if (modo === 'pantalla') {
+    const opcion = String(entrada.opcion || '').trim();
+    paso = `abrir ${opcion}`;
+
+    const destino = await pagina.evaluate((patron) => {
+      const re = new RegExp(patron, 'i');
+      const a = [...document.querySelectorAll('a')].find((x) => re.test((x.innerText || '').trim()));
+      return a ? a.getAttribute('href') : null;
+    }, opcion);
+
+    if (!destino) throw new Error(`El menú no tiene la opción ${opcion}.`);
+
+    await pagina.goto(new URL(destino, pagina.url()).href, { waitUntil: 'networkidle2', timeout: 60000 });
+    await esperar(2000);
+
+    const campos = await pagina.evaluate(() => [...document.querySelectorAll('input, select, textarea')]
+      .filter((e) => e.type !== 'hidden')
+      .map((e) => ({
+        etiqueta: e.tagName.toLowerCase(),
+        id: e.id || null,
+        nombre: e.getAttribute('name') || null,
+        tipo: e.getAttribute('type') || null,
+        valor: (e.value || '').slice(0, 40) || null,
+        opciones: e.tagName === 'SELECT' ? [...e.options].slice(0, 14).map((o) => `${o.value}=${o.text}`.slice(0, 40)) : undefined,
+      })));
+
+    salir({
+      ok: true, modo, opcion, url: pagina.url(), titulo: await pagina.title().catch(() => null),
+      campos, pantalla: (await texto(pagina)).replace(/\s+/g, ' ').slice(0, 2000),
+    });
+  }
+
   // ── Reingresos y Retiros (SPA) ──
   paso = 'abrir reingresos';
   await clicEnlace(pagina, 'Reingresos y Retiros Laborales');
