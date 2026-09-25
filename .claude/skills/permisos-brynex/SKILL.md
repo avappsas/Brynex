@@ -126,6 +126,22 @@ queda de `hasRole('superadmin')` es junto a `es_brynex` para lo de BryNex.
 `@can('modulo.ver')` / `@canany([...])`. El sidebar de `layouts/app.blade.php`
 ya está migrado entero; no quedan `@role` ahí.
 
+### Centro de Configuración: se entra con cualquiera de sus permisos
+
+`admin/configuracion` (el hub) no pide `configuracion.ver`, pide el Gate
+`entrar-configuracion` (`AuthServiceProvider::PERMISOS_CONFIGURACION`): basta con
+uno de los permisos que se otorgan a mano y que viven allá (cuentas bancarias,
+razones sociales, usuarios, facturación electrónica…). El hub solo pinta las
+tarjetas cuyo permiso de ruta tiene el usuario. **Si agregas una tarjeta con un
+permiso asignable nuevo, súmalo a esa lista**, o quien lo reciba suelto no tendrá
+por dónde llegar. No meter ahí permisos que ya trae el rol `usuario`: abriría
+Configuración a todos los trabajadores.
+
+`ConfiguracionAliadoController` ya no tiene `role:superadmin|admin` en el
+constructor (sep-2026): cada ruta trae su permiso. Si ves otro controlador con
+un `role:` en el constructor, sospecha lo mismo: un permiso otorgado a mano no
+sirve de nada si el rol lo bloquea antes.
+
 ### Reglas que no caben en una ruta
 
 Tres casos dependen del registro, no de la URL, y viven en el controlador:
