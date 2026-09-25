@@ -697,6 +697,12 @@ try {
       };
     });
 
+    // La tabla se pinta después de cargar la pantalla: sin esperarla, la
+    // primera lectura sale vacía y, como no hay nada nuevo, el recorrido se
+    // para creyendo que la empresa no tiene a nadie.
+    await insistir(pagina, () => document.querySelectorAll('tbody tr').length > 0, [], 20000);
+    await esperar(1200);
+
     const vistas = new Set();
     let columnas = [];
     const filas = [];
