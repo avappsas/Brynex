@@ -167,11 +167,26 @@ class Kernel extends ConsoleKernel
         // Ninguna de las dos mira el mes en curso: un aporte de este mes todavía
         // está a tiempo de pagarse y no es mora.
         // Ejecución manual: php artisan eps:revisar-mora --eps=SALUD_TOTAL --simular
+        // A las 19:00 y no más tarde: con tres EPS son 19 entradas a portal y
+        // cerca de una hora, y a las 22:00 empiezan las cajas. Dos Chrome a la
+        // vez en el mismo servidor terminan estorbándose.
         $schedule->command('eps:revisar-mora')
-            ->weeklyOn(1, '21:30')
+            ->weeklyOn(1, '19:00')
             ->timezone('America/Bogota')
             ->name('eps-revisar-mora')
             ->withoutOverlapping(240)
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/eps-mora.log'));
+
+        // Y el cruce de retiros con la EPS, que es la misma vigilancia vista
+        // antes: un retiro que no le llegó a la EPS se cobra en silencio mes a
+        // mes. Después de la mora, para no levantar dos Chrome a la vez.
+        // Ejecución manual: php artisan eps:conciliar-retiros --nit=901904750 --simular
+        $schedule->command('eps:conciliar-retiros')
+            ->weeklyOn(1, '20:15')
+            ->timezone('America/Bogota')
+            ->name('eps-conciliar-retiros')
+            ->withoutOverlapping(120)
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/eps-mora.log'));
 
