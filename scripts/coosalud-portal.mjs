@@ -56,8 +56,21 @@ try {
   paso = 'ingresar';
   const campo = (sufijo) => `#ctl00_ContentPlaceHolder1_ASPxFormLayout1_${sufijo}_I`;
   await pagina.waitForSelector(campo('textName'), { visible: true, timeout: 30000 });
+
+  // Los cuadros de DevExpress guardan el valor aparte: lo tecleado en el input
+  // visible no cuenta hasta que el control se entera, y el portal respondía
+  // "Debe ingresar el nombre de usuario" con el campo lleno en pantalla.
   await pagina.type(campo('textName'), String(usuario), { delay: 45 });
   await pagina.type(campo('textPassword'), String(contrasena), { delay: 45 });
+
+  await pagina.evaluate((u, c) => {
+    const poner = (control, valor) => {
+      const cliente = window[`ctl00_ContentPlaceHolder1_ASPxFormLayout1_${control}`];
+      if (cliente && typeof cliente.SetValue === 'function') cliente.SetValue(valor);
+    };
+    poner('textName', u);
+    poner('textPassword', c);
+  }, String(usuario), String(contrasena)).catch(() => null);
 
   // DevExpress no se entera de un clic a secas en el input interno: el control
   // vive en JavaScript y hay que hablarle a él. Se prueban las tres formas, de
@@ -87,7 +100,7 @@ try {
   await esperar(4000);
 
   const texto = await pagina.evaluate(() => (document.body?.innerText || '').replace(/\s+/g, ' ')).catch(() => '');
-  const sigueEnLogin = /ingreso al sistema/i.test(texto) && await pagina.$(campo('textPassword'));
+  const sigueEnLogin = !! await pagina.$(campo('textPassword'));
 
   if (sigueEnLogin) {
     const motivo = (texto.match(/[^.]*(incorrect|inv[aá]lid|bloquead|no existe|errad|intente|captcha|verifi)[^.]*\.?/i) || [])[0];
