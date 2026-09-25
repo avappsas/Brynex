@@ -10,6 +10,7 @@ use App\Models\Contrato;
 use App\Models\Empresa;
 use App\Models\Factura;
 use App\Models\Plano;
+use App\Services\Dataico\NotaCreditoService;
 use App\Services\MoraClienteService;
 use App\Services\TrazaArchivoService;
 use Illuminate\Http\Request;
@@ -3432,7 +3433,65 @@ class FacturacionController extends Controller
             }
         }
 
-        DB::transaction(function () use ($facturasAnular, $motivo, $aliadoId, $user, $planosPagados) {
+        // ── Factura electrónica ya emitida ante la DIAN ──────────────────
+        // Una FE aceptada no se borra: se anula con nota crédito. Sin esto, el
+        // recibo desaparecía de Brynex, la FE seguía viva como ingreso y al
+        // re-facturar salía otra FE por la misma plata (FE2314/FE2326 y
+        // FE2321/FE2327, sep-2026). La nota se emite ANTES de anular: si Dataico
+        // o la DIAN la rechazan, el recibo no se toca.
+        $feVigentes = $facturasAnular->pluck('numero_factura')->filter()->unique()
+            ->map(fn ($n) => NotaCreditoService::feVigente((int) $aliadoId, (int) $n))
+            ->filter()
+            ->values();
+
+        $notasCredito = [];
+        if ($feVigentes->isNotEmpty()) {
+            // La FE cubre el recibo completo: anular una sola fila del lote
+            // dejaría a las demás cobradas sin factura.
+            foreach ($feVigentes as $envio) {
+                $quedan = Factura::where('aliado_id', $aliadoId)
+                    ->where('numero_factura', $envio->numero_factura)
+                    ->whereNotIn('id', $facturasAnular->pluck('id'))
+                    ->count();
+
+                if ($quedan > 0) {
+                    return response()->json([
+                        'ok' => false,
+                        'message' => "El recibo #{$envio->numero_factura} tiene la factura electrónica {$envio->dataico_numero} "
+                                    .'por el lote completo. Para anularla hay que anular todo el recibo (marque «anular todo el NP»).',
+                    ], 422);
+                }
+            }
+
+            if (! $request->boolean('confirmar_fe')) {
+                return response()->json([
+                    'ok' => false,
+                    'requiere_confirmacion' => true,
+                    'campo_confirmacion' => 'confirmar_fe',
+                    'message' => 'Este recibo ya tiene factura electrónica aceptada por la DIAN. Al anularlo se emitirá '
+                                .'una NOTA CRÉDITO que la anula ante la DIAN. Eso no se puede deshacer: si luego hay que '
+                                .'cobrar de nuevo, se hace un recibo nuevo con su propia factura. ¿Continuar?',
+                    'afectados' => $feVigentes->map(fn ($e) => "{$e->dataico_numero} · {$e->cliente_nombre} · $"
+                        .number_format((float) $e->base_admon, 0, ',', '.'))->all(),
+                    'aviso' => 'Se enviará a la DIAN en cuanto acepte.',
+                ], 409);
+            }
+
+            $servicioNc = app(NotaCreditoService::class);
+            foreach ($feVigentes as $envio) {
+                $r = $servicioNc->anular($envio, $motivo, $user->id);
+                if (! $r['ok']) {
+                    return response()->json([
+                        'ok' => false,
+                        'message' => 'No se anuló el recibo. '.$r['mensaje']
+                                    .(count($notasCredito) ? ' (Ya se emitió: '.implode(', ', $notasCredito).'.)' : ''),
+                    ], 422);
+                }
+                $notasCredito[] = $r['nota']->numero.' anula '.$envio->dataico_numero;
+            }
+        }
+
+        DB::transaction(function () use ($facturasAnular, $motivo, $aliadoId, $user, $planosPagados, $notasCredito) {
             foreach ($facturasAnular as $f) {
                 // Registrar en bitácora ANTES de anular
                 Bitacora::registrar(
@@ -3445,6 +3504,7 @@ class FacturacionController extends Controller
                         'abonos' => $f->abonos->toArray(),
                         'plano_id' => $f->plano?->id,
                         'motivo' => $motivo,
+                        'notas_credito' => $notasCredito,
                         // Planillas que quedan huérfanas con esta anulación: es el
                         // rastro para re-vincularlas si hay que re-facturar.
                         'planillas' => $planosPagados->where('factura_id', $f->id)
@@ -3608,6 +3668,20 @@ class FacturacionController extends Controller
         $factura = Factura::onlyTrashed()
             ->where('aliado_id', $aliadoId)
             ->findOrFail($facturaId);
+
+        // Su FE ya se anuló ante la DIAN: restaurado, el recibo quedaría cobrado
+        // sin factura válida y el envío automático no lo volvería a emitir.
+        $nota = \App\Models\DataicoNotaCredito::where('aliado_id', $aliadoId)
+            ->where('numero_factura', $factura->numero_factura)
+            ->where('estado', \App\Models\DataicoNotaCredito::ESTADO_ENVIADO)
+            ->first();
+        if ($nota) {
+            return response()->json([
+                'ok' => false,
+                'message' => "No se puede restaurar: su factura electrónica {$nota->factura_dataico_numero} ya se anuló ante "
+                            ."la DIAN con la nota crédito {$nota->numero}. Si hay que cobrar, haga un recibo nuevo.",
+            ], 422);
+        }
 
         DB::transaction(function () use ($factura, $aliadoId, $user) {
             $factura->restore();

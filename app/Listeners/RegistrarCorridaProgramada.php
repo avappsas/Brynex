@@ -98,10 +98,24 @@ class RegistrarCorridaProgramada
         });
     }
 
-    /** El `->name()` de la agenda si lo tiene; si no, el comando, que siempre dice algo. */
+    /**
+     * Con qué nombre queda anotada.
+     *
+     * El `->name()` de la agenda cuando lo tiene. Si no, el nombre del comando
+     * de artisan, no la línea entera: `getSummaryForDisplay()` devuelve el
+     * envoltorio con la ruta de PHP, y eso es lo que acabaría en el WhatsApp.
+     */
     private function nombre(TareaProgramada $tarea): string
     {
-        return mb_substr($tarea->description ?: $tarea->getSummaryForDisplay(), 0, 120);
+        if ($tarea->description) {
+            return mb_substr($tarea->description, 0, 120);
+        }
+
+        $comando = (string) $tarea->command;
+
+        return mb_substr(preg_match("/artisan'?\\s+'?([a-z0-9:_-]+)/i", $comando, $m)
+            ? $m[1]
+            : $tarea->getSummaryForDisplay(), 0, 120);
     }
 
     private function llave(TareaProgramada $tarea): string

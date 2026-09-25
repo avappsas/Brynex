@@ -33,8 +33,26 @@ class ApiClient
      */
     public function crearFactura(array $payload): array
     {
-        $url = rtrim(config('dataico.base_url'), '/')
-             .config('dataico.endpoints.crear_factura');
+        return $this->enviar(config('dataico.endpoints.crear_factura'), $payload);
+    }
+
+    /**
+     * Nota crédito: mismo contrato de reintentos que la factura (un 4xx nunca se
+     * repite), porque anular dos veces una FE es igual de irreversible.
+     *
+     * @return array{ok: bool, status: int|null, body: array|null, raw: string, error: string|null}
+     */
+    public function crearNotaCredito(array $payload): array
+    {
+        return $this->enviar(config('dataico.endpoints.crear_nota_credito'), $payload);
+    }
+
+    /**
+     * @return array{ok: bool, status: int|null, body: array|null, raw: string, error: string|null}
+     */
+    private function enviar(string $endpoint, array $payload): array
+    {
+        $url = rtrim(config('dataico.base_url'), '/').$endpoint;
 
         $this->respirar();
 

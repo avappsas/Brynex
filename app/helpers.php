@@ -25,3 +25,16 @@ if (!function_exists('sqldate')) {
         }
     }
 }
+
+if (!function_exists('nombre_oracion')) {
+    /**
+     * Nombre de persona en tipo oración: "EDUARDO ALFONZO" → "Eduardo Alfonzo".
+     * Solo para mostrar en pantalla; los planos/PDF oficiales conservan el original.
+     */
+    function nombre_oracion($valor): string
+    {
+        $valor = trim((string) $valor);
+        if ($valor === '') return '';
+        return mb_convert_case(mb_strtolower($valor, 'UTF-8'), MB_CASE_TITLE, 'UTF-8');
+    }
+}
