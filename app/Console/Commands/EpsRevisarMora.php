@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\EpsSura\EpsSuraCarteraService;
 use App\Services\NuevaEps\NuevaEpsMoraService;
 use App\Services\SaludTotal\SaludTotalCarteraService;
 use Illuminate\Console\Command;
@@ -24,7 +25,7 @@ class EpsRevisarMora extends Command
                             {--eps= : Solo esta EPS (NUEVA_EPS o SALUD_TOTAL)}
                             {--nit= : Solo esta empresa}
                             {--corte= : Nueva EPS: primer día del mes de corte (AAAA-MM-01)}
-                            {--meses=4 : Salud Total: cuántos meses hacia atrás, sin contar el actual}
+                            {--meses=4 : Salud Total y EPS SURA: cuántos meses hacia atrás, sin contar el actual}
                             {--simular : Consulta el portal pero no crea ni cierra tareas}';
 
     protected $description = 'Revisa la mora y los aportes mal cobrados en los portales de las EPS, y abre las tareas';
@@ -33,9 +34,10 @@ class EpsRevisarMora extends Command
     private const EPS = [
         'NUEVA_EPS' => ['nombre' => 'Nueva EPS', 'patron' => '%NUEVA%'],
         'SALUD_TOTAL' => ['nombre' => 'Salud Total', 'patron' => '%SALUD%TOTAL%'],
+        'EPS_SURA' => ['nombre' => 'EPS SURA', 'patron' => '%SURA%'],
     ];
 
-    public function handle(NuevaEpsMoraService $nuevaEps, SaludTotalCarteraService $saludTotal): int
+    public function handle(NuevaEpsMoraService $nuevaEps, SaludTotalCarteraService $saludTotal, EpsSuraCarteraService $epsSura): int
     {
         $simular = (bool) $this->option('simular');
         $pedida = strtoupper((string) $this->option('eps'));
@@ -69,9 +71,11 @@ class EpsRevisarMora extends Command
                 $this->line("{$empresa->nit} {$empresa->razon_social}…");
                 $corridas++;
 
-                $r = $clave === 'NUEVA_EPS'
-                    ? $nuevaEps->revisar($empresa->nit, $simular, $this->option('corte'))
-                    : $saludTotal->revisar($empresa->nit, $simular, (int) $this->option('meses'));
+                $r = match ($clave) {
+                    'NUEVA_EPS' => $nuevaEps->revisar($empresa->nit, $simular, $this->option('corte')),
+                    'SALUD_TOTAL' => $saludTotal->revisar($empresa->nit, $simular, (int) $this->option('meses')),
+                    'EPS_SURA' => $epsSura->revisar($empresa->nit, $simular, (int) $this->option('meses')),
+                };
 
                 if (! ($r['ok'] ?? false)) {
                     $fallos++;
