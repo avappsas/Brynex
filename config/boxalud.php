@@ -46,4 +46,19 @@ return [
         'codigos_eps' => ['EPS042', 'ESSC24'],  // contributivo y movilidad
         'solo_lectura' => true,
     ],
+
+    /*
+     * Asmet Salud es el mismo Boxalud con otro dominio y los mismos usuarios
+     * NIT+P, así que el cruce le sirve tal cual. Nunca se ha mirado por dentro:
+     * si su menú no tiene "Consulta afiliaciones", la corrida lo dice y no pasa
+     * nada más. Tampoco está en el módulo de radicación, como Coosalud.
+     */
+    'asmet' => [
+        'nombre' => 'Asmet Salud',
+        'codigo_eps' => 'ESSC62',
+        'host' => 'boxaludrc.asmetsalud.org.co',
+        'clave_entidad' => '%ASMET%',
+        'codigos_eps' => ['ESSC62'],
+        'solo_lectura' => true,
+    ],
 ];

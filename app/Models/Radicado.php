@@ -2,12 +2,12 @@
 
 namespace App\Models;
 
-use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Radicado extends BaseModel
 {
     protected $table = 'radicados';
+
     protected $fillable = [
         'contrato_id', 'aliado_id', 'tipo',
         'incapacidad_id', 'tipo_documento',
@@ -18,12 +18,13 @@ class Radicado extends BaseModel
         'user_id', 'observacion', 'ruta_pdf',
         'confirmado_por', 'confirmado_en',
     ];
+
     protected $casts = [
-        'enviado_al_cliente'   => 'boolean',
-        'fecha_envio_cliente'  => 'datetime',
+        'enviado_al_cliente' => 'boolean',
+        'fecha_envio_cliente' => 'datetime',
         'fecha_inicio_tramite' => 'datetime',
-        'fecha_confirmacion'   => 'datetime',
-        'confirmado_en'        => 'datetime',
+        'fecha_confirmacion' => 'datetime',
+        'confirmado_en' => 'datetime',
     ];
 
     /**
@@ -31,16 +32,17 @@ class Radicado extends BaseModel
      * `confirmado_por` lo dio por hecho la entidad; sin él, lo marcó alguien a mano.
      */
     const CONFIRMADORES = [
-        'nueva_eps'   => 'Nueva EPS',
-        'eps_sura'    => 'EPS SURA',
+        'nueva_eps' => 'Nueva EPS',
+        'eps_sura' => 'EPS SURA',
         'salud_total' => 'Salud Total',
         'eps_sanitas' => 'Sanitas',
-        'arl_sura'    => 'ARL Sura',
+        'arl_sura' => 'ARL Sura',
         'caja_comfenalco' => 'Comfenalco Valle',
         'caja_comfandi' => 'Comfandi',
         'arl_colmena' => 'ARL Colmena',
-        'coosalud'    => 'Coosalud',
-        'emssanar'    => 'Emssanar',
+        'coosalud' => 'Coosalud',
+        'emssanar' => 'Emssanar',
+        'asmet_salud' => 'Asmet Salud',
         'ruaf' => 'RUAF',
     ];
 
@@ -51,7 +53,7 @@ class Radicado extends BaseModel
         static::saving(function (Radicado $r) {
             if ($r->estado !== self::ESTADO_OK && ($r->confirmado_por || $r->confirmado_en)) {
                 $r->confirmado_por = null;
-                $r->confirmado_en  = null;
+                $r->confirmado_en = null;
             }
         });
     }
@@ -64,7 +66,7 @@ class Radicado extends BaseModel
     {
         return [
             'confirmado_por' => $this->confirmado_por ?: $entidad,
-            'confirmado_en'  => $this->confirmado_en ?: now(),
+            'confirmado_en' => $this->confirmado_en ?: now(),
         ];
     }
 
@@ -86,11 +88,15 @@ class Radicado extends BaseModel
     }
 
     // ── Constantes de estado ──
-    const ESTADO_PENDIENTE  = 'pendiente';
-    const ESTADO_TRAMITE    = 'tramite';
-    const ESTADO_TRASLADO   = 'traslado';
-    const ESTADO_ERROR      = 'error';
-    const ESTADO_OK         = 'ok';
+    const ESTADO_PENDIENTE = 'pendiente';
+
+    const ESTADO_TRAMITE = 'tramite';
+
+    const ESTADO_TRASLADO = 'traslado';
+
+    const ESTADO_ERROR = 'error';
+
+    const ESTADO_OK = 'ok';
 
     // Estados activos (requieren seguimiento)
     public static function estadosActivos(): array
@@ -102,28 +108,36 @@ class Radicado extends BaseModel
     {
         return [
             self::ESTADO_PENDIENTE => 'Pendiente',
-            self::ESTADO_TRAMITE   => 'Trámite',
-            self::ESTADO_TRASLADO  => 'Traslado',
-            self::ESTADO_ERROR     => 'Error',
-            self::ESTADO_OK        => 'OK',
+            self::ESTADO_TRAMITE => 'Trámite',
+            self::ESTADO_TRASLADO => 'Traslado',
+            self::ESTADO_ERROR => 'Error',
+            self::ESTADO_OK => 'OK',
         ];
     }
 
     // ── Constantes de tipo ──
-    const TIPO_EPS     = 'eps';
-    const TIPO_ARL     = 'arl';
-    const TIPO_CAJA    = 'caja';
+    const TIPO_EPS = 'eps';
+
+    const TIPO_ARL = 'arl';
+
+    const TIPO_CAJA = 'caja';
+
     const TIPO_PENSION = 'pension';
 
     // ── Constantes de canal ──
-    const CANAL_WEB        = 'web';
-    const CANAL_CORREO     = 'correo';
-    const CANAL_ASESOR     = 'asesor';
-    const CANAL_PRESENCIAL = 'presencial';
-    const CANAL_OTRO       = 'otro';
+    const CANAL_WEB = 'web';
 
-    const CANAL_WHATSAPP   = 'whatsapp';
-    const CANAL_FISICA      = 'fisica';
+    const CANAL_CORREO = 'correo';
+
+    const CANAL_ASESOR = 'asesor';
+
+    const CANAL_PRESENCIAL = 'presencial';
+
+    const CANAL_OTRO = 'otro';
+
+    const CANAL_WHATSAPP = 'whatsapp';
+
+    const CANAL_FISICA = 'fisica';
 
     public function contrato(): BelongsTo
     {
@@ -157,12 +171,35 @@ class Radicado extends BaseModel
     }
 
     // ── Helpers de estado ──
-    public function esPendiente(): bool  { return $this->estado === self::ESTADO_PENDIENTE; }
-    public function esTramite(): bool    { return $this->estado === self::ESTADO_TRAMITE; }
-    public function esTraslado(): bool   { return $this->estado === self::ESTADO_TRASLADO; }
-    public function esError(): bool      { return $this->estado === self::ESTADO_ERROR; }
-    public function esOk(): bool         { return $this->estado === self::ESTADO_OK; }
-    public function esFinalizado(): bool { return $this->estado === self::ESTADO_OK; }
+    public function esPendiente(): bool
+    {
+        return $this->estado === self::ESTADO_PENDIENTE;
+    }
+
+    public function esTramite(): bool
+    {
+        return $this->estado === self::ESTADO_TRAMITE;
+    }
+
+    public function esTraslado(): bool
+    {
+        return $this->estado === self::ESTADO_TRASLADO;
+    }
+
+    public function esError(): bool
+    {
+        return $this->estado === self::ESTADO_ERROR;
+    }
+
+    public function esOk(): bool
+    {
+        return $this->estado === self::ESTADO_OK;
+    }
+
+    public function esFinalizado(): bool
+    {
+        return $this->estado === self::ESTADO_OK;
+    }
 
     /**
      * Determina si el radicado está programado/futuro (es decir, está pendiente
@@ -175,7 +212,7 @@ class Radicado extends BaseModel
         }
 
         $contrato = $this->contrato;
-        if (!$contrato || !$contrato->fecha_ingreso) {
+        if (! $contrato || ! $contrato->fecha_ingreso) {
             return false;
         }
 
@@ -193,6 +230,7 @@ class Radicado extends BaseModel
         if ($this->esConfirmadoPorEntidad()) {
             return 'ok-confirmado';
         }
+
         return $this->estado;
     }
 
@@ -209,7 +247,7 @@ class Radicado extends BaseModel
             ? 'OK'
             : strtoupper(substr($this->estado, 0, 1));
 
-        return $this->estadoIcono() . ' ' . $texto;
+        return $this->estadoIcono().' '.$texto;
     }
 
     /**
@@ -224,6 +262,7 @@ class Radicado extends BaseModel
             ? $this->ultimoMovimiento
             : $this->movimientos()->reorder()->orderByDesc('id')->first();
         $desde = $ultimoMov ? $ultimoMov->created_at : $this->created_at;
+
         return max(0, (int) now()->diffInDays($desde));
     }
 
@@ -236,38 +275,38 @@ class Radicado extends BaseModel
     /** Etiqueta legible del tipo de radicado */
     public function tipoLabel(): string
     {
-        return match($this->tipo) {
-            'eps'     => 'EPS',
-            'arl'     => 'ARL',
-            'caja'    => 'Caja Compensación',
+        return match ($this->tipo) {
+            'eps' => 'EPS',
+            'arl' => 'ARL',
+            'caja' => 'Caja Compensación',
             'pension' => 'Pensión (AFP)',
-            default   => strtoupper($this->tipo),
+            default => strtoupper($this->tipo),
         };
     }
 
     /** Color badge para la UI según estado */
     public function estadoColor(): string
     {
-        return match($this->estado) {
+        return match ($this->estado) {
             'pendiente' => 'warning',
-            'tramite'   => 'info',
-            'traslado'  => 'orange',
-            'error'     => 'danger',
-            'ok'        => 'success',
-            default     => 'secondary',
+            'tramite' => 'info',
+            'traslado' => 'orange',
+            'error' => 'danger',
+            'ok' => 'success',
+            default => 'secondary',
         };
     }
 
     /** Icono emoji por estado */
     public function estadoIcono(): string
     {
-        return match($this->estado) {
+        return match ($this->estado) {
             'pendiente' => '⏳',
-            'tramite'   => '🔵',
-            'traslado'  => '🔄',
-            'error'     => '❌',
-            'ok'        => '✅',
-            default     => '❓',
+            'tramite' => '🔵',
+            'traslado' => '🔄',
+            'error' => '❌',
+            'ok' => '✅',
+            default => '❓',
         };
     }
 }
