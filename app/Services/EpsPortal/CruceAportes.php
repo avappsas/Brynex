@@ -16,6 +16,21 @@ use Illuminate\Support\Facades\DB;
  */
 class CruceAportes
 {
+    /**
+     * El último mes cuyo aporte ya se le puede exigir a la empresa.
+     *
+     * Los aportes son de mes vencido: el de agosto se paga durante septiembre.
+     * Así que en septiembre ni agosto ni septiembre están en mora —uno se está
+     * pagando y el otro ni ha terminado—, y el último exigible es julio.
+     *
+     * Sin esto, cada corrida abriría tareas de gente que solo va a su ritmo, y
+     * una tarea que se cierra sola al mes siguiente enseña a no mirarlas.
+     */
+    public static function ultimoPeriodoExigible(): string
+    {
+        return now()->startOfMonth()->subMonths(2)->format('Y-m');
+    }
+
     /** El contrato más reciente de esa cédula en esa razón social. */
     public static function contratoDe(string $nit, string $documento): ?object
     {

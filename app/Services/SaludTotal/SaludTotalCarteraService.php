@@ -271,13 +271,14 @@ class SaludTotalCarteraService
         ];
     }
 
-    /** Los meses a mirar, del anterior hacia atrás. */
+    /** Los meses a mirar, del último exigible hacia atrás. */
     private function periodos(int $meses): array
     {
+        $ultimo = Carbon::parse(CruceAportes::ultimoPeriodoExigible().'-01');
         $salida = [];
 
-        for ($i = 1; $i <= max(1, $meses); $i++) {
-            $salida[] = now()->startOfMonth()->subMonths($i)->format('Y-m');
+        for ($i = 0; $i < max(1, $meses); $i++) {
+            $salida[] = $ultimo->copy()->subMonths($i)->format('Y-m');
         }
 
         return $salida;
@@ -312,7 +313,7 @@ class SaludTotalCarteraService
                 continue;
             }
 
-            if ($this->tareas->cerrar($tarea, 'Salud Total ya no lo reporta en sus informes de cartera el '.now()->format('d/m/Y').'.')) {
+            if ($this->tareas->cerrar($tarea, 'Salud Total ya no lo reporta en los períodos exigibles (hasta '.CruceAportes::mesEnLetras(CruceAportes::ultimoPeriodoExigible()).'), revisado el '.now()->format('d/m/Y').'.')) {
                 $cerradas++;
                 $detalle[] = ['documento' => (string) $tarea->cedula, 'accion' => 'cerrada', 'tarea_id' => $tarea->id];
             }

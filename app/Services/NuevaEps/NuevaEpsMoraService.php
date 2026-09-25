@@ -37,7 +37,12 @@ class NuevaEpsMoraService
     public function revisar(string $nit, bool $simular = false, ?string $fechaCorte = null): array
     {
         $nit = preg_replace('/\D/', '', $nit);
-        $lectura = NuevaEpsPortalService::mora($nit, $fechaCorte);
+        // El portal devuelve la mora ANTERIOR al corte, así que el corte es el
+        // primer día del mes siguiente al último exigible.
+        $lectura = NuevaEpsPortalService::mora(
+            $nit,
+            $fechaCorte ?: Carbon::parse(CruceAportes::ultimoPeriodoExigible().'-01')->addMonth()->toDateString()
+        );
 
         if (! ($lectura['ok'] ?? false)) {
             return ['ok' => false, 'error' => $lectura['error'] ?? 'El portal no respondió.', 'nit' => $nit];
@@ -233,7 +238,7 @@ class NuevaEpsMoraService
                 continue;
             }
 
-            if ($this->tareas->cerrar($tarea, 'Nueva EPS ya no lo reporta en mora el '.now()->format('d/m/Y').'.')) {
+            if ($this->tareas->cerrar($tarea, 'Nueva EPS ya no lo reporta en mora en los períodos exigibles (hasta '.CruceAportes::mesEnLetras(CruceAportes::ultimoPeriodoExigible()).'), revisado el '.now()->format('d/m/Y').'.')) {
                 $cerradas++;
                 $detalle[] = ['documento' => (string) $tarea->cedula, 'accion' => 'cerrada', 'tarea_id' => $tarea->id];
             }

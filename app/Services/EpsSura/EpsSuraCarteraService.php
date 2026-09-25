@@ -45,7 +45,7 @@ class EpsSuraCarteraService
             return ['ok' => false, 'error' => "La empresa {$nit} no tiene usuario del portal de SURA.", 'nit' => $nit];
         }
 
-        $hasta = now()->startOfMonth()->subMonth();
+        $hasta = Carbon::parse(CruceAportes::ultimoPeriodoExigible().'-01');
         $desde = $hasta->copy()->subMonths(max(0, $meses - 1));
 
         $salida = $this->informe($credencial, $nit, $desde->format('Y-m'), $hasta->format('Y-m'));
@@ -341,7 +341,7 @@ class EpsSuraCarteraService
                 continue;
             }
 
-            if ($this->tareas->cerrar($tarea, 'EPS SURA ya no lo reporta en mora el '.now()->format('d/m/Y').'.')) {
+            if ($this->tareas->cerrar($tarea, 'EPS SURA ya no lo reporta en mora en los períodos exigibles (hasta '.CruceAportes::mesEnLetras(CruceAportes::ultimoPeriodoExigible()).'), revisado el '.now()->format('d/m/Y').'.')) {
                 $cerradas++;
                 $detalle[] = ['documento' => (string) $tarea->cedula, 'accion' => 'cerrada', 'tarea_id' => $tarea->id];
             }
