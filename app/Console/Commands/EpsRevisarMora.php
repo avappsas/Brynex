@@ -3,76 +3,112 @@
 namespace App\Console\Commands;
 
 use App\Services\NuevaEps\NuevaEpsMoraService;
+use App\Services\SaludTotal\SaludTotalCarteraService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Revisa en el portal de la EPS qué trabajadores aparecen en mora y abre la
- * tarea que corresponda.
+ * Revisa en los portales de las EPS qué trabajadores quedaron con aportes mal y
+ * abre la tarea que corresponda.
  *
- * Va por empresa porque la clave es de la empresa, y el reporte que se pide es
- * de la empresa entera: una sola entrada al portal cubre toda su nómina.
+ * Va por empresa porque la clave es de la empresa y el reporte que se pide es
+ * de la empresa entera: una sola entrada cubre toda su nómina.
+ *
+ * Cada EPS reporta a su manera. Nueva EPS solo dice quién está en mora y el
+ * resto hay que deducirlo cruzando con BryNex; Salud Total ya separa además lo
+ * que cobró de más. Por eso cada una tiene su servicio y aquí solo se recorren.
  */
 class EpsRevisarMora extends Command
 {
     protected $signature = 'eps:revisar-mora
+                            {--eps= : Solo esta EPS (NUEVA_EPS o SALUD_TOTAL)}
                             {--nit= : Solo esta empresa}
-                            {--corte= : Primer día del mes de corte (AAAA-MM-01); por defecto, el mes en curso}
+                            {--corte= : Nueva EPS: primer día del mes de corte (AAAA-MM-01)}
+                            {--meses=4 : Salud Total: cuántos meses hacia atrás, sin contar el actual}
                             {--simular : Consulta el portal pero no crea ni cierra tareas}';
 
-    protected $description = 'Revisa la mora por trabajador en Nueva EPS y abre las tareas que correspondan';
+    protected $description = 'Revisa la mora y los aportes mal cobrados en los portales de las EPS, y abre las tareas';
 
-    public function handle(NuevaEpsMoraService $mora): int
+    /** Qué EPS se revisan, con el patrón que identifica su clave en el llavero. */
+    private const EPS = [
+        'NUEVA_EPS' => ['nombre' => 'Nueva EPS', 'patron' => '%NUEVA%'],
+        'SALUD_TOTAL' => ['nombre' => 'Salud Total', 'patron' => '%SALUD%TOTAL%'],
+    ];
+
+    public function handle(NuevaEpsMoraService $nuevaEps, SaludTotalCarteraService $saludTotal): int
     {
-        $empresas = $this->empresas();
+        $simular = (bool) $this->option('simular');
+        $pedida = strtoupper((string) $this->option('eps'));
 
-        if (! $empresas) {
-            $this->warn('Ninguna empresa tiene clave de Nueva EPS en el módulo de claves.');
+        if ($pedida && ! isset(self::EPS[$pedida])) {
+            $this->error('EPS desconocida. Las que se revisan: '.implode(', ', array_keys(self::EPS)).'.');
 
-            return self::SUCCESS;
+            return self::FAILURE;
         }
 
-        $simular = (bool) $this->option('simular');
+        $corridas = 0;
         $fallos = 0;
 
-        foreach ($empresas as $empresa) {
-            $this->line("{$empresa->nit} {$empresa->razon_social}…");
+        foreach (self::EPS as $clave => $eps) {
+            if ($pedida && $pedida !== $clave) {
+                continue;
+            }
 
-            $r = $mora->revisar($empresa->nit, $simular, $this->option('corte'));
+            $empresas = $this->empresas($eps['patron']);
 
-            if (! ($r['ok'] ?? false)) {
-                $fallos++;
-                $this->error('  '.($r['error'] ?? 'sin detalle'));
+            if (! $empresas) {
+                $this->warn("{$eps['nombre']}: ninguna empresa tiene clave en el módulo de claves.");
 
                 continue;
             }
 
-            $porCausa = collect($r['detalle'] ?? [])
-                ->filter(fn ($d) => isset($d['causa']))
-                ->countBy('causa')
-                ->map(fn ($n, $causa) => "{$causa}: {$n}")
-                ->implode(' · ');
+            $this->line('');
+            $this->info("── {$eps['nombre']} ──");
 
-            $this->info('  '.($simular ? 'abriría ' : '').$r['nuevas'].' tarea(s) · '.$r['cerradas'].' cerrada(s)'
-                .($porCausa ? "  [{$porCausa}]" : '  sin mora'));
+            foreach ($empresas as $empresa) {
+                $this->line("{$empresa->nit} {$empresa->razon_social}…");
+                $corridas++;
+
+                $r = $clave === 'NUEVA_EPS'
+                    ? $nuevaEps->revisar($empresa->nit, $simular, $this->option('corte'))
+                    : $saludTotal->revisar($empresa->nit, $simular, (int) $this->option('meses'));
+
+                if (! ($r['ok'] ?? false)) {
+                    $fallos++;
+                    $this->error('  '.($r['error'] ?? 'sin detalle'));
+
+                    continue;
+                }
+
+                $porCausa = collect($r['detalle'] ?? [])
+                    ->filter(fn ($d) => isset($d['causa']))
+                    ->countBy('causa')
+                    ->map(fn ($n, $causa) => "{$causa}: {$n}")
+                    ->implode(' · ');
+
+                $this->info('  '.($simular ? 'abriría ' : '').$r['nuevas'].' tarea(s) · '.$r['cerradas'].' cerrada(s)'
+                    .($porCausa ? "  [{$porCausa}]" : '  sin novedades'));
+            }
         }
 
-        return $fallos && $fallos === count($empresas) ? self::FAILURE : self::SUCCESS;
+        return $fallos && $fallos === $corridas ? self::FAILURE : self::SUCCESS;
     }
 
     /**
-     * Las empresas con clave de Nueva EPS, una vez cada una.
+     * Las empresas con clave de esa EPS, una vez cada una.
      *
      * La misma razón social existe en varios aliados y la clave es de la
      * empresa: entrar una vez por aliado sería entrar varias veces al mismo
      * portal con el mismo usuario.
+     *
+     * @return array<int, object>
      */
-    private function empresas(): array
+    private function empresas(string $patron): array
     {
         $consulta = DB::table('clave_accesos as c')
             ->join('razones_sociales as rs', 'rs.id', '=', 'c.razon_social_id')
             ->where('c.tipo', 'EPS')
-            ->where('c.entidad', 'like', '%NUEVA%')
+            ->where('c.entidad', 'like', $patron)
             ->where('c.activo', true)
             ->whereNotNull('c.usuario')->where('c.usuario', '<>', '')
             ->whereNotNull('c.contrasena')->where('c.contrasena', '<>', '')

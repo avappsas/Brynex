@@ -3,9 +3,9 @@
 namespace App\Services\NuevaEps;
 
 use App\Models\Tarea;
+use App\Services\EpsPortal\CruceAportes;
 use App\Services\TareaAutomaticaService;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 
 /**
  * La mora que Nueva EPS le cobra a una empresa, convertida en tareas.
@@ -54,6 +54,7 @@ class NuevaEpsMoraService
 
             if (! $caso['aliado_id']) {
                 $detalle[$fin]['accion'] = 'sin_aliado';
+
                 continue;
             }
 
@@ -118,11 +119,11 @@ class NuevaEpsMoraService
         $documento = ltrim(preg_replace('/\D/', '', (string) ($fila['documento'] ?? '')), '0');
         $periodos = collect($fila['periodos'] ?? []);
         $total = (int) ($fila['total_mora'] ?? $periodos->sum('valor'));
-        $meses = $periodos->map(fn ($p) => self::mesEnLetras($p['periodo']))->implode(', ');
-        $plata = '$'.number_format($total, 0, ',', '.');
+        $meses = $periodos->map(fn ($p) => CruceAportes::mesEnLetras($p['periodo']))->implode(', ');
+        $plata = CruceAportes::plata($total);
 
-        $contrato = $this->contrato($nit, $documento);
-        $planos = $this->planos($documento, $periodos->pluck('periodo')->all());
+        $contrato = CruceAportes::contratoDe($nit, $documento);
+        $planos = CruceAportes::planosDe($documento, $periodos->pluck('periodo')->all());
         $aqui = $planos->firstWhere('nit', $nit);
         $fuera = $planos->first(fn ($p) => $p->nit !== $nit);
 
@@ -131,24 +132,22 @@ class NuevaEpsMoraService
             'nombre' => $fila['nombre'] ?? null,
             'periodos' => $periodos->pluck('periodo')->all(),
             'total' => $total,
-            'aliado_id' => $contrato?->aliado_id ?: $this->aliadoDe($nit),
+            'aliado_id' => $contrato?->aliado_id ?: CruceAportes::aliadoDe($nit),
             'contrato_id' => $contrato?->id,
-            'razon_social_id' => $contrato?->razon_social_id ?: $this->razonSocialDe($nit),
+            'razon_social_id' => $contrato?->razon_social_id ?: CruceAportes::razonSocialDe($nit),
         ];
 
         // Hay planilla de esos meses en esta empresa: la EPS cobra algo que ya
         // se pagó, o que se generó y hay que confirmar.
         if ($aqui) {
-            $pago = $aqui->numero_planilla
-                ? DB::table('planillas_pago_operador')->where('numero_planilla', $aqui->numero_planilla)->first(['fecha_pago'])
-                : null;
+            $pago = CruceAportes::pagoDe($aqui->numero_planilla);
 
             return $base + ($pago
                 ? [
                     'causa' => 'planilla_pagada',
                     'tarea' => "Enviar a Nueva EPS el soporte de pago: cobra mora de {$meses} ({$plata}) y esa planilla ya está pagada.",
                     'observacion' => "Nueva EPS reporta mora de {$meses} por {$plata}. En BryNex la planilla {$aqui->numero_planilla} se pagó el "
-                        .Carbon::parse($pago->fecha_pago)->format('d/m/Y').'. Enviar el soporte para que retiren el cobro.',
+                        .$pago.'. Enviar el soporte para que retiren el cobro.',
                 ]
                 : [
                     'causa' => 'planilla_sin_pago',
@@ -185,7 +184,7 @@ class NuevaEpsMoraService
 
             return $base + [
                 'causa' => 'retiro_no_reportado',
-                'tarea' => "Reportar a Nueva EPS el retiro del ".$retiro->format('d/m/Y').": cobra mora de {$meses} ({$plata}) de alguien ya retirado.",
+                'tarea' => 'Reportar a Nueva EPS el retiro del '.$retiro->format('d/m/Y').": cobra mora de {$meses} ({$plata}) de alguien ya retirado.",
                 'observacion' => "Nueva EPS reporta mora de {$meses} por {$plata}. En BryNex el contrato está retirado desde el "
                     .$retiro->format('d/m/Y').' y la EPS lo tiene activo'
                     .($fila['fecha_retiro'] ? ' (su fecha de retiro: '.$fila['fecha_retiro'].')' : ' (sin fecha de retiro)')
@@ -199,49 +198,6 @@ class NuevaEpsMoraService
             'observacion' => "Nueva EPS reporta mora de {$meses} por {$plata}. El contrato sigue vigente y no hay planilla de esos meses en BryNex: "
                 .'revisar por qué no se liquidó y pagar.',
         ];
-    }
-
-    /** El contrato más reciente de esa cédula en esa razón social. */
-    private function contrato(string $nit, string $documento)
-    {
-        return DB::table('contratos as c')
-            ->join('razones_sociales as rs', 'rs.id', '=', 'c.razon_social_id')
-            ->where('rs.nit', $nit)
-            ->where('c.cedula', $documento)
-            ->orderByDesc('c.id')
-            ->first(['c.id', 'c.aliado_id', 'c.razon_social_id', 'c.fecha_retiro', 'c.estado']);
-    }
-
-    /** Los planos de esa cédula en esos períodos, venga de la empresa que venga. */
-    private function planos(string $documento, array $periodos)
-    {
-        if (! $periodos) {
-            return collect();
-        }
-
-        $consulta = DB::table('planos as p')
-            ->leftJoin('razones_sociales as rs', 'rs.id', '=', 'p.razon_social_id')
-            ->where('p.no_identifi', $documento)
-            ->whereNull('p.deleted_at')
-            ->where(function ($q) use ($periodos) {
-                foreach ($periodos as $periodo) {
-                    [$anio, $mes] = explode('-', $periodo);
-                    $q->orWhere(fn ($w) => $w->where('p.anio_plano', (int) $anio)->where('p.mes_plano', (int) $mes));
-                }
-            });
-
-        return collect($consulta->get(['p.id', 'p.numero_planilla', 'p.mes_plano', 'p.anio_plano', 'rs.nit', 'rs.razon_social']));
-    }
-
-    /** Un aliado que tenga esa razón social, para cuando no hay contrato. */
-    private function aliadoDe(string $nit): ?int
-    {
-        return DB::table('razones_sociales')->where('nit', $nit)->orderBy('id')->value('aliado_id');
-    }
-
-    private function razonSocialDe(string $nit): ?int
-    {
-        return DB::table('razones_sociales')->where('nit', $nit)->orderBy('id')->value('id');
     }
 
     /** ¿La tarea abierta ya decía esto, o el cobro cambió? */
@@ -284,13 +240,5 @@ class NuevaEpsMoraService
         }
 
         return $cerradas;
-    }
-
-    /** '2026-08' → 'agosto de 2026', que es como se lee una tarea. */
-    private static function mesEnLetras(string $periodo): string
-    {
-        [$anio, $mes] = array_pad(explode('-', $periodo), 2, '1');
-
-        return Carbon::createFromDate((int) $anio, (int) $mes, 1)->locale('es')->isoFormat('MMMM [de] YYYY');
     }
 }
