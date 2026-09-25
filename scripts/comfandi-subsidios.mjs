@@ -729,8 +729,22 @@ try {
       await esperar(2500);
     }
 
+    // Qué controles de paginación ofrece la pantalla: si el listado se queda
+    // corto, aquí se ve por qué sin volver a entrar al portal.
+    const controles = await pagina.evaluate(() => [...document.querySelectorAll('button, a, select, [role=button]')]
+      .filter((e) => e.offsetParent !== null)
+      .map((e) => ({
+        etiqueta: e.tagName.toLowerCase(),
+        texto: (e.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 30),
+        aria: (e.getAttribute('aria-label') || '').slice(0, 40),
+        clase: (e.className || '').toString().slice(0, 50),
+        deshabilitado: !!e.disabled,
+      }))
+      .filter((e) => e.texto || e.aria)
+      .slice(-25)).catch(() => []);
+
     await cerrarSesion(pagina).catch(() => null);
-    salir({ ok: true, modo, columnas, filas });
+    salir({ ok: true, modo, columnas, filas, controles });
   }
 
   for (const documento of documentos) {
