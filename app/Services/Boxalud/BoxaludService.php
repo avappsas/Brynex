@@ -4,7 +4,6 @@ namespace App\Services\Boxalud;
 
 use App\Models\Contrato;
 use App\Models\Radicado;
-use App\Services\EpsPortal\EpsClavePortal;
 use App\Services\EpsPortal\EpsRadicado;
 use App\Services\FormularioEpsService;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -77,7 +76,7 @@ class BoxaludService
             $problemas[] = 'El radicado de EPS ya está en OK.';
         }
 
-        $cred = $rs ? EpsClavePortal::para($eps, $conf['clave_entidad'], $conf['nombre'], (string) $rs->nit) : ['error' => 'Sin razón social.'];
+        $cred = $rs ? BoxaludPortalService::credencial($eps, (string) $rs->nit) : ['error' => 'Sin razón social.'];
         if (isset($cred['error'])) {
             $problemas[] = $cred['error'].' Usa el correo como plan B.';
         }
@@ -148,7 +147,9 @@ class BoxaludService
     {
         $conf = $this->conf($eps);
         $contrato->loadMissing('razonSocial');
-        $cred = EpsClavePortal::para($eps, $conf['clave_entidad'], $conf['nombre'], (string) $contrato->razonSocial?->nit);
+        // Por BoxaludPortalService y no por EpsClavePortal a secas: ahí vive la
+        // regla de que el usuario del empleador es el NIT con una P detrás.
+        $cred = BoxaludPortalService::credencial($eps, (string) $contrato->razonSocial?->nit);
 
         return isset($cred['error']) ? $cred : ['usuario' => $cred['usuario'], 'contrasena' => $cred['contrasena'], 'host' => $conf['host']];
     }

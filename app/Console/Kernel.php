@@ -208,6 +208,11 @@ class Kernel extends ConsoleKernel
             ['pension:conciliar', '04:30', 'pension-conciliar'],
             // ARL va de última: es la que más gente mueve y la que más tarda.
             ['arl:conciliar', '05:30', 'arl-conciliar'],
+            // Coosalud no publica mora: lo que deja ver es a quién tiene
+            // afiliado, y de ahí salen los retiros sin reportar y los radicados
+            // que alguien hizo y nadie marcó. Emssanar usa el mismo portal y
+            // entra aquí con `--eps=emssanar` en cuanto se vea su listado.
+            ['boxalud:conciliar --eps=coosalud', '06:30', 'boxalud-conciliar-coosalud'],
         ];
 
         foreach ($cruces as [$comando, $hora, $nombre]) {

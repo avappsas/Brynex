@@ -29,8 +29,15 @@ class EpsClavePortal
      *                                    que comparten apellido y no clave
      *                                    —Comfenalco Valle y Comfenalco Cartagena
      *                                    son dos empresas distintas—.
+     * @param  ?\Closure  $normalizaUsuario  arregla el usuario antes de usarlo,
+     *                                       para portales con un formato propio
+     *                                       (Boxalud lo quiere como NIT+P). Va
+     *                                       aquí y no en quien llama para que la
+     *                                       huella de la clave rechazada se
+     *                                       calcule con el usuario que de verdad
+     *                                       se prueba.
      */
-    public static function para(string $entidad, string $patronEntidad, string $nombre, string $nit, string $tipoClave = 'EPS', ?\Closure $aceptaEntidad = null): array
+    public static function para(string $entidad, string $patronEntidad, string $nombre, string $nit, string $tipoClave = 'EPS', ?\Closure $aceptaEntidad = null, ?\Closure $normalizaUsuario = null): array
     {
         $nit     = preg_replace('/\D/', '', $nit);
         $empresa = EpsPortalEmpresa::de($entidad, $nit);
@@ -58,6 +65,10 @@ class EpsClavePortal
 
             $usuario = trim($fila->usuario);
             $clave   = (string) $fila->contrasena;
+        }
+
+        if ($normalizaUsuario) {
+            $usuario = $normalizaUsuario($usuario);
         }
 
         if ($empresa->clave_fallida_hash && hash_equals($empresa->clave_fallida_hash, self::huella($usuario, $clave))) {
