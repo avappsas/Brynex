@@ -59,10 +59,32 @@ try {
   await pagina.type(campo('textName'), String(usuario), { delay: 45 });
   await pagina.type(campo('textPassword'), String(contrasena), { delay: 45 });
 
+  // DevExpress no se entera de un clic a secas en el input interno: el control
+  // vive en JavaScript y hay que hablarle a él. Se prueban las tres formas, de
+  // la más limpia a la más bruta, porque sin esto la pantalla se queda igual y
+  // parece que la clave está mal.
+  await pagina.keyboard.press('Tab').catch(() => null); // que registre el valor
+  await esperar(600);
+
   const navegacion = pagina.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => null);
-  await pagina.click(campo('buttonLogin')).catch(() => null);
+
+  const pulsado = await pagina.evaluate(() => {
+    const cliente = window.ctl00_ContentPlaceHolder1_ASPxFormLayout1_buttonLogin;
+    if (cliente && typeof cliente.DoClick === 'function') { cliente.DoClick(); return 'DoClick'; }
+
+    const contenedor = document.getElementById('ctl00_ContentPlaceHolder1_ASPxFormLayout1_buttonLogin');
+    if (contenedor) { contenedor.click(); return 'contenedor'; }
+
+    return null;
+  }).catch(() => null);
+
+  if (!pulsado) {
+    await pagina.focus(campo('textPassword')).catch(() => null);
+    await pagina.keyboard.press('Enter').catch(() => null);
+  }
+
   await navegacion;
-  await esperar(3500);
+  await esperar(4000);
 
   const texto = await pagina.evaluate(() => (document.body?.innerText || '').replace(/\s+/g, ' ')).catch(() => '');
   const sigueEnLogin = /ingreso al sistema/i.test(texto) && await pagina.$(campo('textPassword'));
@@ -76,6 +98,7 @@ try {
       ok: false, paso: 'login', url: pagina.url(),
       error: (motivo || 'El portal no pasó del ingreso.').trim().slice(0, 220),
       pantalla: texto.slice(0, 900),
+      pulsado,
       avisos: await pagina.evaluate(() => [...document.querySelectorAll('[class*=error], [class*=Error], [id*=error], [class*=alert]')]
         .map((e) => (e.innerText || '').replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, 5)).catch(() => []),
     });
