@@ -90,6 +90,55 @@ class ComfandiSubsidiosHeadless
     }
 
     /**
+     * El listado de trabajadores que Comfandi tiene de esa empresa.
+     *
+     * Es la misma pantalla de Gestión de trabajadores que se usa para buscar a
+     * cada persona, pero leída entera: sirve para conciliar sin preguntar uno
+     * por uno. El portal la pagina y el script la recorre.
+     *
+     * @return array{ok:bool, filas?:array, columnas?:array, error?:string}
+     */
+    public function trabajadores(string $nit, ?bool $conVentana = null): array
+    {
+        $clave = $this->credencial($nit);
+
+        if (! $clave) {
+            return ['ok' => false, 'error' => "La empresa {$nit} no tiene la clave de Comfandi en el módulo de claves."];
+        }
+
+        $resultado = Process::path(base_path())
+            ->timeout(self::SEGUNDOS_BASE + 120)
+            ->input(json_encode([
+                'usuario' => $clave['usuario'],
+                'contrasena' => $clave['contrasena'],
+                'modo' => 'listado',
+                // Por lo mismo que en bloqueos(): a Comfandi se le habla directo.
+                'proxy' => null,
+                'visible' => $conVentana ?? $this->hayXvfb(),
+            ], JSON_UNESCAPED_UNICODE))
+            ->run($this->comando($conVentana ?? $this->hayXvfb()));
+
+        $salida = json_decode(trim($resultado->output()), true) ?: [];
+
+        if (! ($salida['ok'] ?? false)) {
+            $error = $salida['error'] ?? (trim($resultado->errorOutput()) ?: 'El portal no respondió.');
+            Log::warning('Comfandi: no se pudo leer el listado de trabajadores', ['nit' => $nit, 'error' => $error]);
+
+            return ['ok' => false, 'error' => $error];
+        }
+
+        // El portal trae [Gestionar, Nombre, Documento, Ingreso, Afiliación] y
+        // la conciliación espera [documento, nombre, ingreso empresa, ingreso caja].
+        $salida['filas'] = collect($salida['filas'] ?? [])
+            ->map(fn ($f) => [$f[2] ?? '', $f[1] ?? '', $f[3] ?? '', $f[4] ?? ''])
+            ->filter(fn ($f) => preg_replace('/\D/', '', (string) $f[0]) !== '')
+            ->values()
+            ->all();
+
+        return $salida;
+    }
+
+    /**
      * Cómo se lanza el script.
      *
      * El portal solo atiende a un navegador con ventana —un Chrome sin ella

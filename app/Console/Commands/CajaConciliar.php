@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Services\Caja\ComfandiCajaConciliacionService;
+use App\Services\Caja\ComfandiSubsidiosHeadless;
 use App\Services\Caja\ComfenalcoCajaConciliacionService;
 use App\Services\Caja\ComfenalcoSubsidiosHeadless;
 use App\Services\TareaAutomaticaService;
@@ -18,8 +20,11 @@ use Throwable;
  * cuando alguien abría la pantalla, y por eso casi todos los radicados en OK
  * seguían sin confirmar.
  *
- * Solo Comfenalco por ahora: su listado es una consulta y se lee entero. El de
- * Comfandi se pide como radicado y se descarga como Excel, así que va aparte.
+ * Sirve para las dos cajas: en Comfenalco el listado es una consulta, y en
+ * Comfandi es la pantalla de Gestión de trabajadores leída entera. Del portal
+ * de Comfandi no se leen los radicados —eso sigue siendo cosa de la extensión,
+ * con la persona delante—, así que aquí solo se confirma a quien ya figura
+ * afiliado, que es lo que pasa un radicado a OK confirmado.
  *
  *   php artisan caja:conciliar --nit=901904750 --simular
  */
@@ -35,10 +40,13 @@ class CajaConciliar extends Command
     public function handle(
         ComfenalcoSubsidiosHeadless $portal,
         ComfenalcoCajaConciliacionService $conciliacion,
+        ComfandiSubsidiosHeadless $comfandi,
+        ComfandiCajaConciliacionService $comfandiConciliacion,
     ): int {
         $caja = mb_strtoupper(trim((string) $this->option('caja')));
+        $esComfandi = str_contains($caja, 'COMFANDI');
 
-        if (! str_contains($caja, 'COMFENALCO')) {
+        if (! $esComfandi && ! str_contains($caja, 'COMFENALCO')) {
             $this->error("Todavía no hay conciliación automática para {$caja}.");
 
             return self::FAILURE;
@@ -54,6 +62,12 @@ class CajaConciliar extends Command
         }
 
         foreach ($empresas as $nit => $cuantos) {
+            if ($esComfandi) {
+                $this->deComfandi($comfandi, $comfandiConciliacion, (string) $nit, (int) $cuantos, $simular);
+
+                continue;
+            }
+
             if (! $portal->credencial((string) $nit)) {
                 $this->line("{$nit}: sin clave de la caja, no se puede consultar.");
 
@@ -94,6 +108,58 @@ class CajaConciliar extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /** La conciliación de Comfandi: mismo cruce, otro portal. */
+    private function deComfandi(
+        ComfandiSubsidiosHeadless $portal,
+        ComfandiCajaConciliacionService $conciliacion,
+        string $nit,
+        int $cuantos,
+        bool $simular,
+    ): void {
+        if (! $portal->credencial($nit)) {
+            $this->line("{$nit}: sin clave de Comfandi, no se puede consultar.");
+
+            return;
+        }
+
+        $this->line("{$nit}: {$cuantos} afiliado(s) en BryNex…");
+
+        try {
+            $leido = $portal->trabajadores($nit);
+        } catch (Throwable $e) {
+            $leido = ['ok' => false, 'error' => $e->getMessage()];
+        }
+
+        if (! ($leido['ok'] ?? false)) {
+            $this->warn('  ⚠️ '.($leido['error'] ?? 'sin detalle'));
+
+            return;
+        }
+
+        try {
+            // Sin radicados del portal: se avisa con `radicadosOk: false` para
+            // que no dé por inexistente lo que no se miró.
+            $r = $conciliacion->conciliar(
+                $conciliacion->aliadosDelNit($nit),
+                $nit,
+                $leido['filas'],
+                [],
+                $simular,
+                TareaAutomaticaService::USUARIO_SISTEMA,
+                radicadosOk: false,
+            );
+        } catch (Throwable $e) {
+            $this->warn('  ⚠️ '.$e->getMessage());
+
+            return;
+        }
+
+        $this->info(sprintf('  ✅ %d en la caja · %d confirmado(s)%s',
+            count($leido['filas']),
+            $r['cerrados'] ?? 0,
+            ($r['confirmados_ok'] ?? 0) ? " · {$r['confirmados_ok']} ya estaban en OK y quedan confirmados" : ''));
     }
 
     /**
