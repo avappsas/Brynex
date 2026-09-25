@@ -347,7 +347,7 @@
                             <div style="font-size:.65rem;color:#64748b;margin-top:.05rem">NIT: {{ $anticipo->empresa?->nit ?? '—' }}</div>
                         @else
                             <div style="font-size:.55rem;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;margin-bottom:.04rem">Cliente</div>
-                            <div style="font-size:1.15rem;font-weight:900;color:#0f172a;line-height:1.15">{{ $anticipo->contrato?->cliente?->nombre_completo ?? '—' }}</div>
+                            <div style="font-size:1.15rem;font-weight:900;color:#0f172a;line-height:1.15">{{ nombre_oracion($anticipo->contrato?->cliente?->nombre_completo ?? '—') }}</div>
                             <div style="font-size:.65rem;color:#64748b;margin-top:.05rem">C.C. {{ $anticipo->contrato?->cedula ?? $anticipo->cedula ?? '—' }}</div>
                         @endif
                     </div>
@@ -469,7 +469,7 @@
                                         {{ $index + 1 }}
                                     </td>
                                     <td style="font-weight: 700; color: #0f172a;">
-                                        {{ $hijo->contrato?->cliente?->nombre_completo ?? '—' }}
+                                        {{ nombre_oracion($hijo->contrato?->cliente?->nombre_completo ?? '—') }}
                                     </td>
                                     <td style="font-family: monospace; font-size: 0.75rem;">
                                         {{ $hijo->cedula }}
@@ -489,7 +489,7 @@
                             <tr>
                                 <td style="text-align: center; font-weight: 700; color: #64748b;">1</td>
                                 <td style="font-weight: 700; color: #0f172a;">
-                                    {{ $anticipo->contrato?->cliente?->nombre_completo ?? '—' }}
+                                    {{ nombre_oracion($anticipo->contrato?->cliente?->nombre_completo ?? '—') }}
                                 </td>
                                 <td style="font-family: monospace; font-size: 0.75rem;">
                                     {{ $anticipo->contrato?->cedula ?? $anticipo->cedula ?? '—' }}

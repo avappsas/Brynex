@@ -97,7 +97,7 @@
                             </div>
                             <div>
                                 <a href="{{ route('admin.cotizaciones.show', $prospecto->id) }}" class="cl-name">
-                                    {{ $prospecto->nombre_completo ?: 'Sin Nombre' }}
+                                    {{ nombre_oracion($prospecto->nombre_completo ?: 'Sin Nombre') }}
                                 </a>
                                 <div class="cl-cedula">{{ $prospecto->cedula }}</div>
                             </div>

@@ -380,7 +380,7 @@
                                     <tr>
                                         <td><strong>#{{ $f->numero_factura }}</strong></td>
                                         <td>
-                                            <div>{{ trim($f->nombre_cliente) ?: $f->cedula }}</div>
+                                            <div>{{ nombre_oracion(trim($f->nombre_cliente) ?: $f->cedula) }}</div>
                                             <div style="font-size:.7rem;color:var(--c-muted)">{{ $f->cedula }}</div>
                                         </td>
                                         <td style="font-size:.78rem">{{ $f->empresa_nombre }}</td>

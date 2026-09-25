@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Préstamo · {{ $prestamo->nombre_deudor }}</title>
+    <title>Préstamo · {{ nombre_oracion($prestamo->nombre_deudor) }}</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -200,7 +200,7 @@
             <i class="fas fa-arrow-left"></i>
         </a>
         <div class="hdr-title">
-            <h1>{{ $prestamo->nombre_deudor }}</h1>
+            <h1>{{ nombre_oracion($prestamo->nombre_deudor) }}</h1>
             <p>{{ $prestamo->descripcion ?: 'Préstamo personal' }}</p>
         </div>
         <a href="{{ route('finanzas.prestamos.edit', $prestamo->id) }}" class="hdr-edit">✏️ Editar</a>
@@ -223,7 +223,7 @@
                 ${{ number_format($prestamo->saldo_actual, 0, ',', '.') }}
                 <span style="font-size:0.9rem;font-weight:500;opacity:.6"> COP</span>
             </div>
-            <div class="h-name">👤 {{ $prestamo->nombre_deudor }}</div>
+            <div class="h-name">👤 {{ nombre_oracion($prestamo->nombre_deudor) }}</div>
             <div class="mora-badge" style="background:{{ $bgMora }};color:{{ $cMora }};border:1px solid {{ $cMora }}33">
                 {{ $lMora }}
             </div>

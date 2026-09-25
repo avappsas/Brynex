@@ -305,7 +305,7 @@
                         <div style="font-size:.65rem;color:#94a3b8;">Empresa</div>
                     @elseif($ant->contrato?->cliente)
                         <div style="font-weight:700;font-size:.78rem;">
-                            {{ $ant->contrato->cliente->nombre ?? $ant->contrato->cliente->nombre_completo ?? 'Sin nombre' }}
+                            {{ nombre_oracion($ant->contrato->cliente->nombre ?? $ant->contrato->cliente->nombre_completo ?? 'Sin nombre') }}
                         </div>
                         <div style="font-size:.65rem;color:#94a3b8;">CC {{ $ant->cedula }}</div>
                     @elseif($ant->cedula)

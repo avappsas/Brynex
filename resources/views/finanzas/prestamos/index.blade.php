@@ -109,13 +109,13 @@
                      }
                  }"
                  x-show="buscar.length <= 5 || 
-                         '{{ Str::lower(Str::ascii($p->nombre_deudor)) }}'.includes(buscar.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()) || 
+                         '{{ nombre_oracion(Str::lower(Str::ascii($p->nombre_deudor))) }}'.includes(buscar.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()) || 
                          '{{ $p->cedula_deudor }}'.includes(buscar) || 
                          '{{ $p->telefono_deudor }}'.includes(buscar)"
                  style="border-top: 4px solid {{ $colorMora }}">
                 <div class="pc-header">
                     <div>
-                        <h3>👤 {{ $p->nombre_deudor }}</h3>
+                        <h3>👤 {{ nombre_oracion($p->nombre_deudor) }}</h3>
                         <small>Ref: {{ $p->descripcion ?: 'Préstamo' }}</small>
                     </div>
                     @if($p->estado === 'castigado')

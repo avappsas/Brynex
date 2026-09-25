@@ -549,7 +549,7 @@ function sortClass($col, $currSort, $currDir) {
         </td>
 
         {{-- Nombres --}}
-        <td style="font-weight:600;color:#1e3a5f;max-width:130px;overflow:hidden;text-overflow:ellipsis;" title="{{ $c->cliente?->primer_nombre }} {{ $c->cliente?->segundo_nombre }} {{ $c->cliente?->primer_apellido }} {{ $c->cliente?->segundo_apellido }}">
+        <td style="font-weight:600;color:#1e3a5f;max-width:130px;overflow:hidden;text-overflow:ellipsis;" title="{{ nombre_oracion($c->cliente?->primer_nombre) }} {{ nombre_oracion($c->cliente?->segundo_nombre) }} {{ nombre_oracion($c->cliente?->primer_apellido) }} {{ nombre_oracion($c->cliente?->segundo_apellido) }}">
             @if($c->cliente?->id)
             <button type="button"
                 class="btn-afil-cliente"
@@ -558,10 +558,10 @@ function sortClass($col, $currSort, $currDir) {
                 data-row-id="{{ $c->id }}"
                 title="Clic para editar cliente"
                 style="background:none;border:none;padding:0;font:inherit;font-weight:600;color:#1e3a5f;cursor:pointer;text-decoration:underline dotted;text-align:left;max-width:128px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;">
-                {{ $c->cliente?->primer_nombre }} {{ $c->cliente?->primer_apellido }}
+                {{ nombre_oracion($c->cliente?->primer_nombre) }} {{ nombre_oracion($c->cliente?->primer_apellido) }}
             </button>
             @else
-            {{ $c->cliente?->primer_nombre }} {{ $c->cliente?->primer_apellido }}
+            {{ nombre_oracion($c->cliente?->primer_nombre) }} {{ nombre_oracion($c->cliente?->primer_apellido) }}
             @endif
             @if($esRetirado)
             <span style="display:inline-block;background:#fee2e2;color:#b91c1c;font-size:0.6rem;font-weight:800;padding:0.05rem 0.3rem;border-radius:4px;letter-spacing:0.02em;margin-top:0.1rem;"
@@ -718,7 +718,7 @@ function sortClass($col, $currSort, $currDir) {
                 data-rad-id="{{ $radIdDocs }}"
                 data-cedula="{{ $c->cedula }}"
                 data-aliado-id="{{ $c->aliado_id }}"
-                data-nombre="{{ $c->cliente?->primer_nombre }} {{ $c->cliente?->primer_apellido }}"
+                data-nombre="{{ nombre_oracion($c->cliente?->primer_nombre) }} {{ nombre_oracion($c->cliente?->primer_apellido) }}"
                 title="Ver/subir documentos">📁</button>
             <button class="btn-historial"
                 onclick="abrirHistorialAfiliacion({{ $c->id }})"

@@ -16,7 +16,7 @@
             <span>›</span>
             <a href="{{ route('finanzas.prestamos.index') }}">Préstamos</a>
             <span>›</span>
-            <a href="{{ route('finanzas.prestamos.show', $prestamo->id) }}">{{ $prestamo->nombre_deudor }}</a>
+            <a href="{{ route('finanzas.prestamos.show', $prestamo->id) }}">{{ nombre_oracion($prestamo->nombre_deudor) }}</a>
             <span>›</span>
             <span>Editar</span>
         </div>

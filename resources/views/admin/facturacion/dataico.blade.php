@@ -127,7 +127,7 @@ pre.json {
         <ul style="margin:.4rem 0 0 1.1rem;">
             @foreach($sinDocumento as $d)
                 <li>N° <strong>{{ $d->numero_factura }}</strong> —
-                    {{ $d->adquiriente['nombre_completo'] }},
+                    {{ nombre_oracion($d->adquiriente['nombre_completo']) }},
                     ${{ number_format((float) $d->base_admon) }},
                     {{ $d->num_clientes }} afiliado(s)</li>
             @endforeach

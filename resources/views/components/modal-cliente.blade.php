@@ -7,7 +7,7 @@
     Y en cualquier botón de la vista:
         <button type="button" class="btn-ficha-cliente"
                 data-cedula="{{ $x->cedula }}"
-                data-nombre="{{ $x->nombre_cliente }}">👤</button>
+                data-nombre="{{ nombre_oracion($x->nombre_cliente) }}">👤</button>
 
     También puede abrirse por JS:
         abrirModalCliente('1094123456', 'Juan Pérez');

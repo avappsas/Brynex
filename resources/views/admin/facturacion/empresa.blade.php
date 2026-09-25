@@ -1253,7 +1253,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             </div>
                         </td>
                         <td style="padding:.4rem .6rem;border-bottom:1px solid #f1f5f9;color:#1e293b;font-weight:700;">
-                            {{ $f->contrato?->cliente?->nombre_completo ?? '—' }}
+                            {{ nombre_oracion($f->contrato?->cliente?->nombre_completo ?? '—') }}
                             <div style="font-size:.62rem;color:#64748b;font-weight:500;">{{ $f->cedula }}</div>
                         </td>
                         <td style="padding:.4rem .6rem;border-bottom:1px solid #f1f5f9;color:#475569;white-space:nowrap;">
@@ -1342,7 +1342,7 @@ document.addEventListener('keydown', function(e) {
                     <tr>
                         <td style="padding:.4rem .6rem;border-bottom:1px solid #fef3c7;color:#1e293b;font-weight:700;">
                             @if($ant->contrato?->cliente)
-                                {{ $ant->contrato->cliente->nombre_completo }}
+                                {{ nombre_oracion($ant->contrato->cliente->nombre_completo) }}
                                 <div style="font-size:.62rem;color:#64748b;font-weight:500;">{{ $ant->cedula }}</div>
                             @else
                                 <span style="color:#b45309;">🏢 Abono libre de empresa</span>

@@ -166,7 +166,7 @@
                 <tr style="border-bottom:1px solid #f1f5f9;" onmouseover="this.style.background='#fffbeb'" onmouseout="this.style.background=''">
                     <td style="padding:.6rem .8rem;text-align:center;font-weight:600;color:#64748b;">{{ $loop->iteration }}</td>
                     <td style="padding:.6rem .8rem;font-weight:600;color:#b45309;">{{ $r->cedula }}</td>
-                    <td style="padding:.6rem .8rem;font-weight:600;color:#0d2550;">{{ $r->nombre_completo }}</td>
+                    <td style="padding:.6rem .8rem;font-weight:600;color:#0d2550;">{{ nombre_oracion($r->nombre_completo) }}</td>
                     <td style="padding:.6rem .8rem;color:#475569;">{{ $r->razon_social ?? '—' }}</td>
                     
                     {{-- Plan más pequeño y en un solo renglón (nowrap) --}}

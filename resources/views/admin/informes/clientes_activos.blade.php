@@ -100,7 +100,7 @@
                 @forelse($clientes as $c)
                 <tr style="border-bottom:1px solid #f1f5f9;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
                     <td style="padding:.6rem 1rem;font-weight:600;color:#1e40af;">{{ $c->cedula }}</td>
-                    <td style="padding:.6rem 1rem;">{{ $c->nombre_completo }}</td>
+                    <td style="padding:.6rem 1rem;">{{ nombre_oracion($c->nombre_completo) }}</td>
                     <td style="padding:.6rem 1rem;color:#475569;">{{ $c->razon_social ?? '—' }}</td>
                     <td style="padding:.6rem 1rem;color:#475569;">{{ $c->empresa ?? '—' }}</td>
                     <td style="padding:.6rem 1rem;color:#475569;">{{ $c->eps_nombre ?? '—' }}</td>

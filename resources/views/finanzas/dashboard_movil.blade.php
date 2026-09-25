@@ -642,7 +642,7 @@
                             @foreach($prestamosMora as $p)
                                 <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(244,63,94,0.05); padding:0.4rem 0.6rem; border-radius:8px; font-size:0.75rem; border: 1px solid rgba(244, 63, 94, 0.1);">
                                     <div>
-                                        <strong>{{ $p->nombre_deudor }}</strong> 
+                                        <strong>{{ nombre_oracion($p->nombre_deudor) }}</strong> 
                                         <span style="color:var(--texto-secundario);">(${{ number_format($p->saldo_actual, 0, ',', '.') }})</span>
                                         <span class="badge danger" style="font-size:0.58rem; margin-left:3px; padding:0.1rem 0.3rem;">{{ $p->esta_vencido ? $p->dias_vencidos . 'd venc.' : 'corte ' . $p->fecha_corte->format('d/m') }}</span>
                                     </div>
@@ -888,7 +888,7 @@
                                 🤝
                             </div>
                             <div class="lit-body" style="min-width:0;">
-                                <div class="lit-name">{{ $pres->nombre_deudor }}</div>
+                                <div class="lit-name">{{ nombre_oracion($pres->nombre_deudor) }}</div>
                                 <div class="lit-desc" style="display:flex; align-items:center; gap:0.3rem; flex-wrap:wrap;">
                                     <span style="color:{{ $colorMora }}; font-weight:600; font-size:0.68rem; background:{{ $bgMora }}; padding:0.05rem 0.35rem; border-radius:4px;">
                                         {{ $labelMora }}

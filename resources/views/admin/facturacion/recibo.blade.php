@@ -1012,7 +1012,9 @@ document.addEventListener('DOMContentLoaded', () => {
 function abrirAnular() {
     document.getElementById('modalAnular').style.display = 'flex';
 }
-async function confirmarAnulacion(confirmarPlanilla = false) {
+// `conf` acumula las confirmaciones que pide el servidor (planilla pagada,
+// factura electrónica): cada 409 dice qué casilla falta y se reenvía con ella.
+async function confirmarAnulacion(conf = {}) {
     const motivo = (document.getElementById('an_motivo')?.value ?? '').trim();
     const todoNp = document.getElementById('an_np')?.checked ?? false;
     if (!motivo) { alert('Ingrese el motivo de anulación.'); return; }
@@ -1022,16 +1024,19 @@ async function confirmarAnulacion(confirmarPlanilla = false) {
         const res  = await fetch(URL_ANUL, {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF_REC },
-            body: JSON.stringify({ motivo, todo_np: todoNp, confirmar_planilla: confirmarPlanilla })
+            body: JSON.stringify({ motivo, todo_np: todoNp, ...conf })
         });
         const data = await res.json();
-        // El recibo tiene planilla pagada: el superadmin debe confirmar viendo los números.
+        // Planilla pagada al operador o factura electrónica emitida: se confirma
+        // viendo el detalle y se reenvía con la casilla que pidió el servidor.
         if (!data.ok && data.requiere_confirmacion) {
             btn.disabled = false; btn.textContent = '🗑 Confirmar Anulación';
+            const campo = data.campo_confirmacion || 'confirmar_planilla';
             const detalle = (data.afectados || []).join('\n • ');
-            if (confirm(data.message + '\n\n • ' + detalle
-                + '\n\nAcepte solo si está seguro: tendrá que re-vincular la planilla a mano después de re-facturar.')) {
-                return confirmarAnulacion(true);
+            const aviso = data.aviso || 'Acepte solo si está seguro: tendrá que re-vincular la planilla a mano después de re-facturar.';
+            if (confirm(data.message + '\n\n • ' + detalle + '\n\n' + aviso)) {
+                btn.disabled = true; btn.textContent = '⏳ Anulando...';
+                return confirmarAnulacion({ ...conf, [campo]: true });
             }
             return;
         }

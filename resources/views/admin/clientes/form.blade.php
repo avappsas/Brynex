@@ -81,7 +81,7 @@
                         <div style="height:36px;width:36px;border-radius:9px;background:linear-gradient(135deg,#3b82f6,#1d4ed8);color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.1rem;">👤</div>
                         <div>
                             <h2 style="font-size:0.95rem;font-weight:700;color:#0f172a;margin:0;line-height:1.2;">
-                                {{ $nombreCompleto ?: (isset($cliente->id) && $cliente->id ? 'Editar Cliente #'.$cliente->id : 'Nuevo Cliente') }}
+                                {{ nombre_oracion($nombreCompleto ?: (isset($cliente->id) && $cliente->id ? 'Editar Cliente #'.$cliente->id : 'Nuevo Cliente')) }}
                             </h2>
                             @if(!empty($cliente->cedula))
                             <span style="background:linear-gradient(135deg,#1e40af,#2563eb);color:#fff;border-radius:999px;padding:0.15rem 0.65rem;font-size:0.68rem;font-weight:700;letter-spacing:0.03em;display:inline-block;margin-top:0.1rem;">{{ $cliente->tipo_doc ?: 'CC' }} {{ $cliente->cedula }}</span>

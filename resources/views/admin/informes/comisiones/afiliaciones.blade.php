@@ -318,8 +318,8 @@
                         <td class="col-cliente">
                             {{-- Nombre y documento en un solo bloque: el documento
                                  sigue al nombre y el conjunto se parte en 2 renglones. --}}
-                            <div class="cli-nombre" title="{{ $nombreCli ? $nombreCli . ' — ' . $docCli : $docCli }}">
-                                @if($nombreCli)<span class="cli-doc-nombre">{{ $nombreCli }}</span> @endif<span class="cli-doc">{{ $docCli }}</span>
+                            <div class="cli-nombre" title="{{ nombre_oracion($nombreCli ? $nombreCli . ' — ' . $docCli : $docCli) }}">
+                                @if($nombreCli)<span class="cli-doc-nombre">{{ nombre_oracion($nombreCli) }}</span> @endif<span class="cli-doc">{{ $docCli }}</span>
                             </div>
                         </td>
                         <td style="font-size:.78rem">{{ $f->empresa_nombre }}</td>

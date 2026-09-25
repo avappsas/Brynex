@@ -404,7 +404,7 @@
                         <span style="font-size:0.78rem;color:#374151;" title="{{ $nombreEmp }}">🏢 {{ $nombreEmp }}</span>
                     @else
                         @php $nombreCli = $nombresClientes[$f->cedula_muestra] ?? $f->cedula_muestra ?? '—'; @endphp
-                        <span style="font-size:0.78rem;color:#374151;" title="{{ $nombreCli }}">👤 {{ $nombreCli }}</span>
+                        <span style="font-size:0.78rem;color:#374151;" title="{{ nombre_oracion($nombreCli) }}">👤 {{ nombre_oracion($nombreCli) }}</span>
                     @endif
                 </td>
                 <td class="td-num">${{ number_format((int)($f->total_admon ?? 0)) }}</td>

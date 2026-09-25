@@ -47,7 +47,7 @@
                 @foreach ($esperando as $c)
                     @php $vencido = $c->estado === 'enviado' && $c->vence_at && $c->vence_at->isPast(); @endphp
                     <tr>
-                        <td>{{ trim(($c->contrato?->cliente?->primer_nombre ?? '').' '.($c->contrato?->cliente?->primer_apellido ?? '')) ?: 'Contrato '.$c->contrato_id }}<br><span style="color:#94a3b8">CC {{ $c->contrato?->cedula }}</span></td>
+                        <td>{{ nombre_oracion(trim(($c->contrato?->cliente?->primer_nombre ?? '').' '.($c->contrato?->cliente?->primer_apellido ?? '')) ?: 'Contrato '.$c->contrato_id) }}<br><span style="color:#94a3b8">CC {{ $c->contrato?->cedula }}</span></td>
                         <td>{{ $c->para }}</td>
                         <td style="white-space:nowrap">{{ $c->enviado_at?->format('d/m/Y H:i') }}</td>
                         <td style="white-space:nowrap">{{ $c->vence_at?->format('d/m H:i') }}</td>
@@ -88,7 +88,7 @@
                         <td class="buz-texto"><strong>{{ $r->asunto }}</strong><br>{{ \Illuminate\Support\Str::limit($r->texto, 220) }}</td>
                         <td>
                             @if ($r->contrato)
-                                {{ trim(($r->contrato->cliente?->primer_nombre ?? '').' '.($r->contrato->cliente?->primer_apellido ?? '')) }}<br><span style="color:#94a3b8">CC {{ $r->contrato->cedula }}</span>
+                                {{ nombre_oracion(trim(($r->contrato->cliente?->primer_nombre ?? '').' '.($r->contrato->cliente?->primer_apellido ?? ''))) }}<br><span style="color:#94a3b8">CC {{ $r->contrato->cedula }}</span>
                             @else
                                 <span style="color:#94a3b8">—</span>
                             @endif

@@ -15,7 +15,7 @@
                 </div>
                 <div>
                     <h3 style="margin:0;font-size:1.1rem;font-weight:700;color:#fff;">Documentos Digitales</h3>
-                    <p style="margin:0;font-size:.78rem;color:rgba(255,255,255,.7);">Titular: {{ $cliente->primer_nombre }} {{ $cliente->primer_apellido }} · CC {{ $cliente->cedula }}</p>
+                    <p style="margin:0;font-size:.78rem;color:rgba(255,255,255,.7);">Titular: {{ nombre_oracion($cliente->primer_nombre) }} {{ nombre_oracion($cliente->primer_apellido) }} · CC {{ $cliente->cedula }}</p>
                 </div>
             </div>
             <div style="display:flex;gap:.6rem;align-items:center;">

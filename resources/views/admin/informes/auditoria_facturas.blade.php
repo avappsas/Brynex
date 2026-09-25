@@ -290,7 +290,7 @@ tfoot .col-ss.open,tfoot .col-afil-det.open{display:table-cell}
             @endif
         </div>
     </td>
-    <td style="max-width:148px;overflow:hidden;text-overflow:ellipsis;font-weight:600;color:#1e293b" title="{{ $f->nombre_cliente }}">{{ $f->nombre_cliente }}</td>
+    <td style="max-width:148px;overflow:hidden;text-overflow:ellipsis;font-weight:600;color:#1e293b" title="{{ nombre_oracion($f->nombre_cliente) }}">{{ nombre_oracion($f->nombre_cliente) }}</td>
     <td style="color:#94a3b8;font-family:monospace;font-size:.65rem">{{ $f->cedula }}</td>
     <td style="color:#64748b;font-family:monospace;font-size:.65rem">{{ $f->np ?? '—' }}</td>
     <td style="color:#475569;font-size:.66rem">{!! $esRetiro ? '<span style="color:#94a3b8;font-style:italic">Ninguno</span>' : e($f->forma_pago ?? '—') !!}</td>

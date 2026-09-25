@@ -21,7 +21,7 @@
             <div>
                 <div style="font-size:0.95rem;font-weight:800;color:#1c1917;">Claves y Accesos</div>
                 <div id="ca-subtitulo" style="font-size:0.72rem;color:rgba(28,25,23,0.7);font-weight:500;">
-                    {{ trim(($cliente->primer_nombre ?? '').' '.($cliente->primer_apellido ?? '')).' — CC '.$cliente->cedula }}
+                    {{ nombre_oracion(trim(($cliente->primer_nombre ?? '').' '.($cliente->primer_apellido ?? '')).' — CC '.$cliente->cedula) }}
                 </div>
             </div>
         </div>

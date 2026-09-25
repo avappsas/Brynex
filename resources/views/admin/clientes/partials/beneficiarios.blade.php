@@ -15,7 +15,7 @@
                 </div>
                 <div>
                     <h3 style="margin:0;font-size:1.1rem;font-weight:700;color:#fff;">Grupo Familiar / Beneficiarios</h3>
-                    <p style="margin:0;font-size:.78rem;color:rgba(255,255,255,.7);">Titular: <strong>{{ $cliente->primer_nombre }} {{ $cliente->primer_apellido }}</strong> · CC {{ $cliente->cedula }}</p>
+                    <p style="margin:0;font-size:.78rem;color:rgba(255,255,255,.7);">Titular: <strong>{{ nombre_oracion($cliente->primer_nombre) }} {{ nombre_oracion($cliente->primer_apellido) }}</strong> · CC {{ $cliente->cedula }}</p>
                 </div>
             </div>
             <div style="display:flex;gap:.6rem;align-items:center;">
@@ -131,7 +131,7 @@
                 </div>
                 <div>
                     <h4 id="benModalTitulo" class="bmodal-title">Nuevo Beneficiario</h4>
-                    <p class="bmodal-subtitle-text">Titular: <strong>{{ $cliente->primer_nombre }} {{ $cliente->primer_apellido }}</strong> · CC {{ $cliente->cedula }}</p>
+                    <p class="bmodal-subtitle-text">Titular: <strong>{{ nombre_oracion($cliente->primer_nombre) }} {{ nombre_oracion($cliente->primer_apellido) }}</strong> · CC {{ $cliente->cedula }}</p>
                 </div>
             </div>
             <button type="button" class="bmodal-close" onclick="benModalCerrar()">

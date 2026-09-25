@@ -713,7 +713,9 @@ function cerrarAnular() {
     document.getElementById('modal-anular-ov').style.display = 'none';
     _anularId = null;
 }
-async function confirmarAnular(confirmarPlanilla = false) {
+// `conf` acumula las confirmaciones que pide el servidor (planilla pagada,
+// factura electrónica): cada 409 dice qué casilla falta y se reenvía con ella.
+async function confirmarAnular(conf = {}) {
     const motivo = document.getElementById('anular-motivo').value.trim();
     if (!motivo) { alert('Debe indicar el motivo de anulación.'); return; }
     const btn = document.getElementById('btn-ejecutar-anular');
@@ -728,16 +730,19 @@ async function confirmarAnular(confirmarPlanilla = false) {
                 'Accept': 'application/json',
                 'X-Requested-With': 'XMLHttpRequest'
             },
-            body: JSON.stringify({ motivo, confirmar_planilla: confirmarPlanilla }),
+            body: JSON.stringify({ motivo, ...conf }),
         });
         const data = await resp.json();
-        // Planilla ya pagada al operador: el superadmin confirma viendo los números.
+        // Planilla pagada al operador o factura electrónica emitida: se confirma
+        // viendo el detalle y se reenvía con la casilla que pidió el servidor.
         if (!data.ok && data.requiere_confirmacion) {
             btn.disabled = false; btn.textContent = '⛔ Confirmar Anulación';
+            const campo = data.campo_confirmacion || 'confirmar_planilla';
             const detalle = (data.afectados || []).join('\n • ');
-            if (confirm(data.message + '\n\n • ' + detalle
-                + '\n\nAcepte solo si está seguro: tendrá que re-vincular la planilla a mano después de re-facturar.')) {
-                return confirmarAnular(true);
+            const aviso = data.aviso || 'Acepte solo si está seguro: tendrá que re-vincular la planilla a mano después de re-facturar.';
+            if (confirm(data.message + '\n\n • ' + detalle + '\n\n' + aviso)) {
+                btn.disabled = true; btn.textContent = '⏳ Anulando...';
+                return confirmarAnular({ ...conf, [campo]: true });
             }
             return;
         }

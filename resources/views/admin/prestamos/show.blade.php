@@ -137,7 +137,7 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
             @foreach($lote as $lf)
             <tr style="border-top:1px solid #f1f5f9;">
                 <td style="padding:.45rem .7rem;font-weight:600;color:#1e3a5f;">
-                    {{ $lf->contrato?->cliente?->primer_nombre }} {{ $lf->contrato?->cliente?->primer_apellido }}
+                    {{ nombre_oracion($lf->contrato?->cliente?->primer_nombre) }} {{ nombre_oracion($lf->contrato?->cliente?->primer_apellido) }}
                 </td>
                 <td style="padding:.45rem .7rem;font-family:monospace;color:#64748b;">
                     {{ $lf->cedula }}
@@ -212,7 +212,7 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
             </span>
         </div>
         <div class="show-sub">
-            {{ $factura->contrato?->cliente?->primer_nombre }} {{ $factura->contrato?->cliente?->primer_apellido }}
+            {{ nombre_oracion($factura->contrato?->cliente?->primer_nombre) }} {{ nombre_oracion($factura->contrato?->cliente?->primer_apellido) }}
             @if($factura->empresa) — {{ $factura->empresa->empresa }} @endif
         </div>
     </div>

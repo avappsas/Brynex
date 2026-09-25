@@ -377,10 +377,10 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
                     <div style="display:flex;align-items:flex-start;gap:.3rem">
                         <button type="button" class="btn-ficha-cliente"
                                 data-cedula="{{ $inc->cedula_usuario }}"
-                                data-nombre="{{ $inc->_nombre_cliente_cache ?? $inc->cedula_usuario }}"
+                                data-nombre="{{ nombre_oracion($inc->_nombre_cliente_cache ?? $inc->cedula_usuario) }}"
                                 title="Ver ficha del cliente" style="margin-top:.05rem">👤</button>
                         <div style="font-weight:600;font-size:.78rem;color:#1e293b;line-height:1.25;max-width:170px">
-                            {{ $inc->_nombre_cliente_cache ?? $inc->cedula_usuario }}
+                            {{ nombre_oracion($inc->_nombre_cliente_cache ?? $inc->cedula_usuario) }}
                             <span style="font-weight:500;color:#94a3b8;white-space:nowrap">{{ $inc->_tipo_doc_cache ?: 'CC' }} {{ $inc->cedula_usuario }}</span>
                         </div>
                     </div>
@@ -474,10 +474,10 @@ tbody td{padding:.6rem .85rem;vertical-align:middle;}
                     <div style="display:flex;align-items:flex-start;gap:.3rem">
                         <button type="button" class="btn-ficha-cliente"
                                 data-cedula="{{ $inc->cedula_usuario }}"
-                                data-nombre="{{ $inc->_nombre_cliente_cache ?? $inc->cedula_usuario }}"
+                                data-nombre="{{ nombre_oracion($inc->_nombre_cliente_cache ?? $inc->cedula_usuario) }}"
                                 title="Ver ficha del cliente" style="margin-top:.05rem">👤</button>
                         <div style="font-weight:600;font-size:.78rem;color:#1e293b;line-height:1.25;max-width:170px">
-                            {{ $inc->_nombre_cliente_cache ?? $inc->cedula_usuario }}
+                            {{ nombre_oracion($inc->_nombre_cliente_cache ?? $inc->cedula_usuario) }}
                             <span style="font-weight:500;color:#94a3b8;white-space:nowrap">{{ $inc->_tipo_doc_cache ?: 'CC' }} {{ $inc->cedula_usuario }}</span>
                         </div>
                     </div>

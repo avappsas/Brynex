@@ -295,7 +295,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
                 </span>
             </td>
             <td class="num">{{ $f->cedula }}</td>
-            <td style="font-weight:600">{{ $f->nombre_cliente }}</td>
+            <td style="font-weight:600">{{ nombre_oracion($f->nombre_cliente) }}</td>
             <td>{{ $formas[$f->forma_pago] ?? $f->forma_pago }}</td>
             <td class="num" style="font-weight:800;color:#1d4ed8">{{ $fmt($f->total) }}</td>
             <td class="num" style="color:#15803d">{{ $fmt($f->valor_efectivo) }}</td>

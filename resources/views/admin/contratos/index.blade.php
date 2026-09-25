@@ -62,7 +62,7 @@
                 <td style="padding:0.65rem 1rem;">
                     @if($contrato->cliente)
                     <div style="font-weight:600;color:#0f172a;">
-                        {{ $contrato->cliente->primer_nombre }} {{ $contrato->cliente->primer_apellido }}
+                        {{ nombre_oracion($contrato->cliente->primer_nombre) }} {{ nombre_oracion($contrato->cliente->primer_apellido) }}
                     </div>
                     <div style="font-size:0.75rem;color:#64748b;">CC {{ $contrato->cedula }}</div>
                     @else

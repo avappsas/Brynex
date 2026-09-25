@@ -947,11 +947,11 @@
                 @endif
                 {{ $p->no_identifi }}
             </td>
-            <td class="td-nombre" title="{{ $p->nombre_completo ?? $clienteNombre }}" data-order="{{ $p->nombre_completo ?? $clienteNombre }}">
+            <td class="td-nombre" title="{{ nombre_oracion($p->nombre_completo ?? $clienteNombre) }}" data-order="{{ nombre_oracion($p->nombre_completo ?? $clienteNombre) }}">
                 <a href="{{ ($p->cliente_id ?? null) ? url('/admin/clientes/'.$p->cliente_id.'/edit') : '#' }}"
                    style="color:#1d4ed8;text-decoration:none;font-weight:600"
-                   title="{{ $p->nombre_completo ?? $clienteNombre }}">
-                    {{ $p->primer_nombre }} {{ $p->primer_ape }}
+                   title="{{ nombre_oracion($p->nombre_completo ?? $clienteNombre) }}">
+                    {{ nombre_oracion($p->primer_nombre) }} {{ $p->primer_ape }}
                 </a>
             </td>
             <td class="td-fechas" title="{{ $fecTitulo }}" data-order="{{ $p->fecha_ing ?: ($p->fecha_ret ?: '') }}">

@@ -306,7 +306,7 @@ body{display:flex;flex-direction:column}
         </td>
 
         {{-- Nombres --}}
-        <td style="font-weight:600;color:#1e3a5f;max-width:140px;overflow:hidden;text-overflow:ellipsis;" title="{{ $nombreCompleto }}">
+        <td style="font-weight:600;color:#1e3a5f;max-width:140px;overflow:hidden;text-overflow:ellipsis;" title="{{ nombre_oracion($nombreCompleto) }}">
             {{ $nombre }}
         </td>
 

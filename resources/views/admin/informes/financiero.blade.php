@@ -497,7 +497,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                                     onmouseout="this.style.backgroundColor=''"
                                     onclick="window.open('{{ route('admin.incapacidades.index') }}?abrir_incId={{ $inc->id }}', '_blank')">
                                     <td style="padding:.65rem .85rem;">
-                                        <div style="font-weight:700; color:#1e293b;">{{ $nombreCompleto }}</div>
+                                        <div style="font-weight:700; color:#1e293b;">{{ nombre_oracion($nombreCompleto) }}</div>
                                         <div style="font-size:.65rem; color:#64748b; margin-top:.1rem;">
                                             C.C. {{ $inc->cedula_usuario }} · <b>#{{ $inc->id }}</b>
                                         </div>
@@ -1488,7 +1488,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                                 <tr style="border-bottom:1px solid #f1f5f9;transition:background-color 0.15s;" onmouseover="this.style.backgroundColor='#f8fafc'" onmouseout="this.style.backgroundColor=''">
                                     <td style="padding:.75rem 1rem;font-family:monospace;white-space:nowrap;">{{ $abono->fecha_abono ? date('d/m/Y', strtotime($abono->fecha_abono)) : '—' }}</td>
                                     <td style="padding:.75rem 1rem;">
-                                        <div style="font-weight:700;color:#1e293b;">{{ $abono->nombre_cliente }}</div>
+                                        <div style="font-weight:700;color:#1e293b;">{{ nombre_oracion($abono->nombre_cliente) }}</div>
                                     </td>
                                     <td style="padding:.75rem 1rem;text-align:center;white-space:nowrap;">
                                         @if($abono->numero_factura > 0)

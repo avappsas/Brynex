@@ -87,7 +87,7 @@
       </h1>
       @if($cliente)
       <div style="font-size:0.76rem;color:#475569;">
-        <strong>{{ trim(($cliente->primer_nombre ?? '').' '.($cliente->segundo_nombre ?? '')) }} {{ trim(($cliente->primer_apellido ?? '').' '.($cliente->segundo_apellido ?? '')) }}</strong>
+        <strong>{{ nombre_oracion(trim(($cliente->primer_nombre ?? '').' '.($cliente->segundo_nombre ?? ''))) }} {{ nombre_oracion(trim(($cliente->primer_apellido ?? '').' '.($cliente->segundo_apellido ?? ''))) }}</strong>
         &middot; {{ $cliente->tipo_doc ?: 'CC' }} {{ $cliente->cedula }}
         @if($cliente->iva === 'SI')<span style="background:#fef3c7;color:#92400e;padding:0.1rem 0.4rem;border-radius:999px;font-size:0.68rem;margin-left:4px;">IVA</span>@endif
       </div>
@@ -4355,7 +4355,7 @@ function abrirModalFacturarContrato() {
     if (typeof MF !== 'undefined') {
         MF.abrir(
             [FC_CONTRATO_ID],
-            '{{ trim(($cliente?->primer_nombre ?? "")." ".($cliente?->segundo_nombre ?? "")) }} {{ trim(($cliente?->primer_apellido ?? "")." ".($cliente?->segundo_apellido ?? "")) }}'
+            '{{ nombre_oracion(trim(($cliente?->primer_nombre ?? "")." ".($cliente?->segundo_nombre ?? ""))) }} {{ nombre_oracion(trim(($cliente?->primer_apellido ?? "")." ".($cliente?->segundo_apellido ?? ""))) }}'
         );
     }
 }

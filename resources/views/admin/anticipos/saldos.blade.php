@@ -245,7 +245,7 @@
                     <tr>
                         <td class="sf-fecha">{{ $a->created_at?->format('d/m/Y H:i') }}</td>
                         <td class="sf-mono">{{ $a->cedula }}</td>
-                        <td>{{ $a->nombre_cliente ?? '—' }}</td>
+                        <td>{{ nombre_oracion($a->nombre_cliente ?? '—') }}</td>
                         <td style="font-size:.75rem;color:#475569;">{{ $a->motivo }}</td>
                         <td style="font-size:.72rem;color:#64748b;">{{ $a->usuario?->nombre ?? '—' }}</td>
                         <td class="sf-mono" style="text-align:right;">${{ number_format($a->valor, 0, ',', '.') }}</td>

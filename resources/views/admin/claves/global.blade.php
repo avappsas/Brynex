@@ -540,7 +540,7 @@
                                       title="La cargó {{ $c->cargada_por }}; es la misma empresa ante la entidad">↔ {{ $c->cargada_por }}</span>
                                 @endif
                             @elseif($c->cliente)
-                                <span class="badge-vinculo cli" title="{{ $c->cliente->primer_nombre }} {{ $c->cliente->primer_apellido }}">👤 {{ $c->cliente->primer_nombre }} {{ $c->cliente->primer_apellido }}</span>
+                                <span class="badge-vinculo cli" title="{{ nombre_oracion($c->cliente->primer_nombre) }} {{ nombre_oracion($c->cliente->primer_apellido) }}">👤 {{ nombre_oracion($c->cliente->primer_nombre) }} {{ nombre_oracion($c->cliente->primer_apellido) }}</span>
                             @elseif($c->empresa)
                                 <span class="badge-vinculo emp" title="{{ $c->empresa->empresa }}">🏭 {{ $c->empresa->empresa }}</span>
                             @else
