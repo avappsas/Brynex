@@ -190,6 +190,31 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/eps-mora.log'));
 
+        // ── Cruces con los portales: quién está afiliado de verdad ──────────
+        // Estaban escritos pero dormidos: solo corrían cuando alguien abría la
+        // pantalla. De madrugada no estorban a nadie —ni a la mora de los lunes
+        // ni a las cajas de las 22:00— y cada uno levanta su propio Chrome.
+        //
+        // Van con el aliado 2 (Brygar), que es el único con el módulo
+        // `automatizacion_portales` activo: entrar al portal de un aliado que no
+        // lo autorizó no es cosa de la agenda. Ver [[automatizacion-portales-autorizacion]].
+        $cruces = [
+            ['eps:conciliar-nueva-eps', '01:30', 'eps-conciliar-nueva-eps'],
+            ['eps:conciliar-salud-total', '02:30', 'eps-conciliar-salud-total'],
+            ['eps:conciliar-sura', '03:30', 'eps-conciliar-sura'],
+            ['pension:conciliar', '04:30', 'pension-conciliar'],
+        ];
+
+        foreach ($cruces as [$comando, $hora, $nombre]) {
+            $schedule->command($comando)
+                ->dailyAt($hora)
+                ->timezone('America/Bogota')
+                ->name($nombre)
+                ->withoutOverlapping(180)
+                ->runInBackground()
+                ->appendOutputTo(storage_path('logs/cruces-portales.log'));
+        }
+
         // Agente del buzón de afiliaciones (seguridadsocial.brygar@gmail.com): cada
         // 30 min lee lo que llega de las entidades, aplica los radicados que
         // envían los asesores y avisa por WhatsApp. Solo lectura en Gmail.
