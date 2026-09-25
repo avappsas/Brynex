@@ -740,11 +740,18 @@ try {
         clase: (e.className || '').toString().slice(0, 50),
         deshabilitado: !!e.disabled,
       }))
-      .filter((e) => e.texto || e.aria)
-      .slice(-25)).catch(() => []);
+      .filter((e) => /^\d{1,3}$/.test(e.texto) || /pag|next|siguiente|arrow|chevron/i.test(e.clase + e.aria + e.texto)
+        || /listado|ver m[aá]s|mostrar/i.test(e.texto))
+      .slice(0, 25)).catch(() => []);
+
+    // Y cuántas filas dice tener el portal, que suele ir en un texto suelto.
+    const totales = await pagina.evaluate(() => (document.body.innerText || '')
+      .split('\n').map((l) => l.trim())
+      .filter((l) => /(\d+\s*(de|\/)\s*\d+)|registros|resultados|total/i.test(l) && l.length < 80)
+      .slice(0, 6)).catch(() => []);
 
     await cerrarSesion(pagina).catch(() => null);
-    salir({ ok: true, modo, columnas, filas, controles });
+    salir({ ok: true, modo, columnas, filas, controles, totales });
   }
 
   for (const documento of documentos) {
