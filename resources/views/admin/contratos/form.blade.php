@@ -3335,12 +3335,44 @@ function repartoSincronizar(d, tieneAsesor) {
     ipA.value = tiene ? numFmt(asesor) : (tieneAsesor ? '' : '0');
     ipE.value = numFmt(Math.max(0, costo - asesor));
     repartoAfiliacion();
+    repartoCandadoAsesor();
+}
+
+/**
+ * Sin asesor escogido, la casilla "Afiliacion Asesor" queda bloqueada en 0.
+ *
+ * Al guardar un contrato sin asesor, el backend borra afiliacion_asesor (no hay a quién
+ * pagarle) y el costo completo queda como afiliación de la empresa. Si la casilla se
+ * dejaba escribir, lo digitado desaparecía en silencio: 45.000 + 5.000 volvían como
+ * 50.000 de empresa. Si alguien ya había escrito un valor, se le devuelve a la empresa
+ * para que el total no cambie.
+ */
+function repartoCandadoAsesor() {
+    const ipA = document.getElementById('inp_afiliacion_asesor');
+    const ipE = document.getElementById('inp_afiliacion_empresa');
+    const sel = document.getElementById('sel_asesor');
+    if (!ipA || !ipE || !sel) return;
+
+    const sinAsesor = !sel.value;
+    ipA.readOnly = sinAsesor;
+    ipA.style.background = sinAsesor ? '#f1f5f9' : '';
+    ipA.style.cursor = sinAsesor ? 'not-allowed' : '';
+    ipA.title = sinAsesor ? 'Escoja primero un asesor para darle parte de la afiliación' : '';
+
+    if (sinAsesor && (repartoLeer(ipA) ?? 0) > 0) {
+        const total = (repartoLeer(ipE) ?? 0) + (repartoLeer(ipA) ?? 0);
+        ipA.value = '0';
+        ipE.value = numFmt(total);
+        repartoAfiliacion();
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     const ipA = document.getElementById('inp_afiliacion_asesor');
     const ipE = document.getElementById('inp_afiliacion_empresa');
     if (!ipA || !ipE) return;
+
+    repartoCandadoAsesor();
 
     // Al salir de la casilla se vuelve a poner el punto de miles; el vacío sigue vacío.
     [ipA, ipE].forEach(el => el.addEventListener('blur', () => {
@@ -3374,6 +3406,7 @@ function pintarAvisoTarifa(d, tieneAsesor) {
 }
 
 function onAsesorChange(sel) {
+    repartoCandadoAsesor();
     const datos = datosContrato();
 
     // Con plan y modalidad elegidos, el servidor resuelve todo el reparto (incluida la parte
