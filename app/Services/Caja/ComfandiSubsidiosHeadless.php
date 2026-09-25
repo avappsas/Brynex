@@ -127,6 +127,15 @@ class ComfandiSubsidiosHeadless
             return ['ok' => false, 'error' => $error];
         }
 
+        // Con media lista, la conciliación daría por no afiliado a quien sí está
+        // y le abriría trámite. Mejor no entregar nada.
+        if (! ($salida['completo'] ?? true)) {
+            $faltan = ($salida['declarados'] ?? 0) - count($salida['filas'] ?? []);
+
+            return ['ok' => false, 'error' => "El listado de Comfandi llegó incompleto: {$faltan} trabajador(es) de "
+                .($salida['declarados'] ?? '?').' no se pudieron leer.'];
+        }
+
         // El portal trae [Gestionar, Nombre, Documento, Ingreso, Afiliación] y
         // la conciliación espera [documento, nombre, ingreso empresa, ingreso caja].
         $salida['filas'] = collect($salida['filas'] ?? [])
