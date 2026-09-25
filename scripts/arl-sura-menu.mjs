@@ -58,6 +58,28 @@ try {
 
   const pantallaLegacy = await pagina.evaluate(() => (document.body?.innerText || '').replace(/\s+/g, ' ').slice(0, 1200)).catch(() => '');
 
+  // El menú del legacy: la home de servicios en línea, que es la que lista los
+  // trámites de la empresa (afiliación, novedades, pagos…).
+  paso = 'leer la home del legacy';
+  const menuLegacy = [];
+
+  for (const url of [
+    'https://arpsura.suramericana.com/servicios-linea/',
+    'https://arpsura.suramericana.com/servicios-linea/gestorURLWeb3.redireccionar.sl?opcion=001',
+  ]) {
+    await pagina.goto(url, { waitUntil: 'networkidle2', timeout: 60000 }).catch(() => null);
+    await esperar(2500);
+
+    const enlaces = await pagina.evaluate(() => [...document.querySelectorAll('a, [onclick]')]
+      .map((e) => ({
+        texto: (e.innerText || e.textContent || '').replace(/\s+/g, ' ').trim(),
+        destino: (e.getAttribute('href') || e.getAttribute('onclick') || '').replace(/\s+/g, ' ').slice(0, 90),
+      }))
+      .filter((e) => e.texto && e.texto.length < 70)).catch(() => []);
+
+    menuLegacy.push({ url, titulo: await pagina.title().catch(() => null), enlaces });
+  }
+
   // Y los de la Sucursal Virtual, que están dentro de shadow roots.
   paso = 'leer la sucursal virtual';
   await pagina.goto('https://sucursalempresas.suramericana.com/', { waitUntil: 'networkidle2', timeout: 60000 }).catch(() => null);
@@ -108,6 +130,7 @@ try {
     ok: true,
     url: pagina.url(),
     legacy,
+    menu_legacy: menuLegacy,
     sve,
     pantalla: pantallaLegacy,
     sve_pantalla: await pagina.evaluate(() => (document.body?.innerText || '').replace(/\s+/g, ' ').slice(0, 800)).catch(() => ''),
