@@ -7,7 +7,7 @@
  * Entrada por stdin: {tipoDocumento, usuario, contrasena, nitEmpresa}
  * Salida por stdout: {ok, url, enlaces: [{texto, destino}], pantalla, error}
  */
-import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import puppeteer from 'puppeteer-core';
@@ -128,16 +128,19 @@ try {
       salir({ ok: false, paso, error: 'El portal no entregó el archivo del estado de cuenta.', pantalla: (await texto(pagina)).replace(/\s+/g, ' ').slice(0, 600) });
     }
 
-    const datos = await readFile(join(carpeta, archivo));
-    await rm(carpeta, { recursive: true, force: true }).catch(() => null);
+    // El archivo se queda en disco y solo se devuelve su ruta: por stdout se
+    // perdía, porque la salida del proceso se corta a 64 KB y un certificado en
+    // PDF pesa más que eso.
+    const ruta = join(carpeta, archivo);
+    const { size } = await stat(ruta);
 
     // El PDF no es un fallo: cuando la empresa no debe nada, el portal emite
     // un certificado de no deuda y eso siempre sale en PDF, se pida lo que se
-    // pida. Quien llama lo comprueba leyéndolo.
+    // pida. Quien llama lo comprueba leyéndolo, y borra el archivo.
     salir({
-      ok: true, modo: 'estadoCuenta', archivo,
+      ok: true, modo: 'estadoCuenta', archivo, ruta,
       formato: /\.pdf$/i.test(archivo) ? 'pdf' : 'csv',
-      bytes: datos.length, contenido: datos.toString('base64'),
+      bytes: size,
     });
   }
 

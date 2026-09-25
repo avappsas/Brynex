@@ -56,7 +56,19 @@ class EpsSuraCarteraService
             return ['ok' => false, 'error' => $salida['error'] ?? 'El portal no respondió.', 'nit' => $nit];
         }
 
-        $archivo = base64_decode((string) ($salida['contenido'] ?? ''));
+        // El script deja el archivo en disco y manda la ruta: por la salida del
+        // proceso no cabe (se corta a 64 KB).
+        $ruta = (string) ($salida['ruta'] ?? '');
+        $archivo = is_file($ruta) ? (string) file_get_contents($ruta) : '';
+
+        if ($ruta) {
+            @unlink($ruta);
+            @rmdir(dirname($ruta));
+        }
+
+        if ($archivo === '') {
+            return ['ok' => false, 'nit' => $nit, 'error' => 'El informe llegó vacío.'];
+        }
 
         // Sin mora, SURA no manda informe: manda un certificado de no deuda, y
         // eso viene en PDF aunque se pida XLS. Se lee para confirmarlo: dar por
