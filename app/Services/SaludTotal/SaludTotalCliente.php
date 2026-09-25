@@ -8,6 +8,7 @@ use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 use RuntimeException;
 
 /**
@@ -189,7 +190,9 @@ class SaludTotalCliente
         $filas = [];
 
         foreach (array_slice($hoja, $inicio + 1) as $fila) {
-            if (! array_filter($fila, fn ($c) => trim((string) $c) !== '')) {
+            // Al final del informe vienen varias notas legales, cada una en una
+            // sola celda: sin este corte entrarían como si fueran cotizantes.
+            if (count(array_filter($fila, fn ($c) => trim((string) $c) !== '')) < 4) {
                 continue;
             }
 
@@ -197,7 +200,7 @@ class SaludTotalCliente
 
             foreach ($titulos as $c => $titulo) {
                 if ($titulo !== '') {
-                    $registro[$titulo] = Str::squish((string) ($fila[$c] ?? ''));
+                    $registro[$titulo] = self::celda($titulo, (string) ($fila[$c] ?? ''));
                 }
             }
 
@@ -222,6 +225,28 @@ class SaludTotalCliente
         }
 
         return $this->jwtReportesCartera;
+    }
+
+    /**
+     * El valor de una celda, con las fechas ya legibles.
+     *
+     * Las columnas de fecha y de período llegan como el número de días de
+     * Excel (46233 = 2026-07-07), que no le sirve a nadie tal cual.
+     */
+    private static function celda(string $titulo, string $valor): string
+    {
+        $valor = Str::squish($valor);
+        $esFecha = preg_match('/fecha|periodo/i', $titulo);
+
+        if ($esFecha && is_numeric($valor) && $valor > 20000 && $valor < 60000) {
+            try {
+                return ExcelDate::excelToDateTimeObject((float) $valor)->format('Y-m-d');
+            } catch (\Throwable $e) {
+                return $valor;
+            }
+        }
+
+        return $valor;
     }
 
     /**
