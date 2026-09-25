@@ -117,6 +117,96 @@ try {
     });
   }
 
+  // ── Los afiliados que Coosalud tiene de la empresa ──────────────────
+  if (entrada.modo === 'afiliados') {
+    paso = 'abrir la consulta';
+
+    // Las páginas no aceptan que se entre directo: hay que pasar por el
+    // redirector del portal, que es lo que hace su propio menú.
+    const destino = await pagina.evaluate(() => {
+      const m = window.ASPxMenuModulos;
+      try { return m.GetItem(0).GetItem(0).GetItem(1).GetNavigateUrl(); } catch (e) { return null; }
+    });
+
+    await pagina.goto(
+      destino || 'https://sinergia.coosalud.com/Externo/BoxaludExterno/Redireccionar?pagina=https://sinergia.coosalud.com/Externo/BoxaludExternoNS/Consulta%2fConsultaAfiliaciones.aspx',
+      { waitUntil: 'networkidle2', timeout: 60000 },
+    );
+    await esperar(3000);
+
+    paso = 'consultar';
+    // "Radicada en" viene en "Hoy" y por eso la consulta sale vacía.
+    const listo = await pagina.evaluate(() => {
+      if (window.cbFiltro2 && window.cbFiltro2.SetValue) { window.cbFiltro2.SetValue('0'); window.cbFiltro2.SetText('Todos'); }
+
+      for (const k in window) {
+        if (/buttonConsultar$/.test(k) && window[k] && window[k].DoClick) { window[k].DoClick(); return true; }
+      }
+
+      return false;
+    });
+
+    if (!listo) throw new Error('No apareció el botón Consultar de la pantalla de afiliaciones.');
+
+    // El grid responde por callback: se espera a que aparezcan filas.
+    for (let i = 0; i < 40; i++) {
+      await esperar(2000);
+      const hay = await pagina.evaluate(() => document.querySelectorAll('tr.dxgvDataRow, tr[id*=DXDataRow]').length > 0
+        || /no se encontraron resultados/i.test(document.body.innerText || '')).catch(() => false);
+      if (hay) break;
+    }
+
+    paso = 'leer el grid';
+    const leerPagina = () => pagina.evaluate(() => {
+      const tabla = document.querySelector('table[id*=gv], table.dxgvTable') || document.querySelector('table');
+      if (!tabla) return { columnas: [], filas: [] };
+
+      return {
+        columnas: [...tabla.querySelectorAll('td.dxgvHeader, th')].map((c) => (c.innerText || '').replace(/\s+/g, ' ').trim()).filter(Boolean),
+        filas: [...tabla.querySelectorAll('tr.dxgvDataRow, tr[id*=DXDataRow]')]
+          .map((f) => [...f.querySelectorAll('td')].map((c) => (c.innerText || '').replace(/\s+/g, ' ').trim()))
+          .filter((f) => f.join('').trim() !== ''),
+      };
+    });
+
+    const vistas = new Set();
+    let columnas = [];
+    const filas = [];
+
+    for (let pag = 0; pag < 80; pag++) {
+      const actual = await leerPagina();
+      if (!columnas.length) columnas = actual.columnas;
+
+      const antes = vistas.size;
+      for (const f of actual.filas) {
+        const clave = f.join('|');
+        if (!vistas.has(clave)) { vistas.add(clave); filas.push(f); }
+      }
+
+      if (vistas.size === antes) break;
+
+      // El grid de DevExpress pasa de página por su API.
+      const avanzo = await pagina.evaluate(() => {
+        for (const k in window) {
+          const g = window[k];
+          if (g && typeof g === 'object' && typeof g.NextPage === 'function' && typeof g.GetPageIndex === 'function') {
+            const antes = g.GetPageIndex();
+            g.NextPage();
+
+            return antes;
+          }
+        }
+
+        return null;
+      }).catch(() => null);
+
+      if (avanzo === null) break;
+      await esperar(2500);
+    }
+
+    salir({ ok: true, modo: 'afiliados', columnas, filas });
+  }
+
   paso = 'leer el menú';
   const enlaces = await pagina.evaluate(() => [...document.querySelectorAll('a, [onclick]')]
     .map((e) => ({
