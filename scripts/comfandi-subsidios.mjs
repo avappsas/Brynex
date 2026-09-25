@@ -83,7 +83,8 @@ const documentos = (entrada.documentos || []).map(d => String(d).replace(/\D/g, 
 const meses = Math.max(1, Math.min(12, parseInt(entrada.meses) || 4));
 
 if (!usuario || !contrasena) salir({ ok: false, error: 'Faltan usuario o contraseña.' });
-if (!documentos.length) salir({ ok: false, error: 'No llegó ninguna cédula para consultar.' });
+const modo = entrada.modo === 'listado' ? 'listado' : 'subsidios';
+if (modo === 'subsidios' && !documentos.length) salir({ ok: false, error: 'No llegó ninguna cédula para consultar.' });
 
 // Comfandi tiene Akamai delante y le contesta "Access Denied" a la IP del
 // servidor (datacenter fuera de Colombia): sin proxy colombiano el login no
@@ -676,6 +677,61 @@ try {
       return { documento, error: String(e?.message || e).slice(0, 150) };
     }
   };
+
+  // ── El listado entero de trabajadores de la empresa ──────────────────
+  // Es lo que hace falta para conciliar: quién tiene Comfandi por esta empresa,
+  // sin preguntar uno por uno.
+  if (modo === 'listado') {
+    await pagina.goto(`${BASE}/workers`, { waitUntil: 'networkidle2', timeout: 60000 }).catch(() => null);
+    await esperar(3000);
+
+    const leerPagina = () => pagina.evaluate(() => {
+      const tabla = document.querySelector('table');
+      if (!tabla) return { columnas: [], filas: [] };
+
+      return {
+        columnas: [...tabla.querySelectorAll('thead th')].map((c) => (c.innerText || '').replace(/\s+/g, ' ').trim()),
+        filas: [...tabla.querySelectorAll('tbody tr')]
+          .map((f) => [...f.querySelectorAll('td')].map((c) => (c.innerText || '').replace(/\s+/g, ' ').trim()))
+          .filter((f) => f.join('').trim() !== ''),
+      };
+    });
+
+    const vistas = new Set();
+    let columnas = [];
+    const filas = [];
+
+    for (let pag = 1; pag <= 60; pag++) {
+      const actual = await leerPagina();
+      if (!columnas.length) columnas = actual.columnas;
+
+      const antes = vistas.size;
+      for (const f of actual.filas) {
+        const clave = f.join('|');
+        if (!vistas.has(clave)) { vistas.add(clave); filas.push(f); }
+      }
+
+      // Si la página no trajo nada nuevo, el "siguiente" no avanzó: se para.
+      if (vistas.size === antes) break;
+
+      const avanzo = await pagina.evaluate(() => {
+        const b = [...document.querySelectorAll('button, a')].find((e) => {
+          const t = ((e.innerText || '') + ' ' + (e.getAttribute('aria-label') || '')).toLowerCase();
+          return /siguiente|next|›|»/.test(t) && !e.disabled && e.offsetParent !== null;
+        });
+        if (!b) return false;
+        b.click();
+
+        return true;
+      }).catch(() => false);
+
+      if (!avanzo) break;
+      await esperar(2500);
+    }
+
+    await cerrarSesion(pagina).catch(() => null);
+    salir({ ok: true, modo, columnas, filas });
+  }
 
   for (const documento of documentos) {
     const fallo = await consultar(documento);
