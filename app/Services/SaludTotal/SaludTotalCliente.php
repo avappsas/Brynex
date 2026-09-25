@@ -7,6 +7,7 @@ use GuzzleHttp\Cookie\CookieJar;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use RuntimeException;
 
 /**
@@ -95,41 +96,115 @@ class SaludTotalCliente
      * más por alguien ya retirado, y lo que se pagó por quien nunca estuvo
      * afiliado. Los dos últimos son plata de la empresa, no deuda.
      *
-     * Cuando hay registros el portal responde con la URL de un archivo; cuando
-     * no, lo dice en `Descripcion`.
+     * Van en dos pasos, como en la pantalla: primero se pregunta si hay algo
+     * (`Conulta…`, con la errata del portal) y solo si lo hay se pide el
+     * archivo. El segundo paso **necesita** `formato=Excel`: sin él la petición
+     * se queda colgada sin responder ni fallar.
      *
-     * @return array<string, array{hay:bool, url:?string, mensaje:?string}>
+     * @return array<string, array{hay:bool, mensaje:?string, filas:array}>
      */
-    public function cartera(string $periodo): array
+    public function cartera(string $periodo, bool $conFilas = true): array
     {
         $reportes = [
-            'sin_pago'              => 'ConultaCotSinPago',
-            'desafiliados_con_pago' => 'ConultaCoDesafiliadoCP',
-            'pago_sin_afiliacion'   => 'ConultaCotizanteConPagoNA',
+            'sin_pago'              => ['ConultaCotSinPago', 'CotSinPago'],
+            'desafiliados_con_pago' => ['ConultaCoDesafiliadoCP', 'CoDesafiliadoCP'],
+            'pago_sin_afiliacion'   => ['ConultaCotizanteConPagoNA', 'CotizanteConPagoNA'],
         ];
 
         $salida = [];
 
-        foreach ($reportes as $nombre => $ruta) {
-            // Las rutas van con la errata del portal ("Conulta"): así responden.
-            $r = $this->http()
-                ->withHeaders(['Authorization' => 'bearer '.$this->jwtCartera()])
-                ->get(self::BASE."/STAPI_ReportesCRInternet/api/Cotizantes/{$ruta}", [
-                    'EmpleadorId'     => $this->nit,
-                    'EmpleadorTipoId' => 'N',
-                    'Periodo'         => $periodo,
-                ]);
-
-            $j = $r->json() ?: [];
+        foreach ($reportes as $nombre => [$consulta, $descarga]) {
+            $j = $this->cartera1($consulta, $periodo) ?: [];
+            $hay = (bool) ($j['Valido'] ?? false);
 
             $salida[$nombre] = [
-                'hay'     => (bool) ($j['Valido'] ?? false),
-                'url'     => $j['Url'] ?? null,
-                'mensaje' => $j['Descripcion'] ?: ($j['Error'] ?: null),
+                'hay'     => $hay,
+                'mensaje' => ($j['Descripcion'] ?? null) ?: (($j['Error'] ?? null) ?: null),
+                'filas'   => $hay && $conFilas ? $this->carteraFilas($descarga, $periodo) : [],
             ];
         }
 
         return $salida;
+    }
+
+    /** Un paso de los reportes de cartera. */
+    private function cartera1(string $ruta, string $periodo, ?string $formato = null): ?array
+    {
+        return $this->http()
+            ->timeout(180)
+            ->withHeaders(['Authorization' => 'bearer '.$this->jwtCartera()])
+            ->get(self::BASE."/STAPI_ReportesCRInternet/api/Cotizantes/{$ruta}", array_filter([
+                'EmpleadorId'     => $this->nit,
+                'EmpleadorTipoId' => 'N',
+                'Periodo'         => $periodo,
+                'formato'         => $formato,
+            ]))
+            ->json();
+    }
+
+    /**
+     * Las filas del reporte, sacadas del Excel que el portal manda en base64.
+     *
+     * Viene en el campo `pdf` aunque sea una hoja de cálculo, y es un .xls
+     * viejo (OLE2), así que hay que escribirlo a disco para leerlo.
+     *
+     * @return array<int, array<string, string>>
+     */
+    private function carteraFilas(string $ruta, string $periodo): array
+    {
+        $j = $this->cartera1($ruta, $periodo, 'Excel');
+        $base64 = $j['pdf'] ?? null;
+
+        if (! is_string($base64) || $base64 === '') {
+            return [];
+        }
+
+        $archivo = tempnam(sys_get_temp_dir(), 'st_cartera_').'.xls';
+        file_put_contents($archivo, base64_decode($base64));
+
+        try {
+            $hoja = IOFactory::load($archivo)->getActiveSheet()->toArray(null, true, false, false);
+        } catch (\Throwable $e) {
+            return [];
+        } finally {
+            @unlink($archivo);
+        }
+
+        // La primera fila con varias celdas llenas son los títulos; lo de
+        // arriba es el encabezado del informe.
+        $inicio = null;
+
+        foreach ($hoja as $i => $fila) {
+            if (count(array_filter($fila, fn ($c) => trim((string) $c) !== '')) >= 3) {
+                $inicio = $i;
+                break;
+            }
+        }
+
+        if ($inicio === null) {
+            return [];
+        }
+
+        $titulos = array_map(fn ($c) => Str::squish((string) $c), $hoja[$inicio]);
+        $filas = [];
+
+        foreach (array_slice($hoja, $inicio + 1) as $fila) {
+            if (! array_filter($fila, fn ($c) => trim((string) $c) !== '')) {
+                continue;
+            }
+
+            $registro = [];
+
+            foreach ($titulos as $c => $titulo) {
+                if ($titulo !== '') {
+                    $registro[$titulo] = Str::squish((string) ($fila[$c] ?? ''));
+                }
+            }
+
+            $filas[] = $registro;
+        }
+
+        return $filas;
     }
 
     private function jwtCartera(): string
