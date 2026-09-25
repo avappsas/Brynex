@@ -283,7 +283,7 @@ try {
   // El portal la calcula solo: el reporte trae la mora ANTERIOR a la fecha que
   // se le pide, así que pidiéndolo con el primer día del mes en curso queda
   // fuera el mes que todavía se puede pagar sin estar en mora.
-  if (modo === 'mora') {
+  if (modo === 'mora' || modo === 'cotizantes') {
     const fechaCorte = String(entrada.fechaCorte || '').match(/^\d{4}-\d{2}-\d{2}$/)
       ? entrada.fechaCorte
       : `${new Date().toISOString().slice(0, 7)}-01`;
@@ -304,7 +304,8 @@ try {
     }
 
     paso = 'pedir el reporte';
-    const crudo = await pagina.evaluate(async (fecha) => {
+    const filtro = modo === 'cotizantes' ? 'todos' : 'mora';
+    const crudo = await pagina.evaluate(async (fecha, filtro) => {
       const marco = [...document.querySelectorAll('iframe')].find((x) => x.src.includes('estadoCuentaIndividual'));
       const partes = marco.src.split('/');
       const node = partes.pop();
@@ -317,7 +318,7 @@ try {
       const pedido = await w.fetch(`/report_portal/v1/api/saveReportRequest?${q}`, {
         method: 'POST', headers: json,
         body: JSON.stringify({
-          parameter: JSON.stringify({ fechaInicial: fecha, filter: 'mora' }),
+          parameter: JSON.stringify({ fechaInicial: fecha, filter: filtro }),
           classType: 'estadoCuentaIndividualService', method: 'generarReporte',
         }),
       });
@@ -345,7 +346,7 @@ try {
       if (!r.ok) return { error: `El reporte respondió ${r.status}.` };
       const j = await r.json();
       return { data: j.data || [], total: j.pagination?.totalDesserts ?? null };
-    }, fechaCorte);
+    }, fechaCorte, filtro);
 
     if (crudo.error) throw new Error(crudo.error);
 
@@ -367,7 +368,7 @@ try {
         })),
     }));
 
-    salir({ ok: true, modo, nit: String(nitEmpresa), fecha_corte: fechaCorte, filas: crudo.total, trabajadores });
+    salir({ ok: true, modo, filtro, nit: String(nitEmpresa), fecha_corte: fechaCorte, filas: crudo.total, trabajadores });
   }
 
   // ── Reingresos y Retiros (SPA) ──

@@ -135,6 +135,22 @@ class NuevaEpsPortalService
     }
 
     /**
+     * Todos los cotizantes que Nueva EPS tiene de esa empresa, con la fecha de
+     * retiro que ella registró.
+     *
+     * Es el mismo informe de la mora, pero sin filtrarlo: sirve para conciliar
+     * retiros, que es cazar el problema antes —un retiro que no le llegó a la
+     * EPS se cobra mes a mes hasta que alguien lo note—.
+     */
+    public static function cotizantes(string $nit, ?string $fechaCorte = null): array
+    {
+        return self::ejecutar($nit, [
+            'modo'       => 'cotizantes',
+            'fechaCorte' => $fechaCorte ?: now()->startOfMonth()->toDateString(),
+        ], self::TIMEOUT_MORA_SEGUNDOS);
+    }
+
+    /**
      * Con qué IP sale el servidor hacia Nueva EPS y si el portal deja entrar.
      * No usa claves del portal: sirve para probar el proxy.
      */
