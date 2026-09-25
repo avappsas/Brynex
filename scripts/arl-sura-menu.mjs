@@ -47,6 +47,46 @@ try {
   await iniciarSesion(pagina, entrada);
   await esperar(2500);
 
+  // Las pantallas de cartera del legacy. La SVE las abre en pestaña nueva, pero
+  // sus URLs están en su menú (sessionStorage 'menu-dynamic-persistent'):
+  //   estadoCuentaIntegral.sl          Estado de Cuenta Integral
+  //   gestionNotas.cargarInconsistencias.sl   Carga de consolidado
+  //   gestionNotas.cargarVistaValidarTrab.sl  Validar trabajadores vs. ARL
+  //   renes.consulta.sl                Trabajadores con pago y sin afiliación
+  //   enriques.consulta.sl             Trabajadores afiliados y sin pago (mora)
+  //   ctSinAfiliados.busqueda.sl       Centros de trabajo sin afiliados
+  if (entrada.pantalla) {
+    paso = `abrir ${entrada.pantalla}`;
+    const base = 'https://arpsura.suramericana.com/servicios-linea/';
+
+    await pagina.goto(base + entrada.pantalla, { waitUntil: 'networkidle2', timeout: 60000 });
+    await esperar(3000);
+
+    const campos = await pagina.evaluate(() => [...document.querySelectorAll('input, select, textarea')]
+      .filter((e) => e.type !== 'hidden')
+      .map((e) => ({
+        etiqueta: e.tagName.toLowerCase(),
+        id: e.id || null,
+        nombre: e.getAttribute('name') || null,
+        tipo: e.getAttribute('type') || null,
+        valor: (e.value || '').slice(0, 30) || null,
+        opciones: e.tagName === 'SELECT' ? [...e.options].slice(0, 14).map((o) => `${o.value}=${o.text}`.slice(0, 40)) : undefined,
+      })));
+
+    const tablas = await pagina.evaluate(() => [...document.querySelectorAll('table')]
+      .map((t) => ({
+        columnas: [...t.querySelectorAll('th')].map((c) => (c.innerText || '').replace(/\s+/g, ' ').trim()).filter(Boolean),
+        filas: t.querySelectorAll('tbody tr').length,
+      }))
+      .filter((t) => t.columnas.length));
+
+    salir({
+      ok: true, pantalla: entrada.pantalla, url: pagina.url(), titulo: await pagina.title().catch(() => null),
+      campos, tablas,
+      texto: await pagina.evaluate(() => (document.body?.innerText || '').replace(/\s+/g, ' ').slice(0, 1500)).catch(() => ''),
+    });
+  }
+
   // Los enlaces del legacy, que es donde el portal tiene los trámites.
   paso = 'leer el legacy';
   const legacy = await pagina.evaluate(() => [...document.querySelectorAll('a, [onclick]')]
