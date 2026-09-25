@@ -6,6 +6,7 @@ use App\Models\RazonSocial;
 use App\Models\Tarea;
 use App\Services\ArlSura\ArlConciliacionService;
 use App\Services\ArlSura\ArlSuraApiService;
+use App\Services\ArlSura\ArlSuraMoraService;
 use App\Services\ArlSura\ArlSuraSesionService;
 use App\Services\TareaAutomaticaService;
 use Illuminate\Console\Command;
@@ -26,16 +27,18 @@ class ArlConciliar extends Command
 {
     protected $signature = 'arl:conciliar
                             {--nit= : Solo esta empresa}
+                            {--sin-mora : Solo cruza afiliados, sin revisar los que están sin pago}
+                            {--meses=3 : Cuántos meses exigibles se revisan de mora}
                             {--simular : Consulta el portal pero no crea ni cierra tareas}';
 
-    protected $description = 'Cruza los afiliados de ARL Sura con los contratos vigentes y abre las tareas que falten';
+    protected $description = 'Cruza los afiliados de ARL Sura con los contratos vigentes, revisa quién está sin pago y abre las tareas';
 
     private const PREFIJO = 'arlsura:cruce';
 
     /** Días que se le dan a una afiliación nueva para aparecer en el portal. */
     private const DIAS_DE_GRACIA = 5;
 
-    public function handle(TareaAutomaticaService $tareas): int
+    public function handle(TareaAutomaticaService $tareas, ArlSuraMoraService $mora): int
     {
         $empresas = $this->empresas();
 
@@ -114,6 +117,29 @@ class ArlConciliar extends Command
             $this->info("  {$r['en_sura']} en Sura · {$r['en_brynex']} vigentes en BryNex · "
                 .count($r['sobran']).' sobra(n) · '.count($r['faltan']).' falta(n) · '
                 .($this->option('simular') ? 'abriría ' : '')."{$nuevas} tarea(s) · {$cerradas} cerrada(s)");
+
+            if ($this->option('sin-mora')) {
+                continue;
+            }
+
+            // Y de paso, quién está afiliado pero sin pagar: es otra consulta
+            // del mismo portal y la sesión ya está abierta.
+            $m = $mora->revisar($empresa->nit, $empresa->arl_poliza, (bool) $this->option('simular'), (int) $this->option('meses'));
+
+            if (! ($m['ok'] ?? false)) {
+                $this->warn('  sin pago: '.($m['error'] ?? 'sin detalle'));
+
+                continue;
+            }
+
+            $porCausa = collect($m['detalle'] ?? [])
+                ->filter(fn ($d) => isset($d['causa']))
+                ->countBy('causa')
+                ->map(fn ($n, $causa) => "{$causa}: {$n}")
+                ->implode(' · ');
+
+            $this->info('  sin pago: '.($this->option('simular') ? 'abriría ' : '').$m['nuevas'].' tarea(s) · '
+                .$m['cerradas'].' cerrada(s)'.($porCausa ? "  [{$porCausa}]" : '  ninguno'));
         }
 
         return $fallos && $fallos === $empresas->count() ? self::FAILURE : self::SUCCESS;
