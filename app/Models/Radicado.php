@@ -43,6 +43,7 @@ class Radicado extends BaseModel
         'coosalud' => 'Coosalud',
         'emssanar' => 'Emssanar',
         'asmet_salud' => 'Asmet Salud',
+        'eps_sos' => 'S.O.S.',
         'ruaf' => 'RUAF',
     ];
 

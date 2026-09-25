@@ -1001,6 +1001,11 @@ Route::middleware('auth')->group(function () {
             Route::get('/{contrato}/sos/lado-b', [$sosc, 'ladoB'])->name('sos.lado-b');
             Route::post('/{contrato}/sos/credencial', [$sosc, 'credencial'])->name('sos.credencial');
             Route::post('/{contrato}/sos/aplicar', [$sosc, 'aplicar'])->name('sos.aplicar');
+            // Conciliación de radicados de S.O.S.: la extensión pide a quién consultar y
+            // devuelve lo que leyó del portal en la sesión que abrió la persona.
+            Route::get('/sos/conciliar/pendientes', [$sosc, 'porConsultar'])->name('sos.conciliar.pendientes');
+            Route::post('/sos/conciliar', [$sosc, 'conciliar'])->name('sos.conciliar');
+            Route::get('/sos/conciliar/estado', [$sosc, 'estadoConciliacion'])->name('sos.conciliar.estado');
             // Plan B: afiliación por correo al asesor de S.O.S. (portal rechaza o independientes).
             Route::get('/{contrato}/sos/correo', [$sosc, 'correoPreparar'])->name('sos.correo');
             Route::post('/{contrato}/sos/correo/documento', [$sosc, 'correoDocumento'])->name('sos.correo.documento')->middleware('permiso:documentos.subir');

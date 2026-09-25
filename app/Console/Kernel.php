@@ -190,6 +190,19 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/eps-mora.log'));
 
+        // S.O.S. no se puede revisar de noche: su login pide reCAPTCHA y hace
+        // falta una persona. En vez de dejar los radicados sin confirmar, el
+        // lunes por la mañana se pide por WhatsApp que alguien entre, y la
+        // revisión (Afiliaciones → Conciliar EPS → S.O.S.) cierra el pedido.
+        // Avisa una sola vez por pedido: insistir es como se deja de leer.
+        $schedule->command('portales:pedir-revision --entidad=sos')
+            ->weeklyOn(1, '08:00')
+            ->timezone('America/Bogota')
+            ->name('portales-pedir-revision-sos')
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/portales-peticiones.log'));
+
         // ── Cruces con los portales: quién está afiliado de verdad ──────────
         // Estaban escritos pero dormidos: solo corrían cuando alguien abría la
         // pantalla. De madrugada no estorban a nadie —ni a la mora de los lunes

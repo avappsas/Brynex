@@ -1068,13 +1068,16 @@ function sortClass($col, $currSort, $currDir) {
             </div>
         </div>
 
-        <div style="display:flex;gap:0.4rem;margin-bottom:0.7rem;">
+        {{-- Con ocho entidades ya no caben en una línea del modal. --}}
+        <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.7rem;">
             <button type="button" class="ceps-tab" data-entidad="sura" onclick="elegirEntidadConciliacion('sura')"
                 style="padding:0.3rem 0.8rem;border-radius:7px;border:1px solid #0033a0;font-size:0.78rem;font-weight:700;cursor:pointer;">EPS SURA</button>
             <button type="button" class="ceps-tab" data-entidad="nueva_eps" onclick="elegirEntidadConciliacion('nueva_eps')"
                 style="padding:0.3rem 0.8rem;border-radius:7px;border:1px solid #be123c;font-size:0.78rem;font-weight:700;cursor:pointer;">Nueva EPS</button>
             <button type="button" class="ceps-tab" data-entidad="salud_total" onclick="elegirEntidadConciliacion('salud_total')"
                 style="padding:0.3rem 0.8rem;border-radius:7px;border:1px solid #15803d;font-size:0.78rem;font-weight:700;cursor:pointer;">Salud Total</button>
+            <button type="button" class="ceps-tab" data-entidad="sos" onclick="elegirEntidadConciliacion('sos')"
+                style="padding:0.3rem 0.8rem;border-radius:7px;border:1px solid #b45309;font-size:0.78rem;font-weight:700;cursor:pointer;">S.O.S.</button>
             <button type="button" class="ceps-tab" data-entidad="sanitas" onclick="elegirEntidadConciliacion('sanitas')"
                 style="padding:0.3rem 0.8rem;border-radius:7px;border:1px solid #0e7490;font-size:0.78rem;font-weight:700;cursor:pointer;">Sanitas</button>
             <button type="button" class="ceps-tab" data-entidad="caja_comfenalco" onclick="elegirEntidadConciliacion('caja_comfenalco')"
@@ -1103,6 +1106,18 @@ function sortClass($col, $currSort, $currDir) {
             con <strong>inconsistencias</strong> queda en error con el motivo. Si no hay novedad pero ya está activo con la empresa, también pasa a OK.
             Los que faltan se tramitan desde el radicado (🏥 Novedad Salud Total).
             <br>Tarda unos segundos por empresa.
+        </div>
+
+        <div id="ceps-descripcion-sos" style="display:none;font-size:0.78rem;color:#475569;line-height:1.45;margin-bottom:0.8rem;">
+            Busca en <strong>Novedades → Consultas y Envío/Firma</strong> de S.O.S., con la sesión abierta en este navegador
+            (extensión BryNex Portales), solo a la gente que tiene el radicado de EPS <strong>abierto</strong>:
+            <strong>Aprobado</strong> pasa a <strong>OK</strong>; lo que sigue en trámite queda con su número;
+            lo que S.O.S. <strong>devolvió</strong> queda en error <strong>y abre una tarea con el motivo del portal</strong>
+            —es el hallazgo que nadie ve, porque una devolución no avisa y la persona se queda sin EPS—.
+            A quien no tenga ninguna novedad se le marca que falta radicarla.
+            <br><strong>Escoge la empresa</strong>: el portal solo muestra las novedades de la que tiene la sesión abierta.
+            <div id="ceps-sos-peticion" style="display:none;margin-top:0.5rem;background:#fffbeb;border:1px solid #fcd34d;border-radius:7px;padding:0.4rem 0.6rem;color:#92400e;"></div>
+            <div id="ceps-sos-sesion" style="margin-top:0.45rem;"></div>
         </div>
 
         <div id="ceps-descripcion-sanitas" style="display:none;font-size:0.78rem;color:#475569;line-height:1.45;margin-bottom:0.8rem;">
@@ -2659,7 +2674,7 @@ const CEPS_ACCIONES = {
     revisar:  ['👀 Revisar', '#e0e7ff', '#3730a3'],
     error:    ['❌ Error', '#fee2e2', '#991b1b'],
 };
-const CEPS_NOMBRES = { sura: 'EPS SURA', nueva_eps: 'Nueva EPS', salud_total: 'Salud Total', sanitas: 'Sanitas', caja_comfenalco: 'Caja Comfenalco Valle', caja_comfandi: 'Caja Comfandi', pension: 'el RUAF' };
+const CEPS_NOMBRES = { sura: 'EPS SURA', nueva_eps: 'Nueva EPS', salud_total: 'Salud Total', sos: 'S.O.S.', sanitas: 'Sanitas', caja_comfenalco: 'Caja Comfenalco Valle', caja_comfandi: 'Caja Comfandi', pension: 'el RUAF' };
 let _cepsTimer = null;
 let _cepsCorria = false;
 let _cepsEntidad = 'sura';
@@ -2674,7 +2689,7 @@ function elegirEntidadConciliacion(entidad) {
     _cepsCorria = false;
     document.querySelectorAll('.ceps-tab').forEach(b => {
         const activo = b.dataset.entidad === entidad;
-        b.style.background = activo ? ({ sura: '#0033a0', nueva_eps: '#be123c', salud_total: '#15803d', sanitas: '#0e7490', caja_comfenalco: '#047857', caja_comfandi: '#1e3a8a', pension: '#7c3aed' }[entidad] || '#334155') : '#fff';
+        b.style.background = activo ? ({ sura: '#0033a0', nueva_eps: '#be123c', salud_total: '#15803d', sos: '#b45309', sanitas: '#0e7490', caja_comfenalco: '#047857', caja_comfandi: '#1e3a8a', pension: '#7c3aed' }[entidad] || '#334155') : '#fff';
         const t = document.getElementById('ceps-titulo');
         if (t) t.textContent = entidad === 'pension'
             ? '🏦 Conciliar radicados de pensión con el RUAF'
@@ -2700,6 +2715,7 @@ function elegirEntidadConciliacion(entidad) {
 }
 
 async function iniciarConciliacionEpsSura(simular) {
+    if (_cepsEntidad === 'sos') return conciliarSos(simular);
     if (_cepsEntidad === 'sanitas') return conciliarSanitas(simular);
     if (_cepsEntidad === 'caja_comfenalco') return conciliarCajaComfenalco(simular);
     if (_cepsEntidad === 'caja_comfandi') return conciliarCajaComfandi(simular);
@@ -2724,10 +2740,12 @@ async function consultarConciliacionEpsSura() {
     clearTimeout(_cepsTimer);
     let data;
     try {
+        if (_cepsEntidad === 'sos') revisarSesionSosConciliacion();
         if (_cepsEntidad === 'sanitas') revisarSesionSanitas();
         if (_cepsEntidad === 'caja_comfenalco') revisarSesionCajaConciliacion();
         if (_cepsEntidad === 'caja_comfandi') revisarSesionComfandiConciliacion().then(s => { if (s) revisarSubsidiosSiFalta(); });
-        const url = _cepsEntidad === 'sanitas' ? SANITAS_URL_ESTADO
+        const url = _cepsEntidad === 'sos' ? SOSC_URL_ESTADO
+            : _cepsEntidad === 'sanitas' ? SANITAS_URL_ESTADO
             : (_cepsEntidad === 'caja_comfenalco' ? CAJA_URL_ESTADO
                 : (_cepsEntidad === 'caja_comfandi' ? COMFANDI_URL_ESTADO : CEPS_URL_ESTADO + '?entidad=' + _cepsEntidad));
         data = await (await fetch(url, { headers: { 'Accept': 'application/json' } })).json();
@@ -2735,6 +2753,7 @@ async function consultarConciliacionEpsSura() {
         return;
     }
     pintarConciliacionEpsSura(data);
+    pintarPeticionSos(data.peticion);
 
     const abierto = document.getElementById('modalConciliacionEps').classList.contains('open');
     if (data.corriendo && abierto) {
@@ -2989,6 +3008,97 @@ function cambiarRazonConciliacion() {
     aviso.innerHTML = r
         ? `Se validará <strong>${r.nombre}</strong> (NIT ${r.nit}). BryNex comprueba que sea la abierta en el portal.`
         : 'Escoge con cuál empresa vas a conciliar: BryNex comprueba que la sesión abierta en el portal sea esa.';
+}
+
+// ── S.O.S.: conciliación con la extensión BryNex Portales ──
+// El login de S.O.S. pide reCAPTCHA, así que la sesión la abre la persona en
+// este navegador y la extensión consulta dentro de ella. `sosnExt` es el mismo
+// puente del modal de novedad (partial _novedad_sos).
+const SOSC_URL_PENDIENTES = @json(route('admin.afiliaciones.sos.conciliar.pendientes'));
+const SOSC_URL_CONCILIAR = @json(route('admin.afiliaciones.sos.conciliar'));
+const SOSC_URL_ESTADO = @json(route('admin.afiliaciones.sos.conciliar.estado'));
+
+/**
+ * S.O.S. no dice el NIT de la empresa en sesión, solo su nombre, así que se
+ * comparan los nombres sin la forma jurídica. Conciliar con la empresa
+ * equivocada marcaría "falta radicar" a gente que sí está afiliada en otra.
+ */
+function coincideEmpresaSos(empresaDelPortal) {
+    const r = razonConciliacion();
+    if (!r) return false;
+    const limpio = t => String(t || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/\b(SOCIEDAD POR ACCIONES SIMPLIFICADA|S\.?A\.?S\.?|SAS|LTDA|S\.?A\.?)\b/g, '').replace(/[^A-Z0-9]/g, '');
+    const mio = limpio(r.nombre), suyo = limpio(empresaDelPortal);
+    if (!suyo || mio === suyo || mio.includes(suyo) || suyo.includes(mio)) return true;
+    return confirm(`Escogiste ${r.nombre} pero en S.O.S. está abierta ${empresaDelPortal}.\n\n`
+        + 'Se conciliaría con la sesión que está abierta. ¿Sigues igual?');
+}
+
+/** El aviso de que S.O.S. está esperando a que alguien entre. */
+function pintarPeticionSos(peticion) {
+    const caja = document.getElementById('ceps-sos-peticion');
+    if (!caja) return;
+    const muestra = _cepsEntidad === 'sos' && peticion;
+    caja.style.display = muestra ? 'block' : 'none';
+    if (!muestra) return;
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    caja.innerHTML = `📣 <strong>S.O.S. está esperando desde el ${esc(peticion.desde)}:</strong> ${esc(peticion.motivo)}.`
+        + ' Esta revisión cierra el pedido.';
+}
+
+async function revisarSesionSosConciliacion() {
+    const caja = document.getElementById('ceps-sos-sesion');
+    if (!caja) return null;
+    const e = await sosnExt('estado', {}, 25);
+    const abrir = `<button type="button" onclick="sosnExt('abrir').then(() => revisarSesionSosConciliacion())" class="btn-export" style="background:#b45309;cursor:pointer;margin-left:0.4rem;">🌐 Abrir S.O.S.</button>`;
+    if (e.sinExtension) { caja.innerHTML = '🧩 Instala o recarga la extensión BryNex Portales (1.18.0) y recarga esta página.'; return null; }
+    if (!e.abierta || !e.sesion) { caja.innerHTML = '🔐 Abre S.O.S. en otra pestaña e inicia sesión con el usuario de la empresa (el captcha lo resuelves tú).' + abrir; return null; }
+    caja.innerHTML = `✅ S.O.S. abierto${e.empresa ? ' con <strong>' + e.empresa + '</strong>' : ''}.` + abrir;
+    return e;
+}
+
+async function conciliarSos(simular) {
+    const estado = document.getElementById('ceps-estado');
+    const razon = razonConciliacion();
+    if (!razon) { alert('Escoge primero la razón social: S.O.S. solo muestra las novedades de la empresa que tenga la sesión abierta.'); return; }
+
+    const sesion = await revisarSesionSosConciliacion();
+    if (!sesion) { alert('Primero inicia sesión en S.O.S. en otra pestaña de este navegador.'); return; }
+    if (!coincideEmpresaSos(sesion.empresa)) { return; }
+    if (!simular && !confirm(`Se consultará en S.O.S. a la gente de ${razon.nombre} con radicado abierto y se actualizarán sus radicados. ¿Continuar?`)) return;
+
+    document.getElementById('ceps-acciones').style.display = 'none';
+    estado.style.display = 'block';
+    estado.innerHTML = '⏳ Preguntando a BryNex a quién hay que consultar...';
+    try {
+        const pend = await (await fetch(SOSC_URL_PENDIENTES + '?nit=' + encodeURIComponent(razon.nit), { headers: { 'Accept': 'application/json' } })).json();
+        const documentos = pend.documentos || [];
+        if (!documentos.length) { estado.innerHTML = `✅ ${razon.nombre} no tiene radicados de S.O.S. abiertos: nada que conciliar.`; return; }
+
+        estado.innerHTML = `⏳ Consultando ${documentos.length} cédula(s) en S.O.S. (unos segundos cada una)...`;
+        const rep = await sosnExt('consultas', { documentos, desde: pend.desde, hasta: pend.hasta }, 60 + 40 * documentos.length);
+        if (!rep.ok) throw new Error(rep.error || 'No se pudo consultar el portal.');
+
+        estado.innerHTML = `⏳ Cruzando ${rep.consultados} respuesta(s) de S.O.S. con BryNex...`;
+        const res = await fetch(SOSC_URL_CONCILIAR, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
+            body: JSON.stringify({ nit: razon.nit, resultados: rep.resultados, simular }),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.mensaje || 'No se pudo conciliar.');
+
+        pintarConciliacionEpsSura(data);
+        const fallaron = Object.keys(rep.fallos || {}).length;
+        estado.innerHTML = `${simular ? '<strong>(solo consulta)</strong> ' : ''}${razon.nombre}: ${data.total} radicado(s) revisados`
+            + (data.tareas ? ` · ${data.tareas} tarea(s) por devolución de S.O.S.` : '')
+            + (fallaron ? ` · ⚠️ ${fallaron} cédula(s) sin respuesta del portal` : '') + '.';
+        if (!simular && data.cerrados > 0) mostrarToast(`${data.cerrados} radicados de S.O.S. pasaron a OK. Recarga para verlos.`, 'success');
+    } catch (err) {
+        estado.innerHTML = '❌ ' + err.message;
+    } finally {
+        document.getElementById('ceps-acciones').style.display = 'flex';
+    }
 }
 
 // ── Caja Comfandi: conciliación con la extensión BryNex Portales ──

@@ -19,6 +19,12 @@ inicia sesión como siempre.
 
 ## Uso
 
+**Conciliar radicados de S.O.S.:** Afiliaciones → **🩺 Conciliar EPS** → pestaña
+**S.O.S.** → escoge la empresa, **Abrir S.O.S.**, inicia sesión ahí (con captcha) y
+vuelve a BryNex. La extensión busca en el portal solo a la gente con radicado
+abierto y BryNex pone cada radicado como lo dejó S.O.S.; las **devueltas** abren
+una tarea con el motivo que dio el portal.
+
 Afiliaciones → radicado de EPS de un contrato con S.O.S. → **🏥 Novedad S.O.S.**
 Con Sanitas → **🏥 Radicar Sanitas**: abre el formulario de novedades, la extensión lo
 llena y adjunta el formulario, la persona pulsa Enviar y BryNex guarda el radicado.

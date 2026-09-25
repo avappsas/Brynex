@@ -13,6 +13,7 @@
  *  estado                          → {abierta, sesion, usuario, empresa}
  *  abrir                           → abre (o enfoca) la pestaña del login
  *  consultar  {tipo, documento, desde, hasta}                 (DD/MM/AAAA)
+ *  consultas  {tipo, documentos:[{tipo,numero}], desde, hasta} → {resultados, fallos} (conciliación)
  *  certificado {tipo, documento, desde, hasta}                → {pdf: base64}
  *  registrar  {tipoId, documento, ibc, fecha, arl, afp, guardar}
  *  adjuntar   {tipo, documento, desde, hasta, archivo}        (URL de BryNex)
@@ -113,6 +114,7 @@ async function atender({ portal, accion, datos = {} }, origen) {
 
   switch (accion) {
     case 'consultar':   return { ok: true, empresa: estado.empresa, filas: await sosConsultar(pestana.id, datos) };
+    case 'consultas':   return { empresa: estado.empresa, ...(await sosConsultas(pestana.id, datos)) };
     case 'certificado': return sosCertificado(pestana.id, datos);
     case 'registrar':   return sosRegistrar(pestana.id, datos);
     case 'adjuntar':    return sosAdjuntar(pestana.id, datos, origen);
@@ -300,9 +302,41 @@ async function irA(tabId, submenu) {
   if (!pagina.includes(destino)) throw new Error(`No se pudo abrir ${destino} en S.O.S.`);
 }
 
-async function sosConsultar(tabId, { tipo = 'CC', documento, desde, hasta }) {
+async function sosConsultar(tabId, datos) {
+  await irA(tabId, 'consultas');
+  return sosBuscar(tabId, datos);
+}
+
+/**
+ * Las novedades de varias cédulas, para la conciliación de radicados.
+ *
+ * Entra una sola vez a la pantalla y repite la búsqueda: el menú de S.O.S. es
+ * JSF y volver a él por cada persona costaba más que la consulta misma. Una
+ * cédula que falle no tumba las demás — se devuelve en `fallos`, porque media
+ * conciliación es mejor que ninguna y la que falló se vuelve a pedir después.
+ */
+async function sosConsultas(tabId, { tipo = 'CC', documentos = [], desde, hasta }) {
   await irA(tabId, 'consultas');
 
+  const resultados = {};
+  const fallos = {};
+
+  for (const d of documentos) {
+    const numero = String(d?.numero ?? d ?? '').replace(/\D/g, '');
+    if (!numero || resultados[numero] || fallos[numero]) continue;
+
+    try {
+      resultados[numero] = await sosBuscar(tabId, { tipo: d?.tipo || tipo, documento: numero, desde, hasta });
+    } catch (e) {
+      fallos[numero] = String(e?.message || e).slice(0, 200);
+    }
+  }
+
+  return { ok: true, consultados: Object.keys(resultados).length, resultados, fallos };
+}
+
+/** Busca una cédula en la pantalla de consultas, que ya tiene que estar abierta. */
+async function sosBuscar(tabId, { tipo = 'CC', documento, desde, hasta }) {
   await ejecutar(tabId, (tipo, doc, desde, hasta) => {
     const s = document.getElementById('formGeneral:idTipoIdentificacion');
     const op = [...s.options].find(o => o.text.trim() === tipo);
