@@ -315,7 +315,24 @@ try {
       const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
       const json = { 'Content-Type': 'application/json' };
 
-      const pedido = await w.fetch(`/report_portal/v1/api/saveReportRequest?${q}`, {
+      // El portal corta conexiones de vez en cuando ("Failed to fetch") y eso
+      // dejaba la empresa entera sin revisar. Se reintenta antes de rendirse.
+      const pedir = async (url, opciones) => {
+        let ultimo = null;
+
+        for (let intento = 1; intento <= 3; intento++) {
+          try {
+            return await w.fetch(url, opciones);
+          } catch (e) {
+            ultimo = e;
+            await dormir(3000 * intento);
+          }
+        }
+
+        throw ultimo;
+      };
+
+      const pedido = await pedir(`/report_portal/v1/api/saveReportRequest?${q}`, {
         method: 'POST', headers: json,
         body: JSON.stringify({
           parameter: JSON.stringify({ fechaInicial: fecha, filter: filtro }),
@@ -328,7 +345,8 @@ try {
       let estado = null;
       for (let i = 0; i < 36; i++) {
         await dormir(5000);
-        const r = await w.fetch(`/report_portal/v1/api/lastReportRequestByUser/estadoCuentaIndividualService?${q}`);
+        const r = await pedir(`/report_portal/v1/api/lastReportRequestByUser/estadoCuentaIndividualService?${q}`).catch(() => null);
+        if (!r) continue;
         if (!r.ok) continue;
         estado = (await r.json().catch(() => null))?.state || null;
         if (estado === 'PROCESADO') break;
@@ -336,7 +354,7 @@ try {
       if (estado !== 'PROCESADO') return { error: `El reporte no quedó listo (estado: ${estado || 'sin respuesta'}).` };
 
       // La pantalla lo pagina de 10 en 10; aquí se pide entero.
-      const r = await w.fetch(`/report_portal/v1/api/empleador/reporteEstadoCuentaIndividual?${q}`, {
+      const r = await pedir(`/report_portal/v1/api/empleador/reporteEstadoCuentaIndividual?${q}`, {
         method: 'POST', headers: json,
         body: JSON.stringify({
           page: 1, itemsPerPage: 2000, sortBy: [], sortDesc: [false], groupBy: [], groupDesc: [],
