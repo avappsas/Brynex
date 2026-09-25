@@ -151,8 +151,18 @@ const elegirCombo = async (pagina, opcion, cual = 0) => {
 
   if (yaEsta) return true;
 
-  const combos = await pagina.$$('input[role=combobox]');
-  const combo = combos[cual];
+  // El portal pinta los filtros por su cuenta después de cargar la pantalla, y
+  // mirarlos una sola vez descarta al trabajador por llegar medio segundo antes
+  // (dos así el 24-sep-2026). Se espera a que aparezcan.
+  let combos = [];
+  let combo = null;
+
+  for (let espera = 0; espera < 6 && !combo; espera++) {
+    if (espera > 0) await esperar(1500);
+
+    combos = await pagina.$$('input[role=combobox]');
+    combo = combos[cual] || null;
+  }
 
   if (!combo) {
     ultimoComboVisto = `no hay combo #${cual} en la página (${combos.length} en total)`;
