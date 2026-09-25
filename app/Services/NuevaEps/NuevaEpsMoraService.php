@@ -146,14 +146,14 @@ class NuevaEpsMoraService
                 ? [
                     'causa' => 'planilla_pagada',
                     'tarea' => "Enviar a Nueva EPS el soporte de pago: cobra mora de {$meses} ({$plata}) y esa planilla ya está pagada.",
-                    'observacion' => "Nueva EPS reporta mora de {$meses} por {$plata}. En BryNex la planilla {$aqui->numero_planilla} se pagó el "
-                        .$pago.'. Enviar el soporte para que retiren el cobro.',
+                    'observacion' => "Nueva EPS reporta mora de {$meses} por {$plata}. En BryNex ".CruceAportes::etiquetaPlanilla($aqui->numero_planilla)
+                        ." se pagó el {$pago}. Enviar el soporte para que retiren el cobro.",
                 ]
                 : [
                     'causa' => 'planilla_sin_pago',
-                    'tarea' => "Confirmar el pago de la planilla {$aqui->numero_planilla}: Nueva EPS cobra mora de {$meses} ({$plata}).",
-                    'observacion' => "Nueva EPS reporta mora de {$meses} por {$plata}. La planilla {$aqui->numero_planilla} está en BryNex pero sin pago registrado: "
-                        .'confirmar si se pagó y enviar el soporte, o pagarla.',
+                    'tarea' => 'Confirmar el pago de '.CruceAportes::etiquetaPlanilla($aqui->numero_planilla).": Nueva EPS cobra mora de {$meses} ({$plata}).",
+                    'observacion' => "Nueva EPS reporta mora de {$meses} por {$plata}. Está en BryNex ".CruceAportes::etiquetaPlanilla($aqui->numero_planilla)
+                        .', pero sin pago registrado: confirmar si se pagó y enviar el soporte, o pagarla.',
                 ]);
         }
 

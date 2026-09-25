@@ -87,6 +87,19 @@ class CruceAportes
         return Carbon::createFromDate((int) $anio, (int) $mes, 1)->locale('es')->isoFormat('MMMM [de] YYYY');
     }
 
+    /**
+     * Cómo nombrar una planilla en una tarea.
+     *
+     * No todos los planos tienen número —los viejos y los que aún no se
+     * liquidan—, y "la planilla :" no le dice nada a quien lee la tarea.
+     */
+    public static function etiquetaPlanilla(?string $numero): string
+    {
+        return trim((string) $numero) !== ''
+            ? "la planilla {$numero}"
+            : 'la planilla de ese mes (en BryNex está sin número)';
+    }
+
     /** $12.345 */
     public static function plata(int|float $valor): string
     {
