@@ -355,8 +355,12 @@
                         $maskedG   = $primera->contrasena && ! $sinPermG
                             ? str_repeat('•', min(strlen($primera->contrasena), 8)) . ' 👁'
                             : '—';
-                        // Si alguna fila trae otra clave, es que quedaron desfasadas.
-                        $distintas = $grupo->pluck('contrasena')->map(fn ($x) => trim((string) $x))->unique()->count() > 1;
+                        // Que a una fila le falte la clave no es lo mismo que tener dos
+                        // claves distintas, y avisar de un conflicto que no existe hace
+                        // dudar de una clave que está bien.
+                        $conClaveG  = $grupo->map(fn ($x) => trim((string) $x->contrasena))->filter();
+                        $distintas  = $conClaveG->unique()->count() > 1;
+                        $sinClaveG  = $grupo->filter(fn ($x) => trim((string) $x->contrasena) === '')->count();
                     @endphp
                     <tr style="border-bottom:1px solid #fde68a;background:#fffbeb;">
                         <td>
@@ -391,6 +395,10 @@
                             </button>
                             @if($distintas)
                                 <span style="margin-left:.5rem;color:#b91c1c;font-weight:700;">⚠️ tienen claves distintas — al guardar aquí se unifican</span>
+                            @elseif($sinClaveG)
+                                <span style="margin-left:.5rem;color:#b45309;font-weight:700;">
+                                    {{ $sinClaveG }} sin clave — al guardar aquí se les pone esta
+                                </span>
                             @else
                                 <span style="margin-left:.5rem;">Una sola clave{{ $esSura ? ' para ARL y EPS' : '' }}: al cambiarla aquí se cambia en todas.</span>
                             @endif
