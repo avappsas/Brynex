@@ -136,7 +136,7 @@
                 ])->values();
             @endphp
 
-            <div class="cc-trabajo {{ $pagado ? 'pagado' : ($vencido ? 'vencido' : '') }}" x-data="{ abierto: {{ $pagado ? 'false' : 'true' }} }">
+            <div class="cc-trabajo {{ $pagado ? 'pagado' : ($vencido ? 'vencido' : '') }}" x-data="{ abierto: false }">
 
                 <div class="cc-trabajo-head" @click="abierto = !abierto">
                     <div class="cc-trabajo-titulo">
