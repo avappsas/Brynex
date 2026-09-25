@@ -87,6 +87,53 @@ try {
     });
   }
 
+  // Generar una de esas consultas y leer su resultado.
+  // `enriques.consulta.sl` (afiliados sin pago) y `renes.consulta.sl` (con pago
+  // y sin afiliación) comparten pantalla: mes, año, detallado/total y formato.
+  // Se pide HTML: sale en la misma página y no hay archivo que descargar.
+  if (entrada.consulta) {
+    paso = `abrir ${entrada.consulta}`;
+    await pagina.goto('https://arpsura.suramericana.com/servicios-linea/' + entrada.consulta, { waitUntil: 'networkidle2', timeout: 60000 });
+    await esperar(2000);
+
+    paso = 'generar la consulta';
+    const [anio, mes] = String(entrada.periodo || '').split('-');
+    await pagina.select('[name="pop_mes_inicial"]', mes).catch(() => null);
+    await pagina.select('[name="pop_ano_inicial"]', anio).catch(() => null);
+
+    await pagina.evaluate(() => {
+      const marcar = (valor) => {
+        const r = [...document.querySelectorAll('input[type=radio]')].find((x) => x.value === valor);
+        if (r) r.click();
+      };
+      marcar('d');    // detallado: una fila por trabajador
+      marcar('HTML'); // en pantalla
+    });
+    await esperar(800);
+
+    const navegacion = pagina.waitForNavigation({ waitUntil: 'networkidle2', timeout: 90000 }).catch(() => null);
+    await pagina.evaluate(() => {
+      const b = [...document.querySelectorAll('input[type=submit], input[type=button], button, a')]
+        .find((e) => /generar/i.test(e.value || e.innerText || ''));
+      if (b) b.click();
+    });
+    await navegacion;
+    await esperar(2500);
+
+    paso = 'leer el resultado';
+    const filas = await pagina.evaluate(() => [...document.querySelectorAll('table')]
+      .map((t) => [...t.querySelectorAll('tr')]
+        .map((f) => [...f.querySelectorAll('th, td')].map((c) => (c.innerText || '').replace(/\s+/g, ' ').trim()))
+        .filter((f) => f.some((c) => c !== '')))
+      .filter((t) => t.length > 1));
+
+    salir({
+      ok: true, consulta: entrada.consulta, periodo: entrada.periodo, url: pagina.url(),
+      tablas: filas,
+      texto: await pagina.evaluate(() => (document.body?.innerText || '').replace(/\s+/g, ' ').slice(0, 1200)).catch(() => ''),
+    });
+  }
+
   // Los enlaces del legacy, que es donde el portal tiene los trámites.
   paso = 'leer el legacy';
   const legacy = await pagina.evaluate(() => [...document.querySelectorAll('a, [onclick]')]
