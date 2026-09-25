@@ -159,19 +159,19 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/caja-conciliacion.log'));
 
-        // La mora que Nueva EPS le cobra a cada empresa, convertida en tareas.
-        // Semanal y no diaria: el reporte lo genera el portal aparte —minutos
-        // por empresa— y la mora solo cambia cuando alguien paga. Los lunes,
-        // para que la semana empiece sabiendo qué reclamar.
-        // El corte es el primer día del mes en curso: el portal devuelve la mora
-        // anterior a esa fecha, así que el mes que todavía se puede pagar no
-        // cuenta como mora.
-        // Ejecución manual: php artisan eps:revisar-mora --nit=901904750 --simular
+        // Los aportes mal cobrados en los portales de las EPS —Nueva EPS y Salud
+        // Total—, convertidos en tareas. Semanal y no diaria: los portales
+        // generan sus reportes aparte, minutos por empresa, y esto solo cambia
+        // cuando alguien paga o reclama. Los lunes, para que la semana empiece
+        // sabiendo qué hacer.
+        // Ninguna de las dos mira el mes en curso: un aporte de este mes todavía
+        // está a tiempo de pagarse y no es mora.
+        // Ejecución manual: php artisan eps:revisar-mora --eps=SALUD_TOTAL --simular
         $schedule->command('eps:revisar-mora')
             ->weeklyOn(1, '21:30')
             ->timezone('America/Bogota')
             ->name('eps-revisar-mora')
-            ->withoutOverlapping(180)
+            ->withoutOverlapping(240)
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/eps-mora.log'));
 
