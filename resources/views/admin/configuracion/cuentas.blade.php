@@ -59,7 +59,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.8rem}
 <div class="cc-header">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem">
         <div>
-            @can('configuracion.ver')
+            @can('entrar-configuracion')
             <a href="{{ route('admin.configuracion.hub') }}" style="color:#94a3b8;font-size:.78rem;text-decoration:none">← Configuración</a>
             @endcan
             <div style="font-size:1.1rem;font-weight:800;margin-top:.2rem">🏦 Cuentas Bancarias</div>

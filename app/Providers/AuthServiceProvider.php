@@ -19,6 +19,18 @@ class AuthServiceProvider extends ServiceProvider
         //
     ];
 
+    /** Permisos que abren el Centro de Configuración (ver el Gate `entrar-configuracion`). */
+    public const PERMISOS_CONFIGURACION = [
+        'configuracion.ver',
+        'cuentas_bancarias.gestionar',
+        'razones_sociales.gestionar',
+        'razones_sociales.documentos',
+        'usuarios.ver',
+        'facturacion_electronica.ver',
+        'operadores_planilla.credenciales',
+        'formularios_pdf.editar',
+    ];
+
     /**
      * Register any authentication / authorization services.
      */
@@ -64,6 +76,26 @@ class AuthServiceProvider extends ServiceProvider
             }
 
             return null;
+        });
+
+        /**
+         * Entrada al Centro de Configuración. Antes pedía `configuracion.ver`, así que a
+         * quien se le otorgaba a mano uno de los permisos que viven allá (gestionar
+         * cuentas bancarias, razones sociales…) no tenía por dónde llegar a su página.
+         * Ahora basta con uno de ellos: el hub solo le pinta las tarjetas que puede abrir.
+         *
+         * Van solo los permisos que se otorgan a mano. Los "ver" que ya trae el rol
+         * `usuario` (cuentas_bancarias.ver, razones_sociales.ver…) no cuentan: si no, a
+         * todos los trabajadores les aparecería Configuración.
+         */
+        Gate::define('entrar-configuracion', function (User $user) {
+            foreach (self::PERMISOS_CONFIGURACION as $permiso) {
+                if ($user->can($permiso)) {
+                    return true;
+                }
+            }
+
+            return false;
         });
 
         /**

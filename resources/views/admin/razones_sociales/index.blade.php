@@ -33,7 +33,7 @@
 {{-- Header --}}
 <div class="rs-header">
     <div>
-        @can('configuracion.ver')
+        @can('entrar-configuracion')
         <a href="{{ route('admin.configuracion.hub') }}" style="color:#94a3b8;font-size:.73rem;text-decoration:none">← Configuración</a>
         @endcan
         <div class="rs-h-title">🏭 Razones Sociales</div>

@@ -901,7 +901,7 @@
 
             {{-- DROPDOWN ADMIN: visible para admin y superadmin              --}}
             {{-- ───────────────────────────────────────────────────────────── --}}
-            @canany(['asesores.ver', 'usuarios.ver', 'configuracion.ver', 'bitacora.ver', 'traslados_rs.ejecutar', 'razones_sociales.gestionar', 'razones_sociales.documentos', 'cuentas_bancarias.gestionar'])
+            @canany(['asesores.ver', 'usuarios.ver', 'entrar-configuracion', 'bitacora.ver', 'traslados_rs.ejecutar', 'razones_sociales.gestionar', 'razones_sociales.documentos'])
             <div class="menu-sep"></div>
             <div class="menu-dropdown">
                 {{-- Configuración pide `configuracion.ver`: a quien no la tiene
@@ -909,9 +909,8 @@
                      botón lo mandaba a un 403. Se lleva a lo primero que sí ve. --}}
                 @php
                     $adminInicio = match (true) {
-                        auth()->user()->can('configuracion.ver') => route('admin.configuracion.hub'),
+                        auth()->user()->can('entrar-configuracion') => route('admin.configuracion.hub'),
                         auth()->user()->can('razones_sociales.documentos') => route('admin.configuracion.razones.index'),
-                        auth()->user()->can('cuentas_bancarias.gestionar') => route('admin.configuracion.cuentas'),
                         auth()->user()->can('asesores.ver') => route('admin.asesores.index'),
                         default => '#',
                     };
@@ -940,17 +939,8 @@
                         <div class="pi">🏭</div> Razones sociales
                     </a>
                     @endcanany
-                    {{-- Igual que razones sociales: la tarjeta vive en Configuración, y a
-                         quien se le da este permiso suelto no entra allá. --}}
-                    @can('cuentas_bancarias.gestionar')
-                    @cannot('configuracion.ver')
-                    <a href="{{ route('admin.configuracion.cuentas') }}" class="panel-item {{ request()->routeIs('admin.configuracion.cuentas*') ? 'activo' : '' }}">
-                        <div class="pi">🏦</div> Cuentas bancarias
-                    </a>
-                    @endcannot
-                    @endcan
 
-                    @canany(['usuarios.ver', 'configuracion.ver'])
+                    @canany(['usuarios.ver', 'entrar-configuracion'])
                     <div class="panel-sep"></div>
                     @endcanany
 
@@ -959,10 +949,14 @@
                         <div class="pi">👥</div> Usuarios
                     </a>
                     @endcan
-                    @can('configuracion.ver')
+                    {{-- Configuración se abre con cualquiera de sus permisos (Gate
+                         `entrar-configuracion`); Parámetros sigue siendo de admin. --}}
+                    @can('entrar-configuracion')
                     <a href="{{ route('admin.configuracion.hub') }}" class="panel-item {{ request()->routeIs('admin.configuracion*') ? 'activo' : '' }}">
                         <div class="pi">⚙️</div> Configuración
                     </a>
+                    @endcan
+                    @can('configuracion.ver')
                     <a href="{{ route('admin.configuracion.index') }}" class="panel-item {{ request()->routeIs('admin.configuracion.index') ? 'activo' : '' }}">
                         <div class="pi">💲</div> Parámetros / Precios
                     </a>
@@ -1198,7 +1192,7 @@
         @endcanany
 
         {{-- Sección administración --}}
-        @canany(['asesores.ver', 'usuarios.ver', 'configuracion.ver', 'bitacora.ver', 'traslados_rs.ejecutar', 'razones_sociales.gestionar', 'razones_sociales.documentos', 'cuentas_bancarias.gestionar'])
+        @canany(['asesores.ver', 'usuarios.ver', 'entrar-configuracion', 'bitacora.ver', 'traslados_rs.ejecutar', 'razones_sociales.gestionar', 'razones_sociales.documentos'])
         <div class="drawer-sep"></div>
         <div class="drawer-section">
             <div class="drawer-section-label">Administración</div>
@@ -1212,7 +1206,7 @@
                 <span class="di-icon">👥</span> Usuarios
             </a>
             @endcan
-            @can('configuracion.ver')
+            @can('entrar-configuracion')
             <a href="{{ route('admin.configuracion.hub') }}" class="drawer-item {{ request()->routeIs('admin.configuracion*') ? 'activo' : '' }}">
                 <span class="di-icon">⚙️</span> Configuración
             </a>
@@ -1227,13 +1221,6 @@
                 <span class="di-icon">🏭</span> Razones sociales
             </a>
             @endcanany
-            @can('cuentas_bancarias.gestionar')
-            @cannot('configuracion.ver')
-            <a href="{{ route('admin.configuracion.cuentas') }}" class="drawer-item {{ request()->routeIs('admin.configuracion.cuentas*') ? 'activo' : '' }}">
-                <span class="di-icon">🏦</span> Cuentas bancarias
-            </a>
-            @endcannot
-            @endcan
             @can('traslados_rs.ejecutar')
             <a href="{{ route('admin.traslados.index') }}" class="drawer-item {{ request()->routeIs('admin.traslados*') ? 'activo' : '' }}">
                 <span class="di-icon">🔄</span> Traslados RS

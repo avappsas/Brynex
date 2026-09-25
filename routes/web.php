@@ -296,8 +296,11 @@ Route::middleware('auth')->group(function () {
         // Configuración del aliado (tarifas, admon, ARL)
         // ── Configuración del aliado ──────────────────────────────────────
         // ver: admin (solo lectura) · editar: solo superadmin
+        // El hub se abre con cualquiera de los permisos que viven en él (Gate
+        // `entrar-configuracion`) y solo pinta las tarjetas que el usuario puede abrir.
+        Route::get('configuracion', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'hub'])
+            ->name('configuracion.hub')->middleware('permiso:entrar-configuracion');
         Route::middleware('permiso:configuracion.ver')->group(function () {
-            Route::get('configuracion', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'hub'])->name('configuracion.hub');
             Route::get('configuracion/parametros', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'index'])->name('configuracion.index');
         });
         Route::post('configuracion/parametros', [\App\Http\Controllers\Admin\ConfiguracionAliadoController::class, 'store'])->name('configuracion.store')->middleware('permiso:configuracion.editar');

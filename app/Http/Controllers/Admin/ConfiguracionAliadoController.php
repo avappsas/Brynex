@@ -13,9 +13,16 @@ use Illuminate\Support\Facades\Storage;
 
 class ConfiguracionAliadoController extends Controller
 {
+    /**
+     * Sin candado de rol: cada ruta de este controlador ya exige su permiso de
+     * módulo (routes/web.php). El `role:superadmin|admin` que había aquí venía de
+     * antes del control por permisos y le cerraba la puerta a quien recibía uno
+     * suelto: a Jessica Arenas (rol usuario) le dieron gestionar cuentas bancarias
+     * y aun así no entraba.
+     */
     public function __construct()
     {
-        $this->middleware(['auth', 'role:superadmin|admin']);
+        $this->middleware('auth');
     }
 
     /** Hub central de configuración */
