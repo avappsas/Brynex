@@ -901,7 +901,7 @@
 
             {{-- DROPDOWN ADMIN: visible para admin y superadmin              --}}
             {{-- ───────────────────────────────────────────────────────────── --}}
-            @canany(['asesores.ver', 'usuarios.ver', 'configuracion.ver', 'bitacora.ver', 'traslados_rs.ejecutar', 'razones_sociales.gestionar', 'razones_sociales.documentos'])
+            @canany(['asesores.ver', 'usuarios.ver', 'configuracion.ver', 'bitacora.ver', 'traslados_rs.ejecutar', 'razones_sociales.gestionar', 'razones_sociales.documentos', 'cuentas_bancarias.gestionar'])
             <div class="menu-sep"></div>
             <div class="menu-dropdown">
                 {{-- Configuración pide `configuracion.ver`: a quien no la tiene
@@ -911,6 +911,7 @@
                     $adminInicio = match (true) {
                         auth()->user()->can('configuracion.ver') => route('admin.configuracion.hub'),
                         auth()->user()->can('razones_sociales.documentos') => route('admin.configuracion.razones.index'),
+                        auth()->user()->can('cuentas_bancarias.gestionar') => route('admin.configuracion.cuentas'),
                         auth()->user()->can('asesores.ver') => route('admin.asesores.index'),
                         default => '#',
                     };
@@ -939,6 +940,15 @@
                         <div class="pi">🏭</div> Razones sociales
                     </a>
                     @endcanany
+                    {{-- Igual que razones sociales: la tarjeta vive en Configuración, y a
+                         quien se le da este permiso suelto no entra allá. --}}
+                    @can('cuentas_bancarias.gestionar')
+                    @cannot('configuracion.ver')
+                    <a href="{{ route('admin.configuracion.cuentas') }}" class="panel-item {{ request()->routeIs('admin.configuracion.cuentas*') ? 'activo' : '' }}">
+                        <div class="pi">🏦</div> Cuentas bancarias
+                    </a>
+                    @endcannot
+                    @endcan
 
                     @canany(['usuarios.ver', 'configuracion.ver'])
                     <div class="panel-sep"></div>
@@ -1188,7 +1198,7 @@
         @endcanany
 
         {{-- Sección administración --}}
-        @canany(['asesores.ver', 'usuarios.ver', 'configuracion.ver', 'bitacora.ver', 'traslados_rs.ejecutar', 'razones_sociales.gestionar', 'razones_sociales.documentos'])
+        @canany(['asesores.ver', 'usuarios.ver', 'configuracion.ver', 'bitacora.ver', 'traslados_rs.ejecutar', 'razones_sociales.gestionar', 'razones_sociales.documentos', 'cuentas_bancarias.gestionar'])
         <div class="drawer-sep"></div>
         <div class="drawer-section">
             <div class="drawer-section-label">Administración</div>
@@ -1217,6 +1227,13 @@
                 <span class="di-icon">🏭</span> Razones sociales
             </a>
             @endcanany
+            @can('cuentas_bancarias.gestionar')
+            @cannot('configuracion.ver')
+            <a href="{{ route('admin.configuracion.cuentas') }}" class="drawer-item {{ request()->routeIs('admin.configuracion.cuentas*') ? 'activo' : '' }}">
+                <span class="di-icon">🏦</span> Cuentas bancarias
+            </a>
+            @endcannot
+            @endcan
             @can('traslados_rs.ejecutar')
             <a href="{{ route('admin.traslados.index') }}" class="drawer-item {{ request()->routeIs('admin.traslados*') ? 'activo' : '' }}">
                 <span class="di-icon">🔄</span> Traslados RS
