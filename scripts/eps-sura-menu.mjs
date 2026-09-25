@@ -21,8 +21,16 @@ const leerStdin = async () => {
 
 const entrada = JSON.parse((await leerStdin()) || '{}');
 
+// rutaChrome() da candidatos, no una ruta: el del Mac y los del servidor.
+const ejecutable = await (async () => {
+  const { access } = await import('node:fs/promises');
+  for (const r of rutaChrome()) { try { await access(r); return r; } catch {} }
+  return null;
+})();
+if (!ejecutable) salir({ ok: false, error: 'No se encontró Chrome. Define CHROME_PATH.' });
+
 const navegador = await puppeteer.launch({
-  executablePath: await rutaChrome(),
+  executablePath: ejecutable,
   headless: 'new',
   args: ['--no-sandbox', '--disable-dev-shm-usage', '--window-size=1400,900'],
 });
