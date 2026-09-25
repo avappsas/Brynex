@@ -203,6 +203,8 @@ class Kernel extends ConsoleKernel
             ['eps:conciliar-salud-total', '02:30', 'eps-conciliar-salud-total'],
             ['eps:conciliar-sura', '03:30', 'eps-conciliar-sura'],
             ['pension:conciliar', '04:30', 'pension-conciliar'],
+            // ARL va de última: es la que más gente mueve y la que más tarda.
+            ['arl:conciliar', '05:30', 'arl-conciliar'],
         ];
 
         foreach ($cruces as [$comando, $hora, $nombre]) {
