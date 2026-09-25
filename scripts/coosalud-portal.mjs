@@ -68,8 +68,17 @@ try {
   const sigueEnLogin = /ingreso al sistema/i.test(texto) && await pagina.$(campo('textPassword'));
 
   if (sigueEnLogin) {
-    const motivo = (texto.match(/[^.]*(incorrect|inv[aá]lid|bloquead|no existe|errad|intente)[^.]*\.?/i) || [])[0];
-    salir({ ok: false, paso: 'login', url: pagina.url(), error: (motivo || 'El portal no pasó del ingreso.').trim().slice(0, 220) });
+    const motivo = (texto.match(/[^.]*(incorrect|inv[aá]lid|bloquead|no existe|errad|intente|captcha|verifi)[^.]*\.?/i) || [])[0];
+
+    // Sin la pantalla no se distingue una clave mala de un botón que no llegó a
+    // pulsarse, y son arreglos opuestos.
+    salir({
+      ok: false, paso: 'login', url: pagina.url(),
+      error: (motivo || 'El portal no pasó del ingreso.').trim().slice(0, 220),
+      pantalla: texto.slice(0, 900),
+      avisos: await pagina.evaluate(() => [...document.querySelectorAll('[class*=error], [class*=Error], [id*=error], [class*=alert]')]
+        .map((e) => (e.innerText || '').replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, 5)).catch(() => []),
+    });
   }
 
   paso = 'leer el menú';
