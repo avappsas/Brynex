@@ -326,9 +326,39 @@ Va en tres fases: precarga (3 consultas), consulta a Dataico (~20 min sin tocar
 la BD, porque el túnel SSH se cae en corridas largas) y escritura en tandas.
 Con `--cache` guarda lo traído y un recruce tarda segundos.
 
+### Anular un recibo con FE: nota crédito (sep-2026)
+
+Una FE aceptada por la DIAN **no se borra**: se anula con una nota crédito que
+la referencia. Antes, anular el recibo dejaba viva la FE y al re-facturar salía
+otra por la misma plata (FE2314/FE2326 y FE2321/FE2327); se corrigieron con NC1
+y NC2 el 25-sep-2026.
+
+- `FacturacionController::anular` busca la FE vigente del recibo
+  (`NotaCreditoService::feVigente`). Si la hay, pide confirmación (409 con
+  `campo_confirmacion: confirmar_fe`), emite la nota **antes** de anular y, si
+  Dataico o la DIAN la rechazan, **no anula**. Anular una sola fila de un lote
+  con FE se bloquea: la FE cubre el recibo completo.
+- `restaurar` se niega si la FE ya se anuló con nota: el recibo quedaría cobrado
+  sin factura y el envío automático no lo reemite.
+- Numeración NC creada en el portal (prefijo NC, desde 1, sin resolución DIAN).
+  El consecutivo lo lleva Brynex en `dataico_configuraciones.nc_ultimo_numero`.
+- Cuerpo: `credit_note` con `invoice_id` (uuid de la FE), `reason: ANULACION`,
+  `numbering {prefix, flexible}`, los mismos `items` de la FE (salen de
+  `dataico_envios.payload`) y `issue_date` en `d/m/Y H:i:s`; `actions` en la raíz.
+  Queda la notificación CBF02 «no se informó el número de la factura
+  referenciada» aunque se mande `invoice_number`: es aviso, no rechazo.
+- Rastro en `dataico_notas_credito` (índice único por `dataico_envio_id`).
+
+```bash
+php artisan dataico:nota-credito 13809 --motivo="…" --sin-correo --simular
+```
+El comando es para recibos que ya se anularon sin nota; se niega si el recibo
+sigue vigente (para eso está el botón Anular).
+
 ### Piezas
 
 ```
+app/Services/Dataico/NotaCreditoService.php       ← nota crédito (anulación) de una FE
 app/Services/Dataico/SeleccionFacturasService.php  ← qué se emite y a nombre de quién
 app/Services/Dataico/PayloadBuilder.php            ← el JSON; único archivo que
                                                      conoce el contrato de Dataico

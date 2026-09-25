@@ -24,6 +24,7 @@ class DataicoNotaCredito extends Command
         {--aliado=2 : aliado dueño del recibo}
         {--motivo= : motivo que queda en la nota}
         {--usuario=2 : a quién se le atribuye}
+        {--sin-correo : no le envía la nota al correo del cliente}
         {--simular : muestra el JSON sin enviar nada}';
 
     protected $description = 'Emite la nota crédito (anulación) de la FE de un recibo ya anulado';
@@ -50,7 +51,7 @@ class DataicoNotaCredito extends Command
         $motivo = trim((string) $this->option('motivo')) ?: "Anulación del recibo {$numero}";
         $this->line("Recibo #{$numero} → {$envio->dataico_numero} · {$envio->cliente_nombre} · $".number_format((float) $envio->base_admon, 0, ',', '.'));
 
-        $r = $servicio->anular($envio, $motivo, (int) $this->option('usuario'), (bool) $this->option('simular'));
+        $r = $servicio->anular($envio, $motivo, (int) $this->option('usuario'), (bool) $this->option('simular'), ! $this->option('sin-correo'));
 
         if ($r['payload']) {
             $this->line(json_encode($r['payload'], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));

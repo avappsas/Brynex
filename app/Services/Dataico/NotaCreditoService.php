@@ -54,7 +54,7 @@ class NotaCreditoService
     /**
      * @return array{ok: bool, mensaje: string, nota: ?DataicoNotaCredito, payload: ?array}
      */
-    public function anular(DataicoEnvio $envio, string $motivo, ?int $usuarioId = null, bool $simular = false): array
+    public function anular(DataicoEnvio $envio, string $motivo, ?int $usuarioId = null, bool $simular = false, bool $enviarCorreo = true): array
     {
         if (! $envio->fueEnviado() || blank($envio->dataico_uuid)) {
             return $this->falla('La factura electrónica no figura como emitida: no hay nada que anular.');
@@ -71,7 +71,7 @@ class NotaCreditoService
         }
 
         $consecutivo = (int) ($cfg->nc_ultimo_numero ?? 0) + 1;
-        $payload = $this->construir($cfg, $envio, $items, $motivo, $consecutivo);
+        $payload = $this->construir($cfg, $envio, $items, $motivo, $consecutivo, $enviarCorreo);
 
         if ($simular) {
             return ['ok' => true, 'mensaje' => 'Simulación: no se envió nada.', 'nota' => null, 'payload' => $payload];
@@ -89,7 +89,7 @@ class NotaCreditoService
         // Dataico dice cuál es. Pasa si alguien hizo una nota por el portal.
         if (! $respuesta['ok'] && $esperado = $this->consecutivoEsperado($respuesta['error'] ?? '')) {
             $consecutivo = $esperado;
-            $payload = $this->construir($cfg, $envio, $items, $motivo, $consecutivo);
+            $payload = $this->construir($cfg, $envio, $items, $motivo, $consecutivo, $enviarCorreo);
             $respuesta = $cliente->crearNotaCredito($payload);
         }
 
@@ -119,7 +119,7 @@ class NotaCreditoService
             'dataico_uuid' => $this->buscar($body, ['uuid', 'id']),
             'cude' => $this->buscar($body, ['cude', 'cufe']),
             'payload' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT),
-            'respuesta' => mb_substr($respuesta['raw'], 0, 8000),
+            'respuesta' => $this->respuestaGuardable($respuesta),
             'error_mensaje' => null,
             'enviado_at' => now(),
         ])->save();
@@ -141,12 +141,14 @@ class NotaCreditoService
 
     // ─── Piezas ──────────────────────────────────────────────────────────
 
-    private function construir(DataicoConfiguracion $cfg, DataicoEnvio $envio, array $items, string $motivo, int $consecutivo): array
+    private function construir(DataicoConfiguracion $cfg, DataicoEnvio $envio, array $items, string $motivo, int $consecutivo, bool $enviarCorreo): array
     {
         $original = json_decode((string) $envio->payload, true) ?: [];
         $accionesFe = $original['actions'] ?? [];
 
-        $actions = ['send_dian' => true, 'send_email' => (bool) ($accionesFe['send_email'] ?? false)];
+        // El correo va a donde fue la FE, salvo que se pida no avisarle al cliente
+        // (una nota que corrige un error interno, como un recibo duplicado).
+        $actions = ['send_dian' => true, 'send_email' => $enviarCorreo && (bool) ($accionesFe['send_email'] ?? false)];
         if ($actions['send_email'] && filled($accionesFe['email'] ?? null)) {
             $actions['email'] = $accionesFe['email'];
         }
@@ -156,6 +158,9 @@ class NotaCreditoService
                 'env' => $cfg->env ?: 'PRODUCCION',
                 'dataico_account_id' => $cfg->dataico_account_id,
                 'invoice_id' => $envio->dataico_uuid,
+                // Con solo el uuid la DIAN la acepta, pero deja la notificación
+                // CBF02 «No se informó el número de la factura referenciada» (NC1).
+                'invoice_number' => $envio->dataico_numero,
                 'issue_date' => now()->format('d/m/Y H:i:s'),
                 'reason' => self::RAZON_ANULACION,
                 'number' => (string) $consecutivo,
@@ -280,6 +285,23 @@ class NotaCreditoService
         }
 
         return null;
+    }
+
+    /**
+     * La respuesta trae el XML firmado en base64 (decenas de KB): cortada a 8000
+     * caracteres quedaba un JSON inválido. Se guarda sin él; el XML y el PDF se
+     * bajan de `xml_url` / `pdf_url`, que sí quedan.
+     */
+    private function respuestaGuardable(array $respuesta): string
+    {
+        $body = $respuesta['body'] ?? null;
+        if (! is_array($body)) {
+            return mb_substr((string) $respuesta['raw'], 0, 8000);
+        }
+
+        unset($body['xml'], $body['credit_note']['xml']);
+
+        return mb_substr(json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 0, 8000);
     }
 
     private function falla(string $mensaje, ?DataicoNotaCredito $nota = null): array

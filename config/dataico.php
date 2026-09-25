@@ -14,6 +14,7 @@ return [
     'endpoints' => [
         'crear_factura' => '/direct/dataico_api/v2/invoices',
         'consultar_factura' => '/direct/dataico_api/v2/invoices',
+        'crear_nota_credito' => '/direct/dataico_api/v2/credit_notes',
     ],
 
     // Segundos. El API tarda porque valida contra la DIAN en línea.
