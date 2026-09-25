@@ -217,6 +217,7 @@ $hayParaf = $filas->sum(fn ($x) => (int) ($x->v_parafiscales ?? 0)) > 0;
 @php
 $cli  = $f->contrato?->cliente;
 $nom  = trim(($cli?->primer_nombre ?? '').' '.($cli?->primer_apellido ?? ''));
+$nom = nombre_oracion($nom);
 $rsG  = $f->contrato?->razonSocial?->razon_social ?? $f->razonSocial?->razon_social ?? null;
 $enEpsG = $f->contrato?->eps?->nombre ?? '—';
 $enArlNomG = null;
@@ -476,6 +477,7 @@ if (!$cli1 && $factura->tipo === 'otro_ingreso') {
         ->where('cedula', $factura->cedula)->first();
 }
 $nom1     = trim(($cli1?->primer_nombre ?? '').' '.($cli1?->segundo_nombre ?? '').' '.($cli1?->primer_apellido ?? '').' '.($cli1?->segundo_apellido ?? ''));
+$nom1 = nombre_oracion($nom1);
 $rs1      = $factura->contrato?->razonSocial?->razon_social ?? $factura->razonSocial?->razon_social ?? null;
 $arlNom   = $factura->contrato?->arl?->nombre_arl;
 if (!$arlNom) {

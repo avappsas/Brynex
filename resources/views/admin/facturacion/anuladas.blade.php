@@ -95,7 +95,7 @@ $fmt = fn($v) => '$'.number_format($v ?? 0, 0, ',', '.');
 @foreach($facturas as $f)
 @php
 $cli  = $f->contrato?->cliente;
-$nom  = trim(($cli?->primer_nombre ?? '').' '.($cli?->primer_apellido ?? '')) ?: 'CC '.$f->cedula;
+$nom  = nombre_oracion(trim(($cli?->primer_nombre ?? '').' '.($cli?->primer_apellido ?? ''))) ?: 'CC '.$f->cedula;
 $rs   = $f->razonSocial?->razon_social ?? $f->contrato?->razonSocial?->razon_social ?? '—';
 $per  = ($meses[$f->mes - 1] ?? '?').' '.$f->anio;
 $anulador = \App\Models\User::find($f->anulado_por);

@@ -222,7 +222,9 @@ body{display:flex;flex-direction:column}
     @foreach($contratos as $c)
     @php
         $nombre = trim(collect([$c->cliente?->primer_nombre,$c->cliente?->primer_apellido])->filter()->implode(' '));
+        $nombre = nombre_oracion($nombre);
         $nombreCompleto = trim(collect([$c->cliente?->primer_nombre,$c->cliente?->segundo_nombre,$c->cliente?->primer_apellido,$c->cliente?->segundo_apellido])->filter()->implode(' '));
+        $nombreCompleto = nombre_oracion($nombreCompleto);
         $empresa = $c->cliente?->empresa?->empresa ?? '—';
         // Última factura display
         $uf = $c->ultima_factura;

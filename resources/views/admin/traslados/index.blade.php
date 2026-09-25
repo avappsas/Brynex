@@ -501,7 +501,7 @@ function renderTablaContratos(contratos) {
         <tr>
             <td class="check-col"><input type="checkbox" class="chk-contrato" value="${c.contrato_id}" data-cedula="${c.cedula}" checked onchange="actualizarContador()"></td>
             <td style="font-family:monospace;font-size:.75rem">${c.cedula}</td>
-            <td style="font-weight:600;color:#1e293b">${c.nombre_completo || '—'}</td>
+            <td style="font-weight:600;color:#1e293b">${nombreOracion(c.nombre_completo) || '—'}</td>
             <td style="font-size:.73rem;color:#475569">${c.rs_nombre || '—'}</td>
             <td><span class="badge badge-blue">${c.plan_nombre || '—'}</span></td>
             <td style="font-size:.72rem">${c.modalidad_nombre || '—'}</td>

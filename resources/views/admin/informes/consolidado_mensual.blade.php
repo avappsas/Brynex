@@ -866,7 +866,7 @@
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td style="font-weight: 700; color: #475569;">${p.cedula}</td>
-                <td style="font-weight: 600; color: #1e293b;">${p.nombre_completo}</td>
+                <td style="font-weight: 600; color: #1e293b;">${nombreOracion(p.nombre_completo)}</td>
                 <td>
                     <div style="font-weight: 700; color: #1e293b; font-size: 0.78rem;">${p.modalidad || '—'}</div>
                     <div style="color: #0f766e; font-size: 0.72rem; font-weight: 600;">${p.plan || '—'}</div>

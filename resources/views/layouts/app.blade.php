@@ -1287,6 +1287,13 @@
     </main>
 
     <script>
+        // Nombre de persona en tipo oración ("EDUARDO ALFONZO" → "Eduardo Alfonzo"),
+        // el mismo criterio que nombre_oracion() en app/helpers.php.
+        function nombreOracion(v) {
+            return String(v ?? '').trim().toLocaleLowerCase('es')
+                .replace(/(^|[\s\-'])(\p{L})/gu, (m, sep, l) => sep + l.toLocaleUpperCase('es'));
+        }
+
         // ── Dropdown de usuario ────────────────────────────────────────
         function toggleUserDropdown() {
             const dd = document.getElementById('userDropdown');

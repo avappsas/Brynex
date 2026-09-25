@@ -14,6 +14,7 @@ $seguro   = $contrato?->seguroPlan;
 
 $nombre = trim(($cliente->primer_nombre ?? '').' '.($cliente->segundo_nombre ?? '')
               .' '.($cliente->primer_apellido ?? '').' '.($cliente->segundo_apellido ?? ''));
+$nombre = nombre_oracion($nombre);
 $nombre = $nombre ?: ('C.C. '.$factura->cedula);
 
 $aliadoObj  = \App\Models\Aliado::find($factura->aliado_id);

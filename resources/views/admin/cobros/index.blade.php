@@ -620,6 +620,7 @@ $sortClassC = function ($col, $cs, $cd) {
 @foreach($contratos as $c)
 @php
 $nombre     = trim(($c->cliente?->primer_nombre ?? '') . ' ' . ($c->cliente?->primer_apellido ?? ''));
+$nombre = nombre_oracion($nombre);
 $rs         = $c->razonSocial?->razon_social ?? '—';
 $celular    = $c->cliente?->celular ?? '—';
 $fIng       = $c->fecha_ingreso?->format('d/m/Y') ?? '—';
@@ -1362,7 +1363,7 @@ function ccRenderizar() {
     const headerHtml = `
     <div class="cc-doc-header">
         <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:.3rem;">
-            <div class="cc-doc-nombre">${d.nombre}</div>
+            <div class="cc-doc-nombre">${nombreOracion(d.nombre)}</div>
             <div style="font-size:.82rem;color:#6ee7b7;font-weight:600;white-space:nowrap;">CC ${d.cedula}</div>
         </div>
         <div class="cc-doc-periodo" style="margin-top:.25rem;">📅 Cuenta de Cobro · ${periodoLabel}</div>
@@ -1790,7 +1791,7 @@ async function abrirInformeLote(loteId) {
                     style="font-size:.7rem;color:#2563eb;text-decoration:none;" title="Ir al chat">💬</a>`
                 : '';
             html += `<tr style="border-bottom:1px solid #f1f5f9;">
-                <td style="padding:.38rem .5rem;">${d.nombre}</td>
+                <td style="padding:.38rem .5rem;">${nombreOracion(d.nombre)}</td>
                 <td style="padding:.38rem .5rem;color:#64748b;">${d.wa_numero || '<span style="color:#94a3b8">Sin número</span>'}</td>
                 <td style="padding:.38rem .5rem;text-align:right;">${d.valor_cobro || '—'}</td>
                 <td style="padding:.38rem .5rem;text-align:center;">${waEstadoIcon(d.estado)}${errTxt}</td>

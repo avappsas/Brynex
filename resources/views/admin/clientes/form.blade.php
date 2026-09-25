@@ -75,6 +75,7 @@
                         $cliente->primer_apellido ?? null,
                         $cliente->segundo_apellido ?? null,
                     ])->filter()->implode(' ');
+                    $nombreCompleto = nombre_oracion($nombreCompleto);
                 @endphp
                 <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;flex-wrap:wrap;">
                     <div style="display:flex;align-items:center;gap:0.5rem;flex-shrink:0;">

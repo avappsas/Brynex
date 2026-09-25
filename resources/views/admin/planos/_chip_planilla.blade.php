@@ -23,6 +23,7 @@
     // El nombre solo cuando el pago ES de esa persona: en una planilla de
     // empresa el número cubre a todo el mundo y poner un nombre engañaría.
     $nombreChip = ($esIndependiente ?? false) ? ($p->nombre_completo ?? '') : '';
+    $nombreChip = nombre_oracion($nombreChip);
 @endphp
 <span class="chip-planilla {{ $claseChip }}" data-num="{{ $p->numero_planilla }}"
       onclick="abrirAccionesPlanilla({{ Illuminate\Support\Js::from($p->numero_planilla) }}, {{ $puedeCorregirChip ? (int) $gastoChip->valor : 0 }}, {{ $puedeCorregirChip ? (int) $gastoChip->id : 'null' }}, {{ Illuminate\Support\Js::from($nombreChip) }}, {{ Illuminate\Support\Js::from(trim($detalleChip)) }})"

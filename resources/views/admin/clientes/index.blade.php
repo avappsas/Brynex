@@ -580,6 +580,7 @@
                         ($c->primer_apellido ?? '') . ' ' .
                         ($c->segundo_apellido ?? '')
                     ) ?: '—';
+                    $nombre = nombre_oracion($nombre);
                 @endphp
                 <tr class="cl-tr">
                     {{-- Nombre + cédula + WA --}}

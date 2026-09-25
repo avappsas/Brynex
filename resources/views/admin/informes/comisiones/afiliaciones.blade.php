@@ -313,6 +313,7 @@
                         </td>
                         @php
                             $nombreCli = trim($f->nombre_cliente);
+                            $nombreCli = nombre_oracion($nombreCli);
                             $docCli    = ($f->tipo_doc ?? 'CC') . ' ' . $f->cedula;
                         @endphp
                         <td class="col-cliente">

@@ -1055,7 +1055,7 @@ function verDetalle(id){
             const cl  = data.cliente;
 
             // Header
-            const nombre = cl ? `${cl.primer_nombre||''} ${cl.primer_apellido||''}`.trim() : inc.cedula_usuario;
+            const nombre = cl ? nombreOracion(`${cl.primer_nombre||''} ${cl.primer_apellido||''}`) : inc.cedula_usuario;
             document.getElementById('detalleTitle').textContent = `🏥 Incapacidad #${inc.id} — ${nombre}`;
             document.getElementById('detalleSubtitle').innerHTML =
                 `Cédula: ${inc.cedula_usuario} ${data.empresa?`· Empresa: ${data.empresa}`:''} ` +
@@ -3348,7 +3348,7 @@ function buscarCliente(val){
                     return `<div onclick="seleccionarCliente('${c.cedula}','${nom}','${emp}', ${c.eps_id || 'null'}, ${c.pension_id || 'null'})"
                          style="padding:.45rem .75rem;cursor:pointer;font-size:.82rem;border-bottom:1px solid #f1f5f9"
                          onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
-                        <strong>${c.cedula}</strong> \u2014 ${c.primer_nombre||''} ${c.primer_apellido||''}
+                        <strong>${c.cedula}</strong> \u2014 ${nombreOracion((c.primer_nombre||'')+' '+(c.primer_apellido||''))}
                         ${c.empresa_nombre?`<span style="color:#64748b;font-size:.75rem"> \u00b7 ${c.empresa_nombre}</span>`:''}
                     </div>`;
                 }).join('');

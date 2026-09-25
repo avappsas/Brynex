@@ -30,6 +30,7 @@
         $pagadorTipo = 'Empresa';
     } else {
         $pagadorNombre = $anticipo->contrato?->cliente?->nombre_completo ?? '—';
+        $pagadorNombre = nombre_oracion($pagadorNombre);
         $pagadorDocumento = $anticipo->contrato?->cedula ?? $anticipo->cedula ?? '—';
         $pagadorDireccion = $anticipo->contrato?->cliente?->direccion_vivienda ?? $anticipo->contrato?->cliente?->direccion_cobro ?? '—';
         $pagadorTelefono = $anticipo->contrato?->cliente?->celular ?? $anticipo->contrato?->cliente?->telefono ?? '—';

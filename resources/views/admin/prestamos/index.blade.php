@@ -206,6 +206,7 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
             ($f->contrato?->cliente?->primer_nombre ?? '') . ' ' .
             ($f->contrato?->cliente?->primer_apellido ?? '')
         );
+        $nombre = nombre_oracion($nombre);
         $sem = $f->semaforo;
         $semTip = match($sem) {
             'verde'    => 'Gestionado recientemente',
@@ -389,7 +390,7 @@ $meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
                     {{ $p->tipo === 'empresa' ? '🏢 Empresa' : '👤 Individual' }}
                 </span>
             </td>
-            <td style="font-weight:700;color:#1e3a5f;" data-v="{{ $p->nombre }}">{{ $p->nombre }}</td>
+            <td style="font-weight:700;color:#1e3a5f;" data-v="{{ $p->nombre }}">{{ $p->tipo === 'empresa' ? $p->nombre : nombre_oracion($p->nombre) }}</td>
             <td style="font-family:monospace;color:#64748b;font-size:.78rem;" data-v="{{ $p->detalle }}">{{ $p->detalle }}</td>
             <td style="font-size:.75rem;color:#64748b;" data-v="{{ $p->asesor ?? '' }}">{{ $p->asesor ?? '—' }}</td>
             <td data-v="{{ (int)$p->anio * 100 + (int)$p->mes }}">

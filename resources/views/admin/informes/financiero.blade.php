@@ -451,6 +451,7 @@ $fmt=fn($v)=>'$ '.number_format($v,0,',','.');
                             @foreach($canal5Incapacidades as $inc)
                                 @php
                                     $nombreCompleto = $inc->nombre_cliente;
+                                    $nombreCompleto = nombre_oracion($nombreCompleto);
                                     if (empty($nombreCompleto)) {
                                         $nombreCompleto = "C.C. {$inc->cedula_usuario}";
                                     }
@@ -1918,7 +1919,7 @@ function verMovimientosBanco(bancoId, label) {
                     const bg      = i%2===0?'#fff':'#f9fef9';
                     const fechaStr= fmtFechaLargo(e.fecha);
                     const horaStr = fmtHora(e.created_at);
-                    const nombre  = (e.nombre_cliente||'').trim()||'—';
+                    const nombre  = nombreOracion(e.nombre_cliente)||'—';
                     const icon    = (e.empresa_id&&e.empresa_id>0)?'🏢':'👤';
                     const refTxt  = e.referencia?'<span style="font-size:.74rem;color:#475569;">'+e.referencia+'</span>':'<span style="color:#cbd5e1;">—</span>';
                     const factTxt = e.numero_factura?'<span style="background:#dbeafe;color:#1e40af;border-radius:5px;padding:.1rem .35rem;font-size:.7rem;font-weight:700;">#'+e.numero_factura+'</span>':'<span style="color:#94a3b8;">—</span>';
@@ -2255,7 +2256,7 @@ function verMovimientosEfectivo() {
                     html += `<div style="display:grid;grid-template-columns:90px 70px 1fr 130px 100px 110px;gap:.3rem;padding:.4rem .75rem;border-bottom:1px solid #f1f5f9;font-size:.76rem;align-items:center;">
                         <span style="color:#64748b;">${e.fecha || '—'}</span>
                         <span style="font-weight:700;color:#475569;font-family:monospace;">#${e.numero_factura || '—'}</span>
-                        <span style="color:#1e293b;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${e.nombre_cliente}">${e.nombre_cliente || '—'}</span>
+                        <span style="color:#1e293b;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${e.nombre_cliente}">${nombreOracion(e.nombre_cliente) || '—'}</span>
                         <span style="font-size:.68rem;color:#7c3aed;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${e.usuario_nombre}">👤 ${e.usuario_nombre || '—'}</span>
                         <span style="text-align:right;font-size:.68rem;color:#64748b;">${fp}</span>
                         <span style="text-align:right;font-weight:800;color:#16a34a;font-family:monospace;">${fmtN(e.valor)}</span>
@@ -2280,7 +2281,7 @@ function verMovimientosEfectivo() {
                     const estadoBadge = a.estado === 'disponible' ? '🟢' : a.estado === 'parcial' ? '🟡' : '📋';
                     html += `<div style="display:grid;grid-template-columns:90px 1fr 120px 110px 110px;gap:.3rem;padding:.4rem .75rem;border-bottom:1px solid #fef3c7;font-size:.76rem;align-items:center;">
                         <span style="color:#64748b;">${a.fecha || '—'}</span>
-                        <span style="color:#1e293b;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${a.nombre_cliente}">${estadoBadge} ${a.nombre_cliente || '—'}</span>
+                        <span style="color:#1e293b;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${a.nombre_cliente}">${estadoBadge} ${nombreOracion(a.nombre_cliente) || '—'}</span>
                         <span style="font-size:.68rem;color:#7c3aed;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">👤 ${a.usuario_nombre || '—'}</span>
                         <span style="text-align:right;font-size:.68rem;color:#64748b;">${formaIcon}</span>
                         <span style="text-align:right;font-weight:800;color:#d97706;font-family:monospace;">${fmtN(a.valor)}</span>
@@ -2524,7 +2525,7 @@ function auditarPlanilla(numPlanilla, descripcion) {
                     <div style="display:grid;grid-template-columns:30px 1fr 60px 70px 70px 70px 70px 80px;gap:.3rem;padding:.42rem .75rem;background:${bg};font-size:.73rem;border-bottom:1px solid #f1f5f9;align-items:center;">
                         <span style="color:#94a3b8;font-size:.65rem;">${i+1}</span>
                         <div>
-                            <div style="font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;" title="${p.nombre_completo}">${tipoIcon} ${p.nombre_completo || p.no_identifi}</div>
+                            <div style="font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;" title="${p.nombre_completo}">${tipoIcon} ${nombreOracion(p.nombre_completo) || p.no_identifi}</div>
                             <div style="font-size:.65rem;color:#94a3b8;">${p.no_identifi}${p.numero_factura ? ' · Fact. #'+p.numero_factura : ''}</div>
                         </div>
                         <span style="text-align:right;color:#64748b;">${p.num_dias ?? '—'}</span>

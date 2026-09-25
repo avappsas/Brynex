@@ -992,7 +992,7 @@ function buscarCliente(val) {
                 if (!data.length) { list.style.display='none'; return; }
                 list.innerHTML = data.map(c =>
                     `<div class="autocomplete-item" onclick="seleccionarCliente('${c.cedula}','${c.primer_nombre} ${c.segundo_nombre??''} ${c.primer_apellido} ${c.segundo_apellido??''}')">
-                        <strong>${c.cedula}</strong> — ${c.primer_nombre} ${c.primer_apellido}
+                        <strong>${c.cedula}</strong> — ${nombreOracion(c.primer_nombre+' '+c.primer_apellido)}
                     </div>`
                 ).join('');
                 list.style.display = 'block';
@@ -1042,7 +1042,7 @@ function buscarClienteEdicion(val) {
                 if (!data.length) { list.style.display='none'; return; }
                 list.innerHTML = data.map(c =>
                     `<div class="autocomplete-item" onclick="seleccionarClienteEdicion('${c.cedula}','${c.primer_nombre} ${c.segundo_nombre??''} ${c.primer_apellido} ${c.segundo_apellido??''}')">
-                        <strong>${c.cedula}</strong> — ${c.primer_nombre} ${c.primer_apellido}
+                        <strong>${c.cedula}</strong> — ${nombreOracion(c.primer_nombre+' '+c.primer_apellido)}
                     </div>`
                 ).join('');
                 list.style.display = 'block';
@@ -1151,7 +1151,7 @@ function abrirModalUnico(id) {
             const t = data.tarea;
             const c = data.cliente;
             
-            const clienteNombre = c ? (c.primer_nombre + ' ' + (c.segundo_nombre ?? '') + ' ' + c.primer_apellido + ' ' + (c.segundo_apellido ?? '')).trim() : t.cedula;
+            const clienteNombre = c ? nombreOracion(c.primer_nombre + ' ' + (c.segundo_nombre ?? '') + ' ' + c.primer_apellido + ' ' + (c.segundo_apellido ?? '')).replace(/\s+/g, ' ') : t.cedula;
             document.getElementById('modalUnificadoTitulo').innerHTML = `⚙️ Tarea: <span style="color: #fbbf24; font-weight:700;">${t.tipo}</span> <span style="font-size:0.75rem; opacity:0.85; margin-left:0.5rem; font-weight:normal;">(${clienteNombre})</span>`;
             
             // Llenar Ficha de Detalles (Solo Lectura)

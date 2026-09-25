@@ -452,7 +452,9 @@ function sortClass($col, $currSort, $currDir) {
         $radicados         = $c->radicados->keyBy('tipo');
         $plan              = $c->plan;
         $ctxNombre         = trim(collect([$c->cliente?->primer_nombre,$c->cliente?->segundo_nombre,$c->cliente?->primer_apellido,$c->cliente?->segundo_apellido])->filter()->implode(' '));
+        $ctxNombre = nombre_oracion($ctxNombre);
         $ctxNombreCorto    = trim($c->cliente?->primer_nombre . ' ' . $c->cliente?->primer_apellido);
+        $ctxNombreCorto = nombre_oracion($ctxNombreCorto);
         $ctxRazonSocial    = $c->razonSocial?->razon_social ?? '—';
         $ctxNit            = $c->razonSocial?->nit ?? '—';
         $ctxTipoModalidad  = $c->tipo_modalidad_label ?? ($c->es_dependiente ? 'Dependiente' : 'Independiente');

@@ -400,6 +400,7 @@ $factRetiroPreview = (!$fact && ($c->tiene_retiro_facturable ?? false)) ? ($c->f
 $yaP   = $fact && in_array($fact->estado,['pagada','prestamo']);
 // Nombre: solo primer nombre + primer apellido
 $nombre = trim(($c->cliente?->primer_nombre ?? '') . ' ' . ($c->cliente?->primer_apellido ?? ''));
+$nombre = nombre_oracion($nombre);
 if(!$nombre) $nombre = $c->cliente?->nombre_completo ?? '—';
 // Tipo: campo tipo_modalidad directo (ej: 'E', 'I')
 $tipoMod    = $c->tipoModalidad?->tipo_modalidad ?? '—';
@@ -1119,12 +1120,12 @@ document.addEventListener('DOMContentLoaded', function() {
             a.href = p.cliente_url;
             a.title = 'Ver cliente';
             a.style.cssText = 'color:#1d4ed8;text-decoration:none;font-weight:600;';
-            a.textContent = p.nombre;
+            a.textContent = nombreOracion(p.nombre);
             a.onmouseover = () => a.style.textDecoration = 'underline';
             a.onmouseout  = () => a.style.textDecoration = 'none';
             tdNom.appendChild(a);
         } else {
-            tdNom.textContent = p.nombre;
+            tdNom.textContent = nombreOracion(p.nombre);
         }
         tr.appendChild(tdNom);
 

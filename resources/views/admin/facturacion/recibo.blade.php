@@ -73,6 +73,7 @@ if ($esGrupo && !$empresaObj) {
         }
         $tituloPersona = trim(($cliUno?->primer_nombre ?? '').' '.($cliUno?->segundo_nombre ?? '')
                             .' '.($cliUno?->primer_apellido ?? '').' '.($cliUno?->segundo_apellido ?? ''));
+        $tituloPersona = nombre_oracion($tituloPersona);
         $tituloPersona = $tituloPersona ?: ('C.C. '.$fUno->cedula);
         $subtituloPersona = 'C.C. '.$fUno->cedula;
     } else {
