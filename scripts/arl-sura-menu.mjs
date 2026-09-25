@@ -63,6 +63,30 @@ try {
   await pagina.goto('https://sucursalempresas.suramericana.com/', { waitUntil: 'networkidle2', timeout: 60000 }).catch(() => null);
   await esperar(4000);
 
+  // Los menús de la SVE vienen colapsados: hay que abrirlos para ver qué hay
+  // debajo, y sus controles están dentro de shadow roots.
+  for (let vuelta = 1; vuelta <= 3; vuelta++) {
+    const abiertos = await pagina.evaluate(() => {
+      let n = 0;
+      const recorrer = (raiz, hondo = 0) => {
+        if (hondo > 6) return;
+        for (const e of raiz.querySelectorAll('a, button, [role=menuitem], [role=button], li')) {
+          const texto = (e.innerText || e.textContent || '').replace(/\s+/g, ' ').trim();
+          if (/^gesti[oó]n\s/i.test(texto) && texto.length < 60 && e.offsetParent !== null) { e.click(); n++; }
+        }
+        for (const e of raiz.querySelectorAll('*')) {
+          if (e.shadowRoot) recorrer(e.shadowRoot, hondo + 1);
+        }
+      };
+      recorrer(document);
+
+      return n;
+    }).catch(() => 0);
+
+    if (!abiertos) break;
+    await esperar(2500);
+  }
+
   const sve = await pagina.evaluate(() => {
     const salida = [];
     const recorrer = (raiz, hondo = 0) => {
