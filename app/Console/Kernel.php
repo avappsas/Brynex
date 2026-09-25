@@ -190,6 +190,16 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/eps-mora.log'));
 
+        // Cómo salió la agenda de anoche. Los treinta comandos escriben su propio
+        // log y nadie los abre: sin esto, uno que empiece a fallar de madrugada
+        // puede pasar semanas así. Solo avisa cuando hay algo que contar.
+        $schedule->command('corridas:resumen --horas=12')
+            ->dailyAt('07:30')
+            ->timezone('America/Bogota')
+            ->name('corridas-resumen')
+            ->withoutOverlapping(30)
+            ->appendOutputTo(storage_path('logs/corridas-resumen.log'));
+
         // S.O.S. no se puede revisar de noche: su login pide reCAPTCHA y hace
         // falta una persona. En vez de dejar los radicados sin confirmar, el
         // lunes por la mañana se pide por WhatsApp que alguien entre, y la
