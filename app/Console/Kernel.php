@@ -199,6 +199,9 @@ class Kernel extends ConsoleKernel
         // `automatizacion_portales` activo: entrar al portal de un aliado que no
         // lo autorizó no es cosa de la agenda. Ver [[automatizacion-portales-autorizacion]].
         $cruces = [
+            // Comfandi va primero: su portal está más suelto de madrugada y es
+            // el que más afiliados tiene que confirmar.
+            ['caja:conciliar --caja=COMFANDI', '00:30', 'caja-conciliar-comfandi'],
             ['eps:conciliar-nueva-eps', '01:30', 'eps-conciliar-nueva-eps'],
             ['eps:conciliar-salud-total', '02:30', 'eps-conciliar-salud-total'],
             ['eps:conciliar-sura', '03:30', 'eps-conciliar-sura'],
