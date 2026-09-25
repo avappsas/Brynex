@@ -56,7 +56,26 @@ class EpsSuraCarteraService
             return ['ok' => false, 'error' => $salida['error'] ?? 'El portal no respondió.', 'nit' => $nit];
         }
 
-        $casos = self::leerInforme(base64_decode((string) ($salida['contenido'] ?? '')));
+        $archivo = base64_decode((string) ($salida['contenido'] ?? ''));
+
+        // Sin mora, SURA no manda informe: manda un certificado de no deuda, y
+        // eso viene en PDF aunque se pida XLS. Se lee para confirmarlo: dar por
+        // limpia una empresa sin mirar el papel sería inventarse el resultado.
+        if (($salida['formato'] ?? null) === 'pdf') {
+            $texto = self::textoDelPdf($archivo);
+
+            if (! preg_match('/no\s*(presenta|registra|tiene)?\s*(deuda|mora)|no\s*deuda|sin\s*deuda/i', $texto)) {
+                return [
+                    'ok' => false,
+                    'nit' => $nit,
+                    'error' => 'El portal entregó un PDF que no es certificado de no deuda; hay que revisarlo a mano.',
+                ];
+            }
+
+            $casos = [];
+        } else {
+            $casos = self::leerInforme($archivo);
+        }
 
         $detalle = [];
         $nuevas = 0;
@@ -172,6 +191,16 @@ class EpsSuraCarteraService
         }
 
         return array_values($casos);
+    }
+
+    /** El texto de un PDF, para saber qué dice el certificado. */
+    private static function textoDelPdf(string $binario): string
+    {
+        try {
+            return (new \Smalot\PdfParser\Parser)->parseContent($binario)->getText();
+        } catch (\Throwable $e) {
+            return '';
+        }
     }
 
     /** Qué hay que hacer con este cotizante, según lo que BryNex sepa de él. */

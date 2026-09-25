@@ -131,11 +131,14 @@ try {
     const datos = await readFile(join(carpeta, archivo));
     await rm(carpeta, { recursive: true, force: true }).catch(() => null);
 
-    if (/\.pdf$/i.test(archivo)) {
-      salir({ ok: false, paso, archivo, error: 'El portal entregó el informe en PDF: no se pudo fijar el formato XLS.' });
-    }
-
-    salir({ ok: true, modo: 'estadoCuenta', archivo, bytes: datos.length, contenido: datos.toString('base64') });
+    // El PDF no es un fallo: cuando la empresa no debe nada, el portal emite
+    // un certificado de no deuda y eso siempre sale en PDF, se pida lo que se
+    // pida. Quien llama lo comprueba leyéndolo.
+    salir({
+      ok: true, modo: 'estadoCuenta', archivo,
+      formato: /\.pdf$/i.test(archivo) ? 'pdf' : 'csv',
+      bytes: datos.length, contenido: datos.toString('base64'),
+    });
   }
 
   // Con `opcion`, en vez del menú se abre esa pantalla y se describe: qué
