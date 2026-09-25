@@ -7,6 +7,9 @@
  * Entrada por stdin: {tipoDocumento, usuario, contrasena, nitEmpresa}
  * Salida por stdout: {ok, url, enlaces: [{texto, destino}], pantalla, error}
  */
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import puppeteer from 'puppeteer-core';
 import { rutaChrome } from './arl-sura-sesion-comun.mjs';
 import { entrarEmpresaEps, esperar, texto } from './eps-sura-sesion-comun.mjs';
@@ -20,6 +23,20 @@ const leerStdin = async () => {
 };
 
 const entrada = JSON.parse((await leerStdin()) || '{}');
+
+/** Abre la opción del menú cuyo texto coincide. */
+const irA = async (pagina, patron) => {
+  const destino = await pagina.evaluate((p) => {
+    const re = new RegExp(p, 'i');
+    const a = [...document.querySelectorAll('a')].find((x) => re.test((x.innerText || '').trim()));
+    return a ? a.getAttribute('href') : null;
+  }, patron);
+
+  if (!destino) throw new Error(`El menú no tiene la opción ${patron}.`);
+
+  await pagina.goto(new URL(destino, pagina.url()).href, { waitUntil: 'networkidle2', timeout: 60000 });
+  await esperar(3000);
+};
 
 // rutaChrome() da candidatos, no una ruta: el del Mac y los del servidor.
 const ejecutable = await (async () => {
@@ -45,21 +62,67 @@ try {
   await entrarEmpresaEps(pagina, entrada);
   await esperar(2500);
 
+  // Estado de cuenta: el informe de aportes del rango de meses, en XLS.
+  // El portal lo descarga como archivo, así que hay que decirle a Chrome dónde
+  // dejarlo y esperar a que aparezca.
+  if (entrada.modo === 'estadoCuenta') {
+    paso = 'abrir estados de cuenta';
+    await irA(pagina, 'Estados de cuenta');
+
+    paso = 'pedir el informe';
+    const [desdeAnio, desdeMes] = String(entrada.desde || '').split('-');
+    const [hastaAnio, hastaMes] = String(entrada.hasta || '').split('-');
+
+    await pagina.select('[id="estadosCuenta:idAnio"]', desdeAnio);
+    await pagina.select('[id="estadosCuenta:idMes"]', desdeMes);
+    await pagina.select('[id="estadosCuenta:idAnioFinal"]', hastaAnio);
+    await pagina.select('[id="estadosCuenta:idMesFinal"]', hastaMes);
+    await pagina.evaluate(() => {
+      const xls = [...document.querySelectorAll('input[type=radio]')].find((r) => r.value === 'xls');
+      if (xls) { xls.click(); }
+    });
+    await esperar(1000);
+
+    const carpeta = await mkdtemp(join(tmpdir(), 'sura-'));
+    const cdp = await pagina.target().createCDPSession();
+    await cdp.send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: carpeta });
+
+    const pulsado = await pagina.evaluate(() => {
+      const b = [...document.querySelectorAll('a, button, input[type=submit], input[type=button]')]
+        .find((e) => /generar/i.test(e.innerText || e.value || ''));
+      if (!b) return false;
+      b.click();
+
+      return true;
+    });
+    if (!pulsado) throw new Error('No apareció el botón de generar el informe.');
+
+    // El informe tarda: se espera al archivo, no a la pantalla.
+    paso = 'esperar el archivo';
+    let archivo = null;
+
+    for (let i = 0; i < 60 && !archivo; i++) {
+      await esperar(2000);
+      const nombres = await readdir(carpeta).catch(() => []);
+      archivo = nombres.find((n) => !n.endsWith('.crdownload')) || null;
+    }
+
+    if (!archivo) {
+      salir({ ok: false, paso, error: 'El portal no entregó el archivo del estado de cuenta.', pantalla: (await texto(pagina)).replace(/\s+/g, ' ').slice(0, 600) });
+    }
+
+    const datos = await readFile(join(carpeta, archivo));
+    await rm(carpeta, { recursive: true, force: true }).catch(() => null);
+
+    salir({ ok: true, modo: 'estadoCuenta', archivo, bytes: datos.length, contenido: datos.toString('base64') });
+  }
+
   // Con `opcion`, en vez del menú se abre esa pantalla y se describe: qué
   // filtros pide y qué columnas trae. Sigue sin tocar nada.
   if (entrada.opcion) {
     paso = `abrir ${entrada.opcion}`;
 
-    const destino = await pagina.evaluate((patron) => {
-      const re = new RegExp(patron, 'i');
-      const a = [...document.querySelectorAll('a')].find((x) => re.test((x.innerText || '').trim()));
-      return a ? a.getAttribute('href') : null;
-    }, entrada.opcion);
-
-    if (!destino) throw new Error(`El menú no tiene la opción ${entrada.opcion}.`);
-
-    await pagina.goto(new URL(destino, pagina.url()).href, { waitUntil: 'networkidle2', timeout: 60000 });
-    await esperar(3000);
+    await irA(pagina, entrada.opcion);
 
     const campos = await pagina.evaluate(() => [...document.querySelectorAll('input, select, textarea')]
       .filter((e) => e.type !== 'hidden')
