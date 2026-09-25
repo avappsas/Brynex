@@ -73,15 +73,32 @@ try {
     const [desdeAnio, desdeMes] = String(entrada.desde || '').split('-');
     const [hastaAnio, hastaMes] = String(entrada.hasta || '').split('-');
 
+    // El formato va PRIMERO: marcarlo dispara un postback de JSF que deja los
+    // meses como estaban al cargar. Al revés, el informe sale en PDF y del PDF
+    // no se saca la mora.
+    const marcarXls = () => pagina.evaluate(() => {
+      const xls = [...document.querySelectorAll('input[type=radio]')].find((r) => r.value === 'xls');
+      if (!xls) return false;
+      if (!xls.checked) xls.click();
+
+      return true;
+    });
+
+    if (!await marcarXls()) throw new Error('La pantalla no ofrece el formato XLS.');
+    await esperar(2500);
+
     await pagina.select('[id="estadosCuenta:idAnio"]', desdeAnio);
     await pagina.select('[id="estadosCuenta:idMes"]', desdeMes);
     await pagina.select('[id="estadosCuenta:idAnioFinal"]', hastaAnio);
     await pagina.select('[id="estadosCuenta:idMesFinal"]', hastaMes);
-    await pagina.evaluate(() => {
+    await esperar(800);
+
+    // Y se comprueba, porque cualquiera de esos postbacks pudo desmarcarlo.
+    const enXls = await pagina.evaluate(() => {
       const xls = [...document.querySelectorAll('input[type=radio]')].find((r) => r.value === 'xls');
-      if (xls) { xls.click(); }
+      return !!xls?.checked;
     });
-    await esperar(1000);
+    if (!enXls) { await marcarXls(); await esperar(2000); }
 
     const carpeta = await mkdtemp(join(tmpdir(), 'sura-'));
     const cdp = await pagina.target().createCDPSession();
@@ -113,6 +130,10 @@ try {
 
     const datos = await readFile(join(carpeta, archivo));
     await rm(carpeta, { recursive: true, force: true }).catch(() => null);
+
+    if (/\.pdf$/i.test(archivo)) {
+      salir({ ok: false, paso, archivo, error: 'El portal entregó el informe en PDF: no se pudo fijar el formato XLS.' });
+    }
 
     salir({ ok: true, modo: 'estadoCuenta', archivo, bytes: datos.length, contenido: datos.toString('base64') });
   }
