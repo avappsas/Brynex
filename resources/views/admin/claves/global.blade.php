@@ -343,7 +343,10 @@
 
                     @foreach($gruposSura as $claveGrupo => $grupo)
                     @php
-                        $primera     = $grupo->first();
+                        // La que representa al grupo tiene que ser una que TENGA clave:
+                        // con la primera a secas, si esa fila venía vacía la pantalla
+                        // mostraba "—" y no había forma de ver ninguna de las del grupo.
+                        $primera     = $grupo->first(fn ($x) => trim((string) $x->contrasena) !== '') ?: $grupo->first();
                         $usuarioSura = trim((string) $primera->usuario);
                         $esSura      = $sinc::esSura($primera->entidad);
                         $tipos       = $grupo->pluck('tipo')->map(fn ($t) => strtoupper(trim((string) $t)))->unique();
@@ -417,7 +420,19 @@
                             @endif
                         </td>
                         <td style="font-family:monospace;font-size:0.74rem;color:#78350f;">
-                            {{ $sinPermG ? '🔒' : (trim((string) $hija->contrasena) === trim((string) $primera->contrasena) ? 'misma clave' : '⚠️ distinta') }}
+                            @if($sinPermG)
+                                🔒
+                            @elseif(trim((string) $hija->contrasena) === trim((string) $primera->contrasena))
+                                misma clave
+                            @elseif(trim((string) $hija->contrasena) !== '')
+                                {{-- Distinta: hay que poder verla, que es justo la que se
+                                     va a perder si alguien unifica desde la fila de arriba. --}}
+                                <span style="cursor:pointer;color:#b91c1c;font-weight:700;"
+                                      onclick="verPassGlobal(this, {{ $hija->id }}, '{{ base64_encode($hija->contrasena) }}')"
+                                      title="Distinta a la del grupo. Click para revelar">⚠️ {{ str_repeat('•', min(strlen($hija->contrasena), 8)) }} 👁</span>
+                            @else
+                                <span style="color:#cbd5e1;">sin clave</span>
+                            @endif
                         </td>
                         <td style="text-align:center;">
                             @if($hija->link_acceso)
