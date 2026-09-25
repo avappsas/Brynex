@@ -30,7 +30,7 @@ class ArlConciliar extends Command
 
     private const PREFIJO = 'arlsura:cruce';
 
-    public function handle(ArlConciliacionService $conciliacion, TareaAutomaticaService $tareas): int
+    public function handle(TareaAutomaticaService $tareas): int
     {
         $empresas = $this->empresas();
 
@@ -46,7 +46,10 @@ class ArlConciliar extends Command
             $this->line("{$empresa->nit} {$empresa->razon_social} (póliza {$empresa->arl_poliza})…");
 
             try {
-                $r = $conciliacion->conciliar($empresa->nit, $empresa->arl_poliza);
+                // Una por empresa: el servicio entra al portal con la credencial
+                // de esa póliza, así que no se puede reutilizar entre empresas.
+                $r = ArlConciliacionService::paraPoliza((int) $empresa->aliado_id, $empresa->arl_poliza)
+                    ->conciliar($empresa->nit, $empresa->arl_poliza);
             } catch (\Throwable $e) {
                 $fallos++;
                 $this->error('  '.mb_substr($e->getMessage(), 0, 160));
