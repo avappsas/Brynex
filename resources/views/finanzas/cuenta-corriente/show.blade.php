@@ -427,19 +427,29 @@
 .cc-check { display: flex; align-items: center; gap: 0.5rem; font-size: 0.78rem; color: #334155; cursor: pointer; }
 .cc-check input { width: 16px; height: 16px; cursor: pointer; }
 
-/* Filas de ítems en los formularios */
-.cc-item-fila { display: flex; gap: 0.5rem; align-items: flex-start; margin-bottom: 0.45rem; }
-.cc-item-fila input { padding: 0.45rem 0.6rem; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.78rem; width: 100%; }
-.cc-item-fila .cc-col-desc { flex: 1 1 auto; min-width: 0; }
-.cc-item-fila .cc-col-num { flex: 0 0 78px; }
-.cc-item-fila .cc-col-val { flex: 0 0 120px; }
-.cc-item-fila .cc-col-sub { flex: 0 0 110px; text-align: right; font-size: 0.78rem; font-weight: 700; color: #334155; padding-top: 0.5rem; }
-.cc-item-quitar { flex: 0 0 30px; background: #fee2e2; color: #b91c1c; border: none; border-radius: 8px; cursor: pointer; font-weight: 700; height: 33px; }
+/* Modales altos: cabecera y botones fijos, solo el cuerpo hace scroll */
+.modal-box-bx.cc-modal { display: flex; flex-direction: column; overflow: hidden; }
+.cc-modal > form { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
+.cc-modal .modal-head-bx, .cc-modal .modal-foot-bx { flex-shrink: 0; }
+.cc-modal .modal-body-bx { overflow-y: auto; min-height: 0; flex: 1 1 auto; }
+.cc-modal .form-group-bx { min-width: 0; }
+
+/* Desglose de ítems en los formularios: tabla, para que títulos y campos casen */
+.cc-items-scroll { overflow-x: auto; }
+.cc-items-tabla { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 560px; }
+.cc-items-tabla th { font-size: 0.62rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.03em; text-align: left; padding: 0 0.25rem 0.3rem; }
+.cc-items-tabla td { padding: 0 0.25rem 0.45rem; vertical-align: middle; }
+.cc-items-tabla input { padding: 0.45rem 0.6rem; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.78rem; width: 100%; box-sizing: border-box; }
+.cc-items-tabla .cc-col-num { width: 70px; }
+.cc-items-tabla .cc-col-num, .cc-items-tabla .cc-col-num input { text-align: center; }
+.cc-items-tabla .cc-col-val { width: 125px; }
+.cc-items-tabla .cc-col-val, .cc-items-tabla .cc-col-val input { text-align: right; }
+.cc-items-tabla .cc-col-sub { width: 115px; text-align: right; font-size: 0.78rem; font-weight: 700; color: #334155; }
+.cc-items-tabla th.cc-col-sub { font-size: 0.62rem; color: #94a3b8; }
+.cc-items-tabla .cc-col-quitar { width: 38px; }
+.cc-item-quitar { width: 30px; height: 33px; background: #fee2e2; color: #b91c1c; border: none; border-radius: 8px; cursor: pointer; font-weight: 700; }
 .cc-item-total { display: flex; justify-content: space-between; align-items: center; margin-top: 0.75rem; padding-top: 0.6rem; border-top: 2px solid #f1f5f9; font-weight: 800; color: #7e22ce; font-size: 0.9rem; }
 .cc-item-utilidad { display: flex; justify-content: space-between; align-items: center; margin-top: 0.3rem; font-weight: 700; font-size: 0.78rem; color: #64748b; }
-.cc-item-cabecera { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.3rem; font-size: 0.62rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.03em; }
-.cc-item-cabecera .cc-col-val, .cc-item-cabecera .cc-col-num { text-align: center; }
-.cc-item-cabecera .cc-col-sub { text-align: right; padding-top: 0; }
 .cc-input-costo { background: #fffbeb !important; border-color: #fcd34d !important; }
 
 @media (max-width: 720px) {
@@ -447,9 +457,20 @@
     .cc-cifra { text-align: left; }
     .cc-trabajo-head { align-items: flex-start; }
     .cc-trabajo-cifras { width: 100%; justify-content: space-between; }
-    .cc-item-fila { flex-wrap: wrap; }
-    .cc-item-fila .cc-col-desc { flex: 1 1 100%; }
-    .cc-item-fila .cc-col-sub { flex: 1 1 auto; text-align: left; }
+
+    /* Modales: los campos lado a lado pasan a una columna */
+    .cc-modal .modal-body-bx > div[style*="display:flex"] { flex-direction: column; gap: 0.75rem !important; }
+
+    /* Desglose: cada línea es una tarjeta con sus etiquetas (la cabecera se oculta) */
+    .cc-items-tabla { min-width: 0; table-layout: auto; }
+    .cc-items-tabla thead { display: none; }
+    .cc-items-tabla tbody, .cc-items-tabla td { display: block; }
+    .cc-items-tabla tr { display: grid; grid-template-columns: 60px 1fr 1fr 32px; gap: 0.4rem; align-items: end; padding: 0.55rem 0; border-bottom: 1px solid #f1f5f9; }
+    .cc-items-tabla td { width: auto !important; padding: 0; }
+    .cc-items-tabla td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 0.15rem; font-size: 0.6rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; text-align: left; }
+    .cc-items-tabla td:first-child { grid-column: 1 / -1; }
+    .cc-items-tabla td.cc-col-sub { grid-column: 1 / -1; grid-row: 3; display: flex; justify-content: space-between; align-items: center; }
+    .cc-items-tabla td.cc-col-sub::before { margin: 0; }
 }
 </style>
 @endpush

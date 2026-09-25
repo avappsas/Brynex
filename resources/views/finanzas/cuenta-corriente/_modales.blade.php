@@ -4,8 +4,8 @@
 --}}
 
 {{-- ─────────────────────────────── Nuevo trabajo ─────────────────────────────── --}}
-<div x-show="openTrabajo" class="modal-overlay-bx" @click.self="openTrabajo = false" x-cloak>
-    <div class="modal-box-bx" style="max-width:720px;">
+<div x-show="openTrabajo" class="modal-overlay-bx" x-cloak>
+    <div class="modal-box-bx cc-modal" style="max-width:860px;">
         <form action="{{ route('finanzas.cuenta-corriente.trabajos.store', $cliente->id) }}" method="POST" enctype="multipart/form-data">
             @csrf
             <div class="modal-head-bx">
@@ -45,38 +45,49 @@
                         <strong>cobro</strong> es lo que le facturas al cliente.
                     </small>
 
-                    <div class="cc-item-cabecera">
-                        <div class="cc-col-desc">Concepto</div>
-                        <div class="cc-col-num">Cant.</div>
-                        <div class="cc-col-val">Costo unit.</div>
-                        <div class="cc-col-val">Cobro unit.</div>
-                        <div class="cc-col-sub">Subtotal</div>
-                        <div style="flex:0 0 30px;"></div>
+                    <div class="cc-items-scroll">
+                        <table class="cc-items-tabla">
+                            <thead>
+                                <tr>
+                                    <th>Concepto</th>
+                                    <th class="cc-col-num">Cant.</th>
+                                    <th class="cc-col-val">Costo unit.</th>
+                                    <th class="cc-col-val">Cobro unit.</th>
+                                    <th class="cc-col-sub">Subtotal</th>
+                                    <th class="cc-col-quitar"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="(item, i) in items" :key="i">
+                                    <tr>
+                                        <td data-label="Concepto">
+                                            <input type="text" :name="`items[${i}][descripcion]`" x-model="item.descripcion"
+                                                   placeholder="Ej: Disco duro sólido 1TB" maxlength="150" required>
+                                        </td>
+                                        <td class="cc-col-num" data-label="Cant.">
+                                            <input type="number" step="1" min="1" :name="`items[${i}][cantidad]`"
+                                                   x-model.number="item.cantidad" @change="entero(item, 'cantidad', 1)" required>
+                                        </td>
+                                        <td class="cc-col-val" data-label="Costo unit.">
+                                            <input type="number" step="1" min="0" :name="`items[${i}][costo_unitario]`"
+                                                   x-model.number="item.costo_unitario" @change="entero(item, 'costo_unitario', 0)"
+                                                   placeholder="0" class="cc-input-costo">
+                                        </td>
+                                        <td class="cc-col-val" data-label="Cobro unit.">
+                                            <input type="number" step="1" min="0" :name="`items[${i}][valor_unitario]`"
+                                                   x-model.number="item.valor_unitario" @change="entero(item, 'valor_unitario', 0)"
+                                                   placeholder="0" required>
+                                        </td>
+                                        <td class="cc-col-sub" data-label="Subtotal" x-text="money(sub(item))"></td>
+                                        <td class="cc-col-quitar">
+                                            <button type="button" class="cc-item-quitar" @click="quitar(i)"
+                                                    x-show="items.length > 1" title="Quitar línea">✕</button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
                     </div>
-
-                    <template x-for="(item, i) in items" :key="i">
-                        <div class="cc-item-fila">
-                            <div class="cc-col-desc">
-                                <input type="text" :name="`items[${i}][descripcion]`" x-model="item.descripcion"
-                                       placeholder="Ej: Disco duro sólido 1TB" maxlength="150" required>
-                            </div>
-                            <div class="cc-col-num">
-                                <input type="number" step="0.01" min="0.01" :name="`items[${i}][cantidad]`"
-                                       x-model.number="item.cantidad" required>
-                            </div>
-                            <div class="cc-col-val">
-                                <input type="number" step="1" min="0" :name="`items[${i}][costo_unitario]`"
-                                       x-model.number="item.costo_unitario" placeholder="0" class="cc-input-costo">
-                            </div>
-                            <div class="cc-col-val">
-                                <input type="number" step="1" min="0" :name="`items[${i}][valor_unitario]`"
-                                       x-model.number="item.valor_unitario" placeholder="0" required>
-                            </div>
-                            <div class="cc-col-sub" x-text="money(sub(item))"></div>
-                            <button type="button" class="cc-item-quitar" @click="quitar(i)"
-                                    x-show="items.length > 1" title="Quitar línea">✕</button>
-                        </div>
-                    </template>
 
                     <button type="button" class="btn-fin" style="margin-top:0.35rem;" @click="agregar()">＋ Agregar línea</button>
 
@@ -135,8 +146,8 @@
 </div>
 
 {{-- ─────────────────────────────── Editar trabajo ─────────────────────────────── --}}
-<div x-show="openEditar" class="modal-overlay-bx" @click.self="openEditar = false" x-cloak>
-    <div class="modal-box-bx" style="max-width:720px;">
+<div x-show="openEditar" class="modal-overlay-bx" x-cloak>
+    <div class="modal-box-bx cc-modal" style="max-width:860px;">
         <form :action="`{{ url('finanzas/cuenta-corriente-trabajo') }}/${editar.id}`" method="POST">
             @csrf @method('PUT')
             <div class="modal-head-bx">
@@ -170,35 +181,47 @@
                 <div style="margin-top:1.25rem;">
                     <label class="form-label-bx">Desglose del trabajo</label>
 
-                    <div class="cc-item-cabecera">
-                        <div class="cc-col-desc">Concepto</div>
-                        <div class="cc-col-num">Cant.</div>
-                        <div class="cc-col-val">Costo unit.</div>
-                        <div class="cc-col-val">Cobro unit.</div>
-                        <div class="cc-col-sub">Subtotal</div>
-                        <div style="flex:0 0 30px;"></div>
+                    <div class="cc-items-scroll">
+                        <table class="cc-items-tabla">
+                            <thead>
+                                <tr>
+                                    <th>Concepto</th>
+                                    <th class="cc-col-num">Cant.</th>
+                                    <th class="cc-col-val">Costo unit.</th>
+                                    <th class="cc-col-val">Cobro unit.</th>
+                                    <th class="cc-col-sub">Subtotal</th>
+                                    <th class="cc-col-quitar"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="(item, i) in editar.items" :key="i">
+                                    <tr>
+                                        <td data-label="Concepto">
+                                            <input type="text" :name="`items[${i}][descripcion]`" x-model="item.descripcion" maxlength="150" required>
+                                        </td>
+                                        <td class="cc-col-num" data-label="Cant.">
+                                            <input type="number" step="1" min="1" :name="`items[${i}][cantidad]`"
+                                                   x-model.number="item.cantidad" @change="entero(item, 'cantidad', 1)" required>
+                                        </td>
+                                        <td class="cc-col-val" data-label="Costo unit.">
+                                            <input type="number" step="1" min="0" :name="`items[${i}][costo_unitario]`"
+                                                   x-model.number="item.costo_unitario" @change="entero(item, 'costo_unitario', 0)"
+                                                   placeholder="0" class="cc-input-costo">
+                                        </td>
+                                        <td class="cc-col-val" data-label="Cobro unit.">
+                                            <input type="number" step="1" min="0" :name="`items[${i}][valor_unitario]`"
+                                                   x-model.number="item.valor_unitario" @change="entero(item, 'valor_unitario', 0)" required>
+                                        </td>
+                                        <td class="cc-col-sub" data-label="Subtotal" x-text="money(sub(item))"></td>
+                                        <td class="cc-col-quitar">
+                                            <button type="button" class="cc-item-quitar" @click="editar.items.splice(i, 1)"
+                                                    x-show="editar.items.length > 1" title="Quitar línea">✕</button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
                     </div>
-
-                    <template x-for="(item, i) in editar.items" :key="i">
-                        <div class="cc-item-fila">
-                            <div class="cc-col-desc">
-                                <input type="text" :name="`items[${i}][descripcion]`" x-model="item.descripcion" maxlength="150" required>
-                            </div>
-                            <div class="cc-col-num">
-                                <input type="number" step="0.01" min="0.01" :name="`items[${i}][cantidad]`" x-model.number="item.cantidad" required>
-                            </div>
-                            <div class="cc-col-val">
-                                <input type="number" step="1" min="0" :name="`items[${i}][costo_unitario]`"
-                                       x-model.number="item.costo_unitario" placeholder="0" class="cc-input-costo">
-                            </div>
-                            <div class="cc-col-val">
-                                <input type="number" step="1" min="0" :name="`items[${i}][valor_unitario]`" x-model.number="item.valor_unitario" required>
-                            </div>
-                            <div class="cc-col-sub" x-text="money(sub(item))"></div>
-                            <button type="button" class="cc-item-quitar" @click="editar.items.splice(i, 1)"
-                                    x-show="editar.items.length > 1" title="Quitar línea">✕</button>
-                        </div>
-                    </template>
 
                     <button type="button" class="btn-fin" style="margin-top:0.35rem;"
                             @click="editar.items.push({ descripcion: '', cantidad: 1, valor_unitario: 0, costo_unitario: 0 })">＋ Agregar línea</button>
@@ -256,8 +279,8 @@
 </div>
 
 {{-- ───────────────────────────── Pago de un trabajo ───────────────────────────── --}}
-<div x-show="openPago" class="modal-overlay-bx" @click.self="openPago = false" x-cloak>
-    <div class="modal-box-bx">
+<div x-show="openPago" class="modal-overlay-bx" x-cloak>
+    <div class="modal-box-bx cc-modal">
         <form :action="`{{ url('finanzas/cuenta-corriente-trabajo') }}/${pago.id}/pago`" method="POST" enctype="multipart/form-data">
             @csrf
             <div class="modal-head-bx">
@@ -315,8 +338,8 @@
 </div>
 
 {{-- ───────────────────────────────── Abono general ────────────────────────────── --}}
-<div x-show="openAbono" class="modal-overlay-bx" @click.self="openAbono = false" x-cloak>
-    <div class="modal-box-bx">
+<div x-show="openAbono" class="modal-overlay-bx" x-cloak>
+    <div class="modal-box-bx cc-modal">
         <form action="{{ route('finanzas.cuenta-corriente.abono', $cliente->id) }}" method="POST" enctype="multipart/form-data">
             @csrf
             <div class="modal-head-bx">
@@ -374,8 +397,8 @@
 </div>
 
 {{-- ───────────────────────────────── Editar cliente ───────────────────────────── --}}
-<div x-show="openCliente" class="modal-overlay-bx" @click.self="openCliente = false" x-cloak>
-    <div class="modal-box-bx">
+<div x-show="openCliente" class="modal-overlay-bx" x-cloak>
+    <div class="modal-box-bx cc-modal">
         <form action="{{ route('finanzas.cuenta-corriente.clientes.update', $cliente->id) }}" method="POST">
             @csrf @method('PUT')
             <div class="modal-head-bx">
@@ -467,6 +490,14 @@
                     items: JSON.parse(JSON.stringify(items)),
                 };
                 this.openEditar = true;
+            },
+
+            // Cantidades y valores van en enteros: se redondea al salir del campo y se
+            // respeta el mínimo (la cantidad nunca baja de 1). El editor de creación
+            // lo alcanza por herencia de alcance de Alpine.
+            entero(item, campo, minimo) {
+                const valor = Math.round(parseFloat(item[campo]));
+                item[campo] = Number.isFinite(valor) ? Math.max(minimo, valor) : minimo;
             },
 
             sub(item) {
