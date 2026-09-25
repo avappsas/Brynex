@@ -175,7 +175,8 @@ $sortClassC = function ($col, $cs, $cd) {
 .tbl-cob .c-acc     { text-align:center; white-space:nowrap; }
 .tbl-cob .c-id      { text-align:center; font-weight:700; color:#1e40af; font-size:.72rem; }
 .tbl-cob .c-ced     { background:none; border:none; color:#3b82f6; font-weight:700; cursor:pointer; padding:0; font-family:monospace; font-size:.77rem; text-decoration:underline dotted; }
-.tbl-cob .c-nom     { font-weight:600; color:#1e3a5f; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tbl-cob .c-nom     { font-weight:600; color:#1e3a5f; max-width:140px; line-height:1.2; }
+.tbl-cob .c-nom-l   { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .tbl-cob .c-prest   { display:inline-block; margin-top:.15rem; padding:.08rem .35rem; border-radius:20px; font-size:.58rem; font-weight:700; background:#ede9fe; color:#6d28d9; text-decoration:none; }
 .tbl-cob .c-cel     { display:inline-flex; align-items:center; gap:.3rem; font-size:.72rem; color:#334155; font-family:monospace; font-weight:600; }
 .tbl-cob .c-wa      { text-decoration:none; line-height:1; display:inline-flex; }
@@ -621,6 +622,15 @@ $sortClassC = function ($col, $cs, $cd) {
 @php
 $nombre     = trim(($c->cliente?->primer_nombre ?? '') . ' ' . ($c->cliente?->primer_apellido ?? ''));
 $nombre = nombre_oracion($nombre);
+// Celda en dos filas: nombres arriba, apellidos abajo. Con préstamo el badge
+// ocupa espacio, así que solo va el primero de cada uno.
+$conPrestamo = (bool) ($c->tiene_prestamo ?? false);
+$filaNombres = nombre_oracion($conPrestamo
+    ? ($c->cliente?->primer_nombre ?? '')
+    : trim(($c->cliente?->primer_nombre ?? '') . ' ' . ($c->cliente?->segundo_nombre ?? '')));
+$filaApellidos = nombre_oracion($conPrestamo
+    ? ($c->cliente?->primer_apellido ?? '')
+    : trim(($c->cliente?->primer_apellido ?? '') . ' ' . ($c->cliente?->segundo_apellido ?? '')));
 $rs         = $c->razonSocial?->razon_social ?? '—';
 $celular    = $c->cliente?->celular ?? '—';
 $fIng       = $c->fecha_ingreso?->format('d/m/Y') ?? '—';
@@ -659,7 +669,14 @@ $rowClass = $esRetiro ? 'fila-retiro' : ($esRetiroPosterior ? 'fila-retpost' : (
 
     {{-- Nombre --}}
     <td>
-        <div class="c-nom" title="{{ $nombre }}">{{ $nombre ?: '—' }}</div>
+        <div class="c-nom" title="{{ nombre_oracion(trim(($c->cliente?->primer_nombre ?? '').' '.($c->cliente?->segundo_nombre ?? '').' '.($c->cliente?->primer_apellido ?? '').' '.($c->cliente?->segundo_apellido ?? ''))) }}">
+            @if($filaNombres !== '' || $filaApellidos !== '')
+                <span class="c-nom-l">{{ $filaNombres }}</span>
+                <span class="c-nom-l">{{ $filaApellidos }}</span>
+            @else
+                —
+            @endif
+        </div>
         {{-- Badge préstamo pendiente --}}
         @if($c->tiene_prestamo ?? false)
         <a href="{{ route('admin.prestamos.index', ['buscar' => $c->cedula, 'tab' => 'individuales']) }}"

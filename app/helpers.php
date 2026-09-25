@@ -38,3 +38,18 @@ if (!function_exists('nombre_oracion')) {
         return mb_convert_case(mb_strtolower($valor, 'UTF-8'), MB_CASE_TITLE, 'UTF-8');
     }
 }
+
+if (!function_exists('nombre_con_inicial')) {
+    /**
+     * Primer nombre + inicial del segundo + primer apellido, en tipo oración:
+     * ("CANDIDA", "ROSA", "SIERRA") → "Candida R. Sierra".
+     */
+    function nombre_con_inicial($primerNombre, $segundoNombre, $primerApellido): string
+    {
+        $segundo = trim((string) $segundoNombre);
+        $inicial = $segundo !== '' ? mb_strtoupper(mb_substr($segundo, 0, 1, 'UTF-8'), 'UTF-8') . '.' : '';
+        return nombre_oracion(implode(' ', array_filter([
+            trim((string) $primerNombre), $inicial, trim((string) $primerApellido),
+        ], fn ($x) => $x !== '')));
+    }
+}

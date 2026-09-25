@@ -909,6 +909,7 @@
             };
             $clienteNombre = trim(($p->primer_nombre ?? '').' '.($p->primer_ape ?? ''));
             $clienteNombre = nombre_oracion($clienteNombre);
+            $nombreCompletoPlano = nombre_oracion(preg_replace('/\s+/', ' ', trim(($p->primer_nombre ?? '').' '.($p->segundo_nombre ?? '').' '.($p->primer_ape ?? '').' '.($p->segundo_ape ?? ''))));
 
             // Período que cubre esta fila, para explicar la marca de mes actual.
             $mesesCortos = [1=>'ene',2=>'feb',3=>'mar',4=>'abr',5=>'may',6=>'jun',
@@ -948,11 +949,11 @@
                 @endif
                 {{ $p->no_identifi }}
             </td>
-            <td class="td-nombre" title="{{ nombre_oracion($p->nombre_completo ?? $clienteNombre) }}" data-order="{{ nombre_oracion($p->nombre_completo ?? $clienteNombre) }}">
+            <td class="td-nombre" title="{{ $nombreCompletoPlano }}" data-order="{{ nombre_oracion($p->nombre_completo ?? $clienteNombre) }}">
                 <a href="{{ ($p->cliente_id ?? null) ? url('/admin/clientes/'.$p->cliente_id.'/edit') : '#' }}"
                    style="color:#1d4ed8;text-decoration:none;font-weight:600"
-                   title="{{ nombre_oracion($p->nombre_completo ?? $clienteNombre) }}">
-                    {{ nombre_oracion($p->primer_nombre) }} {{ nombre_oracion($p->primer_ape) }}
+                   title="{{ $nombreCompletoPlano }}">
+                    {{ nombre_con_inicial($p->primer_nombre, $p->segundo_nombre ?? null, $p->primer_ape) }}
                 </a>
             </td>
             <td class="td-fechas" title="{{ $fecTitulo }}" data-order="{{ $p->fecha_ing ?: ($p->fecha_ret ?: '') }}">

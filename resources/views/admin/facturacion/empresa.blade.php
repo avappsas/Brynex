@@ -398,9 +398,8 @@ $fact  = $c->factura_exist;
 $factRetiroPreview = (!$fact && ($c->tiene_retiro_facturable ?? false)) ? ($c->factura_retiro_0 ?? null) : null;
 // Para retiro facturable usamos la factura_0 como fuente de valores de preview
 $yaP   = $fact && in_array($fact->estado,['pagada','prestamo']);
-// Nombre: solo primer nombre + primer apellido
-$nombre = trim(($c->cliente?->primer_nombre ?? '') . ' ' . ($c->cliente?->primer_apellido ?? ''));
-$nombre = nombre_oracion($nombre);
+// Nombre: primer nombre + inicial del segundo + primer apellido (Candida R. Sierra)
+$nombre = nombre_con_inicial($c->cliente?->primer_nombre, $c->cliente?->segundo_nombre, $c->cliente?->primer_apellido);
 if(!$nombre) $nombre = $c->cliente?->nombre_completo ?? '—';
 // Tipo: campo tipo_modalidad directo (ej: 'E', 'I')
 $tipoMod    = $c->tipoModalidad?->tipo_modalidad ?? '—';
