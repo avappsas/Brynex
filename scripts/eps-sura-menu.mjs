@@ -45,6 +45,45 @@ try {
   await entrarEmpresaEps(pagina, entrada);
   await esperar(2500);
 
+  // Con `opcion`, en vez del menú se abre esa pantalla y se describe: qué
+  // filtros pide y qué columnas trae. Sigue sin tocar nada.
+  if (entrada.opcion) {
+    paso = `abrir ${entrada.opcion}`;
+
+    const destino = await pagina.evaluate((patron) => {
+      const re = new RegExp(patron, 'i');
+      const a = [...document.querySelectorAll('a')].find((x) => re.test((x.innerText || '').trim()));
+      return a ? a.getAttribute('href') : null;
+    }, entrada.opcion);
+
+    if (!destino) throw new Error(`El menú no tiene la opción ${entrada.opcion}.`);
+
+    await pagina.goto(new URL(destino, pagina.url()).href, { waitUntil: 'networkidle2', timeout: 60000 });
+    await esperar(3000);
+
+    const campos = await pagina.evaluate(() => [...document.querySelectorAll('input, select, textarea')]
+      .filter((e) => e.type !== 'hidden')
+      .map((e) => ({
+        etiqueta: e.tagName.toLowerCase(),
+        id: e.id || null,
+        tipo: e.getAttribute('type') || null,
+        valor: (e.value || '').slice(0, 30) || null,
+        opciones: e.tagName === 'SELECT' ? [...e.options].slice(0, 16).map((o) => `${o.value}=${o.text}`.slice(0, 44)) : undefined,
+      })));
+
+    const tablas = await pagina.evaluate(() => [...document.querySelectorAll('table')]
+      .map((t) => ({
+        columnas: [...t.querySelectorAll('th')].map((c) => (c.innerText || '').replace(/\s+/g, ' ').trim()).filter(Boolean),
+        filas: t.querySelectorAll('tbody tr').length,
+      }))
+      .filter((t) => t.columnas.length));
+
+    salir({
+      ok: true, opcion: entrada.opcion, url: pagina.url(),
+      campos, tablas, pantalla: (await texto(pagina)).replace(/\s+/g, ' ').slice(0, 1800),
+    });
+  }
+
   paso = 'leer menú';
   // El menú de JSF cuelga de enlaces y de nodos con onclick; se listan los dos.
   const enlaces = await pagina.evaluate(() => [...document.querySelectorAll('a, [onclick]')]
