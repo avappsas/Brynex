@@ -711,19 +711,22 @@ try {
         if (!vistas.has(clave)) { vistas.add(clave); filas.push(f); }
       }
 
-      // Si la página no trajo nada nuevo, el "siguiente" no avanzó: se para.
+      // Si la página no trajo nada nuevo, el paginador no avanzó: se para.
       if (vistas.size === antes) break;
 
-      const avanzo = await pagina.evaluate(() => {
-        const b = [...document.querySelectorAll('button, a')].find((e) => {
-          const t = ((e.innerText || '') + ' ' + (e.getAttribute('aria-label') || '')).toLowerCase();
-          return /siguiente|next|›|»/.test(t) && !e.disabled && e.offsetParent !== null;
-        });
-        if (!b) return false;
-        b.click();
+      // El paginador es de MUI y son botones con el número de la página; la
+      // flecha de "siguiente" no siempre está, así que se pulsa el número.
+      const avanzo = await pagina.evaluate((siguiente) => {
+        const botones = [...document.querySelectorAll('button, a')].filter((e) => e.offsetParent !== null && !e.disabled);
 
-        return true;
-      }).catch(() => false);
+        const porNumero = botones.find((e) => (e.innerText || '').trim() === String(siguiente));
+        if (porNumero) { porNumero.click(); return true; }
+
+        const porFlecha = botones.find((e) => /next page|siguiente|›|»/i.test((e.innerText || '') + ' ' + (e.getAttribute('aria-label') || '')));
+        if (porFlecha) { porFlecha.click(); return true; }
+
+        return false;
+      }, pag + 1).catch(() => false);
 
       if (!avanzo) break;
       await esperar(2500);
