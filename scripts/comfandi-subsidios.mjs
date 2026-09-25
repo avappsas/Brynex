@@ -703,6 +703,14 @@ try {
     await insistir(pagina, () => document.querySelectorAll('tbody tr').length > 0, [], 20000);
     await esperar(1200);
 
+    // El portal dice cuántos son ("Numero de registros 70"): es el único modo
+    // de saber si el recorrido llegó al final o se quedó a medias, que es lo
+    // que pasaba —la misma empresa daba 10, 20 o 70 según el día—.
+    const declarados = await pagina.evaluate(() => {
+      const m = (document.body.innerText || '').match(/n[uú]mero\s+de\s+registros\s*:?\s*(\d+)/i);
+      return m ? Number(m[1]) : null;
+    }).catch(() => null);
+
     const vistas = new Set();
     let columnas = [];
     const filas = [];
@@ -738,6 +746,36 @@ try {
       await esperar(2500);
     }
 
+    // Si faltó gente, se vuelve a recorrer desde el principio: el portal a
+    // veces repinta la tabla tarde y una página se lee vacía.
+    if (declarados && filas.length < declarados) {
+      await pagina.goto(`${BASE}/workers`, { waitUntil: 'networkidle2', timeout: 60000 }).catch(() => null);
+      await insistir(pagina, () => document.querySelectorAll('tbody tr').length > 0, [], 20000);
+      await esperar(2000);
+
+      for (let pag = 1; pag <= 60 && filas.length < declarados; pag++) {
+        const actual = await leerPagina();
+
+        for (const f of actual.filas) {
+          const clave = f.join('|');
+          if (!vistas.has(clave)) { vistas.add(clave); filas.push(f); }
+        }
+
+        const avanzo = await pagina.evaluate((siguiente) => {
+          const b = [...document.querySelectorAll('button, a')]
+            .filter((e) => e.offsetParent !== null && !e.disabled)
+            .find((e) => (e.innerText || '').trim() === String(siguiente));
+          if (!b) return false;
+          b.click();
+
+          return true;
+        }, pag + 1).catch(() => false);
+
+        if (!avanzo) break;
+        await esperar(3000);
+      }
+    }
+
     // Qué controles de paginación ofrece la pantalla: si el listado se queda
     // corto, aquí se ve por qué sin volver a entrar al portal.
     const controles = await pagina.evaluate(() => [...document.querySelectorAll('button, a, select, [role=button]')]
@@ -760,7 +798,7 @@ try {
       .slice(0, 6)).catch(() => []);
 
     await cerrarSesion(pagina).catch(() => null);
-    salir({ ok: true, modo, columnas, filas, controles, totales });
+    salir({ ok: true, modo, columnas, filas, declarados, completo: !declarados || filas.length >= declarados, controles, totales });
   }
 
   for (const documento of documentos) {
