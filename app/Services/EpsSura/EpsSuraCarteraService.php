@@ -293,9 +293,17 @@ class EpsSuraCarteraService
             ], JSON_UNESCAPED_UNICODE))
             ->run(ArlSuraSesionService::binarioNode().' scripts/eps-sura-menu.mjs');
 
-        $salida = json_decode(trim($resultado->output()), true) ?: [];
+        $crudo = trim($resultado->output());
+        $salida = json_decode($crudo, true);
 
-        return $salida ?: ['ok' => false, 'error' => mb_substr(trim($resultado->errorOutput()) ?: 'El portal no respondió.', 0, 300)];
+        if (is_array($salida)) {
+            return $salida;
+        }
+
+        // Si no vino JSON, el error tiene que decir qué vino: "no respondió" a
+        // secas obliga a repetir la corrida entera para averiguarlo.
+        return ['ok' => false, 'error' => mb_substr(trim($resultado->errorOutput())
+            ?: 'El portal no respondió (salida de '.strlen($crudo).' bytes, código '.$resultado->exitCode().': '.mb_substr($crudo, 0, 120).')', 0, 400)];
     }
 
     private function cerrarResueltas(string $nit, array $vistas, bool $simular, array &$detalle): int
