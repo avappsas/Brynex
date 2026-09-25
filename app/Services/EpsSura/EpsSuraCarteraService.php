@@ -76,7 +76,9 @@ class EpsSuraCarteraService
         if (($salida['formato'] ?? null) === 'pdf') {
             $texto = self::textoDelPdf($archivo);
 
-            if (! preg_match('/no\s*(presenta|registra|tiene)?\s*(deuda|mora)|no\s*deuda|sin\s*deuda/i', $texto)) {
+            // Así lo redacta SURA: "no presenta saldos pendientes con nuestra
+            // entidad por concepto de cotizaciones".
+            if (! preg_match('/no\s+presenta\s+saldos?\s+pendientes|no\s+(presenta|registra|tiene)\s+(deuda|mora)|de\s+no\s+deuda/i', $texto)) {
                 return [
                     'ok' => false,
                     'nit' => $nit,
