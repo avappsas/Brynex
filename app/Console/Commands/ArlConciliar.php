@@ -9,6 +9,7 @@ use App\Services\ArlSura\ArlSuraApiService;
 use App\Services\ArlSura\ArlSuraSesionService;
 use App\Services\TareaAutomaticaService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -30,6 +31,9 @@ class ArlConciliar extends Command
     protected $description = 'Cruza los afiliados de ARL Sura con los contratos vigentes y abre las tareas que falten';
 
     private const PREFIJO = 'arlsura:cruce';
+
+    /** Días que se le dan a una afiliación nueva para aparecer en el portal. */
+    private const DIAS_DE_GRACIA = 5;
 
     public function handle(TareaAutomaticaService $tareas): int
     {
@@ -68,16 +72,34 @@ class ArlConciliar extends Command
             $vistas = [];
             $nuevas = 0;
 
+            // Los que rotaron a otra empresa del mismo cliente van juntos: son
+            // decenas y se depuran de una sentada con la lista delante. Una
+            // tarea por cabeza ahí solo consigue que no se mire ninguna.
+            $rotados = array_values(array_filter($r['sobran'], fn ($c) => str_contains($c['situacion'], 'otra empresa')));
+            $nuevas += $this->abrirResumen($tareas, $empresa, $rotados, $vistas);
+
             foreach ($r['sobran'] as $caso) {
+                if (str_contains($caso['situacion'], 'otra empresa')) {
+                    continue;
+                }
+
                 $nuevas += $this->abrir($tareas, $empresa, $caso, $vistas,
                     "Retirar de ARL Sura a {$caso['nombre']}: {$caso['situacion']}.",
                     "ARL Sura lo tiene afiliado en la póliza {$empresa->arl_poliza}, pero en BryNex {$caso['situacion']}"
-                        .($caso['otra_empresa'] ? " ({$caso['otra_empresa']})" : '')
                         .'. Mientras siga afiliado se paga su cobertura.',
                     $caso['contrato_id'] ?? null);
             }
 
             foreach ($r['faltan'] as $caso) {
+                // A una afiliación recién hecha hay que darle tiempo de llegar
+                // al portal: sin esto, todo el que ingresa esta semana sale como
+                // si estuviera sin cobertura.
+                $desde = $caso['desde'] ? Carbon::createFromFormat('d/m/Y', $caso['desde']) : null;
+
+                if ($desde && $desde->greaterThan(now()->subDays(self::DIAS_DE_GRACIA))) {
+                    continue;
+                }
+
                 $nuevas += $this->abrir($tareas, $empresa, $caso, $vistas,
                     "Afiliar a ARL Sura a {$caso['nombre']}: tiene contrato vigente y no aparece en la póliza.",
                     "En BryNex el contrato está vigente desde {$caso['desde']} con riesgo {$caso['riesgo']}"
@@ -95,6 +117,54 @@ class ArlConciliar extends Command
         }
 
         return $fallos && $fallos === $empresas->count() ? self::FAILURE : self::SUCCESS;
+    }
+
+    /**
+     * Una sola tarea con los que se fueron a otra empresa del mismo cliente.
+     *
+     * Se rehace el texto en cada corrida: la lista cambia sola según se vayan
+     * retirando, y una tarea que se quedó con la foto del primer día miente.
+     */
+    private function abrirResumen(TareaAutomaticaService $tareas, $empresa, array $rotados, array &$vistas): int
+    {
+        if (! $rotados) {
+            return 0;
+        }
+
+        $llave = self::PREFIJO.":{$empresa->nit}:rotados";
+        $vistas[] = $llave;
+
+        $lista = collect($rotados)
+            ->map(fn ($c) => '· '.$c['documento'].' '.$c['nombre'].($c['otra_empresa'] ? ' → '.$c['otra_empresa'] : ''))
+            ->implode("\n");
+
+        $texto = 'Retirar de la póliza '.$empresa->arl_poliza.' a '.count($rotados)
+            .' persona(s) que ya cotizan por otra empresa del cliente.';
+        $observacion = "ARL Sura las tiene en la póliza de {$empresa->razon_social}, pero en BryNex su contrato vigente está en otra "
+            ."razón social: se está pagando su cobertura dos veces.\n\n".$lista;
+
+        if ($ya = $tareas->activaPorLlave((int) $empresa->aliado_id, $llave)) {
+            if (! $this->option('simular') && trim((string) $ya->observacion) !== trim($observacion)) {
+                $tareas->anotar($ya, '🤖 '.$observacion, 'nota');
+            }
+
+            return 0;
+        }
+
+        if ($this->option('simular')) {
+            return 1;
+        }
+
+        return $tareas->abrir([
+            'aliado_id' => (int) $empresa->aliado_id,
+            'tipo' => 'otros',
+            'cedula' => $rotados[0]['documento'],
+            'razon_social_id' => $empresa->id,
+            'entidad' => 'ARL SURA',
+            'tarea' => $texto,
+            'observacion' => $observacion,
+            'llave_auto' => $llave,
+        ]) ? 1 : 0;
     }
 
     /** Deja la sesión del portal lista antes de consultar. */
