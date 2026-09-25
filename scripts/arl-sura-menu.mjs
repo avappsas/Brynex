@@ -92,46 +92,51 @@ try {
   // y sin afiliación) comparten pantalla: mes, año, detallado/total y formato.
   // Se pide HTML: sale en la misma página y no hay archivo que descargar.
   if (entrada.consulta) {
-    paso = `abrir ${entrada.consulta}`;
-    await pagina.goto('https://arpsura.suramericana.com/servicios-linea/' + entrada.consulta, { waitUntil: 'networkidle2', timeout: 60000 });
-    await esperar(2000);
+    // Varios meses en la misma sesión: el login cuesta cerca de un minuto y
+    // repetirlo por cada mes multiplicaría la corrida sin motivo.
+    const periodos = Array.isArray(entrada.periodos) && entrada.periodos.length
+      ? entrada.periodos
+      : [entrada.periodo].filter(Boolean);
 
-    paso = 'generar la consulta';
-    const [anio, mes] = String(entrada.periodo || '').split('-');
-    await pagina.select('[name="pop_mes_inicial"]', mes).catch(() => null);
-    await pagina.select('[name="pop_ano_inicial"]', anio).catch(() => null);
+    const resultados = {};
 
-    await pagina.evaluate(() => {
-      const marcar = (valor) => {
-        const r = [...document.querySelectorAll('input[type=radio]')].find((x) => x.value === valor);
-        if (r) r.click();
-      };
-      marcar('d');    // detallado: una fila por trabajador
-      marcar('HTML'); // en pantalla
-    });
-    await esperar(800);
+    for (const periodo of periodos) {
+      paso = `abrir ${entrada.consulta} de ${periodo}`;
+      await pagina.goto('https://arpsura.suramericana.com/servicios-linea/' + entrada.consulta, { waitUntil: 'networkidle2', timeout: 60000 });
+      await esperar(2000);
 
-    const navegacion = pagina.waitForNavigation({ waitUntil: 'networkidle2', timeout: 90000 }).catch(() => null);
-    await pagina.evaluate(() => {
-      const b = [...document.querySelectorAll('input[type=submit], input[type=button], button, a')]
-        .find((e) => /generar/i.test(e.value || e.innerText || ''));
-      if (b) b.click();
-    });
-    await navegacion;
-    await esperar(2500);
+      paso = `generar ${periodo}`;
+      const [anio, mes] = String(periodo).split('-');
+      await pagina.select('[name="pop_mes_inicial"]', mes).catch(() => null);
+      await pagina.select('[name="pop_ano_inicial"]', anio).catch(() => null);
 
-    paso = 'leer el resultado';
-    const filas = await pagina.evaluate(() => [...document.querySelectorAll('table')]
-      .map((t) => [...t.querySelectorAll('tr')]
-        .map((f) => [...f.querySelectorAll('th, td')].map((c) => (c.innerText || '').replace(/\s+/g, ' ').trim()))
-        .filter((f) => f.some((c) => c !== '')))
-      .filter((t) => t.length > 1));
+      await pagina.evaluate(() => {
+        const marcar = (valor) => {
+          const r = [...document.querySelectorAll('input[type=radio]')].find((x) => x.value === valor);
+          if (r) r.click();
+        };
+        marcar('d');    // detallado: una fila por trabajador
+        marcar('HTML'); // en pantalla, sin archivo que descargar
+      });
+      await esperar(800);
 
-    salir({
-      ok: true, consulta: entrada.consulta, periodo: entrada.periodo, url: pagina.url(),
-      tablas: filas,
-      texto: await pagina.evaluate(() => (document.body?.innerText || '').replace(/\s+/g, ' ').slice(0, 1200)).catch(() => ''),
-    });
+      const navegacion = pagina.waitForNavigation({ waitUntil: 'networkidle2', timeout: 90000 }).catch(() => null);
+      await pagina.evaluate(() => {
+        const b = [...document.querySelectorAll('input[type=submit], input[type=button], button, a')]
+          .find((e) => /generar/i.test(e.value || e.innerText || ''));
+        if (b) b.click();
+      });
+      await navegacion;
+      await esperar(2500);
+
+      resultados[periodo] = await pagina.evaluate(() => [...document.querySelectorAll('table')]
+        .map((t) => [...t.querySelectorAll('tr')]
+          .map((f) => [...f.querySelectorAll('th, td')].map((c) => (c.innerText || '').replace(/\s+/g, ' ').trim()))
+          .filter((f) => f.some((c) => c !== '')))
+        .filter((t) => t.length > 1));
+    }
+
+    salir({ ok: true, consulta: entrada.consulta, periodos, resultados });
   }
 
   // Los enlaces del legacy, que es donde el portal tiene los trámites.
