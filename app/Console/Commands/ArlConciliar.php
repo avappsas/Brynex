@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\RazonSocial;
 use App\Models\Tarea;
 use App\Services\ArlSura\ArlConciliacionService;
+use App\Services\ArlSura\ArlSuraApiService;
 use App\Services\ArlSura\ArlSuraSesionService;
 use App\Services\TareaAutomaticaService;
 use Illuminate\Console\Command;
@@ -46,6 +47,12 @@ class ArlConciliar extends Command
             $this->line("{$empresa->nit} {$empresa->razon_social} (póliza {$empresa->arl_poliza})…");
 
             try {
+                // La sesión se abre aparte y antes de consultar: estrenarla
+                // dentro de la primera consulta la deja colgada hasta el timeout
+                // (60 s), mientras que con la sesión ya viva la misma consulta
+                // tarda un segundo.
+                $this->asegurarSesion($empresa);
+
                 // Una por empresa: el servicio entra al portal con la credencial
                 // de esa póliza, así que no se puede reutilizar entre empresas.
                 $r = ArlConciliacionService::paraPoliza((int) $empresa->aliado_id, $empresa->arl_poliza)
@@ -88,6 +95,20 @@ class ArlConciliar extends Command
         }
 
         return $fallos && $fallos === $empresas->count() ? self::FAILURE : self::SUCCESS;
+    }
+
+    /** Deja la sesión del portal lista antes de consultar. */
+    private function asegurarSesion($empresa): void
+    {
+        $api = new ArlSuraApiService((int) $empresa->aliado_id, (string) $empresa->arl_poliza);
+
+        if ($api->sesionViva()) {
+            return;
+        }
+
+        ArlSuraSesionService::renovar((int) $empresa->aliado_id, (string) $empresa->arl_poliza);
+        // Un respiro: la sesión recién creada no atiende bien el primer golpe.
+        sleep(3);
     }
 
     /** Abre la tarea de ese desfase, si no estaba ya. */
