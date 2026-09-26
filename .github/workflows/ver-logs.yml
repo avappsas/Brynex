@@ -1,0 +1,65 @@
+# Lee los logs de producción en netcup, desde GitHub → Actions → Ver logs →
+# Run workflow. Sirve desde la app de GitHub en el iPhone, y un hilo de Claude
+# también puede correrlo y leer el resultado.
+#
+# Solo lee. La llave NETCUP_LOGS_KEY no da shell: en el servidor tiene un
+# command= forzado (/usr/local/sbin/ver-logs-gh, copia de scripts/ver-logs-gh.sh)
+# que solo acepta «<app> <tipo> <lineas>» contra una lista fija.
+name: Ver logs
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: "Qué mirar"
+        type: choice
+        options:
+          - servidor
+          - brynex
+          - bahia
+          - liderapp
+          - cuentafacil
+        default: servidor
+      tipo:
+        description: "errores = solo errores de hoy y ayer; todo = las últimas líneas del log"
+        type: choice
+        options:
+          - errores
+          - todo
+        default: errores
+      lineas:
+        description: "Cuántas líneas (1 a 500)"
+        type: string
+        default: "100"
+
+permissions: {}
+
+jobs:
+  ver-logs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Preparar la llave SSH
+        env:
+          NETCUP_LOGS_KEY: ${{ secrets.NETCUP_LOGS_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$NETCUP_LOGS_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo '159.195.233.132 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILI9SX/CNPHG/vGvc7tKDfMlVCEeWpc4QjD3rAXDnOiz' > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Leer logs
+        env:
+          APP: ${{ inputs.app }}
+          TIPO: ${{ inputs.tipo }}
+          LINEAS: ${{ inputs.lineas }}
+        run: |
+          # El servidor vuelve a validar todo; esto solo avisa antes de conectar.
+          [[ "$LINEAS" =~ ^[0-9]{1,3}$ ]] || { echo "lineas debe ser un número entre 1 y 500"; exit 2; }
+          ssh -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=20 \
+            -- root@159.195.233.132 "$APP $TIPO $LINEAS"
+
+      - name: Borrar la llave
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
