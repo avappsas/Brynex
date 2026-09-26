@@ -21,8 +21,8 @@ set -uo pipefail
 read -r APP TIPO LINEAS EXTRA <<<"${SSH_ORIGINAL_COMMAND:-}"
 
 case "${APP:-}" in
-  brynex|cuentafacil|bahia|liderapp|servidor) ;;
-  *) echo "App no permitida: '${APP:-}'. Opciones: brynex cuentafacil bahia liderapp servidor" >&2; exit 2 ;;
+  brynex|cuentafacil|bahia|liderapp|avappi|servidor) ;;
+  *) echo "App no permitida: '${APP:-}'. Opciones: brynex cuentafacil bahia liderapp avappi servidor" >&2; exit 2 ;;
 esac
 case "${TIPO:-errores}" in
   errores|todo) TIPO=${TIPO:-errores} ;;
@@ -141,6 +141,13 @@ case "$APP" in
       for f in /var/log/liderapp/*.log; do archivo "$f"; done
     fi
     ;;
+  avappi)
+    # La web y sus dos workers: un lote de envíos o de geo que se cae solo
+    # aparece en el suyo, no en el de la web.
+    diario avappi
+    diario avappi-worker-envios
+    diario avappi-worker-geo
+    ;;
   servidor)
     titulo "Estado general"
     uptime
@@ -152,9 +159,9 @@ case "$APP" in
     titulo "Servicios caídos (systemctl --failed)"
     systemctl --failed --no-legend --no-pager 2>/dev/null || true
     titulo "Servicios de las apps"
-    for s in apache2 nginx caddy mssql-server postgresql bahia-api liderapp avappi supervisor; do
+    for s in apache2 nginx caddy mssql-server postgresql bahia-api liderapp avappi avappi-worker-envios avappi-worker-geo supervisor; do
       systemctl list-unit-files "$s.service" --no-legend 2>/dev/null | grep -q . \
-        && printf '  %-14s %s\n' "$s" "$(systemctl is-active "$s" 2>/dev/null)"
+        && printf '  %-22s %s\n' "$s" "$(systemctl is-active "$s" 2>/dev/null)"
     done
     titulo "Supervisor"
     supervisorctl status 2>/dev/null || echo "(supervisor no respondió)"
