@@ -56,7 +56,9 @@ laravel() {
     echo "No encontré $dir/storage/logs"; return
   fi
   local archivos
-  archivos=$(ls -1t "$dir"/storage/logs/*.log 2>/dev/null | head -2 | tac)
+  # Solo los de Laravel: en storage/logs también escriben los comandos
+  # programados (publicaciones-despacho.log...) y son más nuevos casi siempre.
+  archivos=$(ls -1t "$dir"/storage/logs/laravel*.log 2>/dev/null | head -2 | tac)
   if [ -z "$archivos" ]; then echo "Sin archivos de log."; return; fi
   titulo "Laravel ($dir/storage/logs) — $TIPO"
   echo "Archivos: $(echo "$archivos" | xargs -n1 basename | xargs)"
@@ -93,7 +95,11 @@ apache() {
   local f
   for f in $(ls -1t /var/log/apache2/*error*.log 2>/dev/null | head -4); do
     echo "--- $f"
-    tail -n "$LINEAS" "$f" | grep -viE 'AH01909|AH00558' | tail -n 40 | limpiar
+    # Se saca el ruido de los bots que buscan .env, phpinfo y rutas con ../:
+    # Apache ya los rechaza y taparían los errores de verdad.
+    tail -n 2000 "$f" \
+      | grep -viE 'AH01909|AH00558|AH10244|AH01630|AH01276|not found or unable to stat' \
+      | tail -n "$LINEAS" | limpiar
   done
 }
 
@@ -114,7 +120,7 @@ case "$APP" in
     ;;
   cuentafacil)
     encontrado=""
-    for d in /var/www/cuenta_facil /var/www/cuentafacil /var/www/cuenta-facil /var/www/Cuenta_facil; do
+    for d in /var/www/cf /var/www/cuenta_facil /var/www/cuentafacil /var/www/cuenta-facil /var/www/Cuenta_facil; do
       [ -d "$d/storage/logs" ] && { encontrado=$d; break; }
     done
     if [ -n "$encontrado" ]; then laravel "$encontrado"
