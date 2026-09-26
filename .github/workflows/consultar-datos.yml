@@ -1,6 +1,13 @@
 # Consulta, con un SELECT, las bases de producción en netcup, desde GitHub →
 # Actions → Consultar datos → Run workflow. Lo usa sobre todo un hilo de
-# Claude: lo lanza, lee el CSV del log y después borra el log de la corrida.
+# Claude: lo lanza, baja el resultado y lo abre con su llave.
+#
+# **Las filas nunca quedan legibles en GitHub.** El resultado trae celulares,
+# cédulas y puestos de votación, y el repo lo ven sus colaboradores. Por eso no
+# se imprime en el log: sale cifrado con age para la llave pública del secret
+# CONSULTAR_AGE_DESTINO —la privada no está en GitHub, solo en el entorno de
+# Claude— y el artifact se borra solo al día. En el log queda solo cuántas
+# filas trajo.
 #
 # Solo lee. La llave NETCUP_CONSULTAR_KEY no da shell: en el servidor tiene un
 # command= forzado (/usr/local/sbin/consultar-gh, copia de
@@ -47,15 +54,33 @@ jobs:
           echo '159.195.233.132 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILI9SX/CNPHG/vGvc7tKDfMlVCEeWpc4QjD3rAXDnOiz' > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
 
+      - name: Instalar age
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq age >/dev/null
+
       - name: Consultar
         env:
           APP: ${{ inputs.app }}
           SQL: ${{ inputs.sql }}
+          DESTINO: ${{ secrets.CONSULTAR_AGE_DESTINO }}
         run: |
+          [[ "$DESTINO" == age1* ]] || { echo "Falta el secret CONSULTAR_AGE_DESTINO (llave pública age1...)."; exit 2; }
+          mkdir -p resultado
           # El SQL va por la entrada estándar y nunca dentro del comando: el
-          # servidor solo recibe el nombre de la app como comando.
+          # servidor solo recibe el nombre de la app. El CSV va directo a age,
+          # sin pasar en claro por el disco ni por el log.
+          set -o pipefail
           printf '%s\n' "$SQL" | ssh -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=20 \
-            -- root@159.195.233.132 "$APP"
+            -- root@159.195.233.132 "$APP" \
+            | tee >(wc -l | awk '{ printf "Filas: %d (sin contar el encabezado)\n", ($1 > 0 ? $1 - 1 : 0) }' >&2) \
+            | age -r "$DESTINO" -o resultado/resultado.csv.age
+
+      - name: Guardar el resultado cifrado
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultado
+          path: resultado/resultado.csv.age
+          retention-days: 1
+          if-no-files-found: error
 
       - name: Borrar la llave
         if: always()

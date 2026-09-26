@@ -1,10 +1,17 @@
 # Botón «Consultar datos»
 
 Corre un SELECT contra las bases de producción de netcup desde GitHub →
-*Actions* → *Consultar datos* → *Run workflow*, y devuelve el resultado en CSV
-dentro del log. Lo usa sobre todo un hilo de Claude: lo lanza, lee el
-resultado, arma lo que haga falta (una respuesta, un Excel) y borra el log de
-esa corrida, porque trae datos personales.
+*Actions* → *Consultar datos* → *Run workflow*. Lo usa sobre todo un hilo de
+Claude: lo lanza, baja el resultado, lo abre con su llave y arma lo que haga
+falta (una respuesta, un Excel).
+
+**El resultado nunca queda legible en GitHub**, porque trae celulares, cédulas
+y puestos de votación y el repo lo ven sus colaboradores. No se imprime en el
+log —ahí queda solo cuántas filas trajo—: sale cifrado con
+[age](https://age-encryption.org) para una llave pública, como artifact que
+GitHub borra solo al día. La llave privada no está en GitHub; está solo en el
+entorno de Claude. El SQL que se pidió sí se ve en la corrida, así que no se
+escriben cédulas ni nombres en él: se filtra por ids.
 
 | app | base |
 |---|---|
@@ -68,6 +75,20 @@ variables* → *Actions* → *New repository secret*, con el nombre
 ```bash
 shred -u /root/gh-actions-consultar /root/gh-actions-consultar.pub
 ```
+
+## La llave para abrir el resultado (una sola vez, en la Mac)
+
+```bash
+brew install age
+age-keygen -o ~/consultar-datos.key    # imprime la pública: age1...
+```
+
+- La **pública** (`age1...`) va en GitHub → brayan3000-gv/Brynex → *Settings* →
+  *Secrets and variables* → *Actions*, como secret `CONSULTAR_AGE_DESTINO`.
+- La **privada** (la línea `AGE-SECRET-KEY-...` del archivo) va solo en la
+  configuración del proyecto de Claude → *Environment* → variable de entorno
+  `CONSULTAR_AGE_LLAVE`. Nunca en un chat ni en el repo. Después se borra el
+  archivo de la Mac o se guarda en el llavero.
 
 Si `sudo -u datos_lectura psql` dice *Peer authentication failed*, el
 `pg_hba.conf` no tiene la línea `local all all peer` de Debian: se agrega

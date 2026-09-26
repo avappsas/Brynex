@@ -18,8 +18,8 @@
 # Bahía) le responden vacías. Entra por el socket local con peer, así que no
 # hay clave guardada en ninguna parte.
 #
-# Lo que devuelve queda en el log de GitHub Actions: quien lo lanza lee el
-# resultado y borra el log de esa corrida.
+# Lo que devuelve no se imprime en el log de GitHub Actions: el workflow lo
+# cifra con age antes de guardarlo (ver .github/workflows/consultar-datos.yml).
 #
 # Por ahora las bases en PostgreSQL: liderapp, bahia, avappi. Las de SQL
 # Server (Brynex, Cuenta Fácil, MegaTransportes) llegan aparte.
