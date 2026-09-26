@@ -1282,11 +1282,13 @@ class InformeController extends Controller
                     ->where('es_prestamo', false)
                     ->sum('valor_efectivo');
 
+                // Sin maestros 'distribuido' ni borrados: ver $efAnticipos más abajo.
                 $antM = (float) DB::table('anticipos')
                     ->where('aliado_id', $aid)
                     ->whereIn('forma_pago', ['efectivo', 'nequi'])
                     ->whereMonth('fecha_pago', $mCurr)->whereYear('fecha_pago', $yCurr)
-                    ->whereNotIn('estado', ['devuelto'])
+                    ->whereNull('deleted_at')
+                    ->whereNotIn('estado', ['devuelto', 'distribuido'])
                     ->sum('valor');
 
                 $gastM = (float) DB::table('gastos')
@@ -1373,12 +1375,16 @@ class InformeController extends Controller
             ->where('valor_efectivo', '>', 0)
             ->sum('valor_efectivo') + $abonosEfectivoMes;
 
-        // Anticipos cobrados en efectivo o nequi en el mes (no devueltos)
+        // Anticipos cobrados en efectivo o nequi en el mes (no devueltos ni borrados).
+        // El maestro 'distribuido' de un anticipo de empresa no es plata aparte: su
+        // valor ya está en los hijos que se repartieron por trabajador. Sumarlo
+        // contaba doble cada anticipo de empresa (BRYGAR sep-2026: $13M de más).
         $efAnticipos = (float) DB::table('anticipos')
             ->where('aliado_id', $aid)
             ->whereIn('forma_pago', ['efectivo', 'nequi'])
             ->whereMonth('fecha_pago', $mes)->whereYear('fecha_pago', $anio)
-            ->whereNotIn('estado', ['devuelto'])
+            ->whereNull('deleted_at')
+            ->whereNotIn('estado', ['devuelto', 'distribuido'])
             ->sum('valor');
 
         // Gastos ordinarios pagados en efectivo (excluyendo traslados a banco)
@@ -2414,7 +2420,8 @@ class InformeController extends Controller
             ->whereIn('a.forma_pago', ['efectivo', 'nequi'])
             ->whereMonth('a.fecha_pago', $mes)
             ->whereYear('a.fecha_pago', $anio)
-            ->whereNotIn('a.estado', ['devuelto'])
+            ->whereNull('a.deleted_at')
+            ->whereNotIn('a.estado', ['devuelto', 'distribuido'])
             ->groupBy('a.usuario_id', 'u.nombre')
             ->selectRaw('a.usuario_id, u.nombre AS asesor_nombre, SUM(a.valor) AS anticipos_ef')
             ->get()
@@ -2508,7 +2515,8 @@ class InformeController extends Controller
             ->whereIn('a.forma_pago', ['efectivo', 'nequi'])
             ->whereMonth('a.fecha_pago', $mes)
             ->whereYear('a.fecha_pago', $anio)
-            ->whereNotIn('a.estado', ['devuelto'])
+            ->whereNull('a.deleted_at')
+            ->whereNotIn('a.estado', ['devuelto', 'distribuido'])
             ->leftJoin('users AS u', 'u.id', '=', 'a.usuario_id')
             ->selectRaw("
                 a.id,

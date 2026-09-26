@@ -165,7 +165,7 @@ class CuadreDiarioController extends Controller
             ->whereNull('deleted_at')
             ->where('aliado_id', $aliadoId)->whereIn('usuario_id', $usuarioIds)
             ->whereIn('forma_pago', ['efectivo', 'nequi'])
-            ->whereNotIn('estado', [Anticipo::ESTADO_DEVUELTO])
+            ->whereNotIn('estado', [Anticipo::ESTADO_DEVUELTO, Anticipo::ESTADO_DISTRIBUIDO])
             ->whereDate('fecha_pago', $fecha)
             ->groupBy('usuario_id')
             ->selectRaw('usuario_id AS uid, SUM(ISNULL(valor,0)) AS t'));
@@ -726,12 +726,13 @@ class CuadreDiarioController extends Controller
             ->sum('abonos.valor_efectivo');
 
         // Anticipos en efectivo/Nequi. Los de transferencia ya viven en el
-        // saldo del banco, sumarlos aquí sería doble conteo.
+        // saldo del banco, sumarlos aquí sería doble conteo. Igual con el maestro
+        // 'distribuido' de un anticipo de empresa: su plata ya está en los hijos.
         $anticiposEfectivo = (int) Anticipo::where('aliado_id', $aliadoId)
             ->when($usuarioId, fn ($q) => $q->where('usuario_id', $usuarioId))
             ->whereIn('forma_pago', ['efectivo', 'nequi'])
             ->whereDate('fecha_pago', $fecha)
-            ->whereNotIn('estado', [Anticipo::ESTADO_DEVUELTO])
+            ->whereNotIn('estado', [Anticipo::ESTADO_DEVUELTO, Anticipo::ESTADO_DISTRIBUIDO])
             ->sum('valor');
 
         // Informativo: lo que se prestó hoy no es ingreso, es cartera. Junto al
@@ -1216,7 +1217,7 @@ class CuadreDiarioController extends Controller
             ->where('usuario_id', $usuarioId)
             ->whereIn('forma_pago', ['efectivo', 'nequi'])
             ->whereBetween('fecha_pago', [$inicio, $fin])
-            ->whereNotIn('estado', [Anticipo::ESTADO_DEVUELTO])
+            ->whereNotIn('estado', [Anticipo::ESTADO_DEVUELTO, Anticipo::ESTADO_DISTRIBUIDO])
             ->sum('valor');
 
         $saldoInicial = $cuadre->saldo_apertura;
@@ -1249,7 +1250,7 @@ class CuadreDiarioController extends Controller
                 ->where('usuario_id', $usuarioId)
                 ->whereIn('forma_pago', ['efectivo', 'nequi'])
                 ->whereDate('fecha_pago', $fechaDia)
-                ->whereNotIn('estado', [Anticipo::ESTADO_DEVUELTO])
+                ->whereNotIn('estado', [Anticipo::ESTADO_DEVUELTO, Anticipo::ESTADO_DISTRIBUIDO])
                 ->sum('valor');
 
             $gastoDia = (int) Gasto::where('cuadre_id', $cuadre->id)
