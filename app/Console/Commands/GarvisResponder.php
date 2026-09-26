@@ -29,6 +29,14 @@ class GarvisResponder extends Command
             return self::FAILURE;
         }
 
+        // Un envoltorio viejo en el servidor manda cualquier cosa como texto, también una
+        // captura. Bytes que no son texto no se le mandan a Brayan como mensaje.
+        if (! mb_check_encoding($texto, 'UTF-8')) {
+            $this->error('Lo que llegó no es texto.');
+
+            return self::FAILURE;
+        }
+
         if ($garvis->responder($texto)) {
             $this->info('Respuesta enviada.');
 

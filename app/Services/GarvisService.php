@@ -2,16 +2,24 @@
 
 namespace App\Services;
 
+use App\Jobs\GarvisNotaDeVozJob;
+use App\Models\ConfiguracionBrynex;
+use App\Models\IaConfiguracionAliado;
 use App\Models\WhatsappConfig;
+use App\Services\Publicidad\LocucionIaService;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 /**
  * GARVIS: el asistente de Brayan, que vive en el repo brayan3000-gv/garvis.
  *
- * Brayan le escribe al número de Brygar. Sus mensajes de texto no entran a las
+ * Brayan le escribe al número de Brygar. Sus mensajes de texto y sus notas de voz
+ * (ya pasadas a texto, ver GarvisNotaDeVozJob) no entran a las
  * conversaciones de Brynex: se vuelven un comentario en el issue del día del
  * repo, y un workflow de ese repo le contesta. La respuesta vuelve por
  * `php artisan garvis:responder`, que corre en este servidor.
@@ -24,7 +32,7 @@ use Illuminate\Support\Str;
 class GarvisService
 {
     /** Brygar: su número es el de los avisos de despliegue, al que Brayan ya escribe. */
-    private const ALIADO_ID = 2;
+    public const ALIADO_ID = 2;
 
     /** El mensaje de WhatsApp más largo que acepta Meta es 4096; se deja margen. */
     private const MAX_TROZO = 3500;
@@ -45,7 +53,8 @@ class GarvisService
             return false;
         }
 
-        if (($msg['from'] ?? null) !== $this->numero() || ($msg['type'] ?? null) !== 'text') {
+        // Texto o nota de voz; una foto, un sticker o una ubicación siguen a Brynex como siempre.
+        if (($msg['from'] ?? null) !== $this->numero() || ! in_array($msg['type'] ?? null, ['text', 'audio'], true)) {
             return false;
         }
 
@@ -70,10 +79,16 @@ class GarvisService
     public function recibir(array $msg): void
     {
         $waId = $msg['id'] ?? '';
+        $esVoz = ($msg['type'] ?? null) === 'audio';
         $texto = trim($msg['text']['body'] ?? '');
+        $mediaId = $msg['audio']['id'] ?? '';
+
+        if ($esVoz ? $mediaId === '' : $texto === '') {
+            return;
+        }
 
         // Meta reenvía el mismo mensaje si tarda en recibir el 200.
-        if ($texto === '' || ! Cache::add('garvis_msg:'.$waId, true, now()->addDay())) {
+        if (! Cache::add('garvis_msg:'.$waId, true, now()->addDay())) {
             return;
         }
 
@@ -87,7 +102,22 @@ class GarvisService
             // Los chulos azules son cortesía; no pueden impedir que llegue el mensaje.
         }
 
-        if (! $this->publicarEnGithub('📱 '.$texto)) {
+        // Bajar el audio y pasarlo a texto tarda más de lo que Meta espera el 200: va en cola.
+        if ($esVoz) {
+            GarvisNotaDeVozJob::dispatch($mediaId, $msg['audio']['mime_type'] ?? null);
+
+            return;
+        }
+
+        $this->pasarAGarvis('📱 '.$texto);
+    }
+
+    /**
+     * Deja el mensaje en el issue del día. Si GitHub no lo recibe, se lo dice a Brayan.
+     */
+    public function pasarAGarvis(string $cuerpo): void
+    {
+        if (! $this->publicarEnGithub($cuerpo)) {
             $this->responder('No pude pasarle tu mensaje a GARVIS: GitHub no lo recibió. El detalle quedó en el log de Brynex.');
         }
     }
@@ -111,6 +141,95 @@ class GarvisService
         }
 
         return $ok;
+    }
+
+    /**
+     * Manda a Brayan una captura que tomó GARVIS. La ruta es del disco local, dentro de garvis/.
+     */
+    public function enviarImagen(string $ruta, string $mime): bool
+    {
+        $envio = $this->whatsappApi->enviarMedia($this->numero(), 'image', $ruta, $mime, basename($ruta), $this->config());
+
+        if (! ($envio['ok'] ?? false)) {
+            Log::error('GARVIS: falló el envío de la captura por WhatsApp', ['error' => $envio['error'] ?? null]);
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /** La de Brygar, que es el número al que Brayan le escribe; si no tiene, la global de Brynex. */
+    public function llaveGemini(): ?string
+    {
+        $propia = IaConfiguracionAliado::paraAliado(self::ALIADO_ID)->gemini_api_key;
+        if ($propia) {
+            return $propia;
+        }
+
+        $global = ConfiguracionBrynex::obtener('ia_global_gemini_api_key');
+        try {
+            return $global ? Crypt::decryptString($global) : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Le dice a Brayan el texto en una nota de voz: Gemini lo lee (la misma locución de las
+     * piezas de publicidad) y FFmpeg lo pasa a ogg/opus, que es lo único que WhatsApp
+     * muestra como nota de voz y no como archivo.
+     */
+    public function enviarVoz(string $texto): bool
+    {
+        $apiKey = $this->llaveGemini();
+        if (! $apiKey) {
+            Log::error('GARVIS: no hay llave de Gemini para la nota de voz');
+
+            return false;
+        }
+
+        $disco = Storage::disk('local');
+        $disco->makeDirectory('garvis');
+        $base = 'garvis/voz-'.Str::random(12);
+        $wav = $disco->path($base.'.wav');
+        $ogg = $base.'.ogg';
+
+        try {
+            $r = LocucionIaService::generar(
+                $apiKey,
+                $texto,
+                $wav,
+                LocucionIaService::VOZ_MASCULINA,
+                'Dilo como un asistente que le habla a su jefe por WhatsApp: tranquilo, claro y natural, en español colombiano'
+            );
+            if (! $r['ok']) {
+                Log::error('GARVIS: Gemini no generó la voz', ['error' => $r['error']]);
+
+                return false;
+            }
+
+            $ffmpeg = Process::timeout(60)->run([
+                config('services.ffmpeg.binario', 'ffmpeg'), '-y', '-i', $wav,
+                '-c:a', 'libopus', '-b:a', '32k', '-ac', '1', $disco->path($ogg),
+            ]);
+            if (! $ffmpeg->successful()) {
+                Log::error('GARVIS: FFmpeg no pudo pasar la voz a ogg', ['error' => mb_substr($ffmpeg->errorOutput(), -300)]);
+
+                return false;
+            }
+
+            $envio = $this->whatsappApi->enviarMedia($this->numero(), 'audio', $ogg, 'audio/ogg', basename($ogg), $this->config());
+            if (! ($envio['ok'] ?? false)) {
+                Log::error('GARVIS: falló el envío de la nota de voz', ['error' => $envio['error'] ?? null]);
+
+                return false;
+            }
+
+            return true;
+        } finally {
+            $disco->delete([$base.'.wav', $ogg]);
+        }
     }
 
     /**
@@ -193,7 +312,7 @@ class GarvisService
         return $trozos;
     }
 
-    private function config(): WhatsappConfig
+    public function config(): WhatsappConfig
     {
         return WhatsappConfig::paraAliado(self::ALIADO_ID);
     }
