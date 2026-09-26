@@ -5,7 +5,7 @@
 #
 #   ./scripts/desplegar.sh              # despliega
 #   ./scripts/desplegar.sh --dry-run    # solo dice qué se desplegaría
-#   ./scripts/desplegar.sh --migrate    # además corre las migraciones nuevas
+#   ./scripts/desplegar.sh --migrate    # además corre las migraciones que borran datos
 #
 # El trabajo real lo hace scripts/deploy.sh, que se manda por stdin: el servidor
 # corre siempre la versión que está en este repo, sin copias desactualizadas.

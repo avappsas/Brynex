@@ -1,5 +1,10 @@
-# Despliega origin/main a netcup (brynex.co) a mano, desde GitHub → Actions →
-# Desplegar → Run workflow. Sirve desde la app de GitHub en el iPhone.
+# Despliega origin/main a netcup (brynex.co). Corre solo en cada push a main
+# (o sea, al mergear un PR), y también a mano desde GitHub → Actions →
+# Desplegar → Run workflow, que sirve desde la app de GitHub en el iPhone.
+#
+# Al mergear, las migraciones que solo agregan se aplican solas; si alguna
+# borra datos, scripts/deploy.sh se detiene sin tocar nada y avisa por
+# WhatsApp. Para aplicarla se lanza a mano con «desplegar» y «migrar».
 #
 # La llave NETCUP_SSH_KEY no da shell: en el servidor tiene un command= forzado
 # (/usr/local/sbin/brynex-deploy-gh) que solo acepta --dry-run, --migrate y
@@ -7,6 +12,8 @@
 name: Desplegar
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       modo:
@@ -17,7 +24,7 @@ on:
           - desplegar
         default: dry-run
       migrar:
-        description: "Correr migraciones nuevas (la base es la de PRODUCCIÓN)"
+        description: "Aplicar también migraciones que BORRAN datos (las que solo agregan se aplican siempre)"
         type: boolean
         default: false
       reverb:
@@ -49,7 +56,8 @@ jobs:
 
       - name: Desplegar en netcup
         env:
-          MODO: ${{ inputs.modo }}
+          # En un push no hay inputs: se despliega de verdad, sin migrar lo que borra.
+          MODO: ${{ inputs.modo || 'desplegar' }}
           MIGRAR: ${{ inputs.migrar }}
           REVERB: ${{ inputs.reverb }}
         run: |

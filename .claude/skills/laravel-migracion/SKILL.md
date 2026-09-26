@@ -84,5 +84,23 @@ php artisan migrate
 ```
 **No usar** `--step`, `--pretend` en producción sin revisar el output primero.
 
+## Al mergear se despliega sola
+Todo push a `main` despliega a producción (`.github/workflows/desplegar.yml`), y
+las migraciones corren solas **si no borran datos**. `scripts/deploy.sh` mira el
+`up()` de cada migración nueva y se detiene sin tocar nada —avisando por
+WhatsApp— si encuentra `dropColumn`, `dropIfExists`, `->change()`, `->delete()`,
+`DROP TABLE/COLUMN`, `TRUNCATE`, `DELETE FROM` o un `ALTER COLUMN`.
+
+Cambiar el tipo cuenta como borrar porque desde el script no se sabe si agranda
+o corta. Si la migración solo agranda un campo o lo vuelve nullable, se dice en
+el archivo y no detiene el despliegue:
+
+```php
+// no-borra-datos: agranda accion de NVARCHAR(20) a NVARCHAR(60)
+```
+
+Solo cuando es verdad: ese comentario es lo único que separa la migración de
+correr sola contra producción.
+
 ## Recordatorio Multi-Aliado
 Toda tabla nueva de datos de negocio DEBE tener `aliado_id` como columna obligatoria con FK hacia `aliados.id`.
