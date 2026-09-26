@@ -2,8 +2,6 @@
 
 namespace App\Jobs;
 
-use App\Models\ConfiguracionBrynex;
-use App\Models\IaConfiguracionAliado;
 use App\Services\GarvisService;
 use App\Services\Ia\TranscripcionAudioService;
 use App\Services\WhatsappApiService;
@@ -12,7 +10,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
@@ -42,7 +39,7 @@ class GarvisNotaDeVozJob implements ShouldQueue
 
     public function handle(GarvisService $garvis, WhatsappApiService $whatsappApi): void
     {
-        $apiKey = $this->llaveGemini();
+        $apiKey = $garvis->llaveGemini();
 
         if (! $apiKey) {
             $garvis->responder('No pude escuchar tu nota de voz: no hay llave de Gemini ni en la IA de Brygar ni en la global de Brynex. Escríbeme el mensaje mientras tanto.');
@@ -73,22 +70,6 @@ class GarvisNotaDeVozJob implements ShouldQueue
         // 🎤 le dice a GARVIS que esto se dijo en voz alta: la transcripción puede traer
         // un nombre mal escuchado, y conviene que lo tenga en cuenta antes de actuar.
         $garvis->pasarAGarvis('📱 🎤 '.$r['texto']);
-    }
-
-    /** La de Brygar, que es el número al que Brayan le escribe; si no tiene, la global de Brynex. */
-    private function llaveGemini(): ?string
-    {
-        $propia = IaConfiguracionAliado::paraAliado(GarvisService::ALIADO_ID)->gemini_api_key;
-        if ($propia) {
-            return $propia;
-        }
-
-        $global = ConfiguracionBrynex::obtener('ia_global_gemini_api_key');
-        try {
-            return $global ? Crypt::decryptString($global) : null;
-        } catch (\Throwable $e) {
-            return null;
-        }
     }
 
     public function failed(\Throwable $e): void

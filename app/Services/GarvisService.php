@@ -3,10 +3,16 @@
 namespace App\Services;
 
 use App\Jobs\GarvisNotaDeVozJob;
+use App\Models\ConfiguracionBrynex;
+use App\Models\IaConfiguracionAliado;
 use App\Models\WhatsappConfig;
+use App\Services\Publicidad\LocucionIaService;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 /**
@@ -151,6 +157,79 @@ class GarvisService
         }
 
         return true;
+    }
+
+    /** La de Brygar, que es el número al que Brayan le escribe; si no tiene, la global de Brynex. */
+    public function llaveGemini(): ?string
+    {
+        $propia = IaConfiguracionAliado::paraAliado(self::ALIADO_ID)->gemini_api_key;
+        if ($propia) {
+            return $propia;
+        }
+
+        $global = ConfiguracionBrynex::obtener('ia_global_gemini_api_key');
+        try {
+            return $global ? Crypt::decryptString($global) : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Le dice a Brayan el texto en una nota de voz: Gemini lo lee (la misma locución de las
+     * piezas de publicidad) y FFmpeg lo pasa a ogg/opus, que es lo único que WhatsApp
+     * muestra como nota de voz y no como archivo.
+     */
+    public function enviarVoz(string $texto): bool
+    {
+        $apiKey = $this->llaveGemini();
+        if (! $apiKey) {
+            Log::error('GARVIS: no hay llave de Gemini para la nota de voz');
+
+            return false;
+        }
+
+        $disco = Storage::disk('local');
+        $disco->makeDirectory('garvis');
+        $base = 'garvis/voz-'.Str::random(12);
+        $wav = $disco->path($base.'.wav');
+        $ogg = $base.'.ogg';
+
+        try {
+            $r = LocucionIaService::generar(
+                $apiKey,
+                $texto,
+                $wav,
+                LocucionIaService::VOZ_MASCULINA,
+                'Dilo como un asistente que le habla a su jefe por WhatsApp: tranquilo, claro y natural, en español colombiano'
+            );
+            if (! $r['ok']) {
+                Log::error('GARVIS: Gemini no generó la voz', ['error' => $r['error']]);
+
+                return false;
+            }
+
+            $ffmpeg = Process::timeout(60)->run([
+                config('services.ffmpeg.binario', 'ffmpeg'), '-y', '-i', $wav,
+                '-c:a', 'libopus', '-b:a', '32k', '-ac', '1', $disco->path($ogg),
+            ]);
+            if (! $ffmpeg->successful()) {
+                Log::error('GARVIS: FFmpeg no pudo pasar la voz a ogg', ['error' => mb_substr($ffmpeg->errorOutput(), -300)]);
+
+                return false;
+            }
+
+            $envio = $this->whatsappApi->enviarMedia($this->numero(), 'audio', $ogg, 'audio/ogg', basename($ogg), $this->config());
+            if (! ($envio['ok'] ?? false)) {
+                Log::error('GARVIS: falló el envío de la nota de voz', ['error' => $envio['error'] ?? null]);
+
+                return false;
+            }
+
+            return true;
+        } finally {
+            $disco->delete([$base.'.wav', $ogg]);
+        }
     }
 
     /**

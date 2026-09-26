@@ -7,6 +7,7 @@
 # palabra, contra una lista cerrada:
 #   responder  un texto (lo de siempre; también si no pide nada)
 #   imagen     una captura, JPEG o PNG
+#   voz        un texto corto que Gemini lee y sale como nota de voz
 set -euo pipefail
 
 modo="${SSH_ORIGINAL_COMMAND:-responder}"
@@ -25,6 +26,17 @@ case "$modo" in
     fi
 
     printf '%s' "$texto" | sudo -u www-data php artisan garvis:responder
+    ;;
+
+  voz)
+    texto="$(head -c 4000)"
+
+    if [ -z "$texto" ]; then
+      echo "Sin texto." >&2
+      exit 1
+    fi
+
+    printf '%s' "$texto" | sudo -u www-data php artisan garvis:voz
     ;;
 
   imagen)
