@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\GarvisNotaDeVozJob;
 use App\Models\WhatsappConfig;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -11,7 +12,8 @@ use Illuminate\Support\Str;
 /**
  * GARVIS: el asistente de Brayan, que vive en el repo brayan3000-gv/garvis.
  *
- * Brayan le escribe al número de Brygar. Sus mensajes de texto no entran a las
+ * Brayan le escribe al número de Brygar. Sus mensajes de texto y sus notas de voz
+ * (ya pasadas a texto, ver GarvisNotaDeVozJob) no entran a las
  * conversaciones de Brynex: se vuelven un comentario en el issue del día del
  * repo, y un workflow de ese repo le contesta. La respuesta vuelve por
  * `php artisan garvis:responder`, que corre en este servidor.
@@ -24,7 +26,7 @@ use Illuminate\Support\Str;
 class GarvisService
 {
     /** Brygar: su número es el de los avisos de despliegue, al que Brayan ya escribe. */
-    private const ALIADO_ID = 2;
+    public const ALIADO_ID = 2;
 
     /** El mensaje de WhatsApp más largo que acepta Meta es 4096; se deja margen. */
     private const MAX_TROZO = 3500;
@@ -45,7 +47,8 @@ class GarvisService
             return false;
         }
 
-        if (($msg['from'] ?? null) !== $this->numero() || ($msg['type'] ?? null) !== 'text') {
+        // Texto o nota de voz; una foto, un sticker o una ubicación siguen a Brynex como siempre.
+        if (($msg['from'] ?? null) !== $this->numero() || ! in_array($msg['type'] ?? null, ['text', 'audio'], true)) {
             return false;
         }
 
@@ -70,10 +73,16 @@ class GarvisService
     public function recibir(array $msg): void
     {
         $waId = $msg['id'] ?? '';
+        $esVoz = ($msg['type'] ?? null) === 'audio';
         $texto = trim($msg['text']['body'] ?? '');
+        $mediaId = $msg['audio']['id'] ?? '';
+
+        if ($esVoz ? $mediaId === '' : $texto === '') {
+            return;
+        }
 
         // Meta reenvía el mismo mensaje si tarda en recibir el 200.
-        if ($texto === '' || ! Cache::add('garvis_msg:'.$waId, true, now()->addDay())) {
+        if (! Cache::add('garvis_msg:'.$waId, true, now()->addDay())) {
             return;
         }
 
@@ -87,7 +96,22 @@ class GarvisService
             // Los chulos azules son cortesía; no pueden impedir que llegue el mensaje.
         }
 
-        if (! $this->publicarEnGithub('📱 '.$texto)) {
+        // Bajar el audio y pasarlo a texto tarda más de lo que Meta espera el 200: va en cola.
+        if ($esVoz) {
+            GarvisNotaDeVozJob::dispatch($mediaId, $msg['audio']['mime_type'] ?? null);
+
+            return;
+        }
+
+        $this->pasarAGarvis('📱 '.$texto);
+    }
+
+    /**
+     * Deja el mensaje en el issue del día. Si GitHub no lo recibe, se lo dice a Brayan.
+     */
+    public function pasarAGarvis(string $cuerpo): void
+    {
+        if (! $this->publicarEnGithub($cuerpo)) {
             $this->responder('No pude pasarle tu mensaje a GARVIS: GitHub no lo recibió. El detalle quedó en el log de Brynex.');
         }
     }
@@ -111,6 +135,22 @@ class GarvisService
         }
 
         return $ok;
+    }
+
+    /**
+     * Manda a Brayan una captura que tomó GARVIS. La ruta es del disco local, dentro de garvis/.
+     */
+    public function enviarImagen(string $ruta, string $mime): bool
+    {
+        $envio = $this->whatsappApi->enviarMedia($this->numero(), 'image', $ruta, $mime, basename($ruta), $this->config());
+
+        if (! ($envio['ok'] ?? false)) {
+            Log::error('GARVIS: falló el envío de la captura por WhatsApp', ['error' => $envio['error'] ?? null]);
+
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -193,7 +233,7 @@ class GarvisService
         return $trozos;
     }
 
-    private function config(): WhatsappConfig
+    public function config(): WhatsappConfig
     {
         return WhatsappConfig::paraAliado(self::ALIADO_ID);
     }
