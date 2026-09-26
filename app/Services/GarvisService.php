@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\GarvisFotoJob;
 use App\Jobs\GarvisNotaDeVozJob;
 use App\Models\ConfiguracionBrynex;
 use App\Models\IaConfiguracionAliado;
@@ -18,8 +19,8 @@ use Illuminate\Support\Str;
 /**
  * GARVIS: el asistente de Brayan, que vive en el repo brayan3000-gv/garvis.
  *
- * Brayan le escribe al número de Brygar. Sus mensajes de texto y sus notas de voz
- * (ya pasadas a texto, ver GarvisNotaDeVozJob) no entran a las
+ * Brayan le escribe al número de Brygar. Sus mensajes de texto, sus notas de voz
+ * (ya pasadas a texto, ver GarvisNotaDeVozJob) y sus fotos (GarvisFotoJob) no entran a las
  * conversaciones de Brynex: se vuelven un comentario en el issue del día del
  * repo, y un workflow de ese repo le contesta. La respuesta vuelve por
  * `php artisan garvis:responder`, que corre en este servidor.
@@ -53,8 +54,8 @@ class GarvisService
             return false;
         }
 
-        // Texto o nota de voz; una foto, un sticker o una ubicación siguen a Brynex como siempre.
-        if (($msg['from'] ?? null) !== $this->numero() || ! in_array($msg['type'] ?? null, ['text', 'audio'], true)) {
+        // Texto, nota de voz o foto; un sticker o una ubicación siguen a Brynex como siempre.
+        if (($msg['from'] ?? null) !== $this->numero() || ! in_array($msg['type'] ?? null, ['text', 'audio', 'image'], true)) {
             return false;
         }
 
@@ -79,11 +80,11 @@ class GarvisService
     public function recibir(array $msg): void
     {
         $waId = $msg['id'] ?? '';
-        $esVoz = ($msg['type'] ?? null) === 'audio';
+        $tipo = $msg['type'] ?? 'text';
         $texto = trim($msg['text']['body'] ?? '');
-        $mediaId = $msg['audio']['id'] ?? '';
+        $mediaId = $msg[$tipo]['id'] ?? '';
 
-        if ($esVoz ? $mediaId === '' : $texto === '') {
+        if ($tipo === 'text' ? $texto === '' : $mediaId === '') {
             return;
         }
 
@@ -102,9 +103,15 @@ class GarvisService
             // Los chulos azules son cortesía; no pueden impedir que llegue el mensaje.
         }
 
-        // Bajar el audio y pasarlo a texto tarda más de lo que Meta espera el 200: va en cola.
-        if ($esVoz) {
+        // Bajar el audio o la foto tarda más de lo que Meta espera el 200: va en cola.
+        if ($tipo === 'audio') {
             GarvisNotaDeVozJob::dispatch($mediaId, $msg['audio']['mime_type'] ?? null);
+
+            return;
+        }
+
+        if ($tipo === 'image') {
+            GarvisFotoJob::dispatch($mediaId, $msg['image']['mime_type'] ?? null, trim($msg['image']['caption'] ?? ''));
 
             return;
         }
