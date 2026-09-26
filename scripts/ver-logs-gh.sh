@@ -21,8 +21,8 @@ set -uo pipefail
 read -r APP TIPO LINEAS EXTRA <<<"${SSH_ORIGINAL_COMMAND:-}"
 
 case "${APP:-}" in
-  brynex|cuentafacil|bahia|liderapp|avappi|servidor) ;;
-  *) echo "App no permitida: '${APP:-}'. Opciones: brynex cuentafacil bahia liderapp avappi servidor" >&2; exit 2 ;;
+  brynex|cuentafacil|bahia|liderapp|avappi|megatransportes|servidor) ;;
+  *) echo "App no permitida: '${APP:-}'. Opciones: brynex cuentafacil bahia liderapp avappi megatransportes servidor" >&2; exit 2 ;;
 esac
 case "${TIPO:-errores}" in
   errores|todo) TIPO=${TIPO:-errores} ;;
@@ -147,6 +147,9 @@ case "$APP" in
     diario avappi
     diario avappi-worker-envios
     diario avappi-worker-geo
+    ;;
+  megatransportes)
+    laravel /var/www/megatransportes
     ;;
   servidor)
     titulo "Estado general"

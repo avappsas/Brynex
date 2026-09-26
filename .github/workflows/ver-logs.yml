@@ -20,6 +20,7 @@ on:
           - liderapp
           - cuentafacil
           - avappi
+          - megatransportes
         default: servidor
       tipo:
         description: "errores = solo errores de hoy y ayer; todo = las últimas líneas del log"
