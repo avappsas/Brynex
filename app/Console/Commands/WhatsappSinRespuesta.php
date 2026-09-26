@@ -102,6 +102,7 @@ class WhatsappSinRespuesta extends Command
 
             $esperando[] = [
                 'nombre' => $this->nombreCorto($cv),
+                'telefono' => $tel,
                 'desde' => $ultimo->created_at,
                 // Si el último mensaje fue nuestro pero el caso quedó en manos de un asesor, lo que
                 // importa es por qué se pasó, no lo último que dijo el bot.
@@ -187,7 +188,7 @@ class WhatsappSinRespuesta extends Command
         $partes = [];
         $largo = mb_strlen($cabeza);
         foreach ($esperando as $i => $e) {
-            $item = ($i + 1).') '.($e['asesor'] ? 'ASESOR ' : '').$e['nombre'].' '.$this->hace($e['desde'])
+            $item = ($i + 1).') '.($e['asesor'] ? 'ASESOR ' : '').$e['nombre'].' '.$e['telefono'].' '.$this->hace($e['desde'])
                 .' «'.mb_substr($e['dijo'], 0, 38).'»';
             // Se reserva sitio para el "y N más" del final.
             if ($largo + mb_strlen($item) + 20 > self::MAX_CARACTERES) {
@@ -205,10 +206,11 @@ class WhatsappSinRespuesta extends Command
     private function mostrar(array $esperando): void
     {
         $this->table(
-            ['', 'Quién', 'Hace', 'Lo último'],
+            ['', 'Quién', 'Teléfono', 'Hace', 'Lo último'],
             array_map(fn ($e) => [
                 $e['asesor'] ? 'ASESOR' : ($e['prioridad'] === 1 ? 'pasado' : ''),
                 $e['nombre'],
+                $e['telefono'],
                 $this->hace($e['desde']),
                 mb_substr($e['dijo'], 0, 70),
             ], $esperando)
