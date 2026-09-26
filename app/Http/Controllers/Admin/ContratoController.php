@@ -855,7 +855,7 @@ class ContratoController extends Controller
             }
 
             // Una sola llamada — misma fuente de verdad que la facturación normal
-            $cotizacion = $contrato->calcularCotizacion($numDias);
+            $cotizacion = $contrato->calcularCotizacion($numDias, null, true);
             $vEpsRetiro = (int) ($cotizacion['eps'] ?? 0);
             $vArlRetiro = (int) ($cotizacion['arl'] ?? 0);
             $vAfpRetiro = (int) ($cotizacion['pen'] ?? 0);
@@ -1152,7 +1152,7 @@ class ContratoController extends Controller
                 $contrato->salario = $sm;
             }
 
-            $cotizacion = $contrato->calcularCotizacion($dias);
+            $cotizacion = $contrato->calcularCotizacion($dias, null, true);
             $vEps = (int) ($cotizacion['eps'] ?? 0);
             $vArl = (int) ($cotizacion['arl'] ?? 0);
             $vPen = (int) ($cotizacion['pen'] ?? 0);
@@ -1732,7 +1732,7 @@ class ContratoController extends Controller
                     $original->salario = $sm;
                 }
 
-                $cotizacion = $original->calcularCotizacion($numDias);
+                $cotizacion = $original->calcularCotizacion($numDias, null, true);
                 $vEpsRetiro = (int) ($cotizacion['eps'] ?? 0);
                 $vArlRetiro = (int) ($cotizacion['arl'] ?? 0);
                 $vAfpRetiro = (int) ($cotizacion['pen'] ?? 0);
