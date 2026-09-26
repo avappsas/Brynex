@@ -36,13 +36,18 @@ if [ -n "${EXTRA:-}" ]; then
   echo "Sobran palabras en el comando." >&2; exit 2
 fi
 
-# Tapa lo que no debe quedar en el log de GitHub y recorta renglones eternos
-# (un SQL con sus bindings trae cédulas y nombres de sobra).
+# Tapa lo que no debe quedar en el log de GitHub y recorta renglones eternos:
+# contraseñas y tokens, los valores entre comillas simples de un SQL (ahí
+# llegan nombres y cédulas), los textos de un payload de WhatsApp y los
+# celulares. Las rutas quedan a la vista, que son las que dicen dónde falló.
 limpiar() {
   sed -E \
     -e 's/(Bearer[[:space:]]+)[A-Za-z0-9._~+\/=-]+/\1***/g' \
     -e 's/((pass(word)?|pwd|secret|token|api[_-]?key|authorization|clave)["'"'"']?[[:space:]]*[:=][[:space:]]*["'"'"']?)[^"'"'"'[:space:],&]+/\1***/Ig' \
-    -e 's/[A-Za-z0-9_+\/=-]{40,}/***/g' \
+    -e 's/[A-Za-z0-9_+=-]{40,}/***/g' \
+    -e "s/'[^']{3,}'/'…'/g" \
+    -e 's/("(text|body|nombre|name|email|to|telefono|celular)":)"[^"]*"/\1"…"/g' \
+    -e 's/\b57[0-9]{10}\b|\b3[0-9]{9}\b/[cel]/g' \
   | cut -c1-400
 }
 
@@ -156,3 +161,6 @@ case "$APP" in
     apache
     ;;
 esac
+
+# Un grep sin coincidencias no es una falla: «sin errores» es la mejor respuesta.
+exit 0
