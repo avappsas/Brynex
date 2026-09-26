@@ -59,8 +59,9 @@ jobs:
           [ "$REVERB" = "true" ] && flags="$flags --reverb"
           flags="${flags# }"
           echo "Banderas: ${flags:-(ninguna)}"
+          # El -- es necesario: sin él ssh lee "--dry-run" como una opción suya.
           ssh -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=20 \
-            root@159.195.233.132 "$flags"
+            -- root@159.195.233.132 "$flags"
 
       - name: Borrar la llave
         if: always()
