@@ -21,6 +21,7 @@ use App\Models\{
     WhatsappMensaje
 };
 use App\Services\Adres\RespuestaCaptcha;
+use App\Services\GarvisService;
 use App\Services\Cumplimiento\DetectorBajaPublicidad;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Cache;
@@ -109,7 +110,7 @@ class WhatsappWebhookService
      * Procesa el payload completo de un webhook de Meta.
      * Meta puede enviar múltiples entradas en un solo request.
      */
-    public function procesarPayload(array $data): void
+    public function procesarPayload(array $data, bool $firmaVerificada = false): void
     {
         $entries = $data['entry'] ?? [];
 
@@ -134,6 +135,23 @@ class WhatsappWebhookService
                 // es que nadie lo escuchaba.
                 foreach ($value['statuses'] ?? [] as $status) {
                     $this->procesarActualizacionEstado($status);
+                }
+
+                // Lo que Brayan le escribe a GARVIS no es una conversación de
+                // Brynex: se desvía antes de buscar aliado y no sigue de largo.
+                if (!empty($value['messages'])) {
+                    $garvis = app(GarvisService::class);
+                    $value['messages'] = array_values(array_filter(
+                        $value['messages'],
+                        function ($msg) use ($garvis, $phoneNumberId, $firmaVerificada) {
+                            if (!$garvis->esParaGarvis($msg, $phoneNumberId, $firmaVerificada)) {
+                                return true;
+                            }
+                            $garvis->recibir($msg);
+
+                            return false;
+                        }
+                    ));
                 }
 
                 $config = WhatsappConfig::where('phone_number_id', $phoneNumberId)
