@@ -38,9 +38,29 @@ done
 
 WEB_HOME="$(getent passwd "$WEB_USER" | cut -d: -f6)"
 
-titulo() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
+# Aviso por WhatsApp al terminar, salga bien o mal. Sale por Brynex, que ya
+# tiene las credenciales de Meta y la plantilla aprobada `notificar_brynex`
+# (php artisan whatsapp:alerta-backup): este guion no guarda ningún secreto.
+# Si Brynex no logra mandarlo, el despliegue termina igual.
+PASO="Comprobaciones"
+RESULTADO=""
+MOTIVO=""
+avisar_whatsapp() {
+    local codigo=$1 texto
+    if [ "$codigo" -eq 0 ]; then
+        texto="✅ ${RESULTADO:-terminó bien}"
+    else
+        texto="❌ Falló en «$PASO» (código $codigo)${MOTIVO:+ · $MOTIVO}"
+    fi
+    [ -f /var/www/brynex/artisan ] || return 0
+    (cd /var/www/brynex && sudo -u www-data HOME=/var/www timeout 60 \
+        php artisan whatsapp:alerta-backup "Despliegue Brynex" "$texto" >/dev/null 2>&1) || true
+}
+trap 'avisar_whatsapp $?' EXIT
+
+titulo() { PASO="$*"; printf '\n\033[1m== %s\033[0m\n' "$*"; }
 aviso()  { printf '\033[33m!! %s\033[0m\n' "$*"; }
-error()  { printf '\033[31mXX %s\033[0m\n' "$*" >&2; }
+error()  { MOTIVO="$*"; printf '\033[31mXX %s\033[0m\n' "$*" >&2; }
 
 # psysh (tinker) y composer escriben en $HOME/.config, y el home de www-data
 # (/var/www) es de root: sin esto, `sudo -u www-data php artisan tinker` muere
@@ -86,6 +106,7 @@ pendientes="$(git rev-list --count "HEAD..origin/$BRANCH")"
 
 if [[ "$pendientes" -eq 0 ]]; then
     echo "Ya está al día en $(git rev-parse --short HEAD). No hay nada que desplegar."
+    RESULTADO="sin cambios, ya estaba en $(git rev-parse --short HEAD)"
     exit 0
 fi
 
@@ -115,6 +136,7 @@ fi
 if [[ $DRY_RUN -eq 1 ]]; then
     echo
     echo "(--dry-run: hasta aquí llega, no se tocó nada)"
+    RESULTADO="dry-run: $pendientes commit(s) por desplegar${migraciones_nuevas:+, con migraciones}"
     exit 0
 fi
 
@@ -169,6 +191,7 @@ supervisorctl status | sed 's/^/  /'
 # ------------------------------------------------------------------------ cierre
 
 titulo "Listo"
+RESULTADO="desplegado $(git rev-parse --short "$commit_antes") → $(git rev-parse --short "$commit_nuevo") · $(git --no-pager log -1 --format=%s | cut -c1-80)"
 echo "  $(git rev-parse --short "$commit_antes") -> $(git rev-parse --short "$commit_nuevo")"
 echo "  $(git --no-pager log --oneline -1)"
 
