@@ -1,0 +1,62 @@
+# Consulta, con un SELECT, las bases de producción en netcup, desde GitHub →
+# Actions → Consultar datos → Run workflow. Lo usa sobre todo un hilo de
+# Claude: lo lanza, lee el CSV del log y después borra el log de la corrida.
+#
+# Solo lee. La llave NETCUP_CONSULTAR_KEY no da shell: en el servidor tiene un
+# command= forzado (/usr/local/sbin/consultar-gh, copia de
+# scripts/consultar-gh.sh) que solo acepta el nombre de la app, y la consulta
+# corre con un rol de la base que no puede escribir. Ver scripts/CONSULTAR.md.
+name: Consultar datos
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: "Qué base"
+        type: choice
+        options:
+          - liderapp
+          - bahia
+          - avappi
+        default: liderapp
+      sql:
+        description: "Un solo SELECT (sale en CSV, máximo 20.000 filas)"
+        type: string
+        required: true
+
+permissions: {}
+
+# De a uno: dos consultas a la vez se mezclarían en nada, pero así el log de
+# cada corrida es solo suyo.
+concurrency:
+  group: consultar-datos
+  cancel-in-progress: false
+
+jobs:
+  consultar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Preparar la llave SSH
+        env:
+          NETCUP_CONSULTAR_KEY: ${{ secrets.NETCUP_CONSULTAR_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$NETCUP_CONSULTAR_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo '159.195.233.132 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILI9SX/CNPHG/vGvc7tKDfMlVCEeWpc4QjD3rAXDnOiz' > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Consultar
+        env:
+          APP: ${{ inputs.app }}
+          SQL: ${{ inputs.sql }}
+        run: |
+          # El SQL va por la entrada estándar y nunca dentro del comando: el
+          # servidor solo recibe el nombre de la app como comando.
+          printf '%s\n' "$SQL" | ssh -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=20 \
+            -- root@159.195.233.132 "$APP"
+
+      - name: Borrar la llave
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
