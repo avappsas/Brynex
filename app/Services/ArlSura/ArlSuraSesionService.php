@@ -6,6 +6,7 @@ use App\Models\ArlCredencial;
 use App\Models\ArlUsuarioPortal;
 use App\Models\RazonSocial;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
@@ -26,6 +27,9 @@ class ArlSuraSesionService
 {
     /** El login tarda: hay SSO, redirecciones y el reto de Incapsula de por medio. */
     private const TIMEOUT_SEGUNDOS = 120;
+
+    /** Cuánto se espera antes de volver a mandar una clave que Sura rechazó. */
+    private const PAUSA_TRAS_FALLO_MINUTOS = 30;
 
     /**
      * Abre sesión para esa póliza y deja la cookie lista para ArlSuraApiService.
@@ -98,9 +102,23 @@ class ArlSuraSesionService
         return $salida['cookie'];
     }
 
-    /** Corre el login en Chrome y devuelve lo que diga el script. */
+    /**
+     * Corre el login en Chrome y devuelve lo que diga el script.
+     *
+     * Un usuario y clave que Sura acaba de rechazar no se vuelven a mandar
+     * durante un rato: Sura bloquea el usuario tras unos pocos intentos
+     * fallidos, y entre la consulta previa, la afiliación y el cruce nocturno
+     * se repetiría varias veces la misma clave mala. La marca va por usuario y
+     * clave, así que en cuanto alguien corrige la clave se intenta enseguida.
+     */
     private static function abrirSesion(ArlCredencial $credencial, ?string $nit): array
     {
+        $marca = 'arlsura:login-fallido:'.sha1($credencial->usuario.'|'.$credencial->contrasena);
+
+        if ($fallo = Cache::get($marca)) {
+            return ['ok' => false, 'error' => $fallo.' (no se reintentó para no bloquear el usuario en Sura; corrige la clave o espera '.self::PAUSA_TRAS_FALLO_MINUTOS.' min)'];
+        }
+
         $entrada = json_encode([
             'tipoDocumento' => $credencial->tipo_documento,
             'usuario'       => $credencial->usuario,
@@ -117,6 +135,12 @@ class ArlSuraSesionService
 
         if (! isset($salida['error']) && ! ($salida['ok'] ?? false)) {
             $salida['error'] = trim($resultado->errorOutput()) ?: 'El login no devolvió una sesión.';
+        }
+
+        // Solo el rechazo del login marca la clave: un Chrome que no arrancó o
+        // un portal caído no dicen nada de ella.
+        if (! ($salida['ok'] ?? false) && ($salida['url'] ?? '') !== '' && str_contains($salida['url'], 'login.sura.com')) {
+            Cache::put($marca, $salida['error'], now()->addMinutes(self::PAUSA_TRAS_FALLO_MINUTOS));
         }
 
         return $salida;
