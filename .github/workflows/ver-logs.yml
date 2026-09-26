@@ -19,6 +19,7 @@ on:
           - bahia
           - liderapp
           - cuentafacil
+          - avappi
         default: servidor
       tipo:
         description: "errores = solo errores de hoy y ayer; todo = las últimas líneas del log"
