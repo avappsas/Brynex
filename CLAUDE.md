@@ -80,6 +80,16 @@ php -l ruta/al/archivo.php        # chequeo de sintaxis rápido, sin bootear Lar
 ./scripts/desplegar.sh --migrate   # además corre las migraciones nuevas
 ```
 
+**También se despliega desde GitHub**, sin la Mac: GitHub → *Actions* →
+*Desplegar* → *Run workflow* (sirve desde la app de GitHub en el iPhone).
+Tiene tres opciones: `modo` (`dry-run` por defecto, o `desplegar`), `migrar`
+(apagado por defecto: la base es la de producción) y `reverb`. Solo corre desde
+`main` y de a uno a la vez (`.github/workflows/desplegar.yml`). Entra con la
+llave del secret `NETCUP_SSH_KEY`, que en el servidor no da shell: tiene un
+`command=` forzado (`/usr/local/sbin/brynex-deploy-gh`) que solo acepta
+`--dry-run`, `--migrate` y `--reverb`, y corre el `scripts/deploy.sh` de
+`origin/main`. `desplegar.sh` desde la Mac sigue funcionando igual.
+
 El push a GitHub lo hace el usuario; el script solo lleva al servidor lo que ya
 esté en `origin/main`. Hace el `git pull`, devuelve los archivos a `www-data`
 (git corre como root y si no, Apache pierde la escritura), reinstala
