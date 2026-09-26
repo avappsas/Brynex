@@ -72,11 +72,11 @@ return [
         // números de quienes de verdad contestan. Separados por coma.
         'pendientes_numeros' => env('WHATSAPP_PENDIENTES_NUMEROS', '3117762689'),
         // Rechazar los payloads cuya firma no valide. Arranca en false a
-        // propósito: el webhook de Meta no apunta directo a BryNex sino a un
-        // relay, y si ese relay reserializa el cuerpo o no reenvía la cabecera
-        // X-Hub-Signature-256, la firma no puede cuadrar nunca. Activar esto
-        // sin comprobarlo antes dejaría a los aliados sin recibir mensajes.
-        // El propio webhook avisa cuándo es seguro ponerlo en true.
+        // propósito: si algún número llega firmado por otra app de Meta (un
+        // aliado con su propia cuenta), su firma no cuadra con este App Secret
+        // y encenderlo lo dejaría sin recibir mensajes. El propio webhook avisa,
+        // número por número, cuáles no cuadran; un día sin avisos es la señal
+        // de que es seguro ponerlo en true.
         'webhook_estricto' => env('WHATSAPP_WEBHOOK_ESTRICTO', false),
         'webhook_verify_token' => env('WHATSAPP_WEBHOOK_VERIFY_TOKEN', 'brynex_wh_secret_2026'),
     ],

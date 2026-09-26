@@ -25,7 +25,7 @@ use Illuminate\Support\Str;
  * `php artisan garvis:responder`, que corre en este servidor.
  *
  * Solo se desvía con la firma de Meta verificada. El webhook de Brynex acepta
- * payloads sin firma mientras el relay no la reenvíe, y aquí eso no sirve: un
+ * payloads sin firma mientras WHATSAPP_WEBHOOK_ESTRICTO esté apagado, y aquí eso no sirve: un
  * mensaje falso «desde el número de Brayan» le daría órdenes a algo con
  * acceso a sus repos.
  */
