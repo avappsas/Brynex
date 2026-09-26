@@ -38,7 +38,6 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Preparar la llave SSH
-        id: llave
         env:
           NETCUP_SSH_KEY: ${{ secrets.NETCUP_SSH_KEY }}
         run: |
@@ -49,8 +48,6 @@ jobs:
           chmod 644 ~/.ssh/known_hosts
 
       - name: Desplegar en netcup
-        id: despliegue
-        shell: bash
         env:
           MODO: ${{ inputs.modo }}
           MIGRAR: ${{ inputs.migrar }}
@@ -62,100 +59,10 @@ jobs:
           [ "$REVERB" = "true" ] && flags="$flags --reverb"
           flags="${flags# }"
           echo "Banderas: ${flags:-(ninguna)}"
-          # La salida queda en un archivo para que el aviso diga en qué se quedó.
-          set +e
           # El -- es necesario: sin él ssh lee "--dry-run" como una opción suya.
           ssh -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=20 \
-            -- root@159.195.233.132 "$flags" 2>&1 | tee "$RUNNER_TEMP/despliegue.log"
-          codigo=${PIPESTATUS[0]}
-          echo "codigo=$codigo" >> "$GITHUB_OUTPUT"
-          exit "$codigo"
+            -- root@159.195.233.132 "$flags"
 
       - name: Borrar la llave
         if: always()
         run: rm -f ~/.ssh/id_ed25519
-
-      # Manda un WhatsApp con el resultado, salga bien o mal. Sale por el número
-      # de WhatsApp Business de Brynex (API de Meta) con la plantilla aprobada
-      # `notificar_brynex`, la misma de las alertas operativas de Brynex
-      # (AlertaOperativaService): dos variables, origen y mensaje. Va por
-      # plantilla porque el texto libre solo sale dentro de la ventana de 24 h.
-      #
-      # Sin los secrets WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID y
-      # WHATSAPP_AVISOS_NUMERO no hace nada, y si Meta falla el despliegue no se
-      # marca como fallido por eso.
-      - name: Avisar por WhatsApp
-        if: always()
-        continue-on-error: true
-        shell: bash
-        env:
-          TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
-          PHONE_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
-          DESTINO: ${{ secrets.WHATSAPP_AVISOS_NUMERO }}
-          ESTADO: ${{ job.status }}
-          LLAVE: ${{ steps.llave.outcome }}
-          DESPLIEGUE: ${{ steps.despliegue.outcome }}
-          CODIGO: ${{ steps.despliegue.outputs.codigo }}
-          MODO: ${{ inputs.modo }}
-          QUIEN: ${{ github.actor }}
-          COMMIT: ${{ github.sha }}
-          ENLACE: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          if [ -z "$TOKEN" ] || [ -z "$PHONE_ID" ] || [ -z "$DESTINO" ]; then
-            echo "Faltan WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID o WHATSAPP_AVISOS_NUMERO: no se avisa."
-            exit 0
-          fi
-
-          case "$ESTADO" in
-            success) [ "$MODO" = "desplegar" ] && titulo="✅ desplegado" \
-                                               || titulo="🔎 dry-run sin problemas" ;;
-            cancelled) titulo="⏹️ cancelado" ;;
-            *) titulo="❌ FALLÓ ($MODO)" ;;
-          esac
-
-          partes=("$titulo")
-          if [ "$ESTADO" != "success" ]; then
-            if [ "$LLAVE" = "failure" ]; then
-              partes+=("en la llave SSH (¿falta NETCUP_SSH_KEY?)")
-            elif [ "$CODIGO" = "255" ]; then
-              partes+=("no se pudo conectar a netcup")
-            elif [ "$DESPLIEGUE" = "failure" ]; then
-              partes+=("en el servidor, código $CODIGO")
-            fi
-            # Última línea que dijo el servidor, sin colores y recortada.
-            if [ -s "$RUNNER_TEMP/despliegue.log" ]; then
-              ultima=$(sed 's/\x1b\[[0-9;]*m//g' "$RUNNER_TEMP/despliegue.log" \
-                       | grep -v '^[[:space:]]*$' | tail -n 1 | cut -c1-200)
-              [ -n "$ultima" ] && partes+=("dijo: $ultima")
-            fi
-          fi
-          partes+=("$QUIEN" "${COMMIT:0:7}" "$(TZ=America/Bogota date '+%d/%m %H:%M')" "$ENLACE")
-
-          # Meta rechaza variables con saltos de línea, tabulaciones o más de
-          # cuatro espacios seguidos: todo va en un renglón separado por " · ".
-          mensaje=""
-          for p in "${partes[@]}"; do mensaje="${mensaje:+$mensaje · }$p"; done
-          mensaje=$(printf '%s' "$mensaje" | tr '\t\r\n' '   ' | tr -s ' ')
-
-          # El idioma con que se aprobó la plantilla no se sabe desde aquí: se
-          # prueban los probables hasta que Meta acepte uno.
-          for idioma in es es_CO es_ES es_MX; do
-            cuerpo=$(jq -nc --arg to "$DESTINO" --arg idioma "$idioma" \
-              --arg origen "Despliegue Brynex" --arg mensaje "$mensaje" '{
-                messaging_product: "whatsapp", to: $to, type: "template",
-                template: { name: "notificar_brynex", language: { code: $idioma },
-                  components: [ { type: "body", parameters: [
-                    { type: "text", text: $origen }, { type: "text", text: $mensaje } ] } ] } }')
-            respuesta=$(curl -sS --max-time 20 -X POST \
-              "https://graph.facebook.com/v19.0/$PHONE_ID/messages" \
-              -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-              -d "$cuerpo") || true
-            if printf '%s' "$respuesta" | jq -e '.messages[0].id' > /dev/null 2>&1; then
-              echo "Aviso enviado (idioma $idioma)."
-              exit 0
-            fi
-            # 132001: la plantilla no existe en ese idioma. Otro error no se arregla probando.
-            codigo=$(printf '%s' "$respuesta" | jq -r '.error.code // empty' 2>/dev/null) || true
-            [ "$codigo" = "132001" ] || break
-          done
-          echo "::warning::No se pudo enviar el WhatsApp: $(printf '%s' "$respuesta" | jq -r '.error.message // .' 2>/dev/null)"
