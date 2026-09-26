@@ -45,6 +45,19 @@ return [
     | app_secret:      App Secret de la Meta App (para validar firma HMAC del webhook)
     | webhook_verify_token: Token que Meta usa para verificar el webhook (GET)
     */
+    /*
+    | GARVIS, el asistente de Brayan (repo brayan3000-gv/garvis). Sus mensajes
+    | de texto al número de Brygar se desvían al repo en vez de entrar a las
+    | conversaciones. Ver App\Services\GarvisService.
+    */
+    'garvis' => [
+        'activo' => env('GARVIS_ACTIVO', false),
+        'numero' => env('GARVIS_NUMERO', env('WHATSAPP_ALERTAS_NUMERO', '3117762689')),
+        'repo' => env('GARVIS_REPO', 'brayan3000-gv/garvis'),
+        // Fine-grained, solo el repo garvis, Issues: lectura y escritura.
+        'github_token' => env('GARVIS_GITHUB_TOKEN'),
+    ],
+
     'whatsapp' => [
         'waba_id' => env('WHATSAPP_BRYNEX_WABA_ID'),
         'phone_number_id' => env('WHATSAPP_BRYNEX_PHONE_NUMBER_ID'),

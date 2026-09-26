@@ -76,7 +76,11 @@ class WhatsappWebhookController extends Controller
         // Procesar de forma asíncrona para responder rápido a Meta
         // (Meta cancela si no recibe respuesta en ~20 segundos)
         try {
-            $this->webhookService->procesarPayload($payload);
+            // Aparte de aceptar o no el payload: GARVIS solo actúa con la firma
+            // de Meta de verdad, aunque el webhook todavía acepte sin ella.
+            $firmaVerificada = $this->firmaCuadra($request, $this->appSecret());
+
+            $this->webhookService->procesarPayload($payload, $firmaVerificada);
         } catch (\Throwable $e) {
             Log::error('WhatsApp webhook: error al procesar payload', [
                 'error' => $e->getMessage(),
