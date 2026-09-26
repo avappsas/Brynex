@@ -82,7 +82,7 @@ trap 'rm -f "$TMP"' EXIT
 
 read -rsp "Clave de sa: " SQLCMDPASSWORD; echo
 export SQLCMDPASSWORD
-"$SQLCMD" -S localhost -U sa -C -b -i "$TMP" >/dev/null
+"$SQLCMD" -S 127.0.0.1 -U sa -C -b -i "$TMP" >/dev/null
 unset SQLCMDPASSWORD
 echo "Login datos_lectura listo."
 
@@ -101,7 +101,7 @@ for par in "${BASES[@]}"; do
   else
     echo "FALLA: no pudo leer $app."; bien=1
   fi
-  if SQLCMDPASSWORD="$CLAVE" "$SQLCMD" -S localhost -U datos_lectura -C -b -d "$base" \
+  if SQLCMDPASSWORD="$CLAVE" "$SQLCMD" -S 127.0.0.1 -U datos_lectura -C -b -d "$base" \
       -Q "DECLARE @t nvarchar(300) = (SELECT TOP 1 QUOTENAME(s.name) + '.' + QUOTENAME(t.name) FROM sys.tables t JOIN sys.schemas s ON s.schema_id = t.schema_id); EXEC('DELETE FROM ' + @t + ' WHERE 1 = 0');" >/dev/null 2>&1; then
     echo "FALLA: datos_lectura PUDO escribir en $base. Revisar antes de usar el botón."; bien=1
   else
