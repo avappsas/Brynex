@@ -93,6 +93,13 @@ Route::get('/wa/{publicacion}', [\App\Http\Controllers\Publico\WhatsappRedirectC
 Route::get('/whatsapp/webhook', [\App\Http\Controllers\WhatsappWebhookController::class, 'verify'])->name('whatsapp.webhook.verify');
 Route::post('/whatsapp/webhook', [\App\Http\Controllers\WhatsappWebhookController::class, 'receive'])->name('whatsapp.webhook.receive');
 
+// ─── GARVIS: fotos que Brayan le manda por WhatsApp ─────────────────────────
+// Sin auth: las baja el workflow de GARVIS en GitHub. Las protege el enlace firmado,
+// que vence en pocas horas (ver GarvisFotoJob).
+Route::get('/garvis/foto/{archivo}', \App\Http\Controllers\GarvisFotoController::class)
+    ->middleware('signed:relative')
+    ->name('garvis.foto');
+
 // ─── CSRF token fresco (puede llamarse sin auth, pero solo desde session activa) ──
 // El JS lo usa para renovar el token antes de peticiones PATCH/POST críticas.
 Route::get('/csrf-token', function () {
