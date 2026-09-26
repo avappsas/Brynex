@@ -143,13 +143,23 @@ class AlertaOperativaService
     }
 
     /**
-     * Si el destinatario le escribió a la línea de Brygar en las últimas 24h. La
-     * conversación guarda el número con el 57 adelante, igual que llega de Meta.
+     * Si el destinatario le escribió a la línea de Brygar en las últimas 24h.
+     *
+     * Se mira en dos sitios. La conversación guarda el número con el 57 adelante,
+     * igual que llega de Meta. Y los mensajes que se desvían a GARVIS no llegan a
+     * la conversación: por cada uno, GARVIS deja la clave `whatsapp_ventana:<número>`
+     * en caché con 24 horas de vida.
      */
     private function ventanaAbierta(string $numero): bool
     {
+        $numero = WhatsappApiService::normalizarNumero($numero);
+
+        if (Cache::has('whatsapp_ventana:'.$numero)) {
+            return true;
+        }
+
         $conversacion = WhatsappConversacion::where('aliado_id', self::ALIADO_ID)
-            ->where('wa_contact_id', WhatsappApiService::normalizarNumero($numero))
+            ->where('wa_contact_id', $numero)
             ->first();
 
         return $conversacion !== null && $conversacion->ventanaActiva();
