@@ -1,0 +1,67 @@
+# Despliega origin/main a netcup (brynex.co) a mano, desde GitHub → Actions →
+# Desplegar → Run workflow. Sirve desde la app de GitHub en el iPhone.
+#
+# La llave NETCUP_SSH_KEY no da shell: en el servidor tiene un command= forzado
+# (/usr/local/sbin/brynex-deploy-gh) que solo acepta --dry-run, --migrate y
+# --reverb, y corre el scripts/deploy.sh que esté en origin/main.
+name: Desplegar
+
+on:
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: "dry-run solo muestra qué se desplegaría; desplegar lo lleva a producción"
+        type: choice
+        options:
+          - dry-run
+          - desplegar
+        default: dry-run
+      migrar:
+        description: "Correr migraciones nuevas (la base es la de PRODUCCIÓN)"
+        type: boolean
+        default: false
+      reverb:
+        description: "Reiniciar Reverb (corta los websockets abiertos)"
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: desplegar-netcup
+  cancel-in-progress: false
+
+jobs:
+  desplegar:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Preparar la llave SSH
+        env:
+          NETCUP_SSH_KEY: ${{ secrets.NETCUP_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$NETCUP_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo '159.195.233.132 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILI9SX/CNPHG/vGvc7tKDfMlVCEeWpc4QjD3rAXDnOiz' > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Desplegar en netcup
+        env:
+          MODO: ${{ inputs.modo }}
+          MIGRAR: ${{ inputs.migrar }}
+          REVERB: ${{ inputs.reverb }}
+        run: |
+          flags=""
+          [ "$MODO" = "dry-run" ] && flags="$flags --dry-run"
+          [ "$MIGRAR" = "true" ] && flags="$flags --migrate"
+          [ "$REVERB" = "true" ] && flags="$flags --reverb"
+          flags="${flags# }"
+          echo "Banderas: ${flags:-(ninguna)}"
+          ssh -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=20 \
+            root@159.195.233.132 "$flags"
+
+      - name: Borrar la llave
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
