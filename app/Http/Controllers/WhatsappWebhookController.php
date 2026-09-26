@@ -106,13 +106,12 @@ class WhatsappWebhookController extends Controller
         // al número del atacante con los datos del cliente cuya cédula diga
         // tener.
         //
-        // Pero cerrar de golpe deja a los aliados sin recibir mensajes, y aquí
-        // el webhook de Meta no apunta a BryNex sino a un relay: si ese relay
-        // reserializa el cuerpo o no reenvía la cabecera, la firma no cuadrará
-        // jamás por mucho App Secret que se ponga. Por eso el rechazo es un
-        // interruptor explícito y no una fecha: mientras esté apagado se acepta
-        // y se avisa a diario del motivo exacto, que es el dato que dice si
-        // encenderlo es seguro.
+        // Pero cerrar de golpe deja a los aliados sin recibir mensajes: si
+        // algún número llega firmado por otra app de Meta (un aliado con su
+        // propia cuenta), su firma no cuadrará con este App Secret. Por eso el
+        // rechazo es un interruptor explícito y no una fecha: mientras esté
+        // apagado se acepta y se avisa, por número, del motivo exacto, que es
+        // el dato que dice si encenderlo es seguro.
         $estricto = (bool) config('services.whatsapp.webhook_estricto');
 
         if (app()->environment('local')) {
@@ -126,19 +125,19 @@ class WhatsappWebhookController extends Controller
         }
 
         // En estricto se rechaza y punto. Fuera de estricto se acepta, pero se
-        // deja constancia diaria de POR QUÉ no cuadró: sin App Secret, sin
-        // cabecera, o cabecera presente que no coincide. Ese diagnóstico es lo
-        // que dice si el relay está estropeando la firma o si solo falta el
-        // secreto — y por tanto si activar el estricto es seguro.
+        // deja constancia de POR QUÉ no cuadró y de qué número venía: si en un
+        // día entero no aparece ninguno, activar el estricto no deja a nadie
+        // por fuera.
         if ($estricto) {
             Log::error('WhatsApp webhook: firma no válida en modo estricto, se rechaza.', [
                 'motivo' => $this->motivoFallo($request, $appSecret),
+                'numeros' => $this->numerosDelPayload($request),
             ]);
 
             return false;
         }
 
-        $this->avisarWebhookSinVerificar($this->motivoFallo($request, $appSecret));
+        $this->avisarWebhookSinVerificar($this->motivoFallo($request, $appSecret), $this->numerosDelPayload($request));
 
         return true;
     }
@@ -167,7 +166,8 @@ class WhatsappWebhookController extends Controller
     /**
      * Por qué no cuadró. Cada motivo lleva a un arreglo distinto, así que la
      * alerta tiene que distinguirlos: no es lo mismo que falte el secreto (lo
-     * arreglas tú) a que el relay no reenvíe la cabecera (lo arregla el relay).
+     * arreglas tú) a que no llegue la cabecera (algo entre Meta y Brynex la
+     * quita) o a que llegue y no cuadre (App Secret de otra app de Meta).
      */
     private function motivoFallo(Request $request, ?string $appSecret): string
     {
@@ -176,10 +176,10 @@ class WhatsappWebhookController extends Controller
         }
 
         if (! str_starts_with($request->header('X-Hub-Signature-256', ''), 'sha256=')) {
-            return 'el relay no reenvía la cabecera X-Hub-Signature-256';
+            return 'no llega la cabecera X-Hub-Signature-256';
         }
 
-        return 'la cabecera llega pero no coincide: el relay está alterando el cuerpo del mensaje';
+        return 'la cabecera llega pero no coincide: el App Secret no es el de la app de Meta que manda este número';
     }
 
     /**
@@ -212,21 +212,49 @@ class WhatsappWebhookController extends Controller
     }
 
     /**
-     * Un aviso al día, no uno por mensaje entrante. Se marca con add(), que es
-     * atómico: con varios workers a la vez solo uno gana y sale una sola alerta.
+     * Los phone_number_id que trae el payload: dicen de qué número (y por tanto
+     * de qué aliado) era lo que no se pudo verificar.
      */
-    private function avisarWebhookSinVerificar(string $motivo): void
+    private function numerosDelPayload(Request $request): array
     {
-        if (! Cache::add('wa_webhook_sin_verificar', true, now()->addDay())) {
-            return;
+        $numeros = [];
+
+        foreach ((array) $request->input('entry', []) as $entry) {
+            foreach ((array) ($entry['changes'] ?? []) as $change) {
+                $id = $change['value']['metadata']['phone_number_id'] ?? null;
+                if (is_string($id) && $id !== '') {
+                    $numeros[$id] = true;
+                }
+            }
         }
 
-        Log::warning('WhatsApp webhook: aceptando sin verificar la firma.', ['motivo' => $motivo]);
+        return array_keys($numeros);
+    }
 
-        EnviarAlertaOperativa::dispatch(
-            'WhatsApp sin verificar firma',
-            'El webhook acepta mensajes sin comprobar que vengan de Meta. Motivo: '.$motivo
-                .'. Mientras siga así, cualquiera puede inyectar mensajes falsos.'
-        );
+    /**
+     * Un aviso al día por número, no uno por mensaje entrante. Se marca con
+     * add(), que es atómico: con varios workers a la vez solo uno gana y sale
+     * una sola alerta. Va por número porque un solo número que falle es un
+     * aliado que el modo estricto dejaría sin mensajes.
+     */
+    private function avisarWebhookSinVerificar(string $motivo, array $numeros): void
+    {
+        foreach ($numeros ?: ['desconocido'] as $numero) {
+            if (! Cache::add('wa_firma_no_cuadra:'.$numero, true, now()->addDay())) {
+                continue;
+            }
+
+            Log::warning('WhatsApp webhook: aceptando sin verificar la firma.', [
+                'motivo' => $motivo,
+                'phone_number_id' => $numero,
+            ]);
+
+            EnviarAlertaOperativa::dispatch(
+                'WhatsApp sin verificar firma',
+                'El webhook aceptó sin comprobar que viniera de Meta un mensaje del número '.$numero
+                    .'. Motivo: '.$motivo
+                    .'. Mientras siga así, no se puede encender WHATSAPP_WEBHOOK_ESTRICTO sin dejar ese número sin mensajes.'
+            );
+        }
     }
 }
