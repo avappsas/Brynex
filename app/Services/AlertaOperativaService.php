@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\WhatsappConfig;
+use App\Models\WhatsappConversacion;
 use App\Models\WhatsappPlantilla;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -10,12 +11,14 @@ use Illuminate\Support\Str;
 
 /**
  * Avisos operativos a BryNex por WhatsApp: backups caídos, accesos raros,
- * usuarios creados por un aliado.
+ * usuarios creados por un aliado, despliegues.
  *
- * Sale por la cuenta de Brygar con la plantilla aprobada `notificar_brynex`
- * (dos variables: origen y mensaje). Se usa plantilla y no texto libre porque
- * el texto libre solo se puede enviar dentro de la ventana de 24h desde el
- * último mensaje del destinatario — y una alerta tiene que salir siempre.
+ * Sale por la cuenta de Brygar. Si el destinatario tiene abierta la ventana de
+ * 24h (escribió o tocó «Mantener activo» hace menos de un día), va como texto
+ * libre, que no gasta envíos de plantilla. Si no, va con la plantilla aprobada
+ * `notificar_brynex` (dos variables: origen y mensaje), que sale aunque la
+ * ventana esté cerrada — una alerta tiene que salir siempre. Es la misma regla
+ * de ReenvioAlDuenoService.
  *
  * Esta clase la comparten el comando `whatsapp:alerta-backup` y las alertas de
  * seguridad, para que el número, la plantilla y el saneado vivan en un solo sitio.
@@ -28,6 +31,9 @@ class AlertaOperativaService
 
     /** Tope de Meta por variable: 1024. Se recorta muy por debajo. */
     private const MAX_PARAM = 600;
+
+    /** El texto libre admite 4096; una alerta se lee en la notificación. */
+    private const MAX_TEXTO = 1500;
 
     public function __construct(private WhatsappApiService $whatsappApi) {}
 
@@ -61,6 +67,24 @@ class AlertaOperativaService
                 Log::error('AlertaOperativa: credenciales de WhatsApp incompletas', ['aliado_id' => self::ALIADO_ID]);
 
                 return false;
+            }
+
+            if ($this->ventanaAbierta($numero)) {
+                $envio = $this->whatsappApi->enviarTexto(
+                    $numero,
+                    '🔔 *'.$this->sanear($origen)."*\n".Str::limit(trim($mensaje), self::MAX_TEXTO, '…'),
+                    $config
+                );
+
+                if ($envio['ok'] ?? false) {
+                    return true;
+                }
+
+                // La ventana pudo cerrarse entre la consulta y el envío: se cae a la plantilla.
+                Log::warning('AlertaOperativa: el texto libre no salió, se intenta con plantilla', [
+                    'origen' => $origen,
+                    'error' => $envio['error'] ?? null,
+                ]);
             }
 
             $plantilla = WhatsappPlantilla::delAliado(self::ALIADO_ID)
@@ -116,6 +140,29 @@ class AlertaOperativaService
         Cache::put($cacheKey, true, now()->addMinutes($minutos));
 
         return $this->enviar($origen, $mensaje);
+    }
+
+    /**
+     * Si el destinatario le escribió a la línea de Brygar en las últimas 24h.
+     *
+     * Se mira en dos sitios. La conversación guarda el número con el 57 adelante,
+     * igual que llega de Meta. Y los mensajes que se desvían a GARVIS no llegan a
+     * la conversación: por cada uno, GARVIS deja la clave `whatsapp_ventana:<número>`
+     * en caché con 24 horas de vida.
+     */
+    private function ventanaAbierta(string $numero): bool
+    {
+        $numero = WhatsappApiService::normalizarNumero($numero);
+
+        if (Cache::has('whatsapp_ventana:'.$numero)) {
+            return true;
+        }
+
+        $conversacion = WhatsappConversacion::where('aliado_id', self::ALIADO_ID)
+            ->where('wa_contact_id', $numero)
+            ->first();
+
+        return $conversacion !== null && $conversacion->ventanaActiva();
     }
 
     /**
