@@ -26,12 +26,12 @@ dueño, todo bajo Laravel 10.
    usuario que se quiere correr contra producción, lo cual normalmente no se
    quiere).
 
-3. **El despliegue a brynex.co es manual.** El repo NO se auto-despliega:
-   el push a GitHub solo deja el commit en `origin/main`, y el servidor
-   (netcup, `/var/www/brynex`) sigue con el código viejo hasta que alguien
-   corre `./scripts/desplegar.sh` — ver la sección *Despliegue*. Aun así, todo
-   lo que se commitea en `main` está a un despliegue de estar en producción:
-   nunca poner un script ejecutable dentro de `public/` "solo para probar algo"
+3. **Mergear a `main` despliega a brynex.co.** Cada push a `main` dispara el
+   flujo *Desplegar* de GitHub Actions, que lleva el código a netcup
+   (`/var/www/brynex`) — ver la sección *Despliegue*. Las migraciones que solo
+   agregan corren solas; si alguna borra datos, el despliegue se detiene sin
+   tocar nada y avisa por WhatsApp. Por eso nunca poner un script ejecutable
+   dentro de `public/` "solo para probar algo"
    — ver `docs/auditoria-seguridad.md`, hallazgos C-1/C-2/C-3: así se filtraron
    tres scripts que quedaron accesibles por URL. `storage/app/public` NO se
    sincroniza a producción; solo el código y la BD.
@@ -77,13 +77,21 @@ php -l ruta/al/archivo.php        # chequeo de sintaxis rápido, sin bootear Lar
 ```bash
 ./scripts/desplegar.sh --dry-run   # qué se desplegaría, sin tocar nada
 ./scripts/desplegar.sh             # despliega origin/main a netcup
-./scripts/desplegar.sh --migrate   # además corre las migraciones nuevas
+./scripts/desplegar.sh --migrate   # además corre las migraciones que borran datos
 ```
 
-**También se despliega desde GitHub**, sin la Mac: GitHub → *Actions* →
-*Desplegar* → *Run workflow* (sirve desde la app de GitHub en el iPhone).
-Tiene tres opciones: `modo` (`dry-run` por defecto, o `desplegar`), `migrar`
-(apagado por defecto: la base es la de producción) y `reverb`. Solo corre desde
+**Al mergear a `main` se despliega solo**, por el flujo *Desplegar* de GitHub
+Actions. Las migraciones que solo agregan (tablas, campos, índices) se aplican
+solas. Si alguna **borra datos** —quita una tabla o un campo, vacía o borra
+filas, cambia el tipo de un campo— el despliegue se detiene antes del pull, sin
+tocar nada, y avisa por WhatsApp; se revisa y se lanza a mano con *migrar*. Una
+migración que solo agranda un campo lo declara con `// no-borra-datos: <por
+qué>` (ver [[laravel-migracion]]).
+
+**También se lanza a mano**, sin la Mac: GitHub → *Actions* → *Desplegar* →
+*Run workflow* (sirve desde la app de GitHub en el iPhone). Tiene tres
+opciones: `modo` (`dry-run` por defecto, o `desplegar`), `migrar` (apagado por
+defecto; prendido aplica también las que borran datos) y `reverb`. Solo corre desde
 `main` y de a uno a la vez (`.github/workflows/desplegar.yml`). Entra con la
 llave del secret `NETCUP_SSH_KEY`, que en el servidor no da shell: tiene un
 `command=` forzado (`/usr/local/sbin/brynex-deploy-gh`) que solo acepta
@@ -94,8 +102,9 @@ El push a GitHub lo hace el usuario; el script solo lleva al servidor lo que ya
 esté en `origin/main`. Hace el `git pull`, devuelve los archivos a `www-data`
 (git corre como root y si no, Apache pierde la escritura), reinstala
 dependencias si cambió `composer.lock`, limpia y recompila las vistas y
-reinicia los workers. Si el despliegue trae migraciones **se detiene antes del
-pull** salvo que se pase `--migrate`: la base de datos es la de producción.
+reinicia los workers. Si el despliegue trae migraciones que borran datos **se
+detiene antes del pull** salvo que se pase `--migrate`: la base de datos es la
+de producción.
 
 El trabajo real está en `scripts/deploy.sh`, que se envía por stdin al servidor
 en vez de guardarse allá, para que nunca corra una versión desactualizada de sí

@@ -10,9 +10,12 @@
 #   bash deploy.sh [--dry-run] [--migrate] [--reverb] [--dir RUTA] [--branch RAMA]
 #
 #   --dry-run   Solo muestra qué se desplegaría. No toca nada.
-#   --migrate   Corre las migraciones pendientes. Sin esta bandera, si el
-#               despliegue trae migraciones nuevas el script se detiene ANTES
-#               del pull (la base de datos es la de producción — ver CLAUDE.md).
+#   --migrate   Corre también las migraciones que BORRAN datos. Sin esta
+#               bandera, las que solo agregan (tablas, campos, índices) corren
+#               solas, y si alguna borra —quita una tabla o un campo, vacía o
+#               borra filas, cambia el tipo de un campo— el script se detiene
+#               ANTES del pull y avisa por WhatsApp (la base es la de
+#               producción — ver CLAUDE.md). Así puede correr solo al mergear.
 #   --reverb    Además reinicia el proceso de Reverb (corta los websockets
 #               abiertos, por eso no se hace por defecto).
 #
@@ -45,9 +48,12 @@ WEB_HOME="$(getent passwd "$WEB_USER" | cut -d: -f6)"
 PASO="Comprobaciones"
 RESULTADO=""
 MOTIVO=""
+DETENIDO=0
 avisar_whatsapp() {
     local codigo=$1 texto
-    if [ "$codigo" -eq 0 ]; then
+    if [ "$DETENIDO" -eq 1 ]; then
+        texto="⏸️ Detenido sin tocar nada · $MOTIVO"
+    elif [ "$codigo" -eq 0 ]; then
         texto="✅ ${RESULTADO:-terminó bien}"
     else
         texto="❌ Falló en «$PASO» (código $codigo)${MOTIVO:+ · $MOTIVO}"
@@ -123,21 +129,52 @@ echo "$archivos_cambiados" | sed 's/^/  /'
 migraciones_nuevas="$(echo "$archivos_cambiados" | grep '^database/migrations/' || true)"
 cambio_composer="$(echo "$archivos_cambiados" | grep '^composer\.\(json\|lock\)$' || true)"
 
+# Lo que cuenta como borrar datos, buscado solo dentro de up(): el down() de
+# cualquier migración que crea una tabla trae su dropIfExists, y eso no corre.
+# Cambiar el tipo de un campo (->change(), ALTER COLUMN de SQL Server) también
+# cuenta: desde aquí no se sabe si lo agranda o lo corta. Una migración que se
+# sabe segura (agrandar un NVARCHAR, volver un campo nullable) lo declara con
+# un comentario `// no-borra-datos: <por qué>` y no detiene nada.
+PATRON_BORRA='dropColumns?\(|dropIfExists\(|Schema::drop\(|->drop\(\)|->change\(\)|->truncate\(|->delete\(|dropSoftDeletes|dropTimestamps|dropMorphs|dropRememberToken|DROP[[:space:]]+(TABLE|COLUMN|DATABASE|SCHEMA)|TRUNCATE[[:space:]]+TABLE|DELETE[[:space:]]+FROM|ALTER[[:space:]]+COLUMN'
+migraciones_que_borran() {
+    local f contenido hallado
+    while IFS= read -r f; do
+        [[ -n "$f" ]] || continue
+        contenido="$(git show "origin/$BRANCH:$f")"
+        grep -q 'no-borra-datos' <<<"$contenido" && continue
+        hallado="$(awk '/function[[:space:]]+up[[:space:]]*\(/{f=1} /function[[:space:]]+down[[:space:]]*\(/{f=0} f' <<<"$contenido" \
+            | sed 's#//.*$##' | grep -oiE "$PATRON_BORRA" | tr -d "()" | sort -u | paste -sd, - || true)"
+        [[ -n "$hallado" ]] && echo "$(basename "$f") ($hallado)"
+    done
+    return 0
+}
+
+destructivas=""
 if [[ -n "$migraciones_nuevas" ]]; then
     echo
     aviso "Este despliegue trae migraciones:"
     echo "$migraciones_nuevas" | sed 's/^/  /'
-    if [[ $CORRER_MIGRACIONES -eq 0 ]]; then
-        error "La base de datos es la de producción. Revisa esas migraciones y vuelve a lanzar con --migrate."
-        exit 1
+    destructivas="$(git diff --name-only --diff-filter=A "HEAD..origin/$BRANCH" -- database/migrations/ | migraciones_que_borran)"
+    if [[ -n "$destructivas" ]]; then
+        aviso "Estas borran datos:"
+        echo "$destructivas" | sed 's/^/  /'
+    else
+        echo "  Ninguna borra datos: se aplican solas."
     fi
 fi
 
 if [[ $DRY_RUN -eq 1 ]]; then
     echo
     echo "(--dry-run: hasta aquí llega, no se tocó nada)"
-    RESULTADO="dry-run: $pendientes commit(s) por desplegar${migraciones_nuevas:+, con migraciones}"
+    RESULTADO="dry-run: $pendientes commit(s) por desplegar${migraciones_nuevas:+, con migraciones}${destructivas:+ (alguna borra datos)}"
     exit 0
+fi
+
+if [[ -n "$destructivas" && $CORRER_MIGRACIONES -eq 0 ]]; then
+    DETENIDO=1
+    error "Hay migraciones que borran datos y la base es la de producción. Revísalas y vuelve a lanzar con --migrate."
+    MOTIVO="migración que borra datos: $(echo "$destructivas" | paste -sd';' - | sed 's/;/; /g'). Revísala y lánzala a mano: Actions → Desplegar → desplegar + migrar"
+    exit 1
 fi
 
 # --------------------------------------------------------------------- despliegue
@@ -165,7 +202,7 @@ if [[ -n "$cambio_composer" ]]; then
     como_web composer install --no-dev --optimize-autoloader --no-interaction
 fi
 
-if [[ $CORRER_MIGRACIONES -eq 1 && -n "$migraciones_nuevas" ]]; then
+if [[ -n "$migraciones_nuevas" ]]; then
     titulo "Corriendo migraciones"
     como_web php artisan migrate --force
 fi
