@@ -18,8 +18,11 @@ escriben cédulas ni nombres en él: se filtra por ids.
 | `liderapp` | `liderapp` (PostgreSQL) |
 | `bahia` | `bahia` (PostgreSQL) |
 | `avappi` | la de `DATABASE_URL` en `/var/www/avappi/.env` (PostgreSQL) |
+| `brynex` | la de `DB_DATABASE` en `/var/www/brynex/.env` (SQL Server) |
+| `cuentafacil` | la de `DB_DATABASE` en `/var/www/cf/.env` (SQL Server) |
+| `megatransportes` | la de `DB_DATABASE` en `/var/www/megatransportes/.env` (SQL Server) |
 
-Brynex, Cuenta Fácil y MegaTransportes (SQL Server) van aparte.
+`BryNex_Finanzas` no está, a propósito: son las finanzas personales del dueño.
 
 **Solo lee, y no por una regla del script sino de la base.** La consulta corre
 como el rol `datos_lectura`: solo tiene `pg_read_all_data`, sus transacciones
@@ -34,7 +37,28 @@ app. El SQL llega por la entrada estándar; el script acepta un solo `SELECT` o
 `WITH`, sin punto y coma ni comandos de psql, con tope de 20.000 filas y dos
 minutos.
 
-## Instalación en netcup (una sola vez)
+## SQL Server (Brynex, Cuenta Fácil, MegaTransportes)
+
+Entra con el login `datos_lectura` de SQL Server, que en cada base tiene
+`db_datareader` y `db_denydatawriter` y `EXECUTE` negado: lee todo y no puede
+escribir, tampoco a través de un procedimiento almacenado. La consulta la corre
+PHP con `pdo_sqlsrv` (el mismo de Laravel) para que el CSV salga bien
+entrecomillado. La clave del login la genera el instalador en el servidor, en
+`/etc/consultar-gh/mssql.clave` (root, 600), y no sale de ahí: nadie la tiene
+que ver ni copiar. Los accesos de `datos_lectura` quedan en la auditoría de
+logins exitosos (ver `docs/login-app-sin-sa.md`).
+
+Instalación, una vez, desde la Mac (pide la clave de `sa`):
+
+```bash
+ssh -t netcup 'cd /var/www/brynex && git pull -q && bash scripts/consultar-mssql-instalar.sh'
+```
+
+Termina en «Todo en orden» después de probar que lee cada base y que **no**
+puede borrar en ninguna. Es idempotente, y también reinstala
+`/usr/local/sbin/consultar-gh`.
+
+## Instalación en netcup (una sola vez, PostgreSQL)
 
 Desde la Mac con `ssh netcup`, como root. La llave privada **nunca** se pega en
 un chat.

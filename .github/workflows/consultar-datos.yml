@@ -25,6 +25,9 @@ on:
           - liderapp
           - bahia
           - avappi
+          - brynex
+          - cuentafacil
+          - megatransportes
         default: liderapp
       sql:
         description: "Un solo SELECT (sale en CSV, máximo 20.000 filas)"
