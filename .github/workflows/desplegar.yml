@@ -75,16 +75,23 @@ jobs:
         if: always()
         run: rm -f ~/.ssh/id_ed25519
 
-      # Manda un WhatsApp con el resultado, salga bien o mal, por CallMeBot.
-      # Sin los secrets WHATSAPP_TELEFONO y CALLMEBOT_APIKEY no hace nada, y si
-      # CallMeBot falla el despliegue no se marca como fallido por eso.
+      # Manda un WhatsApp con el resultado, salga bien o mal. Sale por el número
+      # de WhatsApp Business de Brynex (API de Meta) con la plantilla aprobada
+      # `notificar_brynex`, la misma de las alertas operativas de Brynex
+      # (AlertaOperativaService): dos variables, origen y mensaje. Va por
+      # plantilla porque el texto libre solo sale dentro de la ventana de 24 h.
+      #
+      # Sin los secrets WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID y
+      # WHATSAPP_AVISOS_NUMERO no hace nada, y si Meta falla el despliegue no se
+      # marca como fallido por eso.
       - name: Avisar por WhatsApp
         if: always()
         continue-on-error: true
         shell: bash
         env:
-          TELEFONO: ${{ secrets.WHATSAPP_TELEFONO }}
-          APIKEY: ${{ secrets.CALLMEBOT_APIKEY }}
+          TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
+          PHONE_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
+          DESTINO: ${{ secrets.WHATSAPP_AVISOS_NUMERO }}
           ESTADO: ${{ job.status }}
           LLAVE: ${{ steps.llave.outcome }}
           DESPLIEGUE: ${{ steps.despliegue.outcome }}
@@ -94,42 +101,61 @@ jobs:
           COMMIT: ${{ github.sha }}
           ENLACE: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          if [ -z "$TELEFONO" ] || [ -z "$APIKEY" ]; then
-            echo "Faltan WHATSAPP_TELEFONO o CALLMEBOT_APIKEY: no se avisa."
+          if [ -z "$TOKEN" ] || [ -z "$PHONE_ID" ] || [ -z "$DESTINO" ]; then
+            echo "Faltan WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID o WHATSAPP_AVISOS_NUMERO: no se avisa."
             exit 0
           fi
 
           case "$ESTADO" in
-            success) [ "$MODO" = "desplegar" ] && titulo="✅ Brynex: desplegado" \
-                                               || titulo="🔎 Brynex: dry-run sin problemas" ;;
-            cancelled) titulo="⏹️ Brynex: despliegue cancelado" ;;
-            *) titulo="❌ Brynex: falló el despliegue ($MODO)" ;;
+            success) [ "$MODO" = "desplegar" ] && titulo="✅ desplegado" \
+                                               || titulo="🔎 dry-run sin problemas" ;;
+            cancelled) titulo="⏹️ cancelado" ;;
+            *) titulo="❌ FALLÓ ($MODO)" ;;
           esac
 
-          detalle=""
+          partes=("$titulo")
           if [ "$ESTADO" != "success" ]; then
             if [ "$LLAVE" = "failure" ]; then
-              detalle="Paso: preparar la llave SSH (¿falta el secret NETCUP_SSH_KEY?)"
+              partes+=("en la llave SSH (¿falta NETCUP_SSH_KEY?)")
             elif [ "$CODIGO" = "255" ]; then
-              detalle="Paso: conectar a netcup (SSH no entró)"
+              partes+=("no se pudo conectar a netcup")
             elif [ "$DESPLIEGUE" = "failure" ]; then
-              detalle="Paso: en el servidor (código $CODIGO)"
+              partes+=("en el servidor, código $CODIGO")
             fi
             # Última línea que dijo el servidor, sin colores y recortada.
             if [ -s "$RUNNER_TEMP/despliegue.log" ]; then
               ultima=$(sed 's/\x1b\[[0-9;]*m//g' "$RUNNER_TEMP/despliegue.log" \
                        | grep -v '^[[:space:]]*$' | tail -n 1 | cut -c1-200)
-              [ -n "$ultima" ] && detalle="${detalle:+$detalle$'\n'}Dijo: $ultima"
+              [ -n "$ultima" ] && partes+=("dijo: $ultima")
             fi
           fi
+          partes+=("$QUIEN" "${COMMIT:0:7}" "$(TZ=America/Bogota date '+%d/%m %H:%M')" "$ENLACE")
 
-          hora=$(TZ=America/Bogota date '+%d/%m %H:%M')
-          texto="$titulo"
-          [ -n "$detalle" ] && texto="$texto"$'\n'"$detalle"
-          texto="$texto"$'\n'"$QUIEN · ${COMMIT:0:7} · $hora"$'\n'"$ENLACE"
+          # Meta rechaza variables con saltos de línea, tabulaciones o más de
+          # cuatro espacios seguidos: todo va en un renglón separado por " · ".
+          mensaje=""
+          for p in "${partes[@]}"; do mensaje="${mensaje:+$mensaje · }$p"; done
+          mensaje=$(printf '%s' "$mensaje" | tr '\t\r\n' '   ' | tr -s ' ')
 
-          curl -sS --fail --max-time 20 -o /dev/null -G "https://api.callmebot.com/whatsapp.php" \
-            --data-urlencode "phone=$TELEFONO" \
-            --data-urlencode "text=$texto" \
-            --data-urlencode "apikey=$APIKEY" \
-            && echo "Aviso enviado." || echo "::warning::No se pudo enviar el WhatsApp."
+          # El idioma con que se aprobó la plantilla no se sabe desde aquí: se
+          # prueban los probables hasta que Meta acepte uno.
+          for idioma in es es_CO es_ES es_MX; do
+            cuerpo=$(jq -nc --arg to "$DESTINO" --arg idioma "$idioma" \
+              --arg origen "Despliegue Brynex" --arg mensaje "$mensaje" '{
+                messaging_product: "whatsapp", to: $to, type: "template",
+                template: { name: "notificar_brynex", language: { code: $idioma },
+                  components: [ { type: "body", parameters: [
+                    { type: "text", text: $origen }, { type: "text", text: $mensaje } ] } ] } }')
+            respuesta=$(curl -sS --max-time 20 -X POST \
+              "https://graph.facebook.com/v19.0/$PHONE_ID/messages" \
+              -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+              -d "$cuerpo") || true
+            if printf '%s' "$respuesta" | jq -e '.messages[0].id' > /dev/null 2>&1; then
+              echo "Aviso enviado (idioma $idioma)."
+              exit 0
+            fi
+            # 132001: la plantilla no existe en ese idioma. Otro error no se arregla probando.
+            codigo=$(printf '%s' "$respuesta" | jq -r '.error.code // empty' 2>/dev/null) || true
+            [ "$codigo" = "132001" ] || break
+          done
+          echo "::warning::No se pudo enviar el WhatsApp: $(printf '%s' "$respuesta" | jq -r '.error.message // .' 2>/dev/null)"
